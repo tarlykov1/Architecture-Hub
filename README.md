@@ -43,3 +43,10 @@ docker compose up --build
 - Создание схем и сохранение координат в базе данных
 
 **Ограничения:** пока нет входа, ролей, миграций Alembic и настоящей метамодели. Карта показывает все зарегистрированные объекты на каждой схеме. Не вводи конфиденциальные данные и не публикуй приложение в интернете. Это локальный прототип.
+
+
+## Architecture Hub 0.2 (experimental)
+
+The new infrastructure layer models nested services, VM, APIs and directed data flows separately from logical systems. Click a system and use the right-hand forms to add components and flows, or load the synthetic infrastructure sample via **+ Демо инфраструктуры** after **Загрузить демо**. The new tables are additive; existing objects/diagrams remain.
+
+**Caution:** network locations and transport controls in sample entries are fictional. No login or RBAC exists; use only on localhost with non-sensitive data. Back up `backend/architecture_hub.db` before pulling or starting this update. Current implementation is an intermediate model (network notes in JSON), not yet a normalized inventory of VRF/VLAN/DMZ/interfaces or a routing verification engine.

@@ -6,6 +6,8 @@ import './style.css'
 
 type Obj = { id: string; kind: string; name: string; description: string; status: string; attributes: Record<string, unknown> }
 type Rel = { id: string; source_id: string; target_id: string; kind: string; description: string }
+type Infra = {id:string;system_id:string;parent_id:string|null;kind:string;name:string;description:string;details:Record<string,unknown>}
+type Flow = {id:string;source_id:string;target_id:string;name:string;data_description:string;protocol:string;port:string;security:string;schedule:string;verification:string}
 type Diagram = { id: string; name: string; positions: Record<string, { x: number; y: number }> }
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
@@ -19,6 +21,21 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
 
 function App() {
   const [objects, setObjects] = useState<Obj[]>([])
+  const [infra, setInfra] = useState<Infra[]>([])
+  const [flows, setFlows] = useState<Flow[]>([])
+  const [layer, setLayer] = useState<'systems'|'infrastructure'|'flows'>('systems')
+  const [infraName,setInfraName] = useState('')
+  const [infraKind,setInfraKind] = useState('vm')
+  const [infraParent,setInfraParent] = useState('')
+  const [infraDetails,setInfraDetails] = useState('')
+  const [flowSource,setFlowSource] = useState('')
+  const [flowTarget,setFlowTarget] = useState('')
+  const [flowName,setFlowName] = useState('')
+  const [flowData,setFlowData] = useState('')
+  const [flowProtocol,setFlowProtocol] = useState('HTTPS')
+  const [flowPort,setFlowPort] = useState('443')
+  const [flowSecurity,setFlowSecurity] = useState('TLS')
+  const [flowVerification,setFlowVerification] = useState('draft')
   const [relations, setRelations] = useState<Rel[]>([])
   const [diagrams, setDiagrams] = useState<Diagram[]>([])
   const [diagramId, setDiagramId] = useState('')
@@ -38,6 +55,7 @@ function App() {
       request<Diagram[]>('/api/diagrams'),
     ])
     setObjects(o); setRelations(r); setDiagrams(d)
+    const [i,f] = await Promise.all([request<Infra[]>('/api/infra'),request<Flow[]>('/api/flows')]); setInfra(i);setFlows(f)
     if (d.length && !diagramId) {
       setDiagramId(d[0].id)
       setPositions(d[0].positions || {})
@@ -126,6 +144,67 @@ function App() {
     finally { setBusy(false) }
   }
 
+  async function addInfrastructure(event: React.FormEvent) {
+    event.preventDefault()
+    if (!selected) {setError('Сначала выберите систему');return}
+    setError('')
+    try {
+      let details:Record<string,unknown> = {}
+      // Free-text network notes avoid inventing actual VLANs or IP addresses.
+      if (infraDetails.trim()) details = {network_notes:infraDetails.trim()}
+      await request('/api/infra',{method:'POST',body:JSON.stringify({
+        system_id:selected,parent_id:infraParent||null,kind:infraKind,name:infraName,
+        description:'',details
+      })})
+      setInfra(await request<Infra[]>('/api/infra'));setInfraName('');setInfraDetails('');setInfraParent('')
+    } catch(e){setError(String(e))}
+  }
+  async function addFlow(event: React.FormEvent) {
+    event.preventDefault();setError('')
+    try {
+      await request('/api/flows',{method:'POST',body:JSON.stringify({
+        source_id:flowSource,target_id:flowTarget,name:flowName,data_description:flowData,
+        protocol:flowProtocol,port:flowPort,security:flowSecurity,verification:flowVerification
+      })})
+      setFlows(await request<Flow[]>('/api/flows'));setFlowName('');setFlowData('')
+    } catch(e){setError(String(e))}
+  }
+  async function loadInfrastructureDemo(){
+    const find = (n:string)=>objects.find(o=>o.name.toLowerCase()===n.toLowerCase())
+    const zup=find('1С ЗУП'),datareon=find('DATAREON'),naumen=find('Naumen'),phone=find('Телефонный справочник')
+    if(!zup||!datareon||!naumen||!phone){setError('Сначала нажмите «Загрузить демо» для создания систем');return}
+    try {
+      const desired=[{s:zup,name:'HR Export API',kind:'service'},
+        {s:datareon,name:'Integration Adapter',kind:'service'},
+        {s:naumen,name:'Directory API',kind:'service'},
+        {s:phone,name:'Directory DB',kind:'database'},
+        {s:phone,name:'VM-DIR-DEMO-01',kind:'vm'}]
+      const existing=await request<Infra[]>('/api/infra')
+      const lookup:Record<string,string>={}
+      for(const x of desired){
+        let row=existing.find(i=>i.system_id===x.s.id&&i.name===x.name)
+        if(!row)row=await request<Infra>('/api/infra',{method:'POST',body:JSON.stringify({
+          system_id:x.s.id,name:x.name,kind:x.kind,details:{network_notes:'ДЕМО: VLAN, VRF и зона пока не подтверждены'}
+        })})
+        lookup[x.name]=row.id
+      }
+      const actual=await request<Flow[]>('/api/flows')
+      const legs=[['HR Export API','Integration Adapter','Кадровые данные'],
+        ['Integration Adapter','Directory API','Данные сотрудников'],
+        ['Integration Adapter','Directory DB','Данные справочника']]
+      for(const [source,target,description] of legs) {
+        if(!actual.some(f=>f.source_id===lookup[source]&&f.target_id===lookup[target])){
+          await request('/api/flows',{method:'POST',body:JSON.stringify({
+            source_id:lookup[source],target_id:lookup[target],name:description,
+            data_description:'ДЕМО – состав полей уточнить',protocol:'HTTPS',port:'443',
+            security:'TLS',verification:'draft'
+          })})
+        }
+      }
+      setInfra(await request<Infra[]>('/api/infra'));setFlows(await request<Flow[]>('/api/flows'))
+      setLayer('infrastructure');alert('Демо инфраструктуры добавлено. Сетевые и транспортные параметры условные.')
+    }catch(e){setError(String(e))}
+  }
   async function addDiagram() {
     const title = prompt('Название новой схемы:')
     if (!title?.trim()) return
@@ -171,13 +250,38 @@ function App() {
         <button className="primary" onClick={saveDiagram}>Сохранить{dirty ? ' *' : ''}</button>
       </div></header>
       {error && <div className="error" role="alert">{error}<button onClick={() => setError('')}>×</button></div>}
-      <section className="canvas">
+      <div className="layerTabs">
+        <button className={layer==='systems'?'current':''} onClick={()=>setLayer('systems')}>Системы</button>
+        <button className={layer==='infrastructure'?'current':''} onClick={()=>setLayer('infrastructure')}>Сервисы и ВМ</button>
+        <button className={layer==='flows'?'current':''} onClick={()=>setLayer('flows')}>Потоки данных</button>
+        <button onClick={loadInfrastructureDemo} title="Создать условные компоненты и потоки для телефонного справочника">+ Демо инфраструктуры</button>
+      </div>
+      {layer==='systems' ? <section className="canvas">
         <ReactFlow nodes={nodes} edges={edges} onNodesChange={onNodesChange} onConnect={onConnect}
           onNodeClick={(_event: React.MouseEvent, node: Node) => setSelected(node.id)} onPaneClick={() => setSelected('')} fitView>
           <Background color="#d1dae5" gap={20} size={1}/><Controls/><MiniMap zoomable pannable/>
         </ReactFlow>
         {!objects.length && <div className="emptyHint">Создайте первый объект в панели слева, затем добавьте второй и соедините их точками на схеме.</div>}
-      </section>
+      </section> : <section className="infraPanel">
+        {layer==='infrastructure' ? <>
+          <h2>Компоненты и размещение</h2>
+          <p className="hint">Выберите систему слева или на общей карте. Каждая ВМ, сервис, API и база создаётся как отдельный объект. Сетевую принадлежность указываем для компонентов, а не для системы целиком.</p>
+          <div className="infraGrid">{infra.filter(i=>!selected||i.system_id===selected).map(i=><article className="infraCard" key={i.id}>
+            <span className="tag">{i.kind}</span><h3>{i.name}</h3>
+            <p>{objects.find(o=>o.id===i.system_id)?.name}</p>
+            {i.parent_id&&<small>Входит в: {infra.find(x=>x.id===i.parent_id)?.name||'Неизвестно'}</small>}
+            <p>{String(i.details.network_notes||'Сеть не указана')}</p>
+          </article>)}</div>
+        </> : <>
+          <h2>Направленные потоки данных</h2>
+          <p className="hint">Каждый поток – отдельная запись от конкретного компонента-источника до компонента-получателя. Обратный независимый поток создаётся отдельно.</p>
+          <div className="infraGrid">{flows.map(f=><article className="infraCard" key={f.id}>
+            <span className="tag">{f.verification}</span><h3>{f.name}</h3>
+            <strong>{infra.find(i=>i.id===f.source_id)?.name} → {infra.find(i=>i.id===f.target_id)?.name}</strong>
+            <p>{f.data_description}</p><small>{f.protocol} · порт {f.port||'?'} · {f.security}</small>
+          </article>)}</div>
+        </>}
+      </section>}
     </main>
     <aside className="details">
       <div className="sideLabel">СВОЙСТВА</div>
@@ -185,9 +289,39 @@ function App() {
         <h3>Описание</h3><p>{detail.description || 'Описание пока не заполнено.'}</p>
         <h3>Статус</h3><p>{detail.status === "demo" ? "Демо · требуется проверка" : detail.status}</p>{detail.attributes.subtype && <><h3>Категория</h3><p>{String(detail.attributes.subtype)}</p></>}
         <h3>Связи</h3>{relations.filter(r => r.source_id === detail.id || r.target_id === detail.id).length ? relations.filter(r => r.source_id === detail.id || r.target_id === detail.id).map(r => <p key={r.id}><strong>{r.source_id === detail.id ? "→ " : "← "}{objects.find(o => o.id === (r.source_id === detail.id ? r.target_id : r.source_id))?.name}</strong><br/>{r.description || r.kind}</p>) : <p>Связей пока нет</p>}
-        <p className="hint">Чтобы создать интеграцию, потяните связь от точки одного объекта к точке другого.</p>
+        <p className="hint">Чтобы создать логическую интеграцию, потяните связь между системами.</p>
+        <h3>Компоненты системы</h3>
+        {infra.filter(i=>i.system_id===detail.id).map(i=><p key={i.id}><strong>{i.name}</strong> · {i.kind}</p>)}
+        <form className="detailForm" onSubmit={addInfrastructure}>
+          <input required placeholder="Имя ВМ / сервиса / API" value={infraName} onChange={e=>setInfraName(e.target.value)}/>
+          <select value={infraKind} onChange={e=>setInfraKind(e.target.value)}>
+            {['vm','service','api','database','adapter','container','network_interface','subsystem','other'].map(x=><option key={x} value={x}>{x}</option>)}
+          </select>
+          <select value={infraParent} onChange={e=>setInfraParent(e.target.value)}>
+            <option value="">Без родителя</option>
+            {infra.filter(i=>i.system_id===detail.id).map(i=><option key={i.id} value={i.id}>{i.name}</option>)}
+          </select>
+          <textarea rows={2} placeholder="Заметки о сети: VLAN / VRF / DMZ (если известны)" value={infraDetails} onChange={e=>setInfraDetails(e.target.value)}/>
+          <button className="primary">Добавить компонент</button>
+        </form>
+        <h3>Новый поток данных</h3>
+        <form className="detailForm" onSubmit={addFlow}>
+          <select required value={flowSource} onChange={e=>setFlowSource(e.target.value)}>
+            <option value="">Источник</option>{infra.map(i=><option key={i.id} value={i.id}>{i.name}</option>)}
+          </select>
+          <select required value={flowTarget} onChange={e=>setFlowTarget(e.target.value)}>
+            <option value="">Получатель</option>{infra.map(i=><option key={i.id} value={i.id}>{i.name}</option>)}
+          </select>
+          <input required placeholder="Название потока" value={flowName} onChange={e=>setFlowName(e.target.value)}/>
+          <textarea rows={2} placeholder="Какие именно данные передаются?" value={flowData} onChange={e=>setFlowData(e.target.value)}/>
+          <input placeholder="Протокол" value={flowProtocol} onChange={e=>setFlowProtocol(e.target.value)}/>
+          <input placeholder="Порт" value={flowPort} onChange={e=>setFlowPort(e.target.value)}/>
+          <select value={flowSecurity} onChange={e=>setFlowSecurity(e.target.value)}>{['unknown','TLS','mTLS','VPN','private_connector','none'].map(x=><option key={x} value={x}>{x}</option>)}</select>
+          <select value={flowVerification} onChange={e=>setFlowVerification(e.target.value)}><option value="draft">Черновик</option><option value="assumed">Предположение</option><option value="verified">Подтверждено</option></select>
+          <button className="primary">Добавить поток</button>
+        </form>
       </> : <div className="hint">Выберите объект на схеме или в каталоге.</div>}
-      <div className="disclaimer">Локальная версия 0.1 · Без авторизации · Только тестовые данные</div>
+      <div className="disclaimer">Локальная версия 0.2 · Без авторизации · Только тестовые данные</div>
     </aside>
   </div>
 }

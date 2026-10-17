@@ -48,6 +48,62 @@ class Diagram(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
 
+
+class InfrastructureItem(Base):
+    __tablename__ = "infrastructure_items"
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    system_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("objects.id"), index=True)
+    parent_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True), ForeignKey("infrastructure_items.id"), nullable=True)
+    kind: Mapped[str] = mapped_column(String(50))
+    name: Mapped[str] = mapped_column(String(250))
+    description: Mapped[str] = mapped_column(String(4000), default="")
+    details: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+
+
+class DataFlow(Base):
+    __tablename__ = "data_flows"
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    source_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("infrastructure_items.id"))
+    target_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("infrastructure_items.id"))
+    name: Mapped[str] = mapped_column(String(250))
+    data_description: Mapped[str] = mapped_column(String(4000), default="")
+    protocol: Mapped[str] = mapped_column(String(80), default="")
+    port: Mapped[str] = mapped_column(String(80), default="")
+    security: Mapped[str] = mapped_column(String(80), default="unknown")
+    schedule: Mapped[str] = mapped_column(String(160), default="")
+    verification: Mapped[str] = mapped_column(String(30), default="draft")
+
+
+class InfraInput(BaseModel):
+    system_id: UUID
+    parent_id: UUID | None = None
+    kind: str = Field(min_length=1, max_length=50)
+    name: str = Field(min_length=1, max_length=250)
+    description: str = Field(default="", max_length=4000)
+    details: dict[str, Any] = Field(default_factory=dict)
+
+
+class InfraOutput(InfraInput):
+    model_config = ConfigDict(from_attributes=True)
+    id: UUID
+
+
+class FlowInput(BaseModel):
+    source_id: UUID
+    target_id: UUID
+    name: str = Field(min_length=1, max_length=250)
+    data_description: str = Field(default="", max_length=4000)
+    protocol: str = Field(default="", max_length=80)
+    port: str = Field(default="", max_length=80)
+    security: str = Field(default="unknown", max_length=80)
+    schedule: str = Field(default="", max_length=160)
+    verification: str = Field(default="draft", max_length=30)
+
+
+class FlowOutput(FlowInput):
+    model_config = ConfigDict(from_attributes=True)
+    id: UUID
+
 class ObjectCreate(BaseModel):
     kind: str = Field(default="system", max_length=60)
     name: str = Field(min_length=1, max_length=250)
@@ -270,3 +326,85 @@ def load_demo(db: Session = Depends(db_session)):
         "created_relations": added_relations,
         "notice": "Демонстрационные сведения. Неподтверждённые параметры требуют уточнения."
     }
+
+
+# Infrastructure is deliberately separate from logical systems.
+# No assumptions about real IPs, VLANs or services are hardcoded.
+@app.get("/api/infra", response_model=list[InfraOutput])
+def list_infra(system_id: UUID | None = None, db: Session = Depends(db_session)):
+    query = select(InfrastructureItem)
+    if system_id:
+        query = query.where(InfrastructureItem.system_id == system_id)
+    return db.scalars(query.order_by(InfrastructureItem.name)).all()
+
+
+@app.post("/api/infra", response_model=InfraOutput, status_code=201)
+def create_infra(payload: InfraInput, db: Session = Depends(db_session)):
+    if not db.get(ArchitectureObject, payload.system_id):
+        raise HTTPException(422, "System not found")
+    if payload.parent_id:
+        parent = db.get(InfrastructureItem, payload.parent_id)
+        if not parent or parent.system_id != payload.system_id:
+            raise HTTPException(422, "Parent must be in the same system")
+    item = InfrastructureItem(**payload.model_dump())
+    db.add(item)
+    db.commit()
+    db.refresh(item)
+    return item
+
+
+@app.put("/api/infra/{item_id}", response_model=InfraOutput)
+def update_infra(item_id: UUID, payload: InfraInput, db: Session = Depends(db_session)):
+    item = db.get(InfrastructureItem, item_id)
+    if not item:
+        raise HTTPException(404, "Item not found")
+    if not db.get(ArchitectureObject, payload.system_id):
+        raise HTTPException(422, "System not found")
+    if payload.parent_id:
+        parent = db.get(InfrastructureItem, payload.parent_id)
+        if not parent or parent.system_id != payload.system_id or parent.id == item_id:
+            raise HTTPException(422, "Invalid parent")
+        cursor = parent
+        while cursor.parent_id:
+            if cursor.parent_id == item_id:
+                raise HTTPException(422, "Containment cycle")
+            cursor = db.get(InfrastructureItem, cursor.parent_id)
+            if cursor is None:
+                break
+    for k, v in payload.model_dump().items():
+        setattr(item, k, v)
+    db.commit()
+    db.refresh(item)
+    return item
+
+
+@app.get("/api/flows", response_model=list[FlowOutput])
+def list_flows(db: Session = Depends(db_session)):
+    return db.scalars(select(DataFlow).order_by(DataFlow.name)).all()
+
+
+@app.post("/api/flows", response_model=FlowOutput, status_code=201)
+def create_flow(payload: FlowInput, db: Session = Depends(db_session)):
+    if payload.source_id == payload.target_id:
+        raise HTTPException(422, "Source and destination must differ")
+    if not db.get(InfrastructureItem, payload.source_id) or not db.get(InfrastructureItem, payload.target_id):
+        raise HTTPException(422, "Both endpoints must exist")
+    flow = DataFlow(**payload.model_dump())
+    db.add(flow)
+    db.commit()
+    db.refresh(flow)
+    return flow
+
+
+@app.put("/api/flows/{flow_id}", response_model=FlowOutput)
+def update_flow(flow_id: UUID, payload: FlowInput, db: Session = Depends(db_session)):
+    flow = db.get(DataFlow, flow_id)
+    if not flow:
+        raise HTTPException(404, "Flow not found")
+    if payload.source_id == payload.target_id or not db.get(InfrastructureItem, payload.source_id) or not db.get(InfrastructureItem, payload.target_id):
+        raise HTTPException(422, "Invalid endpoints")
+    for k, v in payload.model_dump().items():
+        setattr(flow, k, v)
+    db.commit()
+    db.refresh(flow)
+    return flow

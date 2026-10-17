@@ -61,6 +61,7 @@ function App() {
   const [kind, setKind] = useState('system')
   const [description, setDescription] = useState('')
   const [error, setError] = useState('')
+  const [notice,setNotice] = useState('')
   const [busy, setBusy] = useState(false)
   const [dirty, setDirty] = useState(false)
 
@@ -187,7 +188,7 @@ function App() {
     } catch(e){setError(String(e))}
   }
   async function loadEnterpriseDemo(){
-    setBusy(true);setError('')
+    setBusy(true);setError('');setNotice('Загружаю демо-системы…')
     try {
       const result=await request<{new_systems:number;new_components:number;new_flows:number}>('/api/demo/enterprise',{method:'POST'})
       const [o,r,i,f]=await Promise.all([
@@ -195,10 +196,8 @@ function App() {
         request<Infra[]>('/api/infra'),request<Flow[]>('/api/flows')
       ])
       setObjects(o);setRelations(r);setInfra(i);setFlows(f);setLayer('infrastructure');setSelected('')
-      alert('Расширенное демо: добавлено систем ' +result.new_systems+
-      ', компонентов '+result.new_components+', потоков '+result.new_flows+
-      '. Все данные синтетические.')
-    }catch(e){setError(String(e))}finally{setBusy(false)}
+      setViewSystem('');setNotice('Демо-системы: добавлено '+result.new_systems+' систем, '+result.new_components+' компонентов, '+result.new_flows+' потоков. Если все значения 0 – данные уже загружены.')
+    }catch(e){setError(String(e));setNotice('')}finally{setBusy(false)}
   }
   async function loadInfrastructureDemo(){
     const find = (n:string)=>objects.find(o=>o.name.toLowerCase()===n.toLowerCase())
@@ -237,11 +236,13 @@ function App() {
     }catch(e){setError(String(e))}
   }
   async function loadNetworks(){
+    setError('');setNotice('Загружаю демо-сети…')
     try {
-      await request('/api/demo/networks',{method:'POST'})
+      const result=await request<{added_segments:number;added_interfaces:number;message?:string}>('/api/demo/networks',{method:'POST'})
       const [a,b]=await Promise.all([request<Segment[]>('/api/networks'),request<Nic[]>('/api/network-interfaces')])
-      setSegments(a);setNics(b);setViewMode('security');setLayer('infrastructure')
-    }catch(e){setError(String(e))}
+      setSegments(a);setNics(b);setViewMode('security');setLayer('infrastructure');setViewSystem('');
+      setNotice(result.message || 'Демо-сети: добавлено '+result.added_segments+' сегментов, '+result.added_interfaces+' интерфейсов. Если значения 0 – сети уже загружены.')
+    }catch(e){setError(String(e));setNotice('')}
   }
   async function addNIC(e:React.FormEvent){
     e.preventDefault()
@@ -303,6 +304,7 @@ function App() {
         <button onClick={addDiagram}>+ Схема</button>
         <button className="primary" onClick={saveDiagram}>Сохранить{dirty ? ' *' : ''}</button>
       </div></header>
+      {notice && <div className="notice" role="status">{notice}<button onClick={()=>setNotice('')}>×</button></div>}
       {error && <div className="error" role="alert">{error}<button onClick={() => setError('')}>×</button></div>}
       <div className="layerTabs">
         <button className={layer==='systems'?'current':''} onClick={()=>{setViewSystem("");setLayer("systems")}}>Системы</button>

@@ -37,6 +37,11 @@ function App() {
   const [nicZone,setNicZone] = useState('')
   const [nicVrf,setNicVrf] = useState('')
   const [nicVlan,setNicVlan] = useState('')
+  const [kisFile,setKisFile] = useState<File|null>(null)
+  const [kisPreview,setKisPreview] = useState<any>(null)
+  const [kisResult,setKisResult] = useState('')
+  const [kisOpen,setKisOpen] = useState(false)
+  const [kisBusy,setKisBusy] = useState(false)
   const [objects, setObjects] = useState<Obj[]>([])
   const [panelTab,setPanelTab] = useState<'overview'|'components'|'flows'|'edit'>('overview')
   const [editorOpen,setEditorOpen] = useState(false)
@@ -241,6 +246,31 @@ function App() {
       setLayer('infrastructure');alert('Демо инфраструктуры добавлено. Сетевые и транспортные параметры условные.')
     }catch(e){setError(String(e))}
   }
+  async function kisPayload(file:File){
+    if(file.size>12*1024*1024)throw new Error('Максимальный размер файла – 12 МБ')
+    const content_base64=await new Promise<string>((resolve,reject)=>{
+      const reader=new FileReader()
+      reader.onload=()=>resolve(String(reader.result).split(',')[1]||'')
+      reader.onerror=()=>reject(new Error('Ошибка чтения файла'))
+      reader.readAsDataURL(file)
+    })
+    return {filename:file.name,content_base64}
+  }
+  async function previewKis(){
+    if(!kisFile)return
+    setKisBusy(true);setError('')
+    try{setKisPreview(await request<any>('/api/kis/preview',{method:'POST',body:JSON.stringify(await kisPayload(kisFile))}));setKisResult('')}
+    catch(e){setError(String(e))}finally{setKisBusy(false)}
+  }
+  async function importKis(){
+    if(!kisFile||!kisPreview)return
+    if(!confirm('Импортировать паспорт, ВМ и СУБД? Существующие записи не будут перезаписаны.'))return
+    setKisBusy(true);setError('')
+    try{const result=await request<any>('/api/kis/import',{method:'POST',body:JSON.stringify(await kisPayload(kisFile))})
+      setKisResult(result.message+' Создано систем: '+result.created_systems+', ВМ: '+result.created_vms+', БД: '+result.created_databases)
+      const [o,i]=await Promise.all([request<Obj[]>('/api/objects'),request<Infra[]>('/api/infra')]);setObjects(o);setInfra(i)
+    }catch(e){setError(String(e))}finally{setKisBusy(false)}
+  }
   async function loadBusiness(){
     setError('');setNotice('Загружаю бизнес-процессы…')
     try {
@@ -327,7 +357,7 @@ function App() {
         <button className={layer==='business'?'current':''} onClick={()=>setLayer('business')}>Бизнес-процессы</button><button className={layer==='systems'?'current':''} onClick={()=>{setViewSystem("");setLayer("systems")}}>Системы</button>
         <button className={layer==='infrastructure'?'current':''} onClick={()=>setLayer('infrastructure')}>Сервисы и ВМ</button>
         <button className={layer==='flows'?'current':''} onClick={()=>setLayer('flows')}>Потоки данных</button>
-        <button onClick={()=>setEditorOpen(true)}>+ Объект / поток</button><button onClick={loadEnterpriseDemo} disabled={busy}>Демо-системы</button><button onClick={loadNetworks}>Демо-сети</button><button onClick={loadBusiness}>Демо-процессы</button>
+        <button onClick={()=>setEditorOpen(true)}>+ Объект / поток</button><button onClick={()=>setKisOpen(true)}>Импорт КИС</button><button onClick={loadEnterpriseDemo} disabled={busy}>Демо-системы</button><button onClick={loadNetworks}>Демо-сети</button><button onClick={loadBusiness}>Демо-процессы</button>
       </div>
       {layer==='business' ? <section className="infraPanel"><h2>Бизнес-архитектура</h2><p className="hint">Категория → процесс → поддерживающие системы. Все связи в демо предполагаемые.</p>
       <div className="businessGrid">{categories.map(cat=><article className="businessCategory" key={cat.id}><h3>{cat.name}</h3>{processes.filter(p=>p.category_id===cat.id).map(p=><div className="businessProcess" key={p.id}><strong>{p.name}</strong><p>{p.description}</p><div className="processSystems">{businessLinks.filter(l=>l.process_id===p.id).map(l=><button key={l.id} onClick={()=>{setSelected(l.system_id);setLayer('systems')}}>{objects.find(o=>o.id===l.system_id)?.name||'Система'}</button>)}</div></div>)}</article>)}</div>
@@ -386,6 +416,21 @@ function App() {
       </>:<p className="hint">Выберите систему на карте. Двойной клик откроет её внутреннюю архитектуру.</p>}
       <div className="disclaimer">Architecture Hub 0.3 · Демонстрационные данные</div>
     </aside>
+    {kisOpen&&<div className="editorBackdrop" onClick={()=>setKisOpen(false)}><div className="editorDialog" onClick={e=>e.stopPropagation()}>
+      <div className="dialogHead"><h2>Импорт карточки ИС (.xlsx)</h2><button onClick={()=>setKisOpen(false)}>Закрыть ×</button></div>
+      <p className="hint">Файл обрабатывается локальным API. В GitHub он не загружается. Сначала проверьте разбор, затем подтвердите создание записей.</p>
+      <input type="file" accept=".xlsx" onChange={e=>{setKisFile(e.target.files?.[0]||null);setKisPreview(null);setKisResult('')}}/>
+      <button className="primary" disabled={!kisFile||kisBusy} onClick={previewKis}>{kisBusy?'Обработка…':'Предварительный просмотр'}</button>
+      {kisPreview&&<div className="kisPreview"><h3>{kisPreview.preview.system_name||'Название не найдено'}</h3>
+        <p>Листов: {kisPreview.preview.sheet_names.length} · ВМ: {kisPreview.preview.vms.length} · СУБД: {kisPreview.preview.databases.length} · Сетевых записей: {kisPreview.preview.network_rules.length}</p>
+        <h3>Паспорт</h3>{Object.entries(kisPreview.preview.fields).slice(0,30).map(([k,v])=><p key={k}><strong>{k}</strong>: {String(v)}</p>)}
+        <h3>ВМ (первые 15)</h3>{kisPreview.preview.vms.slice(0,15).map((v:any,i:number)=><p key={i}>{v.E||'без DNS'} · {v.C||'—'} · {v.D||'без роли'}</p>)}
+        <h3>СУБД</h3>{kisPreview.preview.databases.slice(0,15).map((d:any,i:number)=><p key={i}>{d.E||'—'} · {d.C||'—'}</p>)}
+        <p className="hint">Сетевые правила и контакты не записываются автоматически. Импорт добавляет только новые системы и компоненты, не изменяя существующие записи.</p>
+        <button className="primary" disabled={kisBusy||!kisPreview.preview.system_name} onClick={importKis}>Подтвердить импорт</button>
+      </div>}
+      {kisResult&&<p role="status">{kisResult}</p>}
+    </div></div>}
     {editorOpen&&<div className="editorBackdrop" onClick={()=>setEditorOpen(false)}>
       <div className="editorDialog" onClick={e=>e.stopPropagation()}>
         <div className="dialogHead"><h2>Добавление объектов и потоков</h2><button onClick={()=>setEditorOpen(false)}>Закрыть ×</button></div>

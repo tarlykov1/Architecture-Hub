@@ -764,3 +764,8 @@ def seed_business(db: Session = Depends(db_session)):
                     db.add(ProcessSystem(process_id=p.id,system_id=systems[system].id,role="demo"));created+=1
     db.commit()
     return {"created":created,"notice":"All process links are illustrative."}
+
+
+# Import after defining database models to avoid circular dependencies.
+from .kis_import import router as kis_router
+app.include_router(kis_router)

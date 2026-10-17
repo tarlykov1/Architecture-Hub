@@ -8,6 +8,8 @@ type Obj = { id: string; kind: string; name: string; description: string; status
 type Rel = { id: string; source_id: string; target_id: string; kind: string; description: string }
 type Infra = {id:string;system_id:string;parent_id:string|null;kind:string;name:string;description:string;details:Record<string,unknown>}
 type Flow = {id:string;source_id:string;target_id:string;name:string;data_description:string;protocol:string;port:string;security:string;schedule:string;verification:string}
+type Segment = {id:string;name:string;kind:string;description:string;verification:string}
+type Nic = {id:string;item_id:string;name:string;ip_address:string;zone_id:string|null;vlan_id:string|null;vrf_id:string|null}
 type Diagram = { id: string; name: string; positions: Record<string, { x: number; y: number }> }
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
@@ -20,6 +22,15 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
 }
 
 function App() {
+  const [segments,setSegments] = useState<Segment[]>([])
+  const [nics,setNics] = useState<Nic[]>([])
+  const [viewMode,setViewMode] = useState<'architecture'|'security'>('architecture')
+  const [selectedFlow,setSelectedFlow] = useState('')
+  const [nicName,setNicName] = useState('eth1')
+  const [nicItem,setNicItem] = useState('')
+  const [nicZone,setNicZone] = useState('')
+  const [nicVrf,setNicVrf] = useState('')
+  const [nicVlan,setNicVlan] = useState('')
   const [objects, setObjects] = useState<Obj[]>([])
   const [panelTab,setPanelTab] = useState<'overview'|'components'|'flows'|'edit'>('overview')
   const [editorOpen,setEditorOpen] = useState(false)
@@ -60,7 +71,7 @@ function App() {
       request<Diagram[]>('/api/diagrams'),
     ])
     setObjects(o); setRelations(r); setDiagrams(d)
-    const [i,f] = await Promise.all([request<Infra[]>('/api/infra'),request<Flow[]>('/api/flows')]); setInfra(i);setFlows(f)
+    const [i,f] = await Promise.all([request<Infra[]>('/api/infra'),request<Flow[]>('/api/flows')]); setInfra(i);setFlows(f); const [net,interfaces]=await Promise.all([request<Segment[]>('/api/networks'),request<Nic[]>('/api/network-interfaces')]);setSegments(net);setNics(interfaces)
     if (d.length && !diagramId) {
       setDiagramId(d[0].id)
       setPositions(d[0].positions || {})
@@ -225,6 +236,22 @@ function App() {
       setLayer('infrastructure');alert('Демо инфраструктуры добавлено. Сетевые и транспортные параметры условные.')
     }catch(e){setError(String(e))}
   }
+  async function loadNetworks(){
+    try {
+      await request('/api/demo/networks',{method:'POST'})
+      const [a,b]=await Promise.all([request<Segment[]>('/api/networks'),request<Nic[]>('/api/network-interfaces')])
+      setSegments(a);setNics(b);setViewMode('security');setLayer('infrastructure')
+    }catch(e){setError(String(e))}
+  }
+  async function addNIC(e:React.FormEvent){
+    e.preventDefault()
+    try {
+      await request('/api/network-interfaces',{method:'POST',body:JSON.stringify({
+        item_id:nicItem,name:nicName,zone_id:nicZone||null,vrf_id:nicVrf||null,vlan_id:nicVlan||null
+      })})
+      setNics(await request<Nic[]>('/api/network-interfaces'));setNicName('eth1')
+    }catch(e){setError(String(e))}
+  }
   async function addDiagram() {
     const title = prompt('Название новой схемы:')
     if (!title?.trim()) return
@@ -246,8 +273,8 @@ function App() {
   const scopedItems = infra.filter(i=>i.system_id===viewSystem)
   const scopedIds = new Set(scopedItems.map(i=>i.id))
   const scopedFlows = flows.filter(f=>scopedIds.has(f.source_id)||scopedIds.has(f.target_id))
-  const drillNodes:Node[] = scopedItems.map((i,n)=>({id:i.id,position:{x:(n%4)*260,y:Math.floor(n/4)*155},data:{label:<div className="systemNode"><strong>{i.name}</strong><small>{i.kind} · {String(i.details.environment||'Среда не задана')} · {String(i.details.security_zone||'Зона не указана')}</small></div>},style:{width:220,padding:12,background:i.details.environment==='TEST'?'#fff5e7':'#ffffff',border:'1px solid #bac8d8',borderRadius:12}}))
-  const drillEdges:Edge[]=scopedFlows.filter(f=>scopedIds.has(f.source_id)&&scopedIds.has(f.target_id)).map(f=>({id:f.id,source:f.source_id,target:f.target_id,label:f.name,style:{stroke:'#64748b'},labelStyle:{fontSize:10}}))
+  const drillNodes:Node[] = scopedItems.map((i,n)=>({id:i.id,position:{x:(n%4)*260,y:Math.floor(n/4)*155},data:{label:<div className="systemNode"><strong>{i.name}</strong><small>{i.kind} · {String(i.details.environment||'Среда не задана')}</small><small>{nics.filter(n=>n.item_id===i.id).map(n=>[segments.find(s=>s.id===n.zone_id)?.name,segments.find(s=>s.id===n.vrf_id)?.name,segments.find(s=>s.id===n.vlan_id)?.name].filter(Boolean).join(' / ')).join('; ')||String(i.details.security_zone||'Сеть не указана')}</small></div>},style:{width:220,padding:12,background:i.details.environment==='TEST'?'#fff5e7':viewMode==='security'?'#eaf5f2':'#ffffff',border:'1px solid #bac8d8',borderRadius:12}}))
+  const drillEdges:Edge[]=scopedFlows.filter(f=>scopedIds.has(f.source_id)&&scopedIds.has(f.target_id)).map(f=>({id:f.id,source:f.source_id,target:f.target_id,label:viewMode==='security'?`${f.protocol} : ${f.port} / ${f.security}`:f.name,style:{stroke:f.security==='unknown'?'#d58c40':'#369279'},labelStyle:{fontSize:10}}))
   return <div className="shell">
     <aside className="sidebar">
       <div className="logo"><span className="logoIcon">◆</span><span>Architecture <b>Hub</b></span></div>
@@ -281,7 +308,7 @@ function App() {
         <button className={layer==='systems'?'current':''} onClick={()=>{setViewSystem("");setLayer("systems")}}>Системы</button>
         <button className={layer==='infrastructure'?'current':''} onClick={()=>setLayer('infrastructure')}>Сервисы и ВМ</button>
         <button className={layer==='flows'?'current':''} onClick={()=>setLayer('flows')}>Потоки данных</button>
-        <button onClick={()=>setEditorOpen(true)}>+ Объект / поток</button><button onClick={loadEnterpriseDemo} disabled={busy} title="Синтетические ВМ и потоки">Демо 0.3</button>
+        <button onClick={()=>setEditorOpen(true)}>+ Объект / поток</button><button onClick={loadEnterpriseDemo} disabled={busy}>Демо-системы</button><button onClick={loadNetworks}>Демо-сети</button>
       </div>
       {layer==='systems' ? <section className="canvas">
         <ReactFlow nodes={nodes} edges={edges} onNodesChange={onNodesChange} onConnect={onConnect}
@@ -292,9 +319,10 @@ function App() {
       </section> : <section className="infraPanel">
         {drill && <button onClick={()=>{setViewSystem("");setLayer("systems")}}>← К общей карте</button>}
         {layer==='infrastructure' ? <>
-          <h2>Компоненты и размещение</h2>
+          <div className="viewHead"><h2>Компоненты, ВМ и сети</h2><select value={viewMode} onChange={e=>setViewMode(e.target.value as 'architecture'|'security')}><option value="architecture">Архитектура ВМ</option><option value="security">Сети и защита</option></select></div>
           <p className="hint">Выберите систему слева или на общей карте. Каждая ВМ, сервис, API и база создаётся как отдельный объект. Сетевую принадлежность указываем для компонентов, а не для системы целиком.</p>
-          {drill && <div className="miniArchitecture" style={{height:480}}><ReactFlow key={drill.id} nodes={drillNodes} edges={drillEdges} fitView nodesConnectable={false} nodesDraggable={false}><Background gap={20}/><Controls/><MiniMap/></ReactFlow></div>}
+          {drill && <div className="miniArchitecture" style={{height:520}}><ReactFlow key={drill.id+viewMode} nodes={drillNodes} edges={drillEdges} fitView nodesConnectable={false} nodesDraggable={false}><Background gap={20}/><Controls/><MiniMap/></ReactFlow></div>}
+          {viewMode==='security'&&<div className="networkLegend">Цвет стрелки: зелёный – указан тип защиты; оранжевый – неизвестно. Наличие TLS не подтверждает защиту всего маршрута. Все демо-параметры условны.</div>}
           <div className="infraGrid">{infra.filter(i=>!viewSystem||i.system_id===viewSystem).map(i=><article className="infraCard" key={i.id}>
             <span className="tag">{i.kind}</span><h3>{i.name}</h3>
             <p>{objects.find(o=>o.id===i.system_id)?.name}</p>
@@ -358,7 +386,7 @@ function App() {
           <select value={flowSecurity} onChange={e=>setFlowSecurity(e.target.value)}>{['unknown','TLS','mTLS','VPN','private_connector','none'].map(x=><option key={x}>{x}</option>)}</select>
           <select value={flowVerification} onChange={e=>setFlowVerification(e.target.value)}><option value="draft">Черновик</option><option value="assumed">Предположение</option><option value="verified">Подтверждено</option></select>
           <button className="primary">Создать поток</button>
-        </form>
+        </form><h3>Сетевой интерфейс компонента</h3><form className="detailForm" onSubmit={addNIC}><select required value={nicItem} onChange={e=>setNicItem(e.target.value)}><option value="">Выберите ВМ / сервис</option>{infra.map(i=><option key={i.id} value={i.id}>{i.name}</option>)}</select><input required value={nicName} onChange={e=>setNicName(e.target.value)} placeholder="eth0 / eth1"/>{([["zone",nicZone,setNicZone],["vrf",nicVrf,setNicVrf],["vlan",nicVlan,setNicVlan]] as const).map(([type,value,change])=><select key={type} value={value} onChange={e=>change(e.target.value)}><option value="">{type.toUpperCase()} – не задано</option>{segments.filter(s=>s.kind===type).map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select>)}<button className="primary">Добавить интерфейс</button></form>
       </div>
     </div>}
   </div>

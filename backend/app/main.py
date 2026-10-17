@@ -104,6 +104,52 @@ class FlowOutput(FlowInput):
     model_config = ConfigDict(from_attributes=True)
     id: UUID
 
+
+class NetworkSegment(Base):
+    __tablename__ = "network_segments"
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    name: Mapped[str] = mapped_column(String(250), unique=True)
+    kind: Mapped[str] = mapped_column(String(30))
+    description: Mapped[str] = mapped_column(String(2000), default="")
+    verification: Mapped[str] = mapped_column(String(30), default="assumed")
+
+
+class NetworkInterface(Base):
+    __tablename__ = "network_interfaces"
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    item_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("infrastructure_items.id"))
+    name: Mapped[str] = mapped_column(String(100))
+    ip_address: Mapped[str] = mapped_column(String(120), default="")
+    zone_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True), ForeignKey("network_segments.id"), nullable=True)
+    vlan_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True), ForeignKey("network_segments.id"), nullable=True)
+    vrf_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True), ForeignKey("network_segments.id"), nullable=True)
+
+
+class SegmentInput(BaseModel):
+    name: str = Field(min_length=1, max_length=250)
+    kind: str = Field(pattern="^(zone|vlan|vrf)$")
+    description: str = Field(default="", max_length=2000)
+    verification: str = Field(default="assumed", pattern="^(assumed|verified|draft)$")
+
+
+class SegmentOutput(SegmentInput):
+    model_config = ConfigDict(from_attributes=True)
+    id: UUID
+
+
+class NICInput(BaseModel):
+    item_id: UUID
+    name: str = Field(min_length=1, max_length=100)
+    ip_address: str = Field(default="", max_length=120)
+    zone_id: UUID | None = None
+    vlan_id: UUID | None = None
+    vrf_id: UUID | None = None
+
+
+class NICOutput(NICInput):
+    model_config = ConfigDict(from_attributes=True)
+    id: UUID
+
 class ObjectCreate(BaseModel):
     kind: str = Field(default="system", max_length=60)
     name: str = Field(min_length=1, max_length=250)
@@ -531,3 +577,72 @@ def load_enterprise_demo(db: Session = Depends(db_session)):
             "telephone_prod_vm": 3, "telephone_test_vm": 2,
             "bitrix_vm": 3, "naumen_vm": 11,
             "notice": "Все инфраструктурные имена, сети, роли и каналы демонстрационные."}
+
+
+@app.get("/api/networks", response_model=list[SegmentOutput])
+def get_networks(db: Session = Depends(db_session)):
+    return db.scalars(select(NetworkSegment).order_by(NetworkSegment.kind, NetworkSegment.name)).all()
+
+
+@app.post("/api/networks", response_model=SegmentOutput, status_code=201)
+def add_network(payload: SegmentInput, db: Session = Depends(db_session)):
+    if db.scalars(select(NetworkSegment).where(NetworkSegment.name == payload.name)).first():
+        raise HTTPException(409, "Network name exists")
+    row = NetworkSegment(**payload.model_dump())
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+@app.get("/api/network-interfaces", response_model=list[NICOutput])
+def get_nics(db: Session = Depends(db_session)):
+    return db.scalars(select(NetworkInterface)).all()
+
+
+@app.post("/api/network-interfaces", response_model=NICOutput, status_code=201)
+def add_nic(payload: NICInput, db: Session = Depends(db_session)):
+    if not db.get(InfrastructureItem, payload.item_id):
+        raise HTTPException(422, "Unknown VM/component")
+    for field, kind in [("zone_id", "zone"), ("vlan_id", "vlan"), ("vrf_id", "vrf")]:
+        value = getattr(payload, field)
+        if value:
+            segment = db.get(NetworkSegment, value)
+            if not segment or segment.kind != kind:
+                raise HTTPException(422, "Invalid " + field)
+    row = NetworkInterface(**payload.model_dump())
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+@app.post("/api/demo/networks")
+def seed_networks(db: Session = Depends(db_session)):
+    # Additive synthetic data, no user objects overwritten.
+    items = db.scalars(select(InfrastructureItem)).all()
+    demo_items = [x for x in items if x.details.get("demo") is True]
+    if not demo_items:
+        return {"added_segments": 0, "added_interfaces": 0, "message": "Load enterprise demo first"}
+    segments = {s.name: s for s in db.scalars(select(NetworkSegment)).all()}
+    added_segments = 0
+    added_interfaces = 0
+    for item in demo_items:
+        details = item.details or {}
+        for kind, name in [("zone",details.get("security_zone")),("vrf",details.get("vrf"))]:
+            if name and name not in segments:
+                row = NetworkSegment(name=name, kind=kind, description="Синтетическая демонстрационная сеть", verification="assumed")
+                db.add(row); db.flush(); segments[name] = row; added_segments += 1
+    existing = {(n.item_id,n.name) for n in db.scalars(select(NetworkInterface)).all()}
+    for item in demo_items:
+        key = (item.id, "eth0")
+        if item.kind not in ("vm", "service", "database") or key in existing:
+            continue
+        details = item.details or {}
+        db.add(NetworkInterface(item_id=item.id, name="eth0",
+            zone_id=segments[details["security_zone"]].id if details.get("security_zone") in segments else None,
+            vrf_id=segments[details["vrf"]].id if details.get("vrf") in segments else None,
+            ip_address=""))
+        existing.add(key); added_interfaces += 1
+    db.commit()
+    return {"added_segments": added_segments, "added_interfaces": added_interfaces}

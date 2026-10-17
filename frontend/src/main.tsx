@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { createRoot } from 'react-dom/client'
-import ReactFlow, { Background, Controls, MiniMap, addEdge, applyNodeChanges, type Connection, type Edge, type Node, type NodeChange } from '@xyflow/react'
+import { ReactFlow, Background, Controls, MiniMap, applyNodeChanges, type Connection, type Edge, type Node, type NodeChange } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import './style.css'
 
@@ -156,7 +156,7 @@ function App() {
       {error && <div className="error" role="alert">{error}<button onClick={() => setError('')}>×</button></div>}
       <section className="canvas">
         <ReactFlow nodes={nodes} edges={edges} onNodesChange={onNodesChange} onConnect={onConnect}
-          onNodeClick={(_, node) => setSelected(node.id)} onPaneClick={() => setSelected('')} fitView>
+          onNodeClick={(_event: React.MouseEvent, node: Node) => setSelected(node.id)} onPaneClick={() => setSelected('')} fitView>
           <Background color="#d1dae5" gap={20} size={1}/><Controls/><MiniMap zoomable pannable/>
         </ReactFlow>
         {!objects.length && <div className="emptyHint">Создайте первый объект в панели слева, затем добавьте второй и соедините их точками на схеме.</div>}

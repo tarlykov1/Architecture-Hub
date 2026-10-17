@@ -9,12 +9,11 @@ from uuid import UUID, uuid4
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import DateTime, ForeignKey, JSON, String, create_engine, select
-from sqlalchemy.dialects.postgresql import UUID as PGUUID
+from sqlalchemy import DateTime, ForeignKey, JSON, String, Uuid, create_engine, select
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
 
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+psycopg://architecture:architecture_dev@localhost:5432/architecture_hub")
-engine = create_engine(DATABASE_URL, pool_pre_ping=True)
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./architecture_hub.db")
+engine = create_engine(DATABASE_URL, pool_pre_ping=True, connect_args={"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {})
 SessionLocal = sessionmaker(bind=engine)
 
 
@@ -24,7 +23,7 @@ class Base(DeclarativeBase):
 
 class ArchitectureObject(Base):
     __tablename__ = "objects"
-    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
     kind: Mapped[str] = mapped_column(String(60), default="system")
     name: Mapped[str] = mapped_column(String(250), index=True)
     description: Mapped[str] = mapped_column(String(4000), default="")
@@ -34,16 +33,16 @@ class ArchitectureObject(Base):
 
 class Relation(Base):
     __tablename__ = "relations"
-    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
-    source_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("objects.id", ondelete="CASCADE"))
-    target_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("objects.id", ondelete="CASCADE"))
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    source_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("objects.id", ondelete="CASCADE"))
+    target_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("objects.id", ondelete="CASCADE"))
     kind: Mapped[str] = mapped_column(String(60), default="integrates_with")
     description: Mapped[str] = mapped_column(String(4000), default="")
 
 
 class Diagram(Base):
     __tablename__ = "diagrams"
-    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
     name: Mapped[str] = mapped_column(String(250))
     positions: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))

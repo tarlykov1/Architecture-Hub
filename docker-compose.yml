@@ -25,6 +25,8 @@ services:
       - "127.0.0.1:8000:8000"
   web:
     build: ./frontend
+    environment:
+      VITE_API_TARGET: http://api:8000
     depends_on:
       - api
     ports:

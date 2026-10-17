@@ -1,18 +1,45 @@
 # Architecture Hub
 
-MVP корпоративного реестра ИТ-архитектуры и редактора схем.
+MVP реестра корпоративной ИТ-архитектуры и интерактивных схем.
 
-Stack: FastAPI, PostgreSQL, React, TypeScript, React Flow, Docker Compose.
+## Локальный запуск на Windows **без Docker**
 
-## Quick start
+Требуется Python 3.12+ и Node.js 22+.
 
-```bash
+### Терминал 1 – API
+
+```powershell
+cd "$env:USERPROFILE\Architecture-Hub\backend"
+py -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+```
+
+### Терминал 2 – React
+
+```powershell
+cd "$env:USERPROFILE\Architecture-Hub\frontend"
+npm install
+npm run dev
+```
+
+Открой http://localhost:5173 (интерфейс) и http://127.0.0.1:8000/docs (API).
+
+При локальном запуске используется SQLite в `backend/architecture_hub.db`. Файл **не загружается в Git**. Сохраняй резервные копии перед обновлениями схемы БД.
+
+## Запуск в Docker (с PostgreSQL)
+
+```powershell
 docker compose up --build
 ```
 
-- Web UI: http://localhost:5173
-- API: http://localhost:8000/docs
+Здесь используется PostgreSQL. Docker запускается только при работающем Docker Engine.
 
-MVP supports creating systems, adding and editing directed relationships, and building architecture diagrams from catalog objects. Data is stored in PostgreSQL.
+## Текущее состояние MVP
 
-**Security:** the local MVP has no authentication yet. Use only on a trusted local machine with non-sensitive sample data. Do not expose it to the internet or enter real confidential enterprise data until authentication and access restrictions are implemented.
+- CRUD объектов (создание, просмотр, изменение и удаление через API)
+- Добавление направленных связей через UI, просмотр и удаление через API
+- Интерактивная карта React Flow, перетаскивание объектов
+- Создание схем и сохранение координат в базе данных
+
+**Ограничения:** пока нет входа, ролей, миграций Alembic и настоящей метамодели. Карта показывает все зарегистрированные объекты на каждой схеме. Не вводи конфиденциальные данные и не публикуй приложение в интернете. Это локальный прототип.

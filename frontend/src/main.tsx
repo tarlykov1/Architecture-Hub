@@ -21,6 +21,11 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
 
 function App() {
   const [objects, setObjects] = useState<Obj[]>([])
+  const [panelTab,setPanelTab] = useState<'overview'|'components'|'flows'|'edit'>('overview')
+  const [editorOpen,setEditorOpen] = useState(false)
+  const [search,setSearch] = useState('')
+  const [viewSystem,setViewSystem] = useState('')
+  const [zoneMode,setZoneMode] = useState(false)
   const [infra, setInfra] = useState<Infra[]>([])
   const [flows, setFlows] = useState<Flow[]>([])
   const [layer, setLayer] = useState<'systems'|'infrastructure'|'flows'>('systems')
@@ -64,23 +69,24 @@ function App() {
 
   useEffect(() => { refresh().catch(e => setError(e.message)) }, []) // initial load
 
-  const nodes = useMemo<Node[]>(() => objects.map((o, i) => ({
+  const visibleObjects = objects.filter(o=>o.name.toLowerCase().includes(search.toLowerCase()))
+  const nodes = useMemo<Node[]>(() => visibleObjects.map((o, i) => ({
     id: o.id,
     position: positions[o.id] || { x: (i % 3) * 245 + 30, y: Math.floor(i / 3) * 140 + 40 },
-    data: { label: <div><strong>{o.name}</strong><small>{o.kind}</small></div> },
+    data: { label: <div className="systemNode"><strong>{o.name}</strong><small>{infra.filter(x=>x.system_id===o.id).length} компонентов · {o.kind}</small></div> },
     style: {
-      width: 192, padding: 12, borderRadius: 12, textAlign: 'left',
-      background: selected === o.id ? '#dbeafe' : '#fff',
+      width: 210, padding: 14, borderRadius: 12, textAlign: 'left',
+      background: selected === o.id ? '#e9f0ff' : '#fff',
       border: selected === o.id ? '2px solid #2563eb' : '1px solid #cbd5e1',
       boxShadow: '0 5px 16px #152b4320',
     },
-  })), [objects, positions, selected])
+  })), [visibleObjects, positions, selected, infra])
 
-  const edges = useMemo<Edge[]>(() => relations.map(r => ({
-    id: r.id, source: r.source_id, target: r.target_id, label: r.kind,
+  const edges = useMemo<Edge[]>(() => relations.filter(r=>visibleObjects.some(o=>o.id===r.source_id)&&visibleObjects.some(o=>o.id===r.target_id)).map(r => ({
+    id: r.id, source: r.source_id, target: r.target_id, label: r.kind === 'data_flow' ? 'Поток данных' : r.kind,
     animated: false, style: { stroke: '#64748b', strokeWidth: 2 },
     labelStyle: { fill: '#475569', fontSize: 11 },
-  })), [relations])
+  })), [relations, visibleObjects])
 
   const onNodesChange = useCallback((changes: NodeChange[]) => {
     const result = applyNodeChanges(changes, nodes)
@@ -235,11 +241,18 @@ function App() {
   }
 
   const detail = objects.find(o => o.id === selected)
+  const drill = objects.find(o=>o.id===viewSystem)
+  const detailItems = infra.filter(i=>i.system_id===selected)
+  const scopedItems = infra.filter(i=>i.system_id===viewSystem)
+  const scopedIds = new Set(scopedItems.map(i=>i.id))
+  const scopedFlows = flows.filter(f=>scopedIds.has(f.source_id)||scopedIds.has(f.target_id))
+  const drillNodes:Node[] = scopedItems.map((i,n)=>({id:i.id,position:{x:(n%4)*260,y:Math.floor(n/4)*155},data:{label:<div className="systemNode"><strong>{i.name}</strong><small>{i.kind} · {String(i.details.environment||'Среда не задана')} · {String(i.details.security_zone||'Зона не указана')}</small></div>},style:{width:220,padding:12,background:i.details.environment==='TEST'?'#fff5e7':'#ffffff',border:'1px solid #bac8d8',borderRadius:12}}))
+  const drillEdges:Edge[]=scopedFlows.filter(f=>scopedIds.has(f.source_id)&&scopedIds.has(f.target_id)).map(f=>({id:f.id,source:f.source_id,target:f.target_id,label:f.name,style:{stroke:'#64748b'},labelStyle:{fontSize:10}}))
   return <div className="shell">
     <aside className="sidebar">
       <div className="logo"><span className="logoIcon">◆</span><span>Architecture <b>Hub</b></span></div>
-      <div className="sideLabel">РЕЕСТР ОБЪЕКТОВ <span>{objects.length}</span></div>
-      <div className="catalog">{objects.map(o => <button key={o.id} className={'catalogItem ' + (selected === o.id ? 'active' : '')} onClick={() => setSelected(o.id)}>
+      <div className="sideLabel">РЕЕСТР ОБЪЕКТОВ <span>{objects.length}</span></div><input className="catalogSearch" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Поиск системы..."/>
+      <div className="catalog">{visibleObjects.map(o => <button key={o.id} className={'catalogItem ' + (selected === o.id ? 'active' : '')} onClick={() => {setSelected(o.id);setPanelTab("overview")}} onDoubleClick={()=>{setViewSystem(o.id);setLayer("infrastructure")}}>
         <span className="objectIcon">▦</span><span><strong>{o.name}</strong><small>{o.kind}</small></span>
       </button>)}</div>
       <form className="createForm" onSubmit={addObject}>
@@ -255,32 +268,34 @@ function App() {
       </form>
     </aside>
     <main className="main">
-      <header className="topbar"><div><h1>Карта архитектуры</h1><p>Единый реестр систем и взаимосвязей</p></div><div className="topActions">
+      <header className="topbar"><div><h1>{drill?drill.name:"Карта архитектуры"}</h1><p>{drill?"Детализация компонентов и потоков · синтетическая модель":"Единый реестр систем и взаимосвязей"}</p></div><div className="topActions">
         <select aria-label="Схема" value={diagramId} onChange={e => selectDiagram(e.target.value)}>
           {!diagrams.length && <option value="">Основная карта</option>}
           {diagrams.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
         </select>
-        <button onClick={loadDemo} disabled={busy} title="Добавить 7 демонстрационных систем и 3 связи, не удаляя ваши данные">Загрузить демо</button><button onClick={addDiagram}>+ Схема</button>
+        <button onClick={addDiagram}>+ Схема</button>
         <button className="primary" onClick={saveDiagram}>Сохранить{dirty ? ' *' : ''}</button>
       </div></header>
       {error && <div className="error" role="alert">{error}<button onClick={() => setError('')}>×</button></div>}
       <div className="layerTabs">
-        <button className={layer==='systems'?'current':''} onClick={()=>setLayer('systems')}>Системы</button>
+        <button className={layer==='systems'?'current':''} onClick={()=>{setViewSystem("");setLayer("systems")}}>Системы</button>
         <button className={layer==='infrastructure'?'current':''} onClick={()=>setLayer('infrastructure')}>Сервисы и ВМ</button>
         <button className={layer==='flows'?'current':''} onClick={()=>setLayer('flows')}>Потоки данных</button>
-        <button onClick={loadEnterpriseDemo} disabled={busy} title="3+2 ВМ справочника, 3 ВМ Bitrix24, 11 ВМ Naumen, ЕИБД, Keycloak, AD">Загрузить расширенное демо</button>
+        <button onClick={()=>setEditorOpen(true)}>+ Объект / поток</button><button onClick={loadEnterpriseDemo} disabled={busy} title="Синтетические ВМ и потоки">Демо 0.3</button>
       </div>
       {layer==='systems' ? <section className="canvas">
         <ReactFlow nodes={nodes} edges={edges} onNodesChange={onNodesChange} onConnect={onConnect}
-          onNodeClick={(_event: React.MouseEvent, node: Node) => setSelected(node.id)} onPaneClick={() => setSelected('')} fitView>
+          onNodeClick={(_event: React.MouseEvent, node: Node) => {setSelected(node.id);setPanelTab("overview")}} onNodeDoubleClick={(_event: React.MouseEvent, node: Node) => {setViewSystem(node.id);setSelected(node.id);setLayer("infrastructure")}} onPaneClick={() => setSelected('')} fitView>
           <Background color="#d1dae5" gap={20} size={1}/><Controls/><MiniMap zoomable pannable/>
         </ReactFlow>
         {!objects.length && <div className="emptyHint">Создайте первый объект в панели слева, затем добавьте второй и соедините их точками на схеме.</div>}
       </section> : <section className="infraPanel">
+        {drill && <button onClick={()=>{setViewSystem("");setLayer("systems")}}>← К общей карте</button>}
         {layer==='infrastructure' ? <>
           <h2>Компоненты и размещение</h2>
           <p className="hint">Выберите систему слева или на общей карте. Каждая ВМ, сервис, API и база создаётся как отдельный объект. Сетевую принадлежность указываем для компонентов, а не для системы целиком.</p>
-          <div className="infraGrid">{infra.filter(i=>!selected||i.system_id===selected).map(i=><article className="infraCard" key={i.id}>
+          {drill && <div className="miniArchitecture" style={{height:480}}><ReactFlow key={drill.id} nodes={drillNodes} edges={drillEdges} fitView nodesConnectable={false} nodesDraggable={false}><Background gap={20}/><Controls/><MiniMap/></ReactFlow></div>}
+          <div className="infraGrid">{infra.filter(i=>!viewSystem||i.system_id===viewSystem).map(i=><article className="infraCard" key={i.id}>
             <span className="tag">{i.kind}</span><h3>{i.name}</h3>
             <p>{objects.find(o=>o.id===i.system_id)?.name}</p>
             {i.parent_id&&<small>Входит в: {infra.find(x=>x.id===i.parent_id)?.name||'Неизвестно'}</small>}
@@ -295,7 +310,7 @@ function App() {
             fitView nodesDraggable={false} nodesConnectable={false} elementsSelectable={true}>
             <Background gap={20}/><Controls/><MiniMap/>
           </ReactFlow></div>
-          <div className="infraGrid">{flows.map(f=><article className="infraCard" key={f.id}>
+          <div className="infraGrid">{flows.filter(f=>!viewSystem||scopedIds.has(f.source_id)||scopedIds.has(f.target_id)).map(f=><article className="infraCard" key={f.id}>
             <span className="tag">{f.verification}</span><h3>{f.name}</h3>
             <strong>{infra.find(i=>i.id===f.source_id)?.name} → {infra.find(i=>i.id===f.target_id)?.name}</strong>
             <p>{f.data_description}</p><small>{f.protocol} · порт {f.port||'?'} · {f.security}</small>
@@ -304,45 +319,48 @@ function App() {
       </section>}
     </main>
     <aside className="details">
-      <div className="sideLabel">СВОЙСТВА</div>
-      {detail ? <><h2>{detail.name}</h2><span className="tag">{detail.kind}</span>
-        <h3>Описание</h3><p>{detail.description || 'Описание пока не заполнено.'}</p>
-        <h3>Статус</h3><p>{detail.status === "demo" ? "Демо · требуется проверка" : detail.status}</p>{detail.attributes.subtype && <><h3>Категория</h3><p>{String(detail.attributes.subtype)}</p></>}
-        <h3>Связи</h3>{relations.filter(r => r.source_id === detail.id || r.target_id === detail.id).length ? relations.filter(r => r.source_id === detail.id || r.target_id === detail.id).map(r => <p key={r.id}><strong>{r.source_id === detail.id ? "→ " : "← "}{objects.find(o => o.id === (r.source_id === detail.id ? r.target_id : r.source_id))?.name}</strong><br/>{r.description || r.kind}</p>) : <p>Связей пока нет</p>}
-        <p className="hint">Чтобы создать логическую интеграцию, потяните связь между системами.</p>
-        <h3>Компоненты системы</h3>
-        {infra.filter(i=>i.system_id===detail.id).map(i=><p key={i.id}><strong>{i.name}</strong> · {i.kind}</p>)}
+      <div className="sideLabel">ИНСПЕКТОР</div>
+      {detail ? <>
+        <h2>{detail.name}</h2><span className="tag">{detail.kind}</span>
+        <div className="inspectorTabs">
+          <button className={panelTab==='overview'?'current':''} onClick={()=>setPanelTab('overview')}>Обзор</button>
+          <button className={panelTab==='components'?'current':''} onClick={()=>setPanelTab('components')}>Компоненты</button>
+          <button className={panelTab==='flows'?'current':''} onClick={()=>setPanelTab('flows')}>Потоки</button>
+        </div>
+        {panelTab==='overview'&&<><h3>Назначение</h3><p>{detail.description||'Описание не указано'}</p><h3>Статус</h3><p>{detail.status}</p>
+          <div className="statPills"><span>{detailItems.length} компонентов</span><span>{flows.filter(f=>detailItems.some(i=>i.id===f.source_id||i.id===f.target_id)).length} потоков</span></div>
+          <button className="primary" onClick={()=>{setViewSystem(detail.id);setLayer('infrastructure')}}>Открыть архитектуру →</button></>}
+        {panelTab==='components'&&<>{detailItems.map(i=><article className="inspectorItem" key={i.id}><strong>{i.name}</strong><small>{i.kind} · {String(i.details.environment||'—')} · {String(i.details.security_zone||'Зона не указана')}</small></article>)}
+          {!detailItems.length&&<p>Компонентов пока нет</p>}</>}
+        {panelTab==='flows'&&<>{flows.filter(f=>detailItems.some(i=>i.id===f.source_id||i.id===f.target_id)).map(f=><article className="inspectorItem" key={f.id}><strong>{f.name}</strong><small>{infra.find(i=>i.id===f.source_id)?.name} → {infra.find(i=>i.id===f.target_id)?.name}</small><small>{f.protocol} / {f.security}</small></article>)}</>}
+      </>:<p className="hint">Выберите систему на карте. Двойной клик откроет её внутреннюю архитектуру.</p>}
+      <div className="disclaimer">Architecture Hub 0.3 · Демонстрационные данные</div>
+    </aside>
+    {editorOpen&&<div className="editorBackdrop" onClick={()=>setEditorOpen(false)}>
+      <div className="editorDialog" onClick={e=>e.stopPropagation()}>
+        <div className="dialogHead"><h2>Добавление объектов и потоков</h2><button onClick={()=>setEditorOpen(false)}>Закрыть ×</button></div>
+        <p className="hint">Выберите систему слева, затем добавьте компонент или создайте обмен между существующими компонентами.</p>
+        <h3>Новый компонент</h3>
         <form className="detailForm" onSubmit={addInfrastructure}>
           <input required placeholder="Имя ВМ / сервиса / API" value={infraName} onChange={e=>setInfraName(e.target.value)}/>
-          <select value={infraKind} onChange={e=>setInfraKind(e.target.value)}>
-            {['vm','service','api','database','adapter','container','network_interface','subsystem','other'].map(x=><option key={x} value={x}>{x}</option>)}
-          </select>
-          <select value={infraParent} onChange={e=>setInfraParent(e.target.value)}>
-            <option value="">Без родителя</option>
-            {infra.filter(i=>i.system_id===detail.id).map(i=><option key={i.id} value={i.id}>{i.name}</option>)}
-          </select>
-          <textarea rows={2} placeholder="Заметки о сети: VLAN / VRF / DMZ (если известны)" value={infraDetails} onChange={e=>setInfraDetails(e.target.value)}/>
+          <select value={infraKind} onChange={e=>setInfraKind(e.target.value)}>{['vm','service','api','database','adapter','container','network_interface','subsystem','other'].map(x=><option key={x}>{x}</option>)}</select>
+          <select value={infraParent} onChange={e=>setInfraParent(e.target.value)}><option value="">Без родителя</option>{infra.filter(i=>i.system_id===selected).map(i=><option key={i.id} value={i.id}>{i.name}</option>)}</select>
+          <textarea placeholder="Сетевая зона / VLAN / VRF – примечание" value={infraDetails} onChange={e=>setInfraDetails(e.target.value)}/>
           <button className="primary">Добавить компонент</button>
         </form>
-        <h3>Новый поток данных</h3>
+        <h3>Новый направленный поток</h3>
         <form className="detailForm" onSubmit={addFlow}>
-          <select required value={flowSource} onChange={e=>setFlowSource(e.target.value)}>
-            <option value="">Источник</option>{infra.map(i=><option key={i.id} value={i.id}>{i.name}</option>)}
-          </select>
-          <select required value={flowTarget} onChange={e=>setFlowTarget(e.target.value)}>
-            <option value="">Получатель</option>{infra.map(i=><option key={i.id} value={i.id}>{i.name}</option>)}
-          </select>
+          <select required value={flowSource} onChange={e=>setFlowSource(e.target.value)}><option value="">Источник</option>{infra.map(i=><option key={i.id} value={i.id}>{i.name}</option>)}</select>
+          <select required value={flowTarget} onChange={e=>setFlowTarget(e.target.value)}><option value="">Получатель</option>{infra.map(i=><option key={i.id} value={i.id}>{i.name}</option>)}</select>
           <input required placeholder="Название потока" value={flowName} onChange={e=>setFlowName(e.target.value)}/>
-          <textarea rows={2} placeholder="Какие именно данные передаются?" value={flowData} onChange={e=>setFlowData(e.target.value)}/>
-          <input placeholder="Протокол" value={flowProtocol} onChange={e=>setFlowProtocol(e.target.value)}/>
-          <input placeholder="Порт" value={flowPort} onChange={e=>setFlowPort(e.target.value)}/>
-          <select value={flowSecurity} onChange={e=>setFlowSecurity(e.target.value)}>{['unknown','TLS','mTLS','VPN','private_connector','none'].map(x=><option key={x} value={x}>{x}</option>)}</select>
+          <textarea placeholder="Состав данных" value={flowData} onChange={e=>setFlowData(e.target.value)}/>
+          <div className="formPair"><input placeholder="Протокол" value={flowProtocol} onChange={e=>setFlowProtocol(e.target.value)}/><input placeholder="Порт" value={flowPort} onChange={e=>setFlowPort(e.target.value)}/></div>
+          <select value={flowSecurity} onChange={e=>setFlowSecurity(e.target.value)}>{['unknown','TLS','mTLS','VPN','private_connector','none'].map(x=><option key={x}>{x}</option>)}</select>
           <select value={flowVerification} onChange={e=>setFlowVerification(e.target.value)}><option value="draft">Черновик</option><option value="assumed">Предположение</option><option value="verified">Подтверждено</option></select>
-          <button className="primary">Добавить поток</button>
+          <button className="primary">Создать поток</button>
         </form>
-      </> : <div className="hint">Выберите объект на схеме или в каталоге.</div>}
-      <div className="disclaimer">Локальная версия 0.2 · Без авторизации · Только тестовые данные</div>
-    </aside>
+      </div>
+    </div>
   </div>
 }
 

@@ -360,7 +360,7 @@ function App() {
           <button className="primary">Создать поток</button>
         </form>
       </div>
-    </div>
+    </div>}
   </div>
 }
 

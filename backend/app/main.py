@@ -150,6 +150,60 @@ class NICOutput(NICInput):
     model_config = ConfigDict(from_attributes=True)
     id: UUID
 
+
+class BusinessCategory(Base):
+    __tablename__ = "business_categories"
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    name: Mapped[str] = mapped_column(String(250), unique=True)
+
+
+class BusinessProcess(Base):
+    __tablename__ = "business_processes"
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    category_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("business_categories.id"))
+    name: Mapped[str] = mapped_column(String(250))
+    description: Mapped[str] = mapped_column(String(2000), default="")
+
+
+class ProcessSystem(Base):
+    __tablename__ = "process_systems"
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    process_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("business_processes.id"))
+    system_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("objects.id"))
+    role: Mapped[str] = mapped_column(String(100), default="supporting")
+
+
+class CategoryInput(BaseModel):
+    name: str = Field(min_length=1, max_length=250)
+
+
+class CategoryOutput(CategoryInput):
+    model_config = ConfigDict(from_attributes=True)
+    id: UUID
+
+
+class ProcessInput(BaseModel):
+    category_id: UUID
+    name: str = Field(min_length=1, max_length=250)
+    description: str = Field(default="", max_length=2000)
+
+
+class ProcessOutput(ProcessInput):
+    model_config = ConfigDict(from_attributes=True)
+    id: UUID
+
+
+class ProcessSystemInput(BaseModel):
+    process_id: UUID
+    system_id: UUID
+    role: str = Field(default="supporting", max_length=100)
+
+
+class ProcessSystemOutput(ProcessSystemInput):
+    model_config = ConfigDict(from_attributes=True)
+    id: UUID
+
+
 class ObjectCreate(BaseModel):
     kind: str = Field(default="system", max_length=60)
     name: str = Field(min_length=1, max_length=250)
@@ -646,3 +700,67 @@ def seed_networks(db: Session = Depends(db_session)):
         existing.add(key); added_interfaces += 1
     db.commit()
     return {"added_segments": added_segments, "added_interfaces": added_interfaces}
+
+@app.get("/api/business/categories", response_model=list[CategoryOutput])
+def categories(db: Session = Depends(db_session)):
+    return db.scalars(select(BusinessCategory).order_by(BusinessCategory.name)).all()
+
+
+@app.post("/api/business/categories", response_model=CategoryOutput, status_code=201)
+def add_category(payload: CategoryInput, db: Session = Depends(db_session)):
+    if db.scalars(select(BusinessCategory).where(BusinessCategory.name == payload.name)).first():
+        raise HTTPException(409, "Category already exists")
+    x = BusinessCategory(**payload.model_dump()); db.add(x); db.commit(); db.refresh(x); return x
+
+
+@app.get("/api/business/processes", response_model=list[ProcessOutput])
+def processes(db: Session = Depends(db_session)):
+    return db.scalars(select(BusinessProcess).order_by(BusinessProcess.name)).all()
+
+
+@app.post("/api/business/processes", response_model=ProcessOutput, status_code=201)
+def add_process(payload: ProcessInput, db: Session = Depends(db_session)):
+    if not db.get(BusinessCategory, payload.category_id):
+        raise HTTPException(422, "Category not found")
+    x = BusinessProcess(**payload.model_dump()); db.add(x); db.commit(); db.refresh(x); return x
+
+
+@app.get("/api/business/system-links", response_model=list[ProcessSystemOutput])
+def business_links(db: Session = Depends(db_session)):
+    return db.scalars(select(ProcessSystem)).all()
+
+
+@app.post("/api/business/system-links", response_model=ProcessSystemOutput, status_code=201)
+def add_business_link(payload: ProcessSystemInput, db: Session = Depends(db_session)):
+    if not db.get(BusinessProcess, payload.process_id) or not db.get(ArchitectureObject, payload.system_id):
+        raise HTTPException(422, "Process or system not found")
+    x = db.scalars(select(ProcessSystem).where(ProcessSystem.process_id == payload.process_id,ProcessSystem.system_id == payload.system_id)).first()
+    if x: return x
+    x = ProcessSystem(**payload.model_dump()); db.add(x); db.commit(); db.refresh(x); return x
+
+
+@app.post("/api/demo/business")
+def seed_business(db: Session = Depends(db_session)):
+    specs = {
+        "Управление персоналом": {"Приём сотрудника": ["1С ЗУП", "ЕИБД", "Active Directory", "Naumen", "Bitrix24"],
+                                   "Обновление данных сотрудника": ["1С ЗУП", "Телефонный справочник", "DATAREON"]},
+        "Управление ИТ-услугами": {"Обработка обращений": ["Naumen", "Active Directory"],
+                                  "Управление доступами": ["Keycloak", "Active Directory", "ЕИБД"]},
+    }
+    systems = {o.name:o for o in db.scalars(select(ArchitectureObject)).all()}
+    cats = {c.name:c for c in db.scalars(select(BusinessCategory)).all()}
+    created = 0
+    for category, processes in specs.items():
+        c = cats.get(category)
+        if not c:
+            c=BusinessCategory(name=category);db.add(c);db.flush();created+=1
+        for name,names in processes.items():
+            p=db.scalars(select(BusinessProcess).where(BusinessProcess.category_id==c.id,BusinessProcess.name==name)).first()
+            if not p:
+                p=BusinessProcess(category_id=c.id,name=name,description="Демонстрационный процесс, требует проверки");db.add(p);db.flush();created+=1
+            for system in names:
+                if system not in systems:continue
+                if not db.scalars(select(ProcessSystem).where(ProcessSystem.process_id==p.id,ProcessSystem.system_id==systems[system].id)).first():
+                    db.add(ProcessSystem(process_id=p.id,system_id=systems[system].id,role="demo"));created+=1
+    db.commit()
+    return {"created":created,"notice":"All process links are illustrative."}

@@ -408,3 +408,126 @@ def update_flow(flow_id: UUID, payload: FlowInput, db: Session = Depends(db_sess
     db.commit()
     db.refresh(flow)
     return flow
+
+
+# Fully synthetic scenario: never use these names or network notes as confirmed production topology.
+ENTERPRISE_DEMO_KEY = "enterprise_demo_v1"
+
+
+@app.post("/api/demo/enterprise")
+def load_enterprise_demo(db: Session = Depends(db_session)):
+    """Idempotent, additive demo with VMs, environments, EIBD tables and directed flows."""
+    systems = [
+        ("Телефонный справочник", "Корпоративный справочник"),
+        ("Bitrix24", "Управление процессами и задачами"),
+        ("Naumen", "ITSM платформа"),
+        ("ЕИБД", "Единая база идентификаторов"),
+        ("Keycloak", "Провайдер аутентификации OIDC"),
+        ("Active Directory", "Корпоративный каталог пользователей"),
+        ("1С ЗУП", "Источник кадровых данных"),
+        ("DATAREON", "Интеграционная платформа"),
+    ]
+    original = {o.name.casefold(): o for o in db.scalars(select(ArchitectureObject)).all()}
+    sys = {}
+    new_systems = 0
+    for name, descr in systems:
+        obj = original.get(name.casefold())
+        if obj is None:
+            obj = ArchitectureObject(name=name, kind="system", description=descr, status="demo",
+                                     attributes={"origin": ENTERPRISE_DEMO_KEY, "verification": "assumed"})
+            db.add(obj)
+            db.flush()
+            new_systems += 1
+        sys[name] = obj
+
+    # Each component has its own deployment and network tags. These are fictional labels,
+    # not real IPs, VLAN IDs, VRFs or routes.
+    specs = []
+    def add(system, name, kind, env, zone, vrf, role, parent=None):
+        specs.append((system, name, kind, env, zone, vrf, role, parent))
+
+    for i, role in enumerate(["Web / UI", "Backend API", "Сервис синхронизации"], 1):
+        add("Телефонный справочник", f"DIR-PROD-VM-{i:02}", "vm", "PROD", "APP-ZONE", "VRF-APP", role)
+    for i, role in enumerate(["Web / API", "Тестовая БД"], 1):
+        add("Телефонный справочник", f"DIR-TEST-VM-{i:02}", "vm", "TEST", "TEST-ZONE", "VRF-TEST", role)
+    for i, role in enumerate(["Frontend / Web", "Backend / Workers", "Database"], 1):
+        add("Bitrix24", f"B24-PROD-VM-{i:02}", "vm", "PROD", "APP-ZONE" if i < 3 else "DB-ZONE", "VRF-APP" if i < 3 else "VRF-DATA", role)
+    naumen_roles = [
+        "Load balancer", "Frontend A", "Frontend B", "Application A", "Application B",
+        "Integration API", "Worker A", "Worker B", "Message broker", "Database primary", "Database replica"
+    ]
+    for i, role in enumerate(naumen_roles, 1):
+        zone = "DMZ-DEMO" if i == 1 else ("DB-ZONE" if i >= 10 else "APP-ZONE")
+        vrf = "VRF-DMZ" if i == 1 else ("VRF-DATA" if i >= 10 else "VRF-APP")
+        add("Naumen", f"NAU-PROD-VM-{i:02}", "vm", "PROD", zone, vrf, role)
+    add("ЕИБД", "EIBD-DB-VM-01", "vm", "PROD", "ISOLATED-DATA-ZONE", "VRF-EIBD", "Единая БД идентификаторов")
+    add("ЕИБД", "EIBD / PostgreSQL", "database", "PROD", "ISOLATED-DATA-ZONE", "VRF-EIBD", "Демо-хранилище ЕИБД", "EIBD-DB-VM-01")
+    for table, purpose in [
+        ("persons", "Псевдоним и учётные идентификаторы"),
+        ("identifiers", "Соответствие идентификаторов систем"),
+        ("system_accounts", "Учётные записи в прикладных системах"),
+        ("employment_events", "События жизненного цикла"),
+        ("access_mappings", "Соответствия прав и систем"),
+    ]:
+        add("ЕИБД", "EIBD.table." + table, "table", "PROD", "ISOLATED-DATA-ZONE", "VRF-EIBD", purpose, "EIBD / PostgreSQL")
+    add("Keycloak", "KC-AUTH-VM-01", "vm", "PROD", "AUTH-ZONE", "VRF-AUTH", "OIDC identity provider")
+    add("Active Directory", "AD-DC-VM-01", "vm", "PROD", "IDENTITY-ZONE", "VRF-IDENTITY", "LDAP / directory service")
+    add("1С ЗУП", "HR-EXPORT-SVC", "service", "PROD", "APP-ZONE", "VRF-APP", "Экспорт кадровых событий")
+    add("DATAREON", "DATAREON-ADAPTER", "service", "PROD", "INTEGRATION-ZONE", "VRF-INTEGRATION", "Адаптер интеграции")
+
+    old_items = db.scalars(select(InfrastructureItem)).all()
+    item_lookup = {(str(i.system_id), i.name): i for i in old_items}
+    created_items = 0
+    nodes = {}
+    for system, name, kind, env, zone, vrf, role, parent in specs:
+        owner = sys[system]
+        item = item_lookup.get((str(owner.id), name))
+        if item is None:
+            item = InfrastructureItem(system_id=owner.id, name=name, kind=kind,
+                description=role, details={
+                    "environment": env, "security_zone": zone, "vrf": vrf,
+                    "vlan": "уточнить", "demo": True, "verification": "assumed",
+                    "network_notes": "СИНТЕТИЧЕСКИЙ ПРИМЕР – параметры не проверены"
+                })
+            db.add(item)
+            db.flush()
+            item_lookup[(str(owner.id), name)] = item
+            created_items += 1
+        nodes[name] = item
+    for system, name, kind, env, zone, vrf, role, parent in specs:
+        if parent and nodes[name].parent_id is None:
+            nodes[name].parent_id = nodes[parent].id
+
+    leg_specs = [
+        ("HR-EXPORT-SVC", "DATAREON-ADAPTER", "Кадровые события", "Состав кадровых полей", "HTTPS", "443", "TLS"),
+        ("DATAREON-ADAPTER", "DIR-PROD-VM-03", "Обновление справочника", "Контакты и подразделения", "HTTPS", "443", "TLS"),
+        ("DIR-PROD-VM-03", "DIR-PROD-VM-02", "Запись в API", "Карточки сотрудников", "HTTPS", "443", "TLS"),
+        ("DIR-PROD-VM-02", "NAU-PROD-VM-06", "Справочные данные в Naumen", "Сведения о сотрудниках", "HTTPS", "443", "mTLS"),
+        ("B24-PROD-VM-02", "EIBD-DB-VM-01", "Идентификаторы для процессов", "Псевдонимы и идентификаторы", "HTTPS", "443", "private_connector"),
+        ("NAU-PROD-VM-06", "EIBD-DB-VM-01", "Сопоставление пользователей", "Идентификаторы пользователей", "HTTPS", "443", "private_connector"),
+        ("DIR-PROD-VM-02", "EIBD-DB-VM-01", "Получение идентификаторов", "Псевдонимы пользователей", "HTTPS", "443", "private_connector"),
+        ("B24-PROD-VM-01", "KC-AUTH-VM-01", "Вход пользователей Bitrix24", "OIDC авторизация", "HTTPS", "443", "TLS"),
+        ("NAU-PROD-VM-02", "KC-AUTH-VM-01", "Вход пользователей Naumen", "OIDC авторизация", "HTTPS", "443", "TLS"),
+        ("DIR-PROD-VM-01", "KC-AUTH-VM-01", "Вход пользователей справочника", "OIDC авторизация", "HTTPS", "443", "TLS"),
+        ("KC-AUTH-VM-01", "AD-DC-VM-01", "Федерация идентичностей", "LDAP / группы", "LDAPS", "636", "TLS"),
+        ("NAU-PROD-VM-04", "NAU-PROD-VM-10", "Работа с основной БД Naumen", "Данные заявок", "TCP", "5432", "unknown"),
+        ("NAU-PROD-VM-10", "NAU-PROD-VM-11", "Репликация БД", "Данные БД", "TCP", "5432", "unknown"),
+        ("DIR-TEST-VM-01", "DIR-TEST-VM-02", "Тестовые запросы", "Синтетические тестовые данные", "TCP", "5432", "unknown"),
+    ]
+    existing = {(f.source_id, f.target_id, f.name) for f in db.scalars(select(DataFlow)).all()}
+    created_flows = 0
+    for s, t, name, payload, proto, port, sec in leg_specs:
+        key = (nodes[s].id, nodes[t].id, name)
+        if key not in existing:
+            db.add(DataFlow(source_id=nodes[s].id, target_id=nodes[t].id,
+                name=name, data_description="ДЕМО: " + payload,
+                protocol=proto, port=port, security=sec, verification="assumed",
+                schedule="Не установлено"))
+            existing.add(key)
+            created_flows += 1
+    db.commit()
+    return {"new_systems": new_systems, "new_components": created_items,
+            "new_flows": created_flows, "systems": len(systems),
+            "telephone_prod_vm": 3, "telephone_test_vm": 2,
+            "bitrix_vm": 3, "naumen_vm": 11,
+            "notice": "Все инфраструктурные имена, сети, роли и каналы демонстрационные."}

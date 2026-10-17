@@ -169,6 +169,20 @@ function App() {
       setFlows(await request<Flow[]>('/api/flows'));setFlowName('');setFlowData('')
     } catch(e){setError(String(e))}
   }
+  async function loadEnterpriseDemo(){
+    setBusy(true);setError('')
+    try {
+      const result=await request<{new_systems:number;new_components:number;new_flows:number}>('/api/demo/enterprise',{method:'POST'})
+      const [o,r,i,f]=await Promise.all([
+        request<Obj[]>('/api/objects'),request<Rel[]>('/api/relations'),
+        request<Infra[]>('/api/infra'),request<Flow[]>('/api/flows')
+      ])
+      setObjects(o);setRelations(r);setInfra(i);setFlows(f);setLayer('infrastructure');setSelected('')
+      alert('Расширенное демо: добавлено систем ' +result.new_systems+
+      ', компонентов '+result.new_components+', потоков '+result.new_flows+
+      '. Все данные синтетические.')
+    }catch(e){setError(String(e))}finally{setBusy(false)}
+  }
   async function loadInfrastructureDemo(){
     const find = (n:string)=>objects.find(o=>o.name.toLowerCase()===n.toLowerCase())
     const zup=find('1С ЗУП'),datareon=find('DATAREON'),naumen=find('Naumen'),phone=find('Телефонный справочник')
@@ -254,7 +268,7 @@ function App() {
         <button className={layer==='systems'?'current':''} onClick={()=>setLayer('systems')}>Системы</button>
         <button className={layer==='infrastructure'?'current':''} onClick={()=>setLayer('infrastructure')}>Сервисы и ВМ</button>
         <button className={layer==='flows'?'current':''} onClick={()=>setLayer('flows')}>Потоки данных</button>
-        <button onClick={loadInfrastructureDemo} title="Создать условные компоненты и потоки для телефонного справочника">+ Демо инфраструктуры</button>
+        <button onClick={loadEnterpriseDemo} disabled={busy} title="3+2 ВМ справочника, 3 ВМ Bitrix24, 11 ВМ Naumen, ЕИБД, Keycloak, AD">Загрузить расширенное демо</button>
       </div>
       {layer==='systems' ? <section className="canvas">
         <ReactFlow nodes={nodes} edges={edges} onNodesChange={onNodesChange} onConnect={onConnect}
@@ -270,11 +284,17 @@ function App() {
             <span className="tag">{i.kind}</span><h3>{i.name}</h3>
             <p>{objects.find(o=>o.id===i.system_id)?.name}</p>
             {i.parent_id&&<small>Входит в: {infra.find(x=>x.id===i.parent_id)?.name||'Неизвестно'}</small>}
-            <p>{String(i.details.network_notes||'Сеть не указана')}</p>
+            <p>{i.description}</p><p><strong>{String(i.details.environment||"")}</strong> · {String(i.details.security_zone||"Зона неизвестна")} · {String(i.details.vrf||"VRF неизвестен")}</p>
           </article>)}</div>
         </> : <>
           <h2>Направленные потоки данных</h2>
           <p className="hint">Каждый поток – отдельная запись от конкретного компонента-источника до компонента-получателя. Обратный независимый поток создаётся отдельно.</p>
+          <div className="miniArchitecture"><ReactFlow
+            nodes={infra.map((i,idx)=>({id:i.id,position:{x:(idx%5)*230,y:Math.floor(idx/5)*120},data:{label:<div><strong>{i.name}</strong><small>{i.kind} · {String(i.details.security_zone||'зона не задана')}</small></div>},style:{width:200,border:'1px solid #aab8cb',borderRadius:9,background:'#fff',padding:9}}))}
+            edges={flows.map(f=>({id:f.id,source:f.source_id,target:f.target_id,label:f.name,style:{stroke:'#64748b'},labelStyle:{fontSize:10}}))}
+            fitView nodesDraggable={false} nodesConnectable={false} elementsSelectable={true}>
+            <Background gap={20}/><Controls/><MiniMap/>
+          </ReactFlow></div>
           <div className="infraGrid">{flows.map(f=><article className="infraCard" key={f.id}>
             <span className="tag">{f.verification}</span><h3>{f.name}</h3>
             <strong>{infra.find(i=>i.id===f.source_id)?.name} → {infra.find(i=>i.id===f.target_id)?.name}</strong>

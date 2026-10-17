@@ -109,6 +109,23 @@ function App() {
     } catch (e) { setError(String(e)) }
   }
 
+  async function loadDemo() {
+    if (dirty && !confirm('На текущей схеме есть несохранённые перемещения. Продолжить загрузку демо?')) return
+    setBusy(true); setError('')
+    try {
+      const result = await request<{diagram_id:string; created_objects:number; created_relations:number}>('/api/demo/load', { method: 'POST' })
+      const [o,r,d] = await Promise.all([
+        request<Obj[]>('/api/objects'), request<Rel[]>('/api/relations'), request<Diagram[]>('/api/diagrams')
+      ])
+      setObjects(o); setRelations(r); setDiagrams(d)
+      const demo = d.find(x => x.id === result.diagram_id)
+      if (demo) { setDiagramId(demo.id); setPositions(demo.positions || {}) }
+      setSelected(''); setDirty(false)
+      alert('Демонстрация загружена. Новых систем: ' + result.created_objects + ', новых связей: ' + result.created_relations + '. Данные требуют проверки.')
+    } catch(e) { setError(String(e)) }
+    finally { setBusy(false) }
+  }
+
   async function addDiagram() {
     const title = prompt('Название новой схемы:')
     if (!title?.trim()) return
@@ -150,7 +167,7 @@ function App() {
           {!diagrams.length && <option value="">Основная карта</option>}
           {diagrams.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
         </select>
-        <button onClick={addDiagram}>+ Схема</button>
+        <button onClick={loadDemo} disabled={busy} title="Добавить 7 демонстрационных систем и 3 связи, не удаляя ваши данные">Загрузить демо</button><button onClick={addDiagram}>+ Схема</button>
         <button className="primary" onClick={saveDiagram}>Сохранить{dirty ? ' *' : ''}</button>
       </div></header>
       {error && <div className="error" role="alert">{error}<button onClick={() => setError('')}>×</button></div>}
@@ -166,8 +183,8 @@ function App() {
       <div className="sideLabel">СВОЙСТВА</div>
       {detail ? <><h2>{detail.name}</h2><span className="tag">{detail.kind}</span>
         <h3>Описание</h3><p>{detail.description || 'Описание пока не заполнено.'}</p>
-        <h3>Статус</h3><p>{detail.status}</p>
-        <h3>Связи</h3><p>{relations.filter(r => r.source_id === detail.id || r.target_id === detail.id).length} шт.</p>
+        <h3>Статус</h3><p>{detail.status === "demo" ? "Демо · требуется проверка" : detail.status}</p>{detail.attributes.subtype && <><h3>Категория</h3><p>{String(detail.attributes.subtype)}</p></>}
+        <h3>Связи</h3>{relations.filter(r => r.source_id === detail.id || r.target_id === detail.id).length ? relations.filter(r => r.source_id === detail.id || r.target_id === detail.id).map(r => <p key={r.id}><strong>{r.source_id === detail.id ? "→ " : "← "}{objects.find(o => o.id === (r.source_id === detail.id ? r.target_id : r.source_id))?.name}</strong><br/>{r.description || r.kind}</p>) : <p>Связей пока нет</p>}
         <p className="hint">Чтобы создать интеграцию, потяните связь от точки одного объекта к точке другого.</p>
       </> : <div className="hint">Выберите объект на схеме или в каталоге.</div>}
       <div className="disclaimer">Локальная версия 0.1 · Без авторизации · Только тестовые данные</div>

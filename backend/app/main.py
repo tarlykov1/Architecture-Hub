@@ -200,3 +200,73 @@ def save_diagram(diagram_id: UUID, payload: DiagramCreate, db: Session = Depends
     db.commit()
     db.refresh(diagram)
     return diagram
+
+
+# Safe, repeatable import of demonstrational data based on essential_gsp_demo.xlsx.
+# Existing user-created objects and diagrams are never removed or overwritten.
+DEMO_SYSTEMS = [
+    ("Naumen", "ITSM", "Управление заявками и ИТ-услугами"),
+    ("1С ЗУП", "HRM", "Кадровый учёт, данные сотрудников"),
+    ("DATAREON", "Интеграционная платформа", "Обмен данными между системами"),
+    ("Active Directory", "Каталог", "Учётные записи и группы"),
+    ("Bitrix24", "BPM / CRM", "Бизнес-процессы и задачи"),
+    ("ЕИБД", "Реестр идентификаторов", "Единая идентификация и жизненный цикл идентификаторов сотрудников; детали уточняются"),
+    ("Телефонный справочник", "Корпоративный справочник", "Каталог контактных данных сотрудников; состав и источники уточняются"),
+]
+DEMO_FLOWS = [
+    ("1С ЗУП", "DATAREON", "Телефонный справочник · способ и периодичность уточнить"),
+    ("DATAREON", "Naumen", "Данные справочника сотрудников · API (параметры уточнить)"),
+    ("1С ЗУП", "Active Directory", "Данные сотрудников · 1 раз в час (проверить актуальность)"),
+]
+
+
+@app.post("/api/demo/load")
+def load_demo(db: Session = Depends(db_session)):
+    """Add sample systems/flows idempotently; leave existing real data untouched."""
+    existing = db.scalars(select(ArchitectureObject)).all()
+    by_name = {o.name.casefold(): o for o in existing}
+    sample: dict[str, ArchitectureObject] = {}
+    added_objects = 0
+    added_relations = 0
+    for name, subtype, description in DEMO_SYSTEMS:
+        obj = by_name.get(name.casefold())
+        if obj is None:
+            obj = ArchitectureObject(
+                name=name, kind="system", description=description, status="demo",
+                attributes={"subtype": subtype, "origin": "demo", "verification": "requires_review"}
+            )
+            db.add(obj)
+            db.flush()
+            by_name[name.casefold()] = obj
+            added_objects += 1
+        sample[name] = obj
+    existing_relations = db.scalars(select(Relation)).all()
+    relation_keys = {(r.source_id, r.target_id, r.kind) for r in existing_relations}
+    for source, target, description in DEMO_FLOWS:
+        s_id, t_id = sample[source].id, sample[target].id
+        key = (s_id, t_id, "data_flow")
+        if key not in relation_keys:
+            db.add(Relation(source_id=s_id, target_id=t_id, kind="data_flow", description=description))
+            relation_keys.add(key)
+            added_relations += 1
+    diagram = db.scalars(select(Diagram).where(Diagram.name == "Демо · Архитектура ГСП")).first()
+    if diagram is None:
+        positions = {
+            str(sample[name].id): {"x": x, "y": y}
+            for name, x, y in [
+                ("1С ЗУП", 35, 70), ("DATAREON", 335, 70),
+                ("Naumen", 635, 60), ("Active Directory", 335, 255),
+                ("Bitrix24", 635, 255), ("ЕИБД", 35, 255),
+                ("Телефонный справочник", 335, 430)
+            ]
+        }
+        diagram = Diagram(name="Демо · Архитектура ГСП", positions=positions)
+        db.add(diagram)
+        db.flush()
+    db.commit()
+    return {
+        "diagram_id": str(diagram.id),
+        "created_objects": added_objects,
+        "created_relations": added_relations,
+        "notice": "Демонстрационные сведения. Неподтверждённые параметры требуют уточнения."
+    }

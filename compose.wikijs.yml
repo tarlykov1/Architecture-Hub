@@ -1,0 +1,38 @@
+# Wiki.js is a separately startable part of Architecture Hub.
+# Run: docker compose -f compose.wikijs.yml up -d
+services:
+  wikidb:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: wiki
+      POSTGRES_USER: wikijs
+      POSTGRES_PASSWORD: ${WIKI_DB_PASSWORD:?Set WIKI_DB_PASSWORD in .env}
+    volumes:
+      - wiki_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U wikijs -d wiki"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    networks: [wiki_internal]
+  wiki:
+    image: ghcr.io/requarks/wiki:2
+    restart: unless-stopped
+    depends_on:
+      wikidb:
+        condition: service_healthy
+    environment:
+      DB_TYPE: postgres
+      DB_HOST: wikidb
+      DB_PORT: 5432
+      DB_USER: wikijs
+      DB_PASS: ${WIKI_DB_PASSWORD:?Set WIKI_DB_PASSWORD in .env}
+      DB_NAME: wiki
+    ports:
+      - "127.0.0.1:${WIKI_PORT:-3000}:3000"
+    networks: [wiki_internal]
+networks:
+  wiki_internal:
+volumes:
+  wiki_pgdata:

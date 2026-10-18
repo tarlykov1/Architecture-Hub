@@ -1,0 +1,21 @@
+name: Wiki.js compose checks
+on:
+  push:
+    paths:
+      - compose.wikijs.yml
+      - .env.wiki.example
+      - .github/workflows/wikijs.yml
+  pull_request:
+    paths:
+      - compose.wikijs.yml
+      - .env.wiki.example
+      - .github/workflows/wikijs.yml
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate Wiki.js compose
+        env:
+          WIKI_DB_PASSWORD: validation-only-placeholder-password
+        run: docker compose -f compose.wikijs.yml config --quiet

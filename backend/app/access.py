@@ -64,7 +64,7 @@ async def access_middleware(request: Request, call_next):
     keys = request.app.state.arch_hub_keys
     if keys is None:
         return await call_next(request)
-    if path in ("/api/health", "/openapi.json", "/docs", "/docs/oauth2-redirect", "/redoc"):
+    if request.method.upper() == "OPTIONS" or path in ("/api/health", "/openapi.json", "/docs", "/docs/oauth2-redirect", "/redoc"):
         return await call_next(request)
     if not path.startswith("/api/"):
         return await call_next(request)

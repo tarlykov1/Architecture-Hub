@@ -16,8 +16,9 @@ type BusinessProcess = {id:string;category_id:string;name:string;description:str
 type BusinessLink = {id:string;process_id:string;system_id:string;role:string}
 type Diagram = { id: string; name: string; positions: Record<string, { x: number; y: number }> }
 
+let accessToken = ""
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(url, { ...init, headers: { 'Content-Type': 'application/json', ...init?.headers } })
+  const response = await fetch(url, { ...init, headers: { 'Content-Type': 'application/json', ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}), ...init?.headers } })
   if (!response.ok) {
     const detail = await response.text()
     throw new Error(detail || 'Ошибка обращения к API')
@@ -75,6 +76,7 @@ function App() {
   const [description, setDescription] = useState('')
   const [error, setError] = useState('')
   const [notice,setNotice] = useState('')
+  const [tokenReady, setTokenReady] = useState(false)
   const [busy, setBusy] = useState(false)
   const [dirty, setDirty] = useState(false)
 
@@ -346,6 +348,7 @@ function App() {
     </aside>
     <main className="main">
       <header className="topbar"><div><h1>{drill?drill.name:"Карта архитектуры"}</h1><p>{drill?"Детализация компонентов и потоков · синтетическая модель":"Единый реестр систем и взаимосвязей"}</p></div><div className="topActions">
+        <button title="Ключ хранится только в памяти вкладки. Используйте HTTPS при удалённом доступе." onClick={()=>{const value=window.prompt('Ключ доступа Architecture Hub (Bearer token)');if(value===null)return;accessToken=value.trim();setTokenReady(Boolean(accessToken));refresh().then(()=>setError('')).catch(e=>setError(e.message))}}>{tokenReady?'Доступ: ключ задан':'Ключ доступа'}</button>
         <select aria-label="Схема" value={diagramId} onChange={e => selectDiagram(e.target.value)}>
           {!diagrams.length && <option value="">Основная карта</option>}
           {diagrams.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}

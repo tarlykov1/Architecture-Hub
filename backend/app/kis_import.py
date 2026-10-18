@@ -146,7 +146,7 @@ def import_kis(payload:ImportRequest,db:Session=Depends(db_session)):
     counts={"created_vms":0,"created_databases":0}
     if payload.include_vms:
         for idx, row in enumerate(data["vms"]):
-            hostname=row.get("E","").splitlines()[0].strip()
+            hostname=next((line.strip() for line in row.get("E","").splitlines() if line.strip()), "")
             key=hostname or f"KIS-VM-{idx+1}"
             if not row.get("D") and not hostname:continue
             if key.casefold() in known:continue

@@ -46,7 +46,12 @@ function App() {
   const [kisBusy,setKisBusy] = useState(false)
   const [kisError,setKisError] = useState('')
   const [objects, setObjects] = useState<Obj[]>([])
-  const [panelTab,setPanelTab] = useState<'overview'|'components'|'flows'|'edit'>('overview')
+  const [kbLinks,setKbLinks]=useState<{id:string;title:string;url:string;relation_type:string}[]>([])
+  const [kbPages,setKbPages]=useState<{id:number;title:string;url:string;path:string;locale:string}[]>([])
+  const [kbQuery,setKbQuery]=useState('')
+  const [kbLoading,setKbLoading]=useState(false)
+  const [kbMessage,setKbMessage]=useState('')
+  const [panelTab,setPanelTab] = useState<'overview'|'components'|'flows'|'knowledge'|'edit'>('overview')
   const [editorOpen,setEditorOpen] = useState(false)
   const [search,setSearch] = useState('')
   const [viewSystem,setViewSystem] = useState('')
@@ -95,6 +100,28 @@ function App() {
   }, [diagramId])
 
   useEffect(() => { refresh().catch(e => setError(e.message)) }, []) // initial load
+  useEffect(()=>{
+    if(panelTab!=='knowledge'||!selected)return
+    request<{id:string;title:string;url:string;relation_type:string}[]>('/api/knowledge/links?entity_type=system&entity_id='+encodeURIComponent(selected))
+      .then(setKbLinks).catch(e=>setKbMessage(e.message))
+  },[selected,panelTab])
+  const searchWiki=async()=>{
+    setKbLoading(true);setKbMessage('')
+    try{setKbPages(await request<{id:number;title:string;url:string;path:string;locale:string}[]>('/api/knowledge/pages?query='+encodeURIComponent(kbQuery)))}
+    catch(e){setKbMessage((e as Error).message)}finally{setKbLoading(false)}
+  }
+  const attachWiki=async(page:{id:number;title:string;url:string;path:string;locale:string})=>{
+    try{
+      await request('/api/knowledge/links',{method:'POST',body:JSON.stringify({entity_type:'system',entity_id:selected,wiki_page_id:page.id,wiki_path:page.locale+'/'+page.path,title:page.title,relation_type:'documentation'})})
+      setKbLinks(await request('/api/knowledge/links?entity_type=system&entity_id='+encodeURIComponent(selected)))
+      setKbMessage('Статья привязана')
+    }catch(e){setKbMessage((e as Error).message)}
+  }
+  const unlinkWiki=async(id:string)=>{
+    if(!window.confirm('Убрать связь со статьёй? Сама статья останется в Wiki.js.'))return
+    try{await request('/api/knowledge/links/'+encodeURIComponent(id),{method:'DELETE'});setKbLinks(old=>old.filter(x=>x.id!==id))}catch(e){setKbMessage((e as Error).message)}
+  }
+
 
   const visibleObjects = objects.filter(o=>o.name.toLowerCase().includes(search.toLowerCase()))
   const nodes = useMemo<Node[]>(() => visibleObjects.map((o, i) => ({
@@ -411,7 +438,18 @@ function App() {
           <button className={panelTab==='overview'?'current':''} onClick={()=>setPanelTab('overview')}>Обзор</button>
           <button className={panelTab==='components'?'current':''} onClick={()=>setPanelTab('components')}>Компоненты</button>
           <button className={panelTab==='flows'?'current':''} onClick={()=>setPanelTab('flows')}>Потоки</button>
+          <button className={panelTab==='knowledge'?'current':''} onClick={()=>{setKbMessage('');setPanelTab('knowledge')}}>База знаний</button>
         </div>
+        {panelTab==='knowledge'&&<div className="knowledgePanel">
+          <h3>Документация в Wiki.js</h3>
+          {kbLinks.map(k=><div key={k.id} className="inspectorItem"><a href={k.url} target="_blank" rel="noopener noreferrer">{k.title} ↗</a><button style={{marginTop:5}} onClick={()=>unlinkWiki(k.id)}>Отвязать</button></div>)}
+          {!kbLinks.length&&<p>Связанных статей пока нет.</p>}
+          <h3>Добавить статью</h3>
+          <input value={kbQuery} onChange={e=>setKbQuery(e.target.value)} placeholder="Название статьи" style={{width:'100%',marginBottom:6,padding:8}}/>
+          <button disabled={kbLoading} onClick={searchWiki}>{kbLoading?'Поиск…':'Найти в Wiki.js'}</button>
+          {kbPages.map(p=><div className="inspectorItem" key={p.id}><strong>{p.title}</strong><button onClick={()=>attachWiki(p)}>Привязать</button></div>)}
+          {kbMessage&&<p role="status">{kbMessage}</p>}
+        </div>}
         {panelTab==='overview'&&<><h3>Назначение</h3><p>{detail.description||'Описание не указано'}</p><h3>Статус</h3><p>{detail.status}</p>
           <div className="statPills"><span>{detailItems.length} компонентов</span><span>{flows.filter(f=>detailItems.some(i=>i.id===f.source_id||i.id===f.target_id)).length} потоков</span></div>
           <button className="primary" onClick={()=>{setViewSystem(detail.id);setLayer('infrastructure')}}>Открыть архитектуру →</button></>}

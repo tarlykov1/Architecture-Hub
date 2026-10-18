@@ -7,6 +7,7 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from fastapi import Depends, FastAPI, HTTPException
+from .access import access_middleware, configured_keys
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import DateTime, ForeignKey, JSON, String, Uuid, create_engine, select
@@ -251,13 +252,15 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="Architecture Hub API", version="0.1.0", lifespan=lifespan)
+app = FastAPI(title="Architecture Hub API", version="0.7.0", lifespan=lifespan)
+app.state.arch_hub_keys = configured_keys()
+app.middleware("http")(access_middleware)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:5174", "http://127.0.0.1:5174"],
     allow_credentials=False,
     allow_methods=["GET", "POST", "PUT", "DELETE"],
-    allow_headers=["Content-Type"],
+    allow_headers=["Content-Type", "Authorization"],
 )
 
 

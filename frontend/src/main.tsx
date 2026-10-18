@@ -42,6 +42,7 @@ function App() {
   const [kisResult,setKisResult] = useState('')
   const [kisOpen,setKisOpen] = useState(false)
   const [kisBusy,setKisBusy] = useState(false)
+  const [kisError,setKisError] = useState('')
   const [objects, setObjects] = useState<Obj[]>([])
   const [panelTab,setPanelTab] = useState<'overview'|'components'|'flows'|'edit'>('overview')
   const [editorOpen,setEditorOpen] = useState(false)
@@ -258,18 +259,18 @@ function App() {
   }
   async function previewKis(){
     if(!kisFile)return
-    setKisBusy(true);setError('')
+    setKisBusy(true);setKisError('');setKisPreview(null)
     try{setKisPreview(await request<any>('/api/kis/preview',{method:'POST',body:JSON.stringify(await kisPayload(kisFile))}));setKisResult('')}
-    catch(e){setError(String(e))}finally{setKisBusy(false)}
+    catch(e){setKisError(String(e))}finally{setKisBusy(false)}
   }
   async function importKis(){
     if(!kisFile||!kisPreview)return
     if(!confirm('Импортировать паспорт, ВМ и СУБД? Существующие записи не будут перезаписаны.'))return
-    setKisBusy(true);setError('')
+    setKisBusy(true);setKisError('')
     try{const result=await request<any>('/api/kis/import',{method:'POST',body:JSON.stringify(await kisPayload(kisFile))})
       setKisResult(result.message+' Создано систем: '+result.created_systems+', ВМ: '+result.created_vms+', БД: '+result.created_databases)
       const [o,i]=await Promise.all([request<Obj[]>('/api/objects'),request<Infra[]>('/api/infra')]);setObjects(o);setInfra(i)
-    }catch(e){setError(String(e))}finally{setKisBusy(false)}
+    }catch(e){setKisError(String(e))}finally{setKisBusy(false)}
   }
   async function loadBusiness(){
     setError('');setNotice('Загружаю бизнес-процессы…')
@@ -419,8 +420,9 @@ function App() {
     {kisOpen&&<div className="editorBackdrop" onClick={()=>setKisOpen(false)}><div className="editorDialog" onClick={e=>e.stopPropagation()}>
       <div className="dialogHead"><h2>Импорт карточки ИС (.xlsx)</h2><button onClick={()=>setKisOpen(false)}>Закрыть ×</button></div>
       <p className="hint">Файл обрабатывается локальным API. В GitHub он не загружается. Сначала проверьте разбор, затем подтвердите создание записей.</p>
-      <input type="file" accept=".xlsx" onChange={e=>{setKisFile(e.target.files?.[0]||null);setKisPreview(null);setKisResult('')}}/>
+      <input type="file" accept=".xlsx" onChange={e=>{setKisFile(e.target.files?.[0]||null);setKisPreview(null);setKisResult('');setKisError('')}}/>
       <button className="primary" disabled={!kisFile||kisBusy} onClick={previewKis}>{kisBusy?'Обработка…':'Предварительный просмотр'}</button>
+      {kisError&&<div className="kisError" role="alert"><strong>Не удалось обработать КИС</strong><p>{kisError}</p><p>Проверьте состояние API на 127.0.0.1:8000 и журнал FastAPI.</p></div>}
       {kisPreview&&<div className="kisPreview"><h3>{kisPreview.preview.system_name||'Название не найдено'}</h3>
         <p>Листов: {kisPreview.preview.sheet_names.length} · ВМ: {kisPreview.preview.vms.length} · СУБД: {kisPreview.preview.databases.length} · Сетевых записей: {kisPreview.preview.network_rules.length}</p>
         <h3>Паспорт</h3>{Object.entries(kisPreview.preview.fields).slice(0,30).map(([k,v])=><p key={k}><strong>{k}</strong>: {String(v)}</p>)}

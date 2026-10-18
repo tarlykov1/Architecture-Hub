@@ -14,3 +14,23 @@
 .kisPreview{margin-top:16px;padding-top:12px;border-top:1px solid #d6dee9}.kisPreview p{font-size:12px;line-height:1.5;overflow-wrap:anywhere}.kisPreview h3{font-size:14px;margin-top:20px}.editorDialog>input[type=file]{display:block;margin:18px 0;max-width:100%}
 
 .kisError{padding:14px;background:#fff1f1;border:1px solid #f4b7b7;border-radius:9px;color:#9f2525;margin-top:12px;overflow-wrap:anywhere}.kisError p{font-size:12px;line-height:1.5}
+
+/* Knowledge workspace and inspector ergonomics */
+.inspectorTabs{display:flex;gap:4px;overflow-x:auto;scrollbar-width:thin;scroll-snap-type:x proximity}
+.inspectorTabs button{flex:0 0 auto;white-space:nowrap;scroll-snap-align:start}
+.knowledgePanel{padding:6px 0 24px;min-width:0}
+.knowledgeHeading{display:flex;align-items:center;gap:8px;justify-content:space-between}
+.knowledgeHeading h3{font-size:14px;margin:20px 0 10px}
+.knowledgeCount{background:#e8f0ff;color:#1e4fd7;padding:4px 9px;border-radius:16px;font-size:12px}
+.knowledgeIntro{font-size:12px!important;margin:0 0 14px}
+.knowledgeArticleLink{display:block;font-size:13px;line-height:1.5;overflow-wrap:anywhere;color:#2456a9;text-decoration:none}
+.knowledgeArticleLink:hover{text-decoration:underline}
+.knowledgeUnlink{border:0;background:transparent;padding:5px 0;color:#6b7c91;font-size:11px}
+.knowledgeCreate{display:block;text-decoration:none;background:#eaf1ff;color:#1c54b5;border-radius:9px;padding:10px;margin:2px 0 12px;font-size:12px;line-height:1.4}
+.knowledgeCreate:hover{background:#dce9ff}
+.knowledgeSearch{width:100%;min-width:0;border:1px solid #d5e1ef;border-radius:9px;padding:10px;margin-bottom:8px}
+.knowledgeSearchResult{display:grid;gap:10px;grid-template-columns:minmax(0,1fr) auto;align-items:center}
+.knowledgeSearchResult button{font-size:12px;padding:7px 9px}
+.knowledgeSearchResult strong{overflow-wrap:anywhere;font-size:12px}
+.details{min-width:0}
+@media(min-width:1250px){.shell{grid-template-columns:272px minmax(0,1fr) 320px}}

@@ -441,13 +441,13 @@ function App() {
           <button className={panelTab==='knowledge'?'current':''} onClick={()=>{setKbMessage('');setPanelTab('knowledge')}}>База знаний</button>
         </div>
         {panelTab==='knowledge'&&<div className="knowledgePanel">
-          <h3>Документация в Wiki.js</h3>
-          {kbLinks.map(k=><div key={k.id} className="inspectorItem"><a href={k.url} target="_blank" rel="noopener noreferrer">{k.title} ↗</a><button style={{marginTop:5}} onClick={()=>unlinkWiki(k.id)}>Отвязать</button></div>)}
+          <div className="knowledgeHeading"><h3>Документация</h3><span className="knowledgeCount">{kbLinks.length}</span></div><p className="knowledgeIntro">Статьи хранятся в Wiki.js. Изменения доступны в обеих системах.</p>
+          {kbLinks.map(k=><div key={k.id} className="inspectorItem"><a className="knowledgeArticleLink" href={k.url} target="_blank" rel="noopener noreferrer">📄 {k.title} ↗</a><button className="knowledgeUnlink" onClick={()=>unlinkWiki(k.id)}>Убрать связь</button></div>)}
           {!kbLinks.length&&<p>Связанных статей пока нет.</p>}
-          <h3>Добавить статью</h3>
-          <input value={kbQuery} onChange={e=>setKbQuery(e.target.value)} placeholder="Название статьи" style={{width:'100%',marginBottom:6,padding:8}}/>
+          <div className="knowledgeHeading"><h3>Найти или создать статью</h3></div><a className="knowledgeCreate" href={import.meta.env.VITE_WIKI_URL || "http://127.0.0.1:3000"} target="_blank" rel="noopener noreferrer">+ Новая статья в Wiki.js ↗</a>
+          <input value={kbQuery} onChange={e=>setKbQuery(e.target.value)} placeholder="Поиск по названию или пути" className="knowledgeSearch"/>
           <button disabled={kbLoading} onClick={searchWiki}>{kbLoading?'Поиск…':'Найти в Wiki.js'}</button>
-          {kbPages.map(p=><div className="inspectorItem" key={p.id}><strong>{p.title}</strong><button onClick={()=>attachWiki(p)}>Привязать</button></div>)}
+          {kbPages.filter(p=>!kbLinks.some(k=>k.url===p.url)).map(p=><div className="inspectorItem knowledgeSearchResult" key={p.id}><div><strong>{p.title}</strong><small>{p.path}</small></div><button onClick={()=>attachWiki(p)}>+ Связать</button></div>)}
           {kbMessage&&<p role="status">{kbMessage}</p>}
         </div>}
         {panelTab==='overview'&&<><h3>Назначение</h3><p>{detail.description||'Описание не указано'}</p><h3>Статус</h3><p>{detail.status}</p>

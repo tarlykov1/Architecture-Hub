@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 import { ReactFlow, Background, Controls, MiniMap, applyNodeChanges, type Connection, type Edge, type Node, type NodeChange } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import './style.css'
+import Topology from './Topology'
 
 type Obj = { id: string; kind: string; name: string; description: string; status: string; attributes: Record<string, unknown> }
 type Rel = { id: string; source_id: string; target_id: string; kind: string; description: string }
@@ -51,7 +52,7 @@ function App() {
   const [zoneMode,setZoneMode] = useState(false)
   const [infra, setInfra] = useState<Infra[]>([])
   const [flows, setFlows] = useState<Flow[]>([])
-  const [layer, setLayer] = useState<'business'|'systems'|'infrastructure'|'flows'>('systems')
+  const [layer, setLayer] = useState<'business'|'systems'|'infrastructure'|'flows'|'topology'>('systems')
   const [infraName,setInfraName] = useState('')
   const [infraKind,setInfraKind] = useState('vm')
   const [infraParent,setInfraParent] = useState('')
@@ -358,9 +359,9 @@ function App() {
         <button className={layer==='business'?'current':''} onClick={()=>setLayer('business')}>Бизнес-процессы</button><button className={layer==='systems'?'current':''} onClick={()=>{setViewSystem("");setLayer("systems")}}>Системы</button>
         <button className={layer==='infrastructure'?'current':''} onClick={()=>setLayer('infrastructure')}>Сервисы и ВМ</button>
         <button className={layer==='flows'?'current':''} onClick={()=>setLayer('flows')}>Потоки данных</button>
-        <button onClick={()=>setEditorOpen(true)}>+ Объект / поток</button><button onClick={()=>setKisOpen(true)}>Импорт КИС</button>
+        <button className={layer==='topology'?'current':''} onClick={()=>setLayer('topology')}>Топология сетей</button><button onClick={()=>setEditorOpen(true)}>+ Объект / поток</button><button onClick={()=>setKisOpen(true)}>Импорт КИС</button>
       </div>
-      {layer==='business' ? <section className="infraPanel"><h2>Бизнес-архитектура</h2><p className="hint">Категория → процесс → поддерживающие системы. Достоверность связей проверяется отдельно.</p>
+      {layer==='topology' ? <Topology systems={objects} items={infra} segments={segments} interfaces={nics} flows={flows}/> : layer==='business' ? <section className="infraPanel"><h2>Бизнес-архитектура</h2><p className="hint">Категория → процесс → поддерживающие системы. Достоверность связей проверяется отдельно.</p>
       <div className="businessGrid">{categories.map(cat=><article className="businessCategory" key={cat.id}><h3>{cat.name}</h3>{processes.filter(p=>p.category_id===cat.id).map(p=><div className="businessProcess" key={p.id}><strong>{p.name}</strong><p>{p.description}</p><div className="processSystems">{businessLinks.filter(l=>l.process_id===p.id).map(l=><button key={l.id} onClick={()=>{setSelected(l.system_id);setLayer('systems')}}>{objects.find(o=>o.id===l.system_id)?.name||'Система'}</button>)}</div></div>)}</article>)}</div>
       {!categories.length&&<p>Бизнес-процессы пока не добавлены.</p>}</section> : layer==='systems' ? <section className="canvas">
         <ReactFlow nodes={nodes} edges={edges} onNodesChange={onNodesChange} onConnect={onConnect}

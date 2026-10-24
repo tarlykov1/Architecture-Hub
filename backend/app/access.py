@@ -22,7 +22,7 @@ ROLE_ACCESS = {
     "engineer": {"systems": "read", "infrastructure": "write", "networks": "write", "flows": "read", "diagrams": "read", "incidents": "read"},
     "security": {"systems": "read", "infrastructure": "read", "networks": "write", "flows": "read", "diagrams": "read"},
     "business_owner": {"business": "write", "systems": "read", "diagrams": "read"},
-    "viewer": {"systems": "read", "business": "read", "diagrams": "read"},
+    "viewer": {"systems": "read", "business": "read", "diagrams": "read", "incidents": "read"},
 }
 
 def classify(path: str) -> str | None:

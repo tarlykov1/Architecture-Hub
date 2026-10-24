@@ -52,6 +52,7 @@ function App() {
   const [kbLoading,setKbLoading]=useState(false)
   const [kbMessage,setKbMessage]=useState('')
   const [panelTab,setPanelTab] = useState<'overview'|'components'|'flows'|'knowledge'|'edit'>('overview')
+  const [inspectorExpanded,setInspectorExpanded] = useState(false)
   const [editorOpen,setEditorOpen] = useState(false)
   const [search,setSearch] = useState('')
   const [viewSystem,setViewSystem] = useState('')
@@ -430,8 +431,8 @@ function App() {
         </>}
       </section>}
     </main>
-    <aside className="details">
-      <div className="sideLabel">ИНСПЕКТОР</div>
+    <aside className={inspectorExpanded ? "details detailsExpanded" : "details"} aria-label="Карточка архитектурного объекта">
+      <div className="inspectorToolbar"><div className="sideLabel">КАРТОЧКА ОБЪЕКТА</div><button type="button" onClick={()=>setInspectorExpanded(v=>!v)} aria-label={inspectorExpanded?"Свернуть карточку":"Развернуть карточку"}>{inspectorExpanded?"Свернуть ↘":"Развернуть ↗"}</button></div>
       {detail ? <>
         <h2>{detail.name}</h2><span className="tag">{detail.kind}</span>
         <div className="inspectorTabs">
@@ -464,7 +465,7 @@ function App() {
       <p className="hint">Файл обрабатывается локальным API. В GitHub он не загружается. Сначала проверьте разбор, затем подтвердите создание записей.</p>
       <input type="file" accept=".xlsx" onChange={e=>{setKisFile(e.target.files?.[0]||null);setKisPreview(null);setKisResult('');setKisError('')}}/>
       <button className="primary" disabled={!kisFile||kisBusy} onClick={previewKis}>{kisBusy?'Обработка…':'Предварительный просмотр'}</button>
-      {kisError&&<div className="kisError" role="alert"><strong>Не удалось обработать КИС</strong><p>{kisError}</p><p>Проверьте состояние API на 127.0.0.1:8000 и журнал FastAPI.</p></div>}
+      {kisError&&<div className="kisError" role="alert"><strong>Не удалось обработать КИС</strong><p>{kisError}</p><p>Проверьте адрес API в настройках Vite и журнал FastAPI.</p></div>}
       {kisPreview&&<div className="kisPreview"><h3>{kisPreview.preview.system_name||'Название не найдено'}</h3>
         <p>Листов: {kisPreview.preview.sheet_names.length} · ВМ: {kisPreview.preview.vms.length} · СУБД: {kisPreview.preview.databases.length} · Сетевых записей: {kisPreview.preview.network_rules.length}</p>
         <h3>Паспорт</h3>{Object.entries(kisPreview.preview.fields).slice(0,30).map(([k,v])=><p key={k}><strong>{k}</strong>: {String(v)}</p>)}

@@ -798,3 +798,6 @@ app.include_router(kis_router)
 
 from .knowledge import router as knowledge_router
 app.include_router(knowledge_router)
+
+from .incidents import router as incident_router
+app.include_router(incident_router)

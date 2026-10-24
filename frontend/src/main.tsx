@@ -54,6 +54,49 @@ function App() {
   const [panelTab,setPanelTab] = useState<'overview'|'components'|'flows'|'knowledge'|'edit'>('overview')
   const [inspectorExpanded,setInspectorExpanded] = useState(false)
   const [editorOpen,setEditorOpen] = useState(false)
+  const [registryOpen,setRegistryOpen] = useState<'network'|'flow'|null>(null)
+  const [networkEditId,setNetworkEditId] = useState('')
+  const [networkName,setNetworkName] = useState('')
+  const [networkKind,setNetworkKind] = useState('zone')
+  const [networkDescription,setNetworkDescription] = useState('')
+  const [networkVerification,setNetworkVerification] = useState('draft')
+  const [flowEditId,setFlowEditId] = useState('')
+  const [flowSchedule,setFlowSchedule] = useState('')
+  const [registryBusy,setRegistryBusy] = useState(false)
+  const [registryError,setRegistryError] = useState('')
+  const editNetwork = (n?: Segment) => {
+    setNetworkEditId(n?.id || '');setNetworkName(n?.name || '');setNetworkKind(n?.kind || 'zone')
+    setNetworkDescription(n?.description || '');setNetworkVerification(n?.verification || 'draft')
+    setRegistryError('');setRegistryOpen('network')
+  }
+  const editFlow = (f?: Flow) => {
+    setFlowEditId(f?.id || '');setFlowName(f?.name || '');setFlowSource(f?.source_id || '')
+    setFlowTarget(f?.target_id || '');setFlowData(f?.data_description || '')
+    setFlowProtocol(f?.protocol || 'HTTPS');setFlowPort(f?.port || '443')
+    setFlowSecurity(f?.security || 'TLS');setFlowVerification(f?.verification || 'draft')
+    setFlowSchedule(f?.schedule || '');setRegistryError('');setRegistryOpen('flow')
+  }
+  async function saveRegistry(event: React.FormEvent) {
+    event.preventDefault();setRegistryBusy(true);setRegistryError('')
+    try {
+      if(registryOpen==='network'){
+        const uri='/api/networks'+(networkEditId?'/'+networkEditId:'')
+        await request(uri,{method:networkEditId?'PUT':'POST',body:JSON.stringify({
+          name:networkName.trim(),kind:networkKind,description:networkDescription,verification:networkVerification
+        })})
+        setSegments(await request<Segment[]>('/api/networks'))
+      } else if(registryOpen==='flow'){
+        if(flowSource===flowTarget)throw new Error('Источник и получатель должны отличаться')
+        const uri='/api/flows'+(flowEditId?'/'+flowEditId:'')
+        await request(uri,{method:flowEditId?'PUT':'POST',body:JSON.stringify({
+          source_id:flowSource,target_id:flowTarget,name:flowName.trim(),data_description:flowData,
+          protocol:flowProtocol,port:flowPort,security:flowSecurity,verification:flowVerification,schedule:flowSchedule
+        })})
+        setFlows(await request<Flow[]>('/api/flows'))
+      }
+      setRegistryOpen(null);setNotice('Изменения сохранены')
+    }catch(e){setRegistryError(String(e))}finally{setRegistryBusy(false)}
+  }
   const [search,setSearch] = useState('')
   const [viewSystem,setViewSystem] = useState('')
   const [zoneMode,setZoneMode] = useState(false)
@@ -390,9 +433,9 @@ function App() {
         <button className={layer==='business'?'current':''} onClick={()=>setLayer('business')}>Бизнес-процессы</button><button className={layer==='systems'?'current':''} onClick={()=>{setViewSystem("");setLayer("systems")}}>Системы</button>
         <button className={layer==='infrastructure'?'current':''} onClick={()=>setLayer('infrastructure')}>Сервисы и ВМ</button>
         <button className={layer==='flows'?'current':''} onClick={()=>setLayer('flows')}>Потоки данных</button>
-        <button className={layer==='topology'?'current':''} onClick={()=>setLayer('topology')}>Топология сетей</button><button onClick={()=>setEditorOpen(true)}>+ Объект / поток</button><button onClick={()=>setKisOpen(true)}>Импорт КИС</button><button onClick={()=>window.open(import.meta.env.VITE_WIKI_URL || "http://127.0.0.1:3000", "_blank", "noopener,noreferrer")}>База знаний ↗</button>
+        <button className={layer==='networks'?'current':''} onClick={()=>setLayer('networks')}>Реестр сетей</button><button className={layer==='topology'?'current':''} onClick={()=>setLayer('topology')}>Топология сетей</button><button onClick={()=>setEditorOpen(true)}>+ Компонент</button><button onClick={()=>editNetwork()}>+ Сеть</button><button onClick={()=>editFlow()}>+ Поток</button><button onClick={()=>setKisOpen(true)}>Импорт КИС</button><button onClick={()=>window.open(import.meta.env.VITE_WIKI_URL || "http://127.0.0.1:3000", "_blank", "noopener,noreferrer")}>База знаний ↗</button>
       </div>
-      {layer==='topology' ? <Topology systems={objects} items={infra} segments={segments} interfaces={nics} flows={flows}/> : layer==='business' ? <section className="infraPanel"><h2>Бизнес-архитектура</h2><p className="hint">Категория → процесс → поддерживающие системы. Достоверность связей проверяется отдельно.</p>
+      {layer==='networks' ? <section className="infraPanel"><div className="registryHeader"><h2>Реестр сетей</h2><button className="primary" onClick={()=>editNetwork()}>+ Создать сеть</button></div><p className="hint">Сетевые зоны, VLAN и VRF. Привязка интерфейсов к сетям выполняется в редакторе компонентов.</p><div className="infraGrid">{segments.map(n=><article className="infraCard" key={n.id}><span className="tag">{n.kind.toUpperCase()}</span><h3>{n.name}</h3><p>{n.description||'Описание не заполнено'}</p><small>{n.verification}</small><div><button onClick={()=>editNetwork(n)}>Редактировать</button></div></article>)}</div>{!segments.length&&<p>Сети ещё не добавлены.</p>}</section> : layer==='topology' ? <Topology systems={objects} items={infra} segments={segments} interfaces={nics} flows={flows}/> : layer==='business' ? <section className="infraPanel"><h2>Бизнес-архитектура</h2><p className="hint">Категория → процесс → поддерживающие системы. Достоверность связей проверяется отдельно.</p>
       <div className="businessGrid">{categories.map(cat=><article className="businessCategory" key={cat.id}><h3>{cat.name}</h3>{processes.filter(p=>p.category_id===cat.id).map(p=><div className="businessProcess" key={p.id}><strong>{p.name}</strong><p>{p.description}</p><div className="processSystems">{businessLinks.filter(l=>l.process_id===p.id).map(l=><button key={l.id} onClick={()=>{setSelected(l.system_id);setLayer('systems')}}>{objects.find(o=>o.id===l.system_id)?.name||'Система'}</button>)}</div></div>)}</article>)}</div>
       {!categories.length&&<p>Бизнес-процессы пока не добавлены.</p>}</section> : layer==='systems' ? <section className="canvas">
         <ReactFlow nodes={nodes} edges={edges} onNodesChange={onNodesChange} onConnect={onConnect}
@@ -415,7 +458,7 @@ function App() {
             <p>{i.description}</p><p><strong>{String(i.details.environment||"")}</strong> · {String(i.details.security_zone||"Зона неизвестна")} · {String(i.details.vrf||"VRF неизвестен")}</p>
           </article>)}</div>
         </> : <>
-          <h2>Направленные потоки данных</h2>
+          <div className="registryHeader"><h2>Направленные потоки данных</h2><button className="primary" onClick={()=>editFlow()}>+ Создать поток</button></div>
           <p className="hint">Каждый поток – отдельная запись от конкретного компонента-источника до компонента-получателя. Обратный независимый поток создаётся отдельно.</p>
           <div className="miniArchitecture"><ReactFlow
             nodes={infra.map((i,idx)=>({id:i.id,position:{x:(idx%5)*230,y:Math.floor(idx/5)*120},data:{label:<div><strong>{i.name}</strong><small>{i.kind} · {String(i.details.security_zone||'зона не задана')}</small></div>},style:{width:200,border:'1px solid #aab8cb',borderRadius:9,background:'#fff',padding:9}}))}
@@ -426,7 +469,7 @@ function App() {
           <div className="infraGrid">{flows.filter(f=>!viewSystem||scopedIds.has(f.source_id)||scopedIds.has(f.target_id)).map(f=><article className="infraCard" key={f.id} onClick={()=>setSelectedFlow(selectedFlow===f.id?'':f.id)} style={{cursor:"pointer",borderColor:selectedFlow===f.id?"#2563eb":undefined}}>
             <span className="tag">{f.verification}</span><h3>{f.name}</h3>
             <strong>{infra.find(i=>i.id===f.source_id)?.name} → {infra.find(i=>i.id===f.target_id)?.name}</strong>
-            <p>{f.data_description}</p><small>{f.protocol} · порт {f.port||'?'} · {f.security}</small>{selectedFlow===f.id&&<div className="flowDetails"><strong>Защита: {f.security}</strong><p>Достоверность: {f.verification}</p><p>Периодичность: {f.schedule||"Не указана"}</p><p>Зона источника: {segmentName(nics.find(n=>n.item_id===f.source_id)?.zone_id||null)}</p><p>Зона получателя: {segmentName(nics.find(n=>n.item_id===f.target_id)?.zone_id||null)}</p><p>Неизвестно, разрешён ли маршрут на межсетевом экране.</p></div>}
+            <p>{f.data_description}</p><small>{f.protocol} · порт {f.port||'?'} · {f.security}</small>{selectedFlow===f.id&&<div className="flowDetails"><button type="button" onClick={e=>{e.stopPropagation();editFlow(f)}}>Редактировать поток</button><strong>Защита: {f.security}</strong><p>Достоверность: {f.verification}</p><p>Периодичность: {f.schedule||"Не указана"}</p><p>Зона источника: {segmentName(nics.find(n=>n.item_id===f.source_id)?.zone_id||null)}</p><p>Зона получателя: {segmentName(nics.find(n=>n.item_id===f.target_id)?.zone_id||null)}</p><p>Неизвестно, разрешён ли маршрут на межсетевом экране.</p></div>}
           </article>)}</div>
         </>}
       </section>}
@@ -476,6 +519,30 @@ function App() {
       </div>}
       {kisResult&&<p role="status">{kisResult}</p>}
     </div></div>}
+    {registryOpen&&<div className="editorBackdrop" onClick={()=>setRegistryOpen(null)}>
+      <div className="editorDialog registryDialog" role="dialog" aria-modal="true" aria-label={registryOpen==='network'?'Редактор сети':'Редактор потока'} onClick={e=>e.stopPropagation()}>
+        <div className="dialogHead"><h2>{registryOpen==='network'?(networkEditId?'Редактировать сеть':'Создать сеть'):(flowEditId?'Редактировать поток':'Создать поток')}</h2><button onClick={()=>setRegistryOpen(null)}>Закрыть ×</button></div>
+        <form className="detailForm" onSubmit={saveRegistry}>
+          {registryOpen==='network'?<>
+            <label>Название<input required maxLength={250} value={networkName} onChange={e=>setNetworkName(e.target.value)}/></label>
+            <label>Тип сети<select value={networkKind} onChange={e=>setNetworkKind(e.target.value)}><option value="zone">Зона</option><option value="vlan">VLAN</option><option value="vrf">VRF</option></select></label>
+            <label>Описание<textarea value={networkDescription} onChange={e=>setNetworkDescription(e.target.value)}/></label>
+            <label>Достоверность<select value={networkVerification} onChange={e=>setNetworkVerification(e.target.value)}><option value="draft">Черновик</option><option value="assumed">Предположение</option><option value="verified">Подтверждено</option></select></label>
+          </>:<>
+            <label>Источник<select required value={flowSource} onChange={e=>setFlowSource(e.target.value)}><option value="">Выберите компонент</option>{infra.map(i=><option key={i.id} value={i.id}>{i.name}</option>)}</select></label>
+            <label>Получатель<select required value={flowTarget} onChange={e=>setFlowTarget(e.target.value)}><option value="">Выберите компонент</option>{infra.map(i=><option key={i.id} value={i.id}>{i.name}</option>)}</select></label>
+            <label>Название<input required value={flowName} onChange={e=>setFlowName(e.target.value)}/></label>
+            <label>Состав данных<textarea value={flowData} onChange={e=>setFlowData(e.target.value)}/></label>
+            <div className="formPair"><label>Протокол<input value={flowProtocol} onChange={e=>setFlowProtocol(e.target.value)}/></label><label>Порт<input value={flowPort} onChange={e=>setFlowPort(e.target.value)}/></label></div>
+            <label>Защита<select value={flowSecurity} onChange={e=>setFlowSecurity(e.target.value)}>{['unknown','TLS','mTLS','VPN','private_connector','none'].map(v=><option key={v}>{v}</option>)}</select></label>
+            <label>Периодичность<input value={flowSchedule} onChange={e=>setFlowSchedule(e.target.value)} placeholder="По событию, ежедневно…"/></label>
+            <label>Достоверность<select value={flowVerification} onChange={e=>setFlowVerification(e.target.value)}><option value="draft">Черновик</option><option value="assumed">Предположение</option><option value="verified">Подтверждено</option></select></label>
+          </>}
+          {registryError&&<p role="alert" className="kisError">{registryError}</p>}
+          <button className="primary" disabled={registryBusy}>{registryBusy?'Сохранение…':'Сохранить'}</button>
+        </form>
+      </div>
+    </div>}
     {editorOpen&&<div className="editorBackdrop" onClick={()=>setEditorOpen(false)}>
       <div className="editorDialog" onClick={e=>e.stopPropagation()}>
         <div className="dialogHead"><h2>Добавление объектов и потоков</h2><button onClick={()=>setEditorOpen(false)}>Закрыть ×</button></div>

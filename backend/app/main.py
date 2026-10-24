@@ -652,6 +652,29 @@ def add_network(payload: SegmentInput, db: Session = Depends(db_session)):
     return row
 
 
+@app.put("/api/networks/{segment_id}", response_model=SegmentOutput)
+def update_network(segment_id: UUID, payload: SegmentInput, db: Session = Depends(db_session)):
+    segment = db.get(NetworkSegment, segment_id)
+    if segment is None:
+        raise HTTPException(404, "Network not found")
+    duplicate = db.scalars(select(NetworkSegment).where(NetworkSegment.name == payload.name, NetworkSegment.id != segment_id)).first()
+    if duplicate:
+        raise HTTPException(409, "Network name exists")
+    if segment.kind != payload.kind:
+        refs = db.scalars(select(NetworkInterface).where(
+            (NetworkInterface.zone_id == segment_id) |
+            (NetworkInterface.vlan_id == segment_id) |
+            (NetworkInterface.vrf_id == segment_id)
+        )).first()
+        if refs:
+            raise HTTPException(409, "Cannot change kind of network referenced by interfaces")
+    for field, value in payload.model_dump().items():
+        setattr(segment, field, value)
+    db.commit()
+    db.refresh(segment)
+    return segment
+
+
 @app.get("/api/network-interfaces", response_model=list[NICOutput])
 def get_nics(db: Session = Depends(db_session)):
     return db.scalars(select(NetworkInterface)).all()

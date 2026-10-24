@@ -1,0 +1,89 @@
+# Start Architecture Hub on Windows: local SQLite API + Vite + Docker Wiki.js.
+# Usage: powershell -ExecutionPolicy Bypass -File .\start.ps1
+[CmdletBinding()]
+param()
+$ErrorActionPreference = 'Stop'
+$root = $PSScriptRoot
+$runtime = Join-Path $root '.runtime'
+New-Item -Path $runtime -ItemType Directory -Force | Out-Null
+
+function Test-Service([int]$Port) {
+  try {
+    $client = [System.Net.Sockets.TcpClient]::new()
+    $result = $client.BeginConnect('127.0.0.1', $Port, $null, $null)
+    $connected = $result.AsyncWaitHandle.WaitOne(700)
+    if ($connected) { $client.EndConnect($result) }
+    $client.Close()
+    return $connected
+  } catch { return $false }
+}
+function Wait-Service([int]$Port, [int]$Seconds = 30) {
+  for ($i=0; $i -lt $Seconds; $i++) {
+    if (Test-Service $Port) { return $true }
+    Start-Sleep -Seconds 1
+  }
+  return $false
+}
+function Start-LocalProcess([string]$Label, [string]$Exe, [string]$Arguments, [string]$Directory, [int]$Port) {
+  if (Test-Service $Port) {
+    Write-Host "  $Label – уже доступен на порту $Port." -ForegroundColor Green
+    return
+  }
+  $slug = $Label.ToLowerInvariant()
+  $output = Join-Path $runtime "$slug.out.log"
+  $errors = Join-Path $runtime "$slug.err.log"
+  # Redirected streams go to files so no extra console windows are needed.
+  $proc = Start-Process -FilePath $Exe -ArgumentList $Arguments -WorkingDirectory $Directory -RedirectStandardOutput $output -RedirectStandardError $errors -PassThru -WindowStyle Hidden
+  Set-Content -Path (Join-Path $runtime "$slug.pid") -Value $proc.Id
+  if (-not (Wait-Service $Port 35)) {
+    Write-Host "  $Label не запустился. Журнал: $errors" -ForegroundColor Red
+    if (Test-Path $errors) { Get-Content $errors -Tail 18 }
+    throw "Не удалось запустить $Label на порту $Port."
+  }
+  Write-Host "  $Label – запущен на порту $Port." -ForegroundColor Green
+}
+
+Write-Host "Architecture Hub – запуск всех сервисов" -ForegroundColor Cyan
+$python = Join-Path $root 'backend\.venv\Scripts\python.exe'
+if (-not (Test-Path $python)) {
+  throw "Не найден Python venv: $python. Создайте backend\.venv и установите backend\requirements.txt."
+}
+$npm = Get-Command npm.cmd -ErrorAction SilentlyContinue
+if (-not $npm) { throw 'Не найден npm.cmd. Установите Node.js или добавьте его в PATH.' }
+if (-not (Test-Path (Join-Path $root 'frontend\node_modules'))) {
+  throw 'Не установлены frontend-зависимости. Выполните один раз: cd frontend; npm install'
+}
+
+# Wiki.js runs in its existing Docker Compose project and keeps its PostgreSQL volume.
+if (Test-Service 3000) {
+  Write-Host '  Wiki.js – порт 3000 уже доступен.' -ForegroundColor Green
+} else {
+  if (-not (Test-Path (Join-Path $root '.env'))) {
+    Write-Warning 'Wiki.js не запускается: отсутствует .env с WIKI_DB_PASSWORD (нужен существующий пароль, не создавайте новый).'
+  } else {
+    try {
+      docker info --format '{{.ServerVersion}}' 2>&1 | Out-Null
+      if ($LASTEXITCODE -ne 0) { throw 'Docker Desktop не запущен' }
+      Push-Location $root
+      try {
+        docker compose -f compose.wikijs.yml up -d
+        if ($LASTEXITCODE -ne 0) { throw 'Docker Compose вернул ошибку' }
+      } finally { Pop-Location }
+      if (Wait-Service 3000 60) {
+        Write-Host '  Wiki.js – запущен на порту 3000.' -ForegroundColor Green
+      } else { Write-Warning 'Wiki.js не ответил на порту 3000; проверьте docker compose -f compose.wikijs.yml logs wiki.' }
+    } catch {
+      Write-Warning "Wiki.js пока недоступен: $($_.Exception.Message). Проверьте Docker Desktop и .env."
+    }
+  }
+}
+
+Start-LocalProcess -Label 'api' -Exe $python -Arguments '-m uvicorn app.main:app --host 127.0.0.1 --port 8001' -Directory (Join-Path $root 'backend') -Port 8001
+$env:VITE_API_TARGET = 'http://127.0.0.1:8001'
+Start-LocalProcess -Label 'web' -Exe $npm.Source -Arguments 'run dev -- --host 127.0.0.1 --port 5174 --strictPort' -Directory (Join-Path $root 'frontend') -Port 5174
+
+Write-Host ''
+Write-Host 'Интерфейс: http://127.0.0.1:5174/' -ForegroundColor Cyan
+Write-Host 'API:       http://127.0.0.1:8001/api/health'
+Write-Host 'Wiki.js:   http://127.0.0.1:3000/'
+Write-Host "Журналы:   $runtime"

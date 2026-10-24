@@ -101,6 +101,9 @@ function App() {
       setRegistryOpen(null);setNotice('Изменения сохранены')
     }catch(e){setRegistryError(String(e))}finally{setRegistryBusy(false)}
   }
+  const [workspaceQuery,setWorkspaceQuery] = useState('')
+  const [workspaceKind,setWorkspaceKind] = useState('all')
+  const [workspaceVerified,setWorkspaceVerified] = useState('all')
   const [search,setSearch] = useState('')
   const [viewSystem,setViewSystem] = useState('')
   const [zoneMode,setZoneMode] = useState(false)
@@ -171,7 +174,7 @@ function App() {
   }
 
 
-  const visibleObjects = objects.filter(o=>o.name.toLowerCase().includes(search.toLowerCase()))
+  const visibleObjects = objects.filter(o=>o.name.toLowerCase().includes(search.toLowerCase())&&(!workspaceQuery||[o.name,o.description,o.kind].join(' ').toLowerCase().includes(workspaceQuery.toLowerCase()))&&(workspaceKind==='all'||o.kind===workspaceKind))
   const nodes = useMemo<Node[]>(() => visibleObjects.map((o, i) => ({
     id: o.id,
     position: positions[o.id] || { x: (i % 3) * 245 + 30, y: Math.floor(i / 3) * 140 + 40 },
@@ -395,10 +398,13 @@ function App() {
   const detail = objects.find(o => o.id === selected)
   const drill = objects.find(o=>o.id===viewSystem)
   const detailItems = infra.filter(i=>i.system_id===selected)
-  const scopedItems = infra.filter(i=>i.system_id===viewSystem)
+  const scopedItems = infra.filter(i=>i.system_id===viewSystem&&(workspaceKind==='all'||i.kind===workspaceKind)&&(!workspaceQuery||[i.name,i.description,i.kind].join(' ').toLowerCase().includes(workspaceQuery.toLowerCase())))
   const scopedIds = new Set(scopedItems.map(i=>i.id))
   const scopedFlows = flows.filter(f=>scopedIds.has(f.source_id)||scopedIds.has(f.target_id))
-  const segmentName=(id:string|null)=>segments.find(s=>s.id===id)?.name||'Не указано'
+const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspaceKind==='all'||i.kind===workspaceKind)&&(!workspaceQuery||[i.name,i.description,i.kind,objects.find(o=>o.id===i.system_id)?.name||''].join(' ').toLowerCase().includes(workspaceQuery.toLowerCase()))
+  const filterFlow=(f:Flow)=>(!viewSystem||scopedIds.has(f.source_id)||scopedIds.has(f.target_id))&&(workspaceVerified==='all'||f.verification===workspaceVerified)&&(!workspaceQuery||[f.name,f.data_description,f.protocol,infra.find(i=>i.id===f.source_id)?.name||'',infra.find(i=>i.id===f.target_id)?.name||''].join(' ').toLowerCase().includes(workspaceQuery.toLowerCase()))
+  const workspaceFilters=<div className="workspaceFilters"><input aria-label="Фильтр по названию" placeholder="Поиск в разделе…" value={workspaceQuery} onChange={e=>setWorkspaceQuery(e.target.value)}/>{(layer==='systems'||layer==='infrastructure')&&<select aria-label="Фильтр типа объекта" value={workspaceKind} onChange={e=>setWorkspaceKind(e.target.value)}><option value="all">Все типы</option>{Array.from(new Set((layer==='systems'?objects:infra).map(x=>x.kind))).sort().map(k=><option key={k} value={k}>{k}</option>)}</select>}{layer==='flows'&&<select aria-label="Фильтр достоверности" value={workspaceVerified} onChange={e=>setWorkspaceVerified(e.target.value)}><option value="all">Все статусы проверки</option><option value="draft">Черновик</option><option value="assumed">Предположение</option><option value="verified">Подтверждено</option></select>}<button type="button" onClick={()=>{setWorkspaceQuery('');setWorkspaceKind('all');setWorkspaceVerified('all')}} disabled={!workspaceQuery&&workspaceKind==='all'&&workspaceVerified==='all'}>Сбросить</button><small>Фильтр влияет только на отображение</small></div>
+    const segmentName=(id:string|null)=>segments.find(s=>s.id===id)?.name||'Не указано'
   const zones=Array.from(new Set(scopedItems.map(i=>nics.find(n=>n.item_id===i.id)?.zone_id||String(i.details.security_zone||'Зона неизвестна'))))
   const drillNodes:Node[] = scopedItems.map((i,n)=>({id:i.id,position:{x:(n%4)*260,y:Math.floor(n/4)*155},data:{label:<div className="systemNode"><strong>{i.name}</strong><small>{i.kind} · {String(i.details.environment||'Среда не задана')}</small><small>{nics.filter(n=>n.item_id===i.id).map(n=>[segments.find(s=>s.id===n.zone_id)?.name,segments.find(s=>s.id===n.vrf_id)?.name,segments.find(s=>s.id===n.vlan_id)?.name].filter(Boolean).join(' / ')).join('; ')||String(i.details.security_zone||'Сеть не указана')}</small></div>},style:{width:220,padding:12,background:i.details.environment==='TEST'?'#fff5e7':viewMode==='security'?'#eaf5f2':'#ffffff',border:'1px solid #bac8d8',borderRadius:12}}))
   const drillEdges:Edge[]=scopedFlows.filter(f=>scopedIds.has(f.source_id)&&scopedIds.has(f.target_id)).map(f=>({id:f.id,source:f.source_id,target:f.target_id,label:viewMode==='security'?`${f.protocol} : ${f.port} / ${f.security}`:f.name,style:{stroke:f.security==='unknown'?'#d58c40':'#369279'},labelStyle:{fontSize:10}}))
@@ -443,6 +449,7 @@ function App() {
         <button className={layer==='flows'?'current':''} onClick={()=>setLayer('flows')}>Потоки данных</button>
         <button className={layer==='incidents'?'current':''} onClick={()=>setLayer('incidents')}>Инциденты</button><button className={layer==='networks'?'current':''} onClick={()=>setLayer('networks')}>Реестр сетей</button><button className={layer==='topology'?'current':''} onClick={()=>setLayer('topology')}>Топология сетей</button><button onClick={()=>setEditorOpen(true)}>+ Компонент</button><button onClick={()=>editNetwork()}>+ Сеть</button><button onClick={()=>editFlow()}>+ Поток</button><button onClick={()=>setKisOpen(true)}>Импорт КИС</button><button onClick={()=>window.open(import.meta.env.VITE_WIKI_URL || "http://127.0.0.1:3000", "_blank", "noopener,noreferrer")}>База знаний ↗</button>
       </div>
+      {['business','systems','infrastructure','flows'].includes(layer)&&workspaceFilters}
       {layer==='incidents' ? <Incidents request={request} systems={objects} components={infra} networks={segments} flows={flows}/> : layer==='networks' ? <section className="infraPanel networkRegistry">
  <div className="registryHeader"><div><h2>Реестр сетей</h2><p className="hint">Зоны безопасности, VLAN, VRF и их фактические привязки к интерфейсам</p></div><button className="primary" onClick={()=>editNetwork()}>+ Создать сеть</button></div>
  <div className="networkRegistryFilters"><input aria-label="Поиск сети" placeholder="Поиск по имени и описанию" value={networkFilter} onChange={e=>setNetworkFilter(e.target.value)}/><select aria-label="Тип сети" value={networkTypeFilter} onChange={e=>setNetworkTypeFilter(e.target.value)}><option value="all">Все типы</option><option value="zone">Зоны</option><option value="vrf">VRF</option><option value="vlan">VLAN</option></select><span>{segments.filter(n=>(networkTypeFilter==='all'||n.kind===networkTypeFilter)&&[n.name,n.description].join(' ').toLowerCase().includes(networkFilter.toLowerCase())).length} записей</span></div>
@@ -456,7 +463,7 @@ function App() {
       await request(uri,{method:id?'PUT':'POST',body:JSON.stringify(value)})
       setNics(await request<Nic[]>('/api/network-interfaces'))
     }}/> : layer==='business' ? <section className="infraPanel"><h2>Бизнес-архитектура</h2><p className="hint">Категория → процесс → поддерживающие системы. Достоверность связей проверяется отдельно.</p>
-      <div className="businessGrid">{categories.map(cat=><article className="businessCategory" key={cat.id}><h3>{cat.name}</h3>{processes.filter(p=>p.category_id===cat.id).map(p=><div className="businessProcess" key={p.id}><strong>{p.name}</strong><p>{p.description}</p><div className="processSystems">{businessLinks.filter(l=>l.process_id===p.id).map(l=><button key={l.id} onClick={()=>{setSelected(l.system_id);setLayer('systems')}}>{objects.find(o=>o.id===l.system_id)?.name||'Система'}</button>)}</div></div>)}</article>)}</div>
+      <div className="businessGrid">{categories.filter(cat=>!workspaceQuery||cat.name.toLowerCase().includes(workspaceQuery.toLowerCase())||processes.some(p=>p.category_id===cat.id&&[p.name,p.description].join(' ').toLowerCase().includes(workspaceQuery.toLowerCase()))).map(cat=><article className="businessCategory" key={cat.id}><h3>{cat.name}</h3>{processes.filter(p=>p.category_id===cat.id&&(!workspaceQuery||[p.name,p.description,cat.name].join(' ').toLowerCase().includes(workspaceQuery.toLowerCase()))).map(p=><div className="businessProcess" key={p.id}><strong>{p.name}</strong><p>{p.description}</p><div className="processSystems">{businessLinks.filter(l=>l.process_id===p.id).map(l=><button key={l.id} onClick={()=>{setSelected(l.system_id);setLayer('systems')}}>{objects.find(o=>o.id===l.system_id)?.name||'Система'}</button>)}</div></div>)}</article>)}</div>
       {!categories.length&&<p>Бизнес-процессы пока не добавлены.</p>}</section> : layer==='systems' ? <section className="canvas">
         <ReactFlow nodes={nodes} edges={edges} onNodesChange={onNodesChange} onConnect={onConnect}
           onNodeClick={(_event: React.MouseEvent, node: Node) => {setSelected(node.id);setPanelTab("overview")}} onNodeDoubleClick={(_event: React.MouseEvent, node: Node) => {setViewSystem(node.id);setSelected(node.id);setLayer("infrastructure")}} onPaneClick={() => setSelected('')} fitView>
@@ -471,7 +478,7 @@ function App() {
           {drill && <div className="miniArchitecture" style={{height:520}}><ReactFlow key={drill.id+viewMode} nodes={drillNodes} edges={drillEdges} fitView nodesConnectable={false} nodesDraggable={false}><Background gap={20}/><Controls/></ReactFlow></div>}
           {viewMode==='security'&&<div className="networkZones">{zones.map(z=><article key={z} className="zoneCard"><h3>{segments.find(s=>s.id===z)?.name||z}</h3>{scopedItems.filter(i=>(nics.find(n=>n.item_id===i.id)?.zone_id||String(i.details.security_zone||'Зона неизвестна'))===z).map(i=><button key={i.id} onClick={()=>setSelected(i.system_id)}><strong>{i.name}</strong><small>{nics.filter(n=>n.item_id===i.id).map(n=>n.name+' · '+segmentName(n.vrf_id)+' · '+segmentName(n.vlan_id)).join('; ')||'Сетевой интерфейс не задан'}</small></button>)}</article>)}</div>}
           {viewMode==='security'&&<div className="networkLegend">Цвет стрелки: зелёный – указан тип защиты; оранжевый – неизвестно. Наличие TLS не подтверждает защиту всего маршрута. Неподтверждённые параметры требуют проверки.</div>}
-          <div className="infraGrid">{infra.filter(i=>!viewSystem||i.system_id===viewSystem).map(i=><article className="infraCard" key={i.id}>
+          <div className="infraGrid">{infra.filter(filterInfra).map(i=><article className="infraCard" key={i.id}>
             <span className="tag">{i.kind}</span><h3>{i.name}</h3>
             <p>{objects.find(o=>o.id===i.system_id)?.name}</p>
             {i.parent_id&&<small>Входит в: {infra.find(x=>x.id===i.parent_id)?.name||'Неизвестно'}</small>}
@@ -486,7 +493,7 @@ function App() {
             fitView nodesDraggable={false} nodesConnectable={false} elementsSelectable={true}>
             <Background gap={20}/><Controls/>
           </ReactFlow></div>
-          <div className="infraGrid">{flows.filter(f=>!viewSystem||scopedIds.has(f.source_id)||scopedIds.has(f.target_id)).map(f=><article className="infraCard" key={f.id} onClick={()=>setSelectedFlow(selectedFlow===f.id?'':f.id)} style={{cursor:"pointer",borderColor:selectedFlow===f.id?"#2563eb":undefined}}>
+          <div className="infraGrid">{flows.filter(filterFlow).map(f=><article className="infraCard" key={f.id} onClick={()=>setSelectedFlow(selectedFlow===f.id?'':f.id)} style={{cursor:"pointer",borderColor:selectedFlow===f.id?"#2563eb":undefined}}>
             <span className="tag">{f.verification}</span><h3>{f.name}</h3>
             <strong>{infra.find(i=>i.id===f.source_id)?.name} → {infra.find(i=>i.id===f.target_id)?.name}</strong>
             <p>{f.data_description}</p><small>{f.protocol} · порт {f.port||'?'} · {f.security}</small>{selectedFlow===f.id&&<div className="flowDetails"><button type="button" onClick={e=>{e.stopPropagation();editFlow(f)}}>Редактировать поток</button><strong>Защита: {f.security}</strong><p>Достоверность: {f.verification}</p><p>Периодичность: {f.schedule||"Не указана"}</p><p>Зона источника: {segmentName(nics.find(n=>n.item_id===f.source_id)?.zone_id||null)}</p><p>Зона получателя: {segmentName(nics.find(n=>n.item_id===f.target_id)?.zone_id||null)}</p><p>Неизвестно, разрешён ли маршрут на межсетевом экране.</p></div>}

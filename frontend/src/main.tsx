@@ -102,7 +102,7 @@ function App() {
   const [zoneMode,setZoneMode] = useState(false)
   const [infra, setInfra] = useState<Infra[]>([])
   const [flows, setFlows] = useState<Flow[]>([])
-  const [layer, setLayer] = useState<'business'|'systems'|'infrastructure'|'flows'|'topology'>('systems')
+  const [layer, setLayer] = useState<'business'|'systems'|'infrastructure'|'flows'|'topology'|'networks'>('systems')
   const [infraName,setInfraName] = useState('')
   const [infraKind,setInfraKind] = useState('vm')
   const [infraParent,setInfraParent] = useState('')

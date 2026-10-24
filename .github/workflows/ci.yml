@@ -105,3 +105,18 @@ jobs:
             /tmp/arch-api.log
             /tmp/arch-vite.log
           if-no-files-found: ignore
+
+  powershell:
+    name: Windows PowerShell 5.1 syntax
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate launcher scripts without executing them
+        shell: powershell
+        run: |
+          foreach ($path in @('.\\start.ps1', '.\\stop.ps1')) {
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $path), [ref]$null, [ref]$errors) | Out-Null
+            if ($errors) { $errors | ForEach-Object { Write-Error $_.Message }; exit 1 }
+            Write-Host "$path : valid"
+          }

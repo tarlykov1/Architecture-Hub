@@ -57,7 +57,10 @@ def update_view(view_id:UUID,payload:ViewInput,request:Request,db:Session=Depend
     row.updated_at=datetime.now(timezone.utc)
     db.commit();db.refresh(row);return dto(row)
 @router.delete("/{view_id}",status_code=204)
-def delete_view(view_id:UUID,db:Session=Depends(db_session)):
+def delete_view(view_id:UUID,request:Request,db:Session=Depends(db_session)):
     row=db.get(SharedView,view_id)
     if not row:raise HTTPException(404,"View not found")
+    role=getattr(request.state,"role",None)
+    if role and ROLE_ACCESS[role].get(row.layer) not in ("read","write"):
+        raise HTTPException(403,"No access to requested architecture layer")
     db.delete(row);db.commit()

@@ -39,4 +39,5 @@ def test_viewer_cannot_discover_hidden_infrastructure_views():
         visible=c.get("/api/views",headers=VIEWER)
         assert visible.status_code==200
         assert not any(x["id"]==uid for x in visible.json())
+        assert c.delete("/api/views/"+uid,headers=VIEWER).status_code==403
         assert c.delete("/api/views/"+uid,headers=ADMIN).status_code==204

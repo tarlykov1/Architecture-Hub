@@ -18,7 +18,7 @@ from starlette.responses import JSONResponse
 # 'read' and 'write' map to layers; no access is the default.
 ROLE_ACCESS = {
     "admin": {"business": "write", "systems": "write", "infrastructure": "write", "networks": "write", "flows": "write", "diagrams": "write", "import": "write", "knowledge": "write", "incidents": "write", "views": "write"},
-    "architect": {"business": "write", "systems": "write", "infrastructure": "write", "networks": "read", "flows": "write", "diagrams": "write", "import": "write", "knowledge": "write", "views": "write"},
+    "architect": {"business": "write", "systems": "write", "infrastructure": "write", "networks": "read", "flows": "write", "diagrams": "write", "import": "write", "knowledge": "write", "views": "write", "incidents": "write"},
     "engineer": {"systems": "read", "infrastructure": "write", "networks": "write", "flows": "read", "diagrams": "read", "incidents": "read", "views": "read"},
     "security": {"systems": "read", "infrastructure": "read", "networks": "write", "flows": "read", "diagrams": "read", "views": "read"},
     "business_owner": {"business": "write", "systems": "read", "diagrams": "read", "views": "read"},

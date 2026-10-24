@@ -98,6 +98,13 @@ if (Test-HttpService 'wiki' 3000) {
   }
 }
 
+# Create a consistent snapshot of existing local SQLite before backend startup.
+$dbFile = Join-Path $root 'backend\architecture_hub.db'
+if (Test-Path $dbFile) {
+  Write-Host '  Backing up local SQLite data...'
+  & $python (Join-Path $root 'scripts\backup_db.py')
+  if ($LASTEXITCODE -ne 0) { throw 'SQLite backup failed; refusing to start API. See error above.' }
+}
 Start-LocalProcess -Label 'api' -Exe $python -Arguments '-m uvicorn app.main:app --host 127.0.0.1 --port 8001' -Directory (Join-Path $root 'backend') -Port 8001
 $env:VITE_API_TARGET = 'http://127.0.0.1:8001'
 Start-LocalProcess -Label 'web' -Exe $npm.Source -Arguments 'run dev -- --host 127.0.0.1 --port 5174 --strictPort' -Directory (Join-Path $root 'frontend') -Port 5174

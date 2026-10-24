@@ -26,7 +26,8 @@ function Wait-Service([int]$Port, [int]$Seconds = 30) {
 }
 function Start-LocalProcess([string]$Label, [string]$Exe, [string]$Arguments, [string]$Directory, [int]$Port) {
   if (Test-Service $Port) {
-    Write-Host "  $Label ready on port $Port" -ForegroundColor Green
+    Write-Host "  $Label port $Port is already in use; existing process is NOT restarted." -ForegroundColor Yellow
+    Write-Host "  Run .\\stop.ps1 before pulling updates. If it is untracked, stop the old process manually." -ForegroundColor Yellow
     return
   }
   $slug = $Label.ToLowerInvariant()

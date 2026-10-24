@@ -113,6 +113,9 @@ function App() {
     }catch(e){setRegistryError(String(e))}finally{setRegistryBusy(false)}
   }
   const [savedViews,setSavedViews]=useState<SavedWorkspaceView[]>(readSavedWorkspaceViews)
+  const [teamViews,setTeamViews]=useState<SavedWorkspaceView[]>([])
+  const [teamViewSelection,setTeamViewSelection]=useState('')
+  const [teamViewError,setTeamViewError]=useState('')
   const [viewSelection,setViewSelection]=useState('')
   const [workspaceQuery,setWorkspaceQuery] = useState('')
   const [workspaceKind,setWorkspaceKind] = useState('all')
@@ -416,6 +419,31 @@ function App() {
   const scopedFlows = flows.filter(f=>scopedIds.has(f.source_id)||scopedIds.has(f.target_id))
 const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspaceKind==='all'||i.kind===workspaceKind)&&(!workspaceQuery||[i.name,i.description,i.kind,objects.find(o=>o.id===i.system_id)?.name||''].join(' ').toLowerCase().includes(workspaceQuery.toLowerCase()))
   const filterFlow=(f:Flow)=>(!viewSystem||scopedIds.has(f.source_id)||scopedIds.has(f.target_id))&&(workspaceVerified==='all'||f.verification===workspaceVerified)&&(!workspaceQuery||[f.name,f.data_description,f.protocol,infra.find(i=>i.id===f.source_id)?.name||'',infra.find(i=>i.id===f.target_id)?.name||''].join(' ').toLowerCase().includes(workspaceQuery.toLowerCase()))
+  useEffect(()=>{request<SavedWorkspaceView[]>('/api/views').then(setTeamViews).catch(e=>setTeamViewError('Общие виды недоступны: '+String(e)))},[])
+  async function saveTeamView(){
+    if(!workspaceLayer)return
+    const name=window.prompt('Название общего представления команды')
+    if(!name?.trim())return
+    setTeamViewError('')
+    try{
+      const saved=await request<SavedWorkspaceView>('/api/views',{method:'POST',body:JSON.stringify({
+        name:name.trim(),layer:workspaceLayer,query:workspaceQuery,kind:workspaceKind,verification:workspaceVerified
+      })})
+      setTeamViews(await request<SavedWorkspaceView[]>('/api/views'));setTeamViewSelection(saved.id)
+      setNotice('Общее представление сохранено')
+    }catch(e){setTeamViewError(String(e))}
+  }
+  function applyTeamView(id:string){
+    setTeamViewSelection(id)
+    const v=teamViews.find(v=>v.id===id&&v.layer===workspaceLayer)
+    if(v){setWorkspaceQuery(v.query);setWorkspaceKind(v.kind);setWorkspaceVerified(v.verification)}
+  }
+  async function removeTeamView(){
+    if(!teamViews.some(v=>v.id===teamViewSelection&&v.layer===workspaceLayer))return
+    setTeamViewError('')
+    try{await request('/api/views/'+teamViewSelection,{method:'DELETE'});setTeamViews(await request<SavedWorkspaceView[]>('/api/views'));setTeamViewSelection('')}
+    catch(e){setTeamViewError(String(e))}
+  }
   const workspaceLayer=layer==='business'||layer==='systems'||layer==='infrastructure'||layer==='flows'?layer:null
   const activeSavedViews=savedViews.filter(v=>v.layer===workspaceLayer)
   function saveCurrentView(){
@@ -436,7 +464,7 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
     const next=savedViews.filter(v=>v.id!==viewSelection)
     try{localStorage.setItem(VIEWS_STORAGE_KEY,JSON.stringify(next));setSavedViews(next);setViewSelection('')}catch{setError('Не удалось удалить представление')}
   }
-  const workspaceFilters=<div className="workspaceFilters"><input aria-label="Фильтр по названию" placeholder="Поиск в разделе…" value={workspaceQuery} onChange={e=>setWorkspaceQuery(e.target.value)}/>{(layer==='systems'||layer==='infrastructure')&&<select aria-label="Фильтр типа объекта" value={workspaceKind} onChange={e=>setWorkspaceKind(e.target.value)}><option value="all">Все типы</option>{Array.from(new Set((layer==='systems'?objects:infra).map(x=>x.kind))).sort().map(k=><option key={k} value={k}>{k}</option>)}</select>}{layer==='flows'&&<select aria-label="Фильтр достоверности" value={workspaceVerified} onChange={e=>setWorkspaceVerified(e.target.value)}><option value="all">Все статусы проверки</option><option value="draft">Черновик</option><option value="assumed">Предположение</option><option value="verified">Подтверждено</option></select>}<button type="button" onClick={()=>{setWorkspaceQuery('');setWorkspaceKind('all');setWorkspaceVerified('all')}} disabled={!workspaceQuery&&workspaceKind==='all'&&workspaceVerified==='all'}>Сбросить</button><select aria-label="Сохранённое представление" value={activeSavedViews.some(v=>v.id===viewSelection)?viewSelection:''} onChange={e=>selectSavedView(e.target.value)}><option value="">Представления…</option>{activeSavedViews.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}</select><button type="button" onClick={saveCurrentView} title="Сохранить текущие фильтры">Сохранить вид</button><button type="button" onClick={deleteSavedView} disabled={!activeSavedViews.some(v=>v.id===viewSelection)} title="Удалить выбранное представление">Удалить вид</button><small>Фильтры не изменяют данные · виды хранятся в этом браузере</small></div>
+  const workspaceFilters=<div className="workspaceFilters"><input aria-label="Фильтр по названию" placeholder="Поиск в разделе…" value={workspaceQuery} onChange={e=>setWorkspaceQuery(e.target.value)}/>{(layer==='systems'||layer==='infrastructure')&&<select aria-label="Фильтр типа объекта" value={workspaceKind} onChange={e=>setWorkspaceKind(e.target.value)}><option value="all">Все типы</option>{Array.from(new Set((layer==='systems'?objects:infra).map(x=>x.kind))).sort().map(k=><option key={k} value={k}>{k}</option>)}</select>}{layer==='flows'&&<select aria-label="Фильтр достоверности" value={workspaceVerified} onChange={e=>setWorkspaceVerified(e.target.value)}><option value="all">Все статусы проверки</option><option value="draft">Черновик</option><option value="assumed">Предположение</option><option value="verified">Подтверждено</option></select>}<button type="button" onClick={()=>{setWorkspaceQuery('');setWorkspaceKind('all');setWorkspaceVerified('all')}} disabled={!workspaceQuery&&workspaceKind==='all'&&workspaceVerified==='all'}>Сбросить</button><select aria-label="Сохранённое представление" value={activeSavedViews.some(v=>v.id===viewSelection)?viewSelection:''} onChange={e=>selectSavedView(e.target.value)}><option value="">Представления…</option>{activeSavedViews.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}</select><button type="button" onClick={saveCurrentView} title="Сохранить текущие фильтры">Сохранить вид</button><button type="button" onClick={deleteSavedView} disabled={!activeSavedViews.some(v=>v.id===viewSelection)} title="Удалить выбранное представление">Удалить вид</button><select aria-label="Командное представление" value={teamViews.some(v=>v.id===teamViewSelection&&v.layer===workspaceLayer)?teamViewSelection:''} onChange={e=>applyTeamView(e.target.value)}><option value="">Общие виды команды…</option>{teamViews.filter(v=>v.layer===workspaceLayer).map(v=><option key={v.id} value={v.id}>{v.name}</option>)}</select><button type="button" onClick={saveTeamView}>Сохранить для команды</button><button type="button" disabled={!teamViews.some(v=>v.id===teamViewSelection&&v.layer===workspaceLayer)} onClick={removeTeamView}>Удалить общий вид</button>{teamViewError&&<small role="status">{teamViewError}</small>}<small>Фильтры не изменяют данные · личные виды хранятся в браузере</small></div>
     const segmentName=(id:string|null)=>segments.find(s=>s.id===id)?.name||'Не указано'
   const zones=Array.from(new Set(scopedItems.map(i=>nics.find(n=>n.item_id===i.id)?.zone_id||String(i.details.security_zone||'Зона неизвестна'))))
   const drillNodes:Node[] = scopedItems.map((i,n)=>({id:i.id,position:{x:(n%4)*260,y:Math.floor(n/4)*155},data:{label:<div className="systemNode"><strong>{i.name}</strong><small>{i.kind} · {String(i.details.environment||'Среда не задана')}</small><small>{nics.filter(n=>n.item_id===i.id).map(n=>[segments.find(s=>s.id===n.zone_id)?.name,segments.find(s=>s.id===n.vrf_id)?.name,segments.find(s=>s.id===n.vlan_id)?.name].filter(Boolean).join(' / ')).join('; ')||String(i.details.security_zone||'Сеть не указана')}</small></div>},style:{width:220,padding:12,background:i.details.environment==='TEST'?'#fff5e7':viewMode==='security'?'#eaf5f2':'#ffffff',border:'1px solid #bac8d8',borderRadius:12}}))

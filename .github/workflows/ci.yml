@@ -26,7 +26,11 @@ jobs:
           PYTHONPATH: backend
           DATABASE_URL: sqlite:///${{ runner.temp }}/architecture_ci.db
           ARCH_HUB_ACCESS_KEYS: '{"ci-admin-token-123456789012345678901234":"admin","ci-viewer-token-123456789012345678901234":"viewer"}'
-        run: python -m pytest -q backend/tests
+        run: |
+          cd backend
+          python -m alembic upgrade head
+          cd ..
+          python -m pytest -q backend/tests
   frontend:
     name: Frontend build (Node 22)
     runs-on: ubuntu-latest

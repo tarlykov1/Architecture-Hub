@@ -821,3 +821,6 @@ app.include_router(knowledge_router)
 
 from .incidents import router as incident_router
 app.include_router(incident_router)
+
+from .views import router as views_router
+app.include_router(views_router)

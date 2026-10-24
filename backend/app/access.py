@@ -17,10 +17,10 @@ from starlette.responses import JSONResponse
 # Permissions are enforced at API level, not by hiding frontend tabs.
 # 'read' and 'write' map to layers; no access is the default.
 ROLE_ACCESS = {
-    "admin": {"business": "write", "systems": "write", "infrastructure": "write", "networks": "write", "flows": "write", "diagrams": "write", "import": "write", "knowledge": "write", "incidents": "write"},
-    "architect": {"business": "write", "systems": "write", "infrastructure": "write", "networks": "read", "flows": "write", "diagrams": "write", "import": "write", "knowledge": "write"},
-    "engineer": {"systems": "read", "infrastructure": "write", "networks": "write", "flows": "read", "diagrams": "read", "incidents": "read"},
-    "security": {"systems": "read", "infrastructure": "read", "networks": "write", "flows": "read", "diagrams": "read"},
+    "admin": {"business": "write", "systems": "write", "infrastructure": "write", "networks": "write", "flows": "write", "diagrams": "write", "import": "write", "knowledge": "write", "incidents": "write", "views": "write"},
+    "architect": {"business": "write", "systems": "write", "infrastructure": "write", "networks": "read", "flows": "write", "diagrams": "write", "import": "write", "knowledge": "write", "views": "write"},
+    "engineer": {"systems": "read", "infrastructure": "write", "networks": "write", "flows": "read", "diagrams": "read", "incidents": "read", "views": "read"},
+    "security": {"systems": "read", "infrastructure": "read", "networks": "write", "flows": "read", "diagrams": "read", "views": "read"},
     "business_owner": {"business": "write", "systems": "read", "diagrams": "read"},
     "viewer": {"systems": "read", "business": "read", "diagrams": "read", "incidents": "read"},
 }
@@ -28,6 +28,8 @@ ROLE_ACCESS = {
 def classify(path: str) -> str | None:
     if path.startswith("/api/demo/"):
         return "demo"
+    if path.startswith("/api/views"):
+        return "views"
     if path.startswith("/api/incidents"):
         return "incidents"
     if path.startswith("/api/knowledge/"):

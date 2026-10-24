@@ -56,3 +56,52 @@ jobs:
         env:
           WIKI_DB_PASSWORD: ci-placeholder-do-not-use
         run: docker compose -f compose.wikijs.yml config --quiet
+
+  browser:
+    name: Browser smoke tests (Chromium)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package.json
+      - name: Install backend and frontend
+        run: |
+          python -m pip install -r backend/requirements.txt
+          cd frontend
+          npm install --no-audit --no-fund
+          npm install --no-save --no-audit --no-fund @playwright/test
+          npx playwright install --with-deps chromium
+      - name: Start isolated services
+        env:
+          DATABASE_URL: sqlite:///${{ runner.temp }}/browser_ci.db
+          PYTHONPATH: backend
+          VITE_API_TARGET: http://127.0.0.1:8001
+        run: |
+          python -m uvicorn app.main:app --host 127.0.0.1 --port 8001 > /tmp/arch-api.log 2>&1 &
+          cd frontend
+          npm run dev -- --host 127.0.0.1 --port 5174 --strictPort > /tmp/arch-vite.log 2>&1 &
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8001/api/health >/dev/null && curl -fsS http://127.0.0.1:5174/ >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat /tmp/arch-api.log /tmp/arch-vite.log
+          exit 1
+      - name: Run browser tests
+        working-directory: frontend
+        run: npx playwright test
+      - name: Upload browser diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-test-artifacts
+          path: |
+            frontend/test-results/
+            /tmp/arch-api.log
+            /tmp/arch-vite.log
+          if-no-files-found: ignore

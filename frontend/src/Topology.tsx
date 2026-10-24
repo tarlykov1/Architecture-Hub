@@ -105,7 +105,23 @@ export default function Topology({systems,items,segments,interfaces,flows,saveIn
   <small>Нажмите на компонент, чтобы увидеть его потоки. Переключатель «Все потоки» показывает общую картину. Зелёная стрелка – подтверждённый поток; оранжевая – не проверен. Отсутствие стрелки не означает отсутствия сетевого доступа. Схема отображает описанные логические связи, не трассировку физического маршрута.</small>
   {(item||flow)&&<aside style={{position:'absolute',right:20,top:145,zIndex:5,background:'#fff',border:'1px solid #c3d1e5',boxShadow:'0 8px 26px #0002',padding:16,borderRadius:12,width:340,maxHeight:'65vh',overflow:'auto'}}>
    <button style={{float:'right'}} onClick={()=>{setSelected('');setFlowId('')}} aria-label="Закрыть">×</button>
-   {item&&<><h3>{item.name}</h3><p>Система: {systemById.get(item.system_id)?.name||unknown}</p><p>Контур: {String(item.details.environment||unknown)}</p><h4>Сетевые интерфейсы</h4><button type="button" onClick={()=>editNic(item)}>+ Добавить интерфейс</button>{(nicsByItem.get(item.id)||[]).map(n=><p key={n.id}><button type="button" onClick={()=>editNic(item,n)} aria-label={"Редактировать "+n.name}>Изменить сеть</button> <b>{n.name}</b> · IP: {n.ip_address||unknown}<br/>VRF: {name(n.vrf_id)} · VLAN: {name(n.vlan_id)} · Зона: {name(n.zone_id)}</p>)}{!(nicsByItem.get(item.id)||[]).length&&<p>Сетевые интерфейсы не описаны.</p>}<h4>Потоки</h4>{flows.filter(f=>f.source_id===item.id||f.target_id===item.id).map(f=><button key={f.id} onClick={()=>{setFlowId(f.id);setSelected('')}} style={{display:'block',marginBottom:6,textAlign:'left'}}>{f.source_id===item.id?'→':'←'} {f.name||f.protocol||'Поток'}</button>)}{!flows.some(f=>f.source_id===item.id||f.target_id===item.id)&&<p>Потоки не описаны.</p>}</>}
+   {item&&<><h3>{item.name}</h3><p>Система: {systemById.get(item.system_id)?.name||unknown}</p><p>Контур: {String(item.details.environment||unknown)}</p><h4>Сетевые интерфейсы</h4><button type="button" onClick={()=>editNic(item)}>+ Добавить интерфейс</button>{(nicsByItem.get(item.id)||[]).map(n=><p key={n.id}><button type="button" onClick={()=>editNic(item,n)} aria-label={"Редактировать "+n.name}>Изменить сеть</button> <b>{n.name}</b> · IP: {n.ip_address||unknown}<br/>VRF: {name(n.vrf_id)} · VLAN: {name(n.vlan_id)} · Зона: {name(n.zone_id)}</p>)}{!(nicsByItem.get(item.id)||[]).length&&<p>Сетевые интерфейсы не описаны.</p>}<h4>Связи и влияние</h4>
+   <p style={{fontSize:12,color:'#65758a'}}>Потоки описывают известные логические зависимости; фактическое влияние отказа требует подтверждения.</p>
+   <div className="topologyImpactStats">
+    <span>Исходящие: <b>{flows.filter(f=>f.source_id===item.id).length}</b></span>
+    <span>Входящие: <b>{flows.filter(f=>f.target_id===item.id).length}</b></span>
+    <span>Интерфейсы: <b>{(nicsByItem.get(item.id)||[]).length}</b></span>
+   </div>
+   <h4>Связанные компоненты</h4>
+   {flows.filter(f=>f.source_id===item.id||f.target_id===item.id).map(f=>{
+     const outgoing=f.source_id===item.id
+     const peer=itemById.get(outgoing?f.target_id:f.source_id)
+     return <button key={f.id} className="topologyDependency" onClick={()=>{setSelected(peer?.id||'');setFlowId('')}} title={f.name}>
+      <span>{outgoing?'→':'←'} {peer?.name||'Неизвестный компонент'}</span>
+      <small>{systemById.get(peer?.system_id||'')?.name||'Система не указана'} · {f.protocol||'Протокол не задан'} {f.port||''}</small>
+     </button>
+   })}
+   <h4>Потоки</h4>{flows.filter(f=>f.source_id===item.id||f.target_id===item.id).map(f=><button key={f.id} onClick={()=>{setFlowId(f.id);setSelected('')}} style={{display:'block',marginBottom:6,textAlign:'left'}}>{f.source_id===item.id?'→':'←'} {f.name||f.protocol||'Поток'}</button>)}{!flows.some(f=>f.source_id===item.id||f.target_id===item.id)&&<p>Потоки не описаны.</p>}</>}
    {flow&&<><h3>{flow.name||'Поток данных'}</h3><p>{itemById.get(flow.source_id)?.name||unknown} → {itemById.get(flow.target_id)?.name||unknown}</p><p>Данные: {flow.data_description||unknown}</p><p>Протокол: {flow.protocol||unknown}; порт: {flow.port||unknown}</p><p>Защита: {flow.security||unknown}</p><p>Проверка: {flow.verification||unknown}</p><p>Расписание: {flow.schedule||unknown}</p></>}
   </aside>}
   {nicDraft&&<div className="topologyNicBackdrop" onClick={()=>setNicDraft(null)}>

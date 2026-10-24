@@ -21,7 +21,7 @@ ROLE_ACCESS = {
     "architect": {"business": "write", "systems": "write", "infrastructure": "write", "networks": "read", "flows": "write", "diagrams": "write", "import": "write", "knowledge": "write", "views": "write"},
     "engineer": {"systems": "read", "infrastructure": "write", "networks": "write", "flows": "read", "diagrams": "read", "incidents": "read", "views": "read"},
     "security": {"systems": "read", "infrastructure": "read", "networks": "write", "flows": "read", "diagrams": "read", "views": "read"},
-    "business_owner": {"business": "write", "systems": "read", "diagrams": "read"},
+    "business_owner": {"business": "write", "systems": "read", "diagrams": "read", "views": "read"},
     "viewer": {"systems": "read", "business": "read", "diagrams": "read", "incidents": "read", "views": "read"},
 }
 

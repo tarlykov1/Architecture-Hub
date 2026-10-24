@@ -29,3 +29,14 @@ def test_team_views_permissions_and_crud():
 def test_team_view_invalid_layer():
     with TestClient(app) as c:
         assert c.post("/api/views",headers=ADMIN,json={"layer":"admin","name":"not allowed"}).status_code==422
+
+def test_viewer_cannot_discover_hidden_infrastructure_views():
+    with TestClient(app) as c:
+        value={"layer":"infrastructure","name":"Hidden-"+uuid4().hex[:8],"query":"sensitive-internal"}
+        result=c.post("/api/views",headers=ADMIN,json=value)
+        assert result.status_code==201,result.text
+        uid=result.json()["id"]
+        visible=c.get("/api/views",headers=VIEWER)
+        assert visible.status_code==200
+        assert not any(x["id"]==uid for x in visible.json())
+        assert c.delete("/api/views/"+uid,headers=ADMIN).status_code==204

@@ -2,11 +2,12 @@
 from __future__ import annotations
 from uuid import UUID,uuid4
 from datetime import datetime,timezone
-from fastapi import APIRouter,Depends,HTTPException
+from fastapi import APIRouter,Depends,HTTPException,Request
 from pydantic import BaseModel,Field
 from sqlalchemy import String,Uuid,DateTime,select,UniqueConstraint
 from sqlalchemy.orm import Mapped,mapped_column,Session
 from .main import Base,db_session
+from .access import ROLE_ACCESS
 router=APIRouter(prefix="/api/views",tags=["views"])
 class SharedView(Base):
     __tablename__="shared_views"
@@ -28,17 +29,28 @@ def dto(row:SharedView):
     return {"id":str(row.id),"layer":row.layer,"name":row.name,"query":row.query,
       "kind":row.kind,"verification":row.verification}
 @router.get("")
-def list_views(db:Session=Depends(db_session)):
-    return [dto(row) for row in db.scalars(select(SharedView).order_by(SharedView.layer,SharedView.name)).all()]
+def list_views(request:Request,db:Session=Depends(db_session)):
+    role=getattr(request.state,"role",None)
+    grants=ROLE_ACCESS.get(role,{}) if role else None
+    rows=db.scalars(select(SharedView).order_by(SharedView.layer,SharedView.name)).all()
+    return [dto(row) for row in rows if grants is None or grants.get(row.layer) in ("read","write")]
 @router.post("",status_code=201)
-def add_view(payload:ViewInput,db:Session=Depends(db_session)):
+def add_view(payload:ViewInput,request:Request,db:Session=Depends(db_session)):
+    role=getattr(request.state,"role",None)
+    if role and ROLE_ACCESS[role].get(payload.layer) not in ("read","write"):
+        raise HTTPException(403,"No access to requested architecture layer")
     if db.scalar(select(SharedView).where(SharedView.layer==payload.layer,SharedView.name==payload.name)):
         raise HTTPException(409,"View name already exists in this section")
     row=SharedView(**payload.model_dump());db.add(row);db.commit();db.refresh(row);return dto(row)
 @router.put("/{view_id}")
-def update_view(view_id:UUID,payload:ViewInput,db:Session=Depends(db_session)):
+def update_view(view_id:UUID,payload:ViewInput,request:Request,db:Session=Depends(db_session)):
+    role=getattr(request.state,"role",None)
+    if role and ROLE_ACCESS[role].get(payload.layer) not in ("read","write"):
+        raise HTTPException(403,"No access to requested architecture layer")
     row=db.get(SharedView,view_id)
     if not row:raise HTTPException(404,"View not found")
+    if role and ROLE_ACCESS[role].get(row.layer) not in ("read","write"):
+        raise HTTPException(403,"No access to existing architecture layer")
     conflict=db.scalar(select(SharedView).where(SharedView.layer==payload.layer,SharedView.name==payload.name,SharedView.id!=view_id))
     if conflict:raise HTTPException(409,"View name already exists in this section")
     for key,value in payload.model_dump().items():setattr(row,key,value)

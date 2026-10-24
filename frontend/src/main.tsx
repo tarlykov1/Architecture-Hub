@@ -4,6 +4,7 @@ import { ReactFlow, Background, Controls, applyNodeChanges, type Connection, typ
 import '@xyflow/react/dist/style.css'
 import './style.css'
 import Topology from './Topology'
+import Incidents from './Incidents'
 
 type Obj = { id: string; kind: string; name: string; description: string; status: string; attributes: Record<string, unknown> }
 type Rel = { id: string; source_id: string; target_id: string; kind: string; description: string }
@@ -51,7 +52,7 @@ function App() {
   const [kbQuery,setKbQuery]=useState('')
   const [kbLoading,setKbLoading]=useState(false)
   const [kbMessage,setKbMessage]=useState('')
-  const [panelTab,setPanelTab] = useState<'overview'|'components'|'flows'|'knowledge'|'edit'>('overview')
+  const [panelTab,setPanelTab] = useState<'overview'|'components'|'flows'|'knowledge'|'incidents'|'edit'>('overview')
   const [inspectorExpanded,setInspectorExpanded] = useState(false)
   const [editorOpen,setEditorOpen] = useState(false)
   const [registryOpen,setRegistryOpen] = useState<'network'|'flow'|null>(null)
@@ -102,7 +103,7 @@ function App() {
   const [zoneMode,setZoneMode] = useState(false)
   const [infra, setInfra] = useState<Infra[]>([])
   const [flows, setFlows] = useState<Flow[]>([])
-  const [layer, setLayer] = useState<'business'|'systems'|'infrastructure'|'flows'|'topology'|'networks'>('systems')
+  const [layer, setLayer] = useState<'business'|'systems'|'infrastructure'|'flows'|'topology'|'networks'|'incidents'>('systems')
   const [infraName,setInfraName] = useState('')
   const [infraKind,setInfraKind] = useState('vm')
   const [infraParent,setInfraParent] = useState('')
@@ -433,9 +434,9 @@ function App() {
         <button className={layer==='business'?'current':''} onClick={()=>setLayer('business')}>Бизнес-процессы</button><button className={layer==='systems'?'current':''} onClick={()=>{setViewSystem("");setLayer("systems")}}>Системы</button>
         <button className={layer==='infrastructure'?'current':''} onClick={()=>setLayer('infrastructure')}>Сервисы и ВМ</button>
         <button className={layer==='flows'?'current':''} onClick={()=>setLayer('flows')}>Потоки данных</button>
-        <button className={layer==='networks'?'current':''} onClick={()=>setLayer('networks')}>Реестр сетей</button><button className={layer==='topology'?'current':''} onClick={()=>setLayer('topology')}>Топология сетей</button><button onClick={()=>setEditorOpen(true)}>+ Компонент</button><button onClick={()=>editNetwork()}>+ Сеть</button><button onClick={()=>editFlow()}>+ Поток</button><button onClick={()=>setKisOpen(true)}>Импорт КИС</button><button onClick={()=>window.open(import.meta.env.VITE_WIKI_URL || "http://127.0.0.1:3000", "_blank", "noopener,noreferrer")}>База знаний ↗</button>
+        <button className={layer==='incidents'?'current':''} onClick={()=>setLayer('incidents')}>Инциденты</button><button className={layer==='networks'?'current':''} onClick={()=>setLayer('networks')}>Реестр сетей</button><button className={layer==='topology'?'current':''} onClick={()=>setLayer('topology')}>Топология сетей</button><button onClick={()=>setEditorOpen(true)}>+ Компонент</button><button onClick={()=>editNetwork()}>+ Сеть</button><button onClick={()=>editFlow()}>+ Поток</button><button onClick={()=>setKisOpen(true)}>Импорт КИС</button><button onClick={()=>window.open(import.meta.env.VITE_WIKI_URL || "http://127.0.0.1:3000", "_blank", "noopener,noreferrer")}>База знаний ↗</button>
       </div>
-      {layer==='networks' ? <section className="infraPanel"><div className="registryHeader"><h2>Реестр сетей</h2><button className="primary" onClick={()=>editNetwork()}>+ Создать сеть</button></div><p className="hint">Сетевые зоны, VLAN и VRF. Привязка интерфейсов к сетям выполняется в редакторе компонентов.</p><div className="infraGrid">{segments.map(n=><article className="infraCard" key={n.id}><span className="tag">{n.kind.toUpperCase()}</span><h3>{n.name}</h3><p>{n.description||'Описание не заполнено'}</p><small>{n.verification}</small><div><button onClick={()=>editNetwork(n)}>Редактировать</button></div></article>)}</div>{!segments.length&&<p>Сети ещё не добавлены.</p>}</section> : layer==='topology' ? <Topology systems={objects} items={infra} segments={segments} interfaces={nics} flows={flows}/> : layer==='business' ? <section className="infraPanel"><h2>Бизнес-архитектура</h2><p className="hint">Категория → процесс → поддерживающие системы. Достоверность связей проверяется отдельно.</p>
+      {layer==='incidents' ? <Incidents request={request} systems={objects} components={infra} networks={segments} flows={flows}/> : layer==='networks' ? <section className="infraPanel"><div className="registryHeader"><h2>Реестр сетей</h2><button className="primary" onClick={()=>editNetwork()}>+ Создать сеть</button></div><p className="hint">Сетевые зоны, VLAN и VRF. Привязка интерфейсов к сетям выполняется в редакторе компонентов.</p><div className="infraGrid">{segments.map(n=><article className="infraCard" key={n.id}><span className="tag">{n.kind.toUpperCase()}</span><h3>{n.name}</h3><p>{n.description||'Описание не заполнено'}</p><small>{n.verification}</small><div><button onClick={()=>editNetwork(n)}>Редактировать</button></div></article>)}</div>{!segments.length&&<p>Сети ещё не добавлены.</p>}</section> : layer==='topology' ? <Topology systems={objects} items={infra} segments={segments} interfaces={nics} flows={flows}/> : layer==='business' ? <section className="infraPanel"><h2>Бизнес-архитектура</h2><p className="hint">Категория → процесс → поддерживающие системы. Достоверность связей проверяется отдельно.</p>
       <div className="businessGrid">{categories.map(cat=><article className="businessCategory" key={cat.id}><h3>{cat.name}</h3>{processes.filter(p=>p.category_id===cat.id).map(p=><div className="businessProcess" key={p.id}><strong>{p.name}</strong><p>{p.description}</p><div className="processSystems">{businessLinks.filter(l=>l.process_id===p.id).map(l=><button key={l.id} onClick={()=>{setSelected(l.system_id);setLayer('systems')}}>{objects.find(o=>o.id===l.system_id)?.name||'Система'}</button>)}</div></div>)}</article>)}</div>
       {!categories.length&&<p>Бизнес-процессы пока не добавлены.</p>}</section> : layer==='systems' ? <section className="canvas">
         <ReactFlow nodes={nodes} edges={edges} onNodesChange={onNodesChange} onConnect={onConnect}
@@ -482,8 +483,9 @@ function App() {
           <button className={panelTab==='overview'?'current':''} onClick={()=>setPanelTab('overview')}>Обзор</button>
           <button className={panelTab==='components'?'current':''} onClick={()=>setPanelTab('components')}>Компоненты</button>
           <button className={panelTab==='flows'?'current':''} onClick={()=>setPanelTab('flows')}>Потоки</button>
-          <button className={panelTab==='knowledge'?'current':''} onClick={()=>{setKbMessage('');setPanelTab('knowledge')}}>База знаний</button>
+          <button className={panelTab==='incidents'?'current':''} onClick={()=>setPanelTab('incidents')}>Инциденты</button><button className={panelTab==='knowledge'?'current':''} onClick={()=>{setKbMessage('');setPanelTab('knowledge')}}>База знаний</button>
         </div>
+        {panelTab==='incidents'&&detail&&<Incidents request={request} systems={objects} components={infra} networks={segments} flows={flows} context={{entity_type:'system',entity_id:detail.id}}/>}
         {panelTab==='knowledge'&&<div className="knowledgePanel">
           <div className="knowledgeHeading"><h3>Документация</h3><span className="knowledgeCount">{kbLinks.length}</span></div><p className="knowledgeIntro">Статьи хранятся в Wiki.js. Изменения доступны в обеих системах.</p>
           {kbLinks.map(k=><div key={k.id} className="inspectorItem"><a className="knowledgeArticleLink" href={k.url} target="_blank" rel="noopener noreferrer">📄 {k.title} ↗</a><button className="knowledgeUnlink" onClick={()=>unlinkWiki(k.id)}>Убрать связь</button></div>)}

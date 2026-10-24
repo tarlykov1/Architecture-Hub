@@ -6,10 +6,28 @@ type System={id:string;name:string}
 type Segment={id:string;kind:string;name:string;description?:string;verification?:string}
 type Nic={id:string;item_id:string;name:string;ip_address:string;vrf_id:string|null;vlan_id:string|null;zone_id:string|null}
 type Flow={id:string;source_id:string;target_id:string;name:string;protocol:string;port:string;security:string;data_description:string;verification:string;schedule:string}
-type Props={systems:System[];items:Item[];segments:Segment[];interfaces:Nic[];flows:Flow[]}
+type Props={systems:System[];items:Item[];segments:Segment[];interfaces:Nic[];flows:Flow[];saveInterface:(value:Omit<Nic,"id">,id?:string)=>Promise<void>}
 const unknown='Не определено'
 const colors={verified:'#15805c',unverified:'#bc8323'}
-export default function Topology({systems,items,segments,interfaces,flows}:Props){
+export default function Topology({systems,items,segments,interfaces,flows,saveInterface}:Props){
+ const [nicEditor,setNicEditor]=useState<Nic|null>(null)
+ const [nicDraft,setNicDraft]=useState<Omit<Nic,"id">|null>(null)
+ const [nicError,setNicError]=useState('')
+ const [nicSaving,setNicSaving]=useState(false)
+ function editNic(item:Item,nic?:Nic){
+   setNicEditor(nic||null)
+   setNicDraft({item_id:item.id,name:nic?.name||'eth0',ip_address:nic?.ip_address||'',zone_id:nic?.zone_id||null,vrf_id:nic?.vrf_id||null,vlan_id:nic?.vlan_id||null})
+   setNicError('')
+ }
+ async function submitNic(event:React.FormEvent){
+   event.preventDefault()
+   if(!nicDraft)return
+   setNicSaving(true);setNicError('')
+   try{await saveInterface(nicDraft,nicEditor?.id);setNicDraft(null);setNicEditor(null)}
+   catch(e){setNicError(String(e))}
+   finally{setNicSaving(false)}
+ }
+
  const [system,setSystem]=useState(''),[vrf,setVrf]=useState(''),[vlan,setVlan]=useState(''),[environment,setEnvironment]=useState(''),[search,setSearch]=useState(''),[mode,setMode]=useState<'all'|'internal'|'external'>('all'),[selected,setSelected]=useState(''),[flowId,setFlowId]=useState('')
  const segmentById=useMemo(()=>new Map(segments.map(s=>[s.id,s])),[segments])
  const itemById=useMemo(()=>new Map(items.map(i=>[i.id,i])),[items])
@@ -86,8 +104,26 @@ export default function Topology({systems,items,segments,interfaces,flows}:Props
   <small>Зелёная стрелка – подтверждённый поток; оранжевая – не проверен. Отсутствие стрелки не означает отсутствия сетевого доступа. Схема отображает описанные логические связи, не трассировку физического маршрута.</small>
   {(item||flow)&&<aside style={{position:'absolute',right:20,top:145,zIndex:5,background:'#fff',border:'1px solid #c3d1e5',boxShadow:'0 8px 26px #0002',padding:16,borderRadius:12,width:340,maxHeight:'65vh',overflow:'auto'}}>
    <button style={{float:'right'}} onClick={()=>{setSelected('');setFlowId('')}} aria-label="Закрыть">×</button>
-   {item&&<><h3>{item.name}</h3><p>Система: {systemById.get(item.system_id)?.name||unknown}</p><p>Контур: {String(item.details.environment||unknown)}</p><h4>Сетевые интерфейсы</h4>{(nicsByItem.get(item.id)||[]).map(n=><p key={n.id}><b>{n.name}</b> · IP: {n.ip_address||unknown}<br/>VRF: {name(n.vrf_id)} · VLAN: {name(n.vlan_id)} · Зона: {name(n.zone_id)}</p>)}{!(nicsByItem.get(item.id)||[]).length&&<p>Сетевые интерфейсы не описаны.</p>}<h4>Потоки</h4>{flows.filter(f=>f.source_id===item.id||f.target_id===item.id).map(f=><button key={f.id} onClick={()=>{setFlowId(f.id);setSelected('')}} style={{display:'block',marginBottom:6,textAlign:'left'}}>{f.source_id===item.id?'→':'←'} {f.name||f.protocol||'Поток'}</button>)}{!flows.some(f=>f.source_id===item.id||f.target_id===item.id)&&<p>Потоки не описаны.</p>}</>}
+   {item&&<><h3>{item.name}</h3><p>Система: {systemById.get(item.system_id)?.name||unknown}</p><p>Контур: {String(item.details.environment||unknown)}</p><h4>Сетевые интерфейсы</h4><button type="button" onClick={()=>editNic(item)}>+ Добавить интерфейс</button>{(nicsByItem.get(item.id)||[]).map(n=><p key={n.id}><button type="button" onClick={()=>editNic(item,n)} aria-label={"Редактировать "+n.name}>Изменить сеть</button> <b>{n.name}</b> · IP: {n.ip_address||unknown}<br/>VRF: {name(n.vrf_id)} · VLAN: {name(n.vlan_id)} · Зона: {name(n.zone_id)}</p>)}{!(nicsByItem.get(item.id)||[]).length&&<p>Сетевые интерфейсы не описаны.</p>}<h4>Потоки</h4>{flows.filter(f=>f.source_id===item.id||f.target_id===item.id).map(f=><button key={f.id} onClick={()=>{setFlowId(f.id);setSelected('')}} style={{display:'block',marginBottom:6,textAlign:'left'}}>{f.source_id===item.id?'→':'←'} {f.name||f.protocol||'Поток'}</button>)}{!flows.some(f=>f.source_id===item.id||f.target_id===item.id)&&<p>Потоки не описаны.</p>}</>}
    {flow&&<><h3>{flow.name||'Поток данных'}</h3><p>{itemById.get(flow.source_id)?.name||unknown} → {itemById.get(flow.target_id)?.name||unknown}</p><p>Данные: {flow.data_description||unknown}</p><p>Протокол: {flow.protocol||unknown}; порт: {flow.port||unknown}</p><p>Защита: {flow.security||unknown}</p><p>Проверка: {flow.verification||unknown}</p><p>Расписание: {flow.schedule||unknown}</p></>}
   </aside>}
+  {nicDraft&&<div className="topologyNicBackdrop" onClick={()=>setNicDraft(null)}>
+   <div className="topologyNicDialog" role="dialog" aria-modal="true" aria-label="Настройка сети компонента" onClick={e=>e.stopPropagation()}>
+    <div className="registryHeader"><h3>{nicEditor?'Редактировать сетевой интерфейс':'Новый сетевой интерфейс'}</h3><button type="button" onClick={()=>setNicDraft(null)}>Закрыть ×</button></div>
+    <p className="hint">Привязки зоны, VRF и VLAN выбираются из сетевого реестра.</p>
+    <form onSubmit={submitNic} className="detailForm">
+     <label>Имя интерфейса<input required maxLength={100} value={nicDraft.name} onChange={e=>setNicDraft({...nicDraft,name:e.target.value})}/></label>
+     <label>IP-адрес<input value={nicDraft.ip_address} maxLength={120} placeholder="Не указан" onChange={e=>setNicDraft({...nicDraft,ip_address:e.target.value})}/></label>
+     {(['zone','vrf','vlan'] as const).map(kind=>{
+      const field=kind+'_id' as 'zone_id'|'vrf_id'|'vlan_id'
+      return <label key={kind}>{kind.toUpperCase()}<select value={nicDraft[field]||''} onChange={e=>setNicDraft({...nicDraft,[field]:e.target.value||null})}>
+       <option value="">Не определено</option>{segments.filter(s=>s.kind===kind).map(s=><option key={s.id} value={s.id}>{s.name}</option>)}
+      </select></label>
+     })}
+     {nicError&&<p className="kisError" role="alert">{nicError}</p>}
+     <button className="primary" disabled={nicSaving}>{nicSaving?'Сохранение…':'Сохранить сеть компонента'}</button>
+    </form>
+   </div>
+  </div>}
  </section>
 }

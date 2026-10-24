@@ -697,6 +697,26 @@ def add_nic(payload: NICInput, db: Session = Depends(db_session)):
     return row
 
 
+@app.put("/api/network-interfaces/{interface_id}", response_model=NICOutput)
+def update_nic(interface_id: UUID, payload: NICInput, db: Session = Depends(db_session)):
+    row = db.get(NetworkInterface, interface_id)
+    if row is None:
+        raise HTTPException(404, "Network interface not found")
+    if not db.get(InfrastructureItem, payload.item_id):
+        raise HTTPException(422, "Unknown VM/component")
+    for field, kind in [("zone_id", "zone"), ("vlan_id", "vlan"), ("vrf_id", "vrf")]:
+        segment_id = getattr(payload, field)
+        if segment_id:
+            segment = db.get(NetworkSegment, segment_id)
+            if segment is None or segment.kind != kind:
+                raise HTTPException(422, "Invalid " + field)
+    for field, value in payload.model_dump().items():
+        setattr(row, field, value)
+    db.commit()
+    db.refresh(row)
+    return row
+
+
 @app.post("/api/demo/networks")
 def seed_networks(db: Session = Depends(db_session)):
     # Additive synthetic data, no user objects overwritten.

@@ -10,6 +10,7 @@ type Props={systems:System[];items:Item[];segments:Segment[];interfaces:Nic[];fl
 const unknown='Не определено'
 const colors={verified:'#15805c',unverified:'#bc8323'}
 export default function Topology({systems,items,segments,interfaces,flows,saveInterface}:Props){
+ const [showConnections,setShowConnections]=useState(false)
  const [nicEditor,setNicEditor]=useState<Nic|null>(null)
  const [nicDraft,setNicDraft]=useState<Omit<Nic,"id">|null>(null)
  const [nicError,setNicError]=useState('')
@@ -80,7 +81,7 @@ export default function Topology({systems,items,segments,interfaces,flows,saveIn
  }
  // Resolve arrows to the correct visual copy of multi-homed components.
  const hostNode=(id:string)=>'host:'+id+':'+(memberships.get(id)||[])[0]
- for(const flow of visibleFlows){
+ for(const flow of (showConnections?visibleFlows:visibleFlows.filter(f=>f.id===flowId||f.source_id===selected||f.target_id===selected))){
    if(!memberships.has(flow.source_id)||!memberships.has(flow.target_id))continue
    const known=flow.verification==='verified'
    edges.push({id:flow.id,source:hostNode(flow.source_id),target:hostNode(flow.target_id),type:'smoothstep',label:[flow.protocol,flow.port].filter(Boolean).join(' : ')||flow.name,markerEnd:{type:MarkerType.ArrowClosed,color:known?colors.verified:colors.unverified},animated:false,style:{stroke:known?colors.verified:colors.unverified,strokeWidth:2},labelStyle:{fontSize:11,fill:'#35465b'},labelBgPadding:[6,3],labelBgBorderRadius:4,labelBgStyle:{fill:'#ffffff',fillOpacity:0.94}})
@@ -95,13 +96,13 @@ export default function Topology({systems,items,segments,interfaces,flows,saveIn
    <select value={environment} onChange={e=>setEnvironment(e.target.value)} aria-label="Контур"><option value="">Все контуры</option>{environments.map(x=><option key={x} value={x}>{x}</option>)}</select>
    <select value={mode} onChange={e=>setMode(e.target.value as 'all'|'internal'|'external')} aria-label="Тип связей"><option value="all">Все связи</option><option value="internal">Только внутренние</option><option value="external">Только внешние</option></select>
    <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Поиск ВМ или системы" aria-label="Поиск компонента" style={{minWidth:180}}/>
-   <button onClick={()=>{setSystem('');setVrf('');setVlan('');setEnvironment('');setMode('all');setSearch('');setSelected('');setFlowId('')}}>Сбросить</button>
+   <label className="topologyConnectionToggle"><input type="checkbox" checked={showConnections} onChange={e=>setShowConnections(e.target.checked)}/> Все потоки</label><button onClick={()=>{setSystem('');setVrf('');setVlan('');setEnvironment('');setMode('all');setSearch('');setSelected('');setFlowId('')}}>Сбросить</button>
   </div>
-  <small>Найдено компонентов: {matching.length} · Показано объектов: {displayed.length} · VRF/VLAN-групп: {groups.size} · Потоков: {visibleFlows.length} · Без сетевых интерфейсов: {matching.filter(i=>!(nicsByItem.get(i.id)||[]).length).length}</small>
+  <small>Найдено компонентов: {matching.length} · Показано объектов: {displayed.length} · VRF/VLAN-групп: {groups.size} · Потоков: {visibleFlows.length} · На схеме: {showConnections?'все':'только для выбранного узла'} · Без сетевых интерфейсов: {matching.filter(i=>!(nicsByItem.get(i.id)||[]).length).length}</small>
   <div style={{flex:1,minHeight:300,position:'relative',border:'1px solid #d5e0ef',borderRadius:12,overflow:'hidden'}}>
    {displayed.length?<ReactFlow nodes={nodes} edges={edges} nodesDraggable={false} nodesConnectable={false} fitView fitViewOptions={{padding:0.15}} onNodeClick={(_,n)=>{if(n.id.startsWith('host:')){const id=String((n.data as {item_id?:string}).item_id||'');const found=id||displayed.find(i=>n.id.startsWith('host:'+i.id+':'))?.id||'';setSelected(found);setFlowId('')}}} onEdgeClick={(_,e)=>{setFlowId(e.id);setSelected('')}}><Background/><Controls/></ReactFlow>:<p style={{padding:20}}>Нет компонентов для выбранных фильтров. Проверьте систему, контур и сетевые привязки.</p>}
   </div>
-  <small>Зелёная стрелка – подтверждённый поток; оранжевая – не проверен. Отсутствие стрелки не означает отсутствия сетевого доступа. Схема отображает описанные логические связи, не трассировку физического маршрута.</small>
+  <small>Нажмите на компонент, чтобы увидеть его потоки. Переключатель «Все потоки» показывает общую картину. Зелёная стрелка – подтверждённый поток; оранжевая – не проверен. Отсутствие стрелки не означает отсутствия сетевого доступа. Схема отображает описанные логические связи, не трассировку физического маршрута.</small>
   {(item||flow)&&<aside style={{position:'absolute',right:20,top:145,zIndex:5,background:'#fff',border:'1px solid #c3d1e5',boxShadow:'0 8px 26px #0002',padding:16,borderRadius:12,width:340,maxHeight:'65vh',overflow:'auto'}}>
    <button style={{float:'right'}} onClick={()=>{setSelected('');setFlowId('')}} aria-label="Закрыть">×</button>
    {item&&<><h3>{item.name}</h3><p>Система: {systemById.get(item.system_id)?.name||unknown}</p><p>Контур: {String(item.details.environment||unknown)}</p><h4>Сетевые интерфейсы</h4><button type="button" onClick={()=>editNic(item)}>+ Добавить интерфейс</button>{(nicsByItem.get(item.id)||[]).map(n=><p key={n.id}><button type="button" onClick={()=>editNic(item,n)} aria-label={"Редактировать "+n.name}>Изменить сеть</button> <b>{n.name}</b> · IP: {n.ip_address||unknown}<br/>VRF: {name(n.vrf_id)} · VLAN: {name(n.vlan_id)} · Зона: {name(n.zone_id)}</p>)}{!(nicsByItem.get(item.id)||[]).length&&<p>Сетевые интерфейсы не описаны.</p>}<h4>Потоки</h4>{flows.filter(f=>f.source_id===item.id||f.target_id===item.id).map(f=><button key={f.id} onClick={()=>{setFlowId(f.id);setSelected('')}} style={{display:'block',marginBottom:6,textAlign:'left'}}>{f.source_id===item.id?'→':'←'} {f.name||f.protocol||'Поток'}</button>)}{!flows.some(f=>f.source_id===item.id||f.target_id===item.id)&&<p>Потоки не описаны.</p>}</>}

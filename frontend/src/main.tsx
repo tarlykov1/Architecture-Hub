@@ -4,6 +4,7 @@ import { ReactFlow, Background, Controls, applyNodeChanges, type Connection, typ
 import '@xyflow/react/dist/style.css'
 import './style.css'
 import Topology from './Topology'
+import {dependencyLayout} from './graphLayout'
 import Incidents from './Incidents'
 
 type Obj = { id: string; kind: string; name: string; description: string; status: string; attributes: Record<string, unknown> }
@@ -525,7 +526,11 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
   </div>
     const segmentName=(id:string|null)=>segments.find(s=>s.id===id)?.name||'Не указано'
   const zones=Array.from(new Set(scopedItems.map(i=>nics.find(n=>n.item_id===i.id)?.zone_id||String(i.details.security_zone||'Зона неизвестна'))))
-  const drillNodes:Node[] = scopedItems.map((i,n)=>({id:i.id,position:{x:(n%4)*260,y:Math.floor(n/4)*155},data:{label:<div className="systemNode"><strong>{i.name}</strong><small>{i.kind} · {String(i.details.environment||'Среда не задана')}</small><small>{nics.filter(n=>n.item_id===i.id).map(n=>[segments.find(s=>s.id===n.zone_id)?.name,segments.find(s=>s.id===n.vrf_id)?.name,segments.find(s=>s.id===n.vlan_id)?.name].filter(Boolean).join(' / ')).join('; ')||String(i.details.security_zone||'Сеть не указана')}</small></div>},style:{width:220,padding:12,background:i.details.environment==='TEST'?'#fff5e7':viewMode==='security'?'#eaf5f2':'#ffffff',border:'1px solid #bac8d8',borderRadius:12}}))
+  const drillPositions=dependencyLayout(scopedItems.map(i=>i.id),scopedFlows.map(f=>({source:f.source_id,target:f.target_id})),280,170)
+  const flowPositions=dependencyLayout(
+    infra.filter(i=>flows.filter(filterFlow).some(f=>f.source_id===i.id||f.target_id===i.id)).map(i=>i.id),
+    flows.filter(filterFlow).map(f=>({source:f.source_id,target:f.target_id})),250,135)
+  const drillNodes:Node[] = scopedItems.map((i,n)=>({id:i.id,position:drillPositions[i.id]||{x:(n%4)*260,y:Math.floor(n/4)*155},data:{label:<div className="systemNode"><strong>{i.name}</strong><small>{i.kind} · {String(i.details.environment||'Среда не задана')}</small><small>{nics.filter(n=>n.item_id===i.id).map(n=>[segments.find(s=>s.id===n.zone_id)?.name,segments.find(s=>s.id===n.vrf_id)?.name,segments.find(s=>s.id===n.vlan_id)?.name].filter(Boolean).join(' / ')).join('; ')||String(i.details.security_zone||'Сеть не указана')}</small></div>},style:{width:220,padding:12,background:i.details.environment==='TEST'?'#fff5e7':viewMode==='security'?'#eaf5f2':'#ffffff',border:'1px solid #bac8d8',borderRadius:12}}))
   const drillEdges:Edge[]=scopedFlows.filter(f=>scopedIds.has(f.source_id)&&scopedIds.has(f.target_id)).map(f=>({id:f.id,source:f.source_id,target:f.target_id,label:viewMode==='security'?`${f.protocol} : ${f.port} / ${f.security}`:f.name,style:{stroke:f.security==='unknown'?'#d58c40':'#369279'},labelStyle:{fontSize:10}}))
   return <div className="shell">
     <header className="globalHeader" aria-label="Главная панель Architecture Hub">
@@ -607,7 +612,7 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
           <div className="registryHeader"><h2>Направленные потоки данных</h2><button className="primary" onClick={()=>editFlow()}>+ Создать поток</button></div>
           <p className="hint">Каждый поток – отдельная запись от конкретного компонента-источника до компонента-получателя. Обратный независимый поток создаётся отдельно.</p>
           <div className="miniArchitecture"><ReactFlow
-            nodes={infra.filter(i=>flows.filter(filterFlow).some(f=>f.source_id===i.id||f.target_id===i.id)).map((i,idx)=>({id:i.id,position:{x:(idx%5)*230,y:Math.floor(idx/5)*120},data:{label:<div><strong>{i.name}</strong><small>{i.kind} · {String(i.details.security_zone||'зона не задана')}</small></div>},style:{width:200,border:'1px solid #aab8cb',borderRadius:9,background:'#fff',padding:9}}))}
+            nodes={infra.filter(i=>flows.filter(filterFlow).some(f=>f.source_id===i.id||f.target_id===i.id)).map((i,idx)=>({id:i.id,position:flowPositions[i.id]||{x:(idx%5)*230,y:Math.floor(idx/5)*120},data:{label:<div><strong>{i.name}</strong><small>{i.kind} · {String(i.details.security_zone||'зона не задана')}</small></div>},style:{width:200,border:'1px solid #aab8cb',borderRadius:9,background:'#fff',padding:9}}))}
             edges={flows.filter(filterFlow).map(f=>({id:f.id,source:f.source_id,target:f.target_id,label:f.name,style:{stroke:'#64748b'},labelStyle:{fontSize:10}}))}
             fitView nodesDraggable={false} nodesConnectable={false} elementsSelectable={true}>
             <Background gap={20}/><Controls/>

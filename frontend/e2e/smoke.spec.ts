@@ -122,3 +122,14 @@ test('right inspector opens on demand and can be closed to free diagram space', 
   await panel.getByRole('button',{name:'Закрыть правую панель'}).click()
   await expect(panel).toHaveCount(0)
 })
+
+test('infrastructure graph permits connecting components',async({page})=>{
+ const resp=await page.request.post('http://127.0.0.1:8001/api/objects',{data:{name:'link-test-'+Date.now(),kind:'system'}})
+ expect(resp.ok()).toBeTruthy()
+ const id=(await resp.json()).id
+ for(const name of ['source-node','target-node'])expect((await page.request.post('http://127.0.0.1:8001/api/infra',{data:{system_id:id,name,kind:'service'}})).ok()).toBeTruthy()
+ await page.goto('/')
+ await page.getByRole('button',{name:/link-test-/}).first().dblclick()
+ const handles=page.locator('.miniArchitecture .react-flow__handle')
+ await expect(handles).toHaveCount(4)
+})

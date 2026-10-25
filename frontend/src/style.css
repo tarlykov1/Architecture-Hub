@@ -107,3 +107,12 @@ button{border-radius:5px;border-color:#dde2e8}.primary{background:var(--hub-blue
 /* Usability: make the inspector readable and keep filter actions from squeezing into one row. */
 .currentContext{padding:10px 12px;border-radius:7px;background:#edf5fc;color:#315d7d;font-size:12px;font-weight:600;margin:12px 0}
 .workspaceFilters{row-gap:10px}.workspaceFilters input{min-width:220px}.workspaceFilters button{white-space:nowrap}.workspaceFilters small{flex-basis:100%;line-height:1.4}.inspectorTabs{display:flex;flex-wrap:wrap;gap:3px;overflow-x:visible}.inspectorTabs button{flex:0 0 auto;font-size:12px}.details .inspectorToolbar{gap:8px}.details .inspectorToolbar button{white-space:nowrap}
+
+/* Architecture-first layout: wider catalogue, inspector as opt-in overlay. */
+.shell{grid-template-columns:310px minmax(0,1fr)}
+.inspectorScrim{position:fixed;inset:52px 0 0 0;z-index:23;border:0;border-radius:0;background:#0b1e3526;cursor:default}
+.details{position:fixed;z-index:24;top:52px;right:0;bottom:0;width:min(400px,calc(100vw - 20px));display:block!important;overflow-y:auto;box-shadow:-12px 0 40px #172a4430;padding:20px;background:white}
+.details.detailsExpanded{z-index:25;top:64px;right:14px;bottom:14px;width:min(850px,calc(100vw - 28px))}
+.inspectorToolbar{display:flex;align-items:center;flex-wrap:wrap;gap:8px}.inspectorToolbar .sideLabel{flex:1 1 100%;margin-bottom:0}.inspectorToolbar button{font-size:12px}
+@media(max-width:1050px){.shell{grid-template-columns:270px minmax(0,1fr)}.details{display:block!important}}
+@media(max-width:650px){.shell{grid-template-columns:1fr;grid-template-rows:53px auto minmax(0,1fr)}.details,.details.detailsExpanded{top:0;right:0;bottom:0;width:min(100vw,420px);border-radius:0;padding:17px}.inspectorScrim{inset:0}}

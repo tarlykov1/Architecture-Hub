@@ -104,3 +104,16 @@ test('inspector avoids duplicate architecture action when selected architecture 
   await expect(panel.getByText('Архитектура этой ИС уже открыта')).toBeVisible()
   await expect(panel.getByRole('button',{name:'Открыть архитектуру →'})).toHaveCount(0)
 })
+
+test('right inspector opens on demand and can be closed to free diagram space', async ({page})=>{
+  const name='E2E drawer '+Date.now()
+  const created=await page.request.post('http://127.0.0.1:8001/api/objects',{data:{name,kind:'system'}})
+  expect(created.status()).toBe(201)
+  await page.goto('/')
+  const panel=page.getByRole('complementary',{name:'Карточка архитектурного объекта'})
+  await expect(panel).toHaveCount(0)
+  await page.getByRole('button',{name}).first().click()
+  await expect(panel).toBeVisible()
+  await panel.getByRole('button',{name:'Закрыть правую панель'}).click()
+  await expect(panel).toHaveCount(0)
+})

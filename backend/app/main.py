@@ -824,3 +824,4 @@ app.include_router(incident_router)
 
 from .views import router as views_router
 app.include_router(views_router)
+\nfrom . import kis_export  # registers XLSX export on existing KIS router\n

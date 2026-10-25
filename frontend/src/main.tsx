@@ -54,7 +54,22 @@ function App() {
   const [kisFile,setKisFile] = useState<File|null>(null)
   const [kisPreview,setKisPreview] = useState<any>(null)
   const [kisResult,setKisResult] = useState('')
+  const [kisExporting,setKisExporting]=useState(false)
   const [kisOpen,setKisOpen] = useState(false)
+  async function exportKis(id:string){
+    setKisExporting(true);setError('')
+    try{
+      const result=await request<{filename:string;content_base64:string;notice:string}>('/api/kis/export/'+id)
+      const binary=atob(result.content_base64)
+      const bytes=new Uint8Array(binary.length)
+      for(let i=0;i<binary.length;i++)bytes[i]=binary.charCodeAt(i)
+      const url=URL.createObjectURL(new Blob([bytes],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}))
+      const link=document.createElement('a');link.href=url;link.download=result.filename;document.body.appendChild(link);link.click();link.remove()
+      window.setTimeout(()=>URL.revokeObjectURL(url),1000)
+      setNotice('Карточка КИС выгружена в Excel. '+result.notice)
+    }catch(e){setError('Экспорт КИС: '+String(e))}
+    finally{setKisExporting(false)}
+  }
   const [kisBusy,setKisBusy] = useState(false)
   const [kisError,setKisError] = useState('')
   const [objects, setObjects] = useState<Obj[]>([])
@@ -508,7 +523,7 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
         <button className={layer==='business'?'current':''} onClick={()=>setLayer('business')}>Бизнес-процессы</button><button className={layer==='systems'?'current':''} onClick={()=>{setViewSystem("");setLayer("systems")}}>Системы</button>
         <button className={layer==='infrastructure'?'current':''} onClick={()=>setLayer('infrastructure')}>Сервисы и ВМ</button>
         <button className={layer==='flows'?'current':''} onClick={()=>setLayer('flows')}>Потоки данных</button>
-        <button className={layer==='incidents'?'current':''} onClick={()=>setLayer('incidents')}>Инциденты</button><button className={layer==='networks'?'current':''} onClick={()=>setLayer('networks')}>Реестр сетей</button><button className={layer==='topology'?'current':''} onClick={()=>setLayer('topology')}>Топология сетей</button><button onClick={()=>setEditorOpen(true)}>+ Компонент</button><button onClick={()=>editNetwork()}>+ Сеть</button><button onClick={()=>editFlow()}>+ Поток</button><button onClick={()=>setKisOpen(true)}>Импорт КИС</button><button onClick={()=>window.open(import.meta.env.VITE_WIKI_URL || "http://127.0.0.1:3000", "_blank", "noopener,noreferrer")}>База знаний ↗</button>
+        <button className={layer==='incidents'?'current':''} onClick={()=>setLayer('incidents')}>Инциденты</button><button className={layer==='networks'?'current':''} onClick={()=>setLayer('networks')}>Реестр сетей</button><button className={layer==='topology'?'current':''} onClick={()=>setLayer('topology')}>Топология сетей</button><button onClick={()=>setEditorOpen(true)}>+ Компонент</button><button onClick={()=>editNetwork()}>+ Сеть</button><button onClick={()=>editFlow()}>+ Поток</button><button onClick={()=>setKisOpen(true)}>Импорт КИС</button><button disabled={!selected||kisExporting} onClick={()=>selected&&exportKis(selected)}>{kisExporting?"Экспорт…":"Экспорт КИС в Excel"}</button><button onClick={()=>window.open(import.meta.env.VITE_WIKI_URL || "http://127.0.0.1:3000", "_blank", "noopener,noreferrer")}>База знаний ↗</button>
       </div>
       {['business','systems','infrastructure','flows'].includes(layer)&&workspaceFilters}
       {layer==='incidents' ? <Incidents request={request} systems={objects} components={infra} networks={segments} flows={flows}/> : layer==='networks' ? <section className="infraPanel networkRegistry">

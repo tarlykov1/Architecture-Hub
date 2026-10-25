@@ -555,7 +555,7 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
       {error && <div className="error" role="alert">{error}<button onClick={() => setError('')}>×</button></div>}
       <div className="layerTabs">
         <button className={layer==='business'?'current':''} onClick={()=>setLayer('business')}>Бизнес-процессы</button><button className={layer==='systems'?'current':''} onClick={()=>{setViewSystem("");setLayer("systems")}}>Системы</button>
-        <button className={layer==='infrastructure'?'current':''} onClick={()=>setLayer('infrastructure')}>Сервисы и ВМ</button>
+        <button className={layer==='infrastructure'?'current':''} onClick={()=>{if(selected)setViewSystem(selected);setLayer('infrastructure')}}>Сервисы и ВМ</button>
         <button className={layer==='flows'?'current':''} onClick={()=>setLayer('flows')}>Потоки данных</button>
         <button className={layer==='incidents'?'current':''} onClick={()=>setLayer('incidents')}>Инциденты</button><button className={layer==='networks'?'current':''} onClick={()=>setLayer('networks')}>Реестр сетей</button><button className={layer==='topology'?'current':''} onClick={()=>setLayer('topology')}>Топология сетей</button><button onClick={()=>setEditorOpen(true)}>+ Компонент</button><button onClick={()=>editNetwork()}>+ Сеть</button><button onClick={()=>editFlow()}>+ Поток</button><button onClick={()=>setKisOpen(true)}>Импорт КИС</button><button disabled={!selected||kisExporting} onClick={()=>selected&&exportKis(selected)}>{kisExporting?"Экспорт…":"Экспорт КИС в Excel"}</button><button onClick={()=>window.open(import.meta.env.VITE_WIKI_URL || "http://127.0.0.1:3000", "_blank", "noopener,noreferrer")}>База знаний ↗</button>
       </div>

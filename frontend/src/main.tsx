@@ -54,6 +54,8 @@ function App() {
   const [kisFile,setKisFile] = useState<File|null>(null)
   const [kisPreview,setKisPreview] = useState<any>(null)
   const [kisResult,setKisResult] = useState('')
+  const [componentInspectId,setComponentInspectId]=useState('')
+  const [componentInspectTab,setComponentInspectTab]=useState<'passport'|'network'|'flows'|'incidents'>('passport')
   const [passportEditId,setPassportEditId]=useState('')
   const [passportDraft,setPassportDraft]=useState<{name:string;description:string;status:string;fields:Record<string,string>}>({name:'',description:'',status:'draft',fields:{}})
   const [passportSaving,setPassportSaving]=useState(false)
@@ -586,7 +588,7 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
           {viewMode==='security'&&<div className="networkZones">{zones.map(z=><article key={z} className="zoneCard"><h3>{segments.find(s=>s.id===z)?.name||z}</h3>{scopedItems.filter(i=>(nics.find(n=>n.item_id===i.id)?.zone_id||String(i.details.security_zone||'Зона неизвестна'))===z).map(i=><button key={i.id} onClick={()=>setSelected(i.system_id)}><strong>{i.name}</strong><small>{nics.filter(n=>n.item_id===i.id).map(n=>n.name+' · '+segmentName(n.vrf_id)+' · '+segmentName(n.vlan_id)).join('; ')||'Сетевой интерфейс не задан'}</small></button>)}</article>)}</div>}
           {viewMode==='security'&&<div className="networkLegend">Цвет стрелки: зелёный – указан тип защиты; оранжевый – неизвестно. Наличие TLS не подтверждает защиту всего маршрута. Неподтверждённые параметры требуют проверки.</div>}
           <div className="infraGrid">{infra.filter(filterInfra).map(i=><article className="infraCard" key={i.id}>
-            <span className="tag">{i.kind}</span><h3>{i.name}</h3>
+            <span className="tag">{i.kind}</span><h3>{i.name}</h3><button type="button" onClick={()=>{setComponentInspectId(i.id);setComponentInspectTab("passport")}}>Карточка компонента</button>
             <p>{objects.find(o=>o.id===i.system_id)?.name}</p>
             {i.parent_id&&<small>Входит в: {infra.find(x=>x.id===i.parent_id)?.name||'Неизвестно'}</small>}
             <p>{i.description}</p><p><strong>{String(i.details.environment||"")}</strong> · {String(i.details.security_zone||"Зона неизвестна")} · {String(i.details.vrf||"VRF неизвестен")}</p>
@@ -668,6 +670,23 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
         </form>
       </div>
     </div>}
+    {componentInspectId&&(()=>{
+      const component=infra.find(i=>i.id===componentInspectId)
+      if(!component)return null
+      const system=objects.find(o=>o.id===component.system_id)
+      const interfaces=nics.filter(n=>n.item_id===component.id)
+      const connected=flows.filter(f=>f.source_id===component.id||f.target_id===component.id)
+      return <div className="editorBackdrop" onClick={()=>setComponentInspectId('')}>
+        <div className="editorDialog componentInspector" role="dialog" aria-modal="true" aria-label={'Карточка компонента '+component.name} onClick={e=>e.stopPropagation()}>
+          <div className="dialogHead"><div><small className="hint">{component.kind} · {system?.name||'Система не найдена'}</small><h2>{component.name}</h2></div><button type="button" onClick={()=>setComponentInspectId('')}>Закрыть ×</button></div>
+          <div className="componentInspectorTabs" role="tablist" aria-label="Разделы карточки">{([['passport','Паспорт'],['network','Сети'],['flows','Потоки'],['incidents','Инциденты']] as const).map(([id,label])=><button type="button" role="tab" key={id} aria-selected={componentInspectTab===id} className={componentInspectTab===id?'current':''} onClick={()=>setComponentInspectTab(id)}>{label}</button>)}</div>
+          {componentInspectTab==='passport'&&<section><p>{component.description||'Описание не заполнено'}</p><dl className="componentFacts"><dt>Система</dt><dd>{system?.name||'Не указана'}</dd><dt>Тип</dt><dd>{component.kind}</dd><dt>Контур</dt><dd>{String(component.details.environment||'Не указан')}</dd><dt>Родительский компонент</dt><dd>{infra.find(i=>i.id===component.parent_id)?.name||'Не указан'}</dd></dl><div className="componentInspectorStats"><span>Интерфейсы: {interfaces.length}</span><span>Входящие: {connected.filter(f=>f.target_id===component.id).length}</span><span>Исходящие: {connected.filter(f=>f.source_id===component.id).length}</span></div></section>}
+          {componentInspectTab==='network'&&<section><h3>Сетевые интерфейсы</h3>{interfaces.length?interfaces.map(n=><article className="inspectorItem" key={n.id}><strong>{n.name} – {n.ip_address||'IP не указан'}</strong><small>VRF: {segments.find(x=>x.id===n.vrf_id)?.name||'Не указана'} · VLAN: {segments.find(x=>x.id===n.vlan_id)?.name||'Не указан'}</small><small>Зона: {segments.find(x=>x.id===n.zone_id)?.name||'Не указана'}</small></article>):<p>Интерфейсы пока не описаны.</p>}<button type="button" onClick={()=>{setComponentInspectId('');setLayer('topology')}}>Открыть топологию</button></section>}
+          {componentInspectTab==='flows'&&<section><h3>Известные зависимости</h3>{connected.length?connected.map(f=>{const outgoing=f.source_id===component.id;const peer=infra.find(i=>i.id===(outgoing?f.target_id:f.source_id));return <article className="inspectorItem" key={f.id}><strong>{outgoing?'→ Исходящий':'← Входящий'}: {peer?.name||'Неизвестный компонент'}</strong><small>{f.name} · {f.protocol||'Протокол не указан'} · {f.port||'Порт не указан'} · {f.verification}</small><button type="button" onClick={()=>{setSelectedFlow(f.id);setComponentInspectId('');setLayer('flows')}}>Открыть поток</button>{peer&&<button type="button" onClick={()=>{setComponentInspectId(peer.id);setComponentInspectTab('passport')}}>Связанный компонент</button>}</article>}):<p>Описанных потоков нет – это не подтверждает отсутствие зависимостей.</p>}</section>}
+          {componentInspectTab==='incidents'&&<Incidents request={request} systems={objects} components={infra} networks={segments} flows={flows} context={{entity_type:'component',entity_id:component.id}}/>}
+        </div>
+      </div>
+    })()}
     {registryOpen&&<div className="editorBackdrop" onClick={()=>setRegistryOpen(null)}>
       <div className="editorDialog registryDialog" role="dialog" aria-modal="true" aria-label={registryOpen==='network'?'Редактор сети':'Редактор потока'} onClick={e=>e.stopPropagation()}>
         <div className="dialogHead"><h2>{registryOpen==='network'?(networkEditId?'Редактировать сеть':'Создать сеть'):(flowEditId?'Редактировать поток':'Создать поток')}</h2><button onClick={()=>setRegistryOpen(null)}>Закрыть ×</button></div>

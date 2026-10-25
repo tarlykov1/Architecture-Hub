@@ -814,6 +814,7 @@ def seed_business(db: Session = Depends(db_session)):
 
 # Import after defining database models to avoid circular dependencies.
 from .kis_import import router as kis_router
+from . import kis_export  # registers export route before router is mounted
 app.include_router(kis_router)
 
 from .knowledge import router as knowledge_router
@@ -824,4 +825,3 @@ app.include_router(incident_router)
 
 from .views import router as views_router
 app.include_router(views_router)
-\nfrom . import kis_export  # registers XLSX export on existing KIS router\n

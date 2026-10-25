@@ -13,7 +13,8 @@ from fastapi import HTTPException,Depends
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 from uuid import UUID
-from .main import ArchitectureObject,InfrastructureItem,db_session
+from .main import ArchitectureObject,InfrastructureItem,NetworkInterface,NetworkSegment,DataFlow,db_session
+from .knowledge import KnowledgeLink
 from .kis_import import router
 
 def _cell(ref:str,value:object)->str:
@@ -43,7 +44,7 @@ def make_xlsx(sheets:dict[str,dict[int,dict[str,str]]])->bytes:
         for i,name in enumerate(names,1):z.writestr(f'xl/worksheets/sheet{i}.xml',_sheet(sheets[name]))
     return buffer.getvalue()
 
-def build_card(system:ArchitectureObject,items:list[InfrastructureItem])->bytes:
+def build_card(system:ArchitectureObject,items:list[InfrastructureItem],interfaces=(),segments=(),flows=(),documents=())->bytes:
     attrs=system.attributes or {}
     passport=attrs.get("kis_passport") if isinstance(attrs.get("kis_passport"),dict) else {}
     fields={str(k):str(v) for k,v in passport.items() if v is not None}
@@ -62,7 +63,32 @@ def build_card(system:ArchitectureObject,items:list[InfrastructureItem])->bytes:
         elif item.kind=="database":
             db_name=re.sub(r"^DB:\s*(.*?)\s*\[[^\]]*\]$",r"\1",item.name).strip()
             db[dn]={"C":str(details.get("dbms","")),"D":str(details.get("environment","")),"E":db_name,"F":str(details.get("size_gb","")),"G":item.description or ""};dn+=1
-    sheets={"ИС":overview,"ВМ":vm,"СУБД":db,"Зоны ответственности":{6:{"C":"Не экспортируется автоматически – уточните вручную"}},"Сетевая доступность":{6:{"C":"Не экспортируется автоматически – уточните вручную"}},"Документация":{6:{"C":"Документация хранится отдельно в Wiki.js"}}}
+    responsibilities={6:{"C":"Роль","D":"Ответственный","E":"Источник"}}
+    for field,role in [("Владелец ИС","Владелец ИС"),("Ответственный за сопровождение","Сопровождение")]:
+        person=fields.get(field,"").strip()
+        if person: responsibilities[len(responsibilities)+6]={"C":role,"D":person,"E":"Паспорт КИС"}
+    if len(responsibilities)==1: responsibilities[7]={"C":"Ответственные не указаны"}
+    by_segment={str(x.id):x.name for x in segments}
+    by_item={str(x.id):x for x in items}
+    network={6:{"C":"Источник","D":"Назначение","E":"Протокол","F":"Порт","G":"Достоверность","H":"Примечание"}}
+    next_row=7
+    for nic in interfaces:
+        host=by_item.get(str(nic.item_id))
+        if not host: continue
+        labels=[kind+": "+by_segment[str(ref)] for kind,ref in (("VRF",nic.vrf_id),("VLAN",nic.vlan_id),("Зона",nic.zone_id)) if str(ref) in by_segment]
+        network[next_row]={"C":host.name,"D":nic.ip_address or "IP не указан","G":"Интерфейс из реестра","H":nic.name+"; "+(", ".join(labels) if labels else "Сегменты не заданы")}
+        next_row+=1
+    for flow in flows:
+        src=by_item.get(str(flow.source_id))
+        dst=by_item.get(str(flow.target_id))
+        if not src and not dst:continue
+        network[next_row]={"C":src.name if src else "Внешний компонент","D":dst.name if dst else "Внешний компонент","E":flow.protocol or "Не указан","F":flow.port or "Не указан","G":flow.verification,"H":flow.name}
+        next_row+=1
+    if next_row==7: network[7]={"C":"Сетевые сведения не описаны"}
+    docs={6:{"C":"Название","D":"Путь Wiki.js","E":"Тип связи"}}
+    for link in documents: docs[len(docs)+6]={"C":link.title,"D":link.wiki_path,"E":link.relation_type}
+    if len(docs)==1:docs[7]={"C":"Связанные документы не указаны"}
+    sheets={"ИС":overview,"ВМ":vm,"СУБД":db,"Зоны ответственности":responsibilities,"Сетевая доступность":network,"Документация":docs}
     return make_xlsx(sheets)
 
 @router.get("/export/{system_id}")
@@ -70,5 +96,10 @@ def export_kis(system_id:UUID,db:Session=Depends(db_session)):
     system=db.get(ArchitectureObject,system_id)
     if not system:raise HTTPException(404,"System not found")
     items=list(db.scalars(select(InfrastructureItem).where(InfrastructureItem.system_id==system_id)).all())
-    data=build_card(system,items)
-    return {"filename":"KIS_"+str(system.id)[:8]+".xlsx","content_base64":b64encode(data).decode("ascii"),"systems":1,"vms":sum(i.kind=="vm" for i in items),"databases":sum(i.kind=="database" for i in items),"notice":"Новый XLSX по текущим данным – исходный шаблон, сетевые правила и ответственность не восстанавливаются автоматически."}
+    ids=[item.id for item in items]
+    interfaces=list(db.scalars(select(NetworkInterface).where(NetworkInterface.item_id.in_(ids))).all()) if ids else []
+    segments=list(db.scalars(select(NetworkSegment)).all())
+    flows=list(db.scalars(select(DataFlow).where((DataFlow.source_id.in_(ids)) | (DataFlow.target_id.in_(ids)))).all()) if ids else []
+    documents=list(db.scalars(select(KnowledgeLink).where(KnowledgeLink.entity_type=="system",KnowledgeLink.entity_id==system_id)).all())
+    data=build_card(system,items,interfaces,segments,flows,documents)
+    return {"filename":"KIS_"+str(system.id)[:8]+".xlsx","content_base64":b64encode(data).decode("ascii"),"systems":1,"vms":sum(i.kind=="vm" for i in items),"databases":sum(i.kind=="database" for i in items),"notice":"Новый XLSX по текущим данным – исходное оформление не воспроизводится; сетевые данные отражают зарегистрированные интерфейсы и потоки, а не подтверждённые правила межсетевых экранов."}

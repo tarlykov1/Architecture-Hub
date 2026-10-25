@@ -54,8 +54,39 @@ function App() {
   const [kisFile,setKisFile] = useState<File|null>(null)
   const [kisPreview,setKisPreview] = useState<any>(null)
   const [kisResult,setKisResult] = useState('')
+  const [passportEditId,setPassportEditId]=useState('')
+  const [passportDraft,setPassportDraft]=useState<{name:string;description:string;status:string;fields:Record<string,string>}>({name:'',description:'',status:'draft',fields:{}})
+  const [passportSaving,setPassportSaving]=useState(false)
   const [kisExporting,setKisExporting]=useState(false)
   const [kisOpen,setKisOpen] = useState(false)
+  function editPassport(obj:Obj){
+    const raw=obj.attributes?.kis_passport
+    const fields:Record<string,string>={}
+    if(raw&&typeof raw==='object'&&!Array.isArray(raw)){
+      Object.entries(raw).forEach(([key,value])=>{if(typeof value==='string'||typeof value==='number')fields[key]=String(value)})
+    }
+    for(const key of ['Название ИС','Краткое наименование (используемое)','Функциональное назначение','Владелец ИС','Ответственный за сопровождение']){
+      if(!(key in fields))fields[key]=''
+    }
+    fields['Название ИС']=obj.name
+    setPassportDraft({name:obj.name,description:obj.description,status:obj.status,fields})
+    setPassportEditId(obj.id)
+  }
+  async function savePassport(event:React.FormEvent){
+    event.preventDefault()
+    const obj=objects.find(o=>o.id===passportEditId)
+    if(!obj)return
+    setPassportSaving(true);setError('')
+    try{
+      const fields={...passportDraft.fields,'Название ИС':passportDraft.name}
+      await request('/api/objects/'+obj.id,{method:'PUT',body:JSON.stringify({
+        name:passportDraft.name,kind:obj.kind,status:passportDraft.status,description:passportDraft.description,
+        attributes:{...obj.attributes,kis_passport:fields}
+      })})
+      await refresh();setPassportEditId('');setNotice('Паспорт ИС сохранён')
+    }catch(e){setError('Не удалось сохранить паспорт: '+String(e))}
+    finally{setPassportSaving(false)}
+  }
   async function exportKis(id:string){
     setKisExporting(true);setError('')
     try{
@@ -598,7 +629,7 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
           {kbPages.filter(p=>!kbLinks.some(k=>k.url===p.url)).map(p=><div className="inspectorItem knowledgeSearchResult" key={p.id}><div><strong>{p.title}</strong><small>{p.path}</small></div><button onClick={()=>attachWiki(p)}>+ Связать</button></div>)}
           {kbMessage&&<p role="status">{kbMessage}</p>}
         </div>}
-        {panelTab==='overview'&&<><h3>Назначение</h3><p>{detail.description||'Описание не указано'}</p><h3>Статус</h3><p>{detail.status}</p>
+        {panelTab==='overview'&&<><button type="button" onClick={()=>editPassport(detail)}>Редактировать паспорт КИС</button><h3>Назначение</h3><p>{detail.description||'Описание не указано'}</p><h3>Статус</h3><p>{detail.status}</p>
           <div className="statPills"><span>{detailItems.length} компонентов</span><span>{flows.filter(f=>detailItems.some(i=>i.id===f.source_id||i.id===f.target_id)).length} потоков</span></div>
           <button className="primary" onClick={()=>{setViewSystem(detail.id);setLayer('infrastructure')}}>Открыть архитектуру →</button></>}
         {panelTab==='components'&&<>{detailItems.map(i=><article className="inspectorItem" key={i.id}><strong>{i.name}</strong><small>{i.kind} · {String(i.details.environment||'—')} · {String(i.details.security_zone||'Зона не указана')}</small></article>)}
@@ -623,6 +654,20 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
       </div>}
       {kisResult&&<p role="status">{kisResult}</p>}
     </div></div>}
+    {passportEditId&&<div className="editorBackdrop" onClick={()=>setPassportEditId('')}>
+      <div className="editorDialog passportDialog" role="dialog" aria-modal="true" aria-label="Редактор паспорта КИС" onClick={e=>e.stopPropagation()}>
+        <div className="dialogHead"><h2>Паспорт информационной системы</h2><button type="button" onClick={()=>setPassportEditId('')}>Закрыть ×</button></div>
+        <p className="hint">Изменения сохраняются в реестре Architecture Hub и попадут в следующий экспорт КИС.</p>
+        <form className="detailForm" onSubmit={savePassport}>
+          <label>Название ИС<input required maxLength={250} value={passportDraft.name} onChange={e=>setPassportDraft({...passportDraft,name:e.target.value})}/></label>
+          <label>Описание<textarea value={passportDraft.description} maxLength={4000} onChange={e=>setPassportDraft({...passportDraft,description:e.target.value})}/></label>
+          <label>Статус<select value={passportDraft.status} onChange={e=>setPassportDraft({...passportDraft,status:e.target.value})}><option value="active">Действует</option><option value="draft">Черновик</option><option value="planned">Планируется</option><option value="retired">Выведена</option></select></label>
+          <h3>Поля карточки КИС</h3>
+          {Object.entries(passportDraft.fields).filter(([key])=>key!=='Название ИС').map(([key,value])=><label key={key}>{key}<input value={value} onChange={e=>setPassportDraft({...passportDraft,fields:{...passportDraft.fields,[key]:e.target.value}})}/></label>)}
+          <button className="primary" disabled={passportSaving}>{passportSaving?'Сохранение…':'Сохранить паспорт'}</button>
+        </form>
+      </div>
+    </div>}
     {registryOpen&&<div className="editorBackdrop" onClick={()=>setRegistryOpen(null)}>
       <div className="editorDialog registryDialog" role="dialog" aria-modal="true" aria-label={registryOpen==='network'?'Редактор сети':'Редактор потока'} onClick={e=>e.stopPropagation()}>
         <div className="dialogHead"><h2>{registryOpen==='network'?(networkEditId?'Редактировать сеть':'Создать сеть'):(flowEditId?'Редактировать поток':'Создать поток')}</h2><button onClick={()=>setRegistryOpen(null)}>Закрыть ×</button></div>

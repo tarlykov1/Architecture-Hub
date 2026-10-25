@@ -56,3 +56,17 @@ test('create network and incident from visible forms', async ({ page }) => {
   await incident.getByRole('button', { name: 'Сохранить инцидент' }).click()
   await expect(incident.getByRole('heading', { name: 'CI incident browser test' })).toBeVisible()
 })
+
+test('selected system downloads a KIS Excel file', async ({ page }) => {
+  const name='CI KIS export '+Date.now()
+  const created=await page.request.post('http://127.0.0.1:8001/api/objects',{data:{name,kind:'system',description:'Workbook export test'}})
+  expect(created.status()).toBe(201)
+  await page.goto('/')
+  await page.getByRole('button',{name:name}).first().click()
+  const exportButton=page.getByRole('button',{name:'Экспорт КИС в Excel'})
+  await expect(exportButton).toBeEnabled()
+  const [download]=await Promise.all([page.waitForEvent('download'),exportButton.click()])
+  expect(download.suggestedFilename()).toMatch(/^KIS_[a-z0-9]+\.xlsx$/)
+  const path=await download.path()
+  expect(path).toBeTruthy()
+})

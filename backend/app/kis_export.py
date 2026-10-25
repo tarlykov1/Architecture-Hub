@@ -6,6 +6,7 @@ No original attachments or unsupported legacy sections are reconstructed.
 from __future__ import annotations
 from base64 import b64encode
 from io import BytesIO
+import re
 from xml.sax.saxutils import escape
 from zipfile import ZipFile, ZIP_DEFLATED
 from fastapi import HTTPException,Depends
@@ -59,7 +60,8 @@ def build_card(system:ArchitectureObject,items:list[InfrastructureItem])->bytes:
         if item.kind=="vm":
             vm[vn]={"C":str(details.get("environment","")),"D":item.description or "","E":item.name,"F":str(details.get("ip_address","")),"G":str(details.get("os","")),"H":str(details.get("internet_access",""))};vn+=1
         elif item.kind=="database":
-            db[dn]={"C":str(details.get("dbms","")),"D":str(details.get("environment","")),"E":item.name,"F":str(details.get("size_gb","")),"G":item.description or ""};dn+=1
+            db_name=re.sub(r"^DB:\\s*(.*?)\\s*\\[[^\\]]*\\]$",r"\\1",item.name).strip()
+            db[dn]={"C":str(details.get("dbms","")),"D":str(details.get("environment","")),"E":db_name,"F":str(details.get("size_gb","")),"G":item.description or ""};dn+=1
     sheets={"ИС":overview,"ВМ":vm,"СУБД":db,"Зоны ответственности":{6:{"C":"Не экспортируется автоматически – уточните вручную"}},"Сетевая доступность":{6:{"C":"Не экспортируется автоматически – уточните вручную"}},"Документация":{6:{"C":"Документация хранится отдельно в Wiki.js"}}}
     return make_xlsx(sheets)
 

@@ -37,3 +37,14 @@ def test_export_kis_is_valid_for_import_preview():
 def test_unknown_system_export_404():
     with TestClient(app) as client:
         assert client.get("/api/kis/export/"+str(uuid4()),headers=ADMIN).status_code==404
+
+def test_kis_imported_database_name_roundtrip():
+    from app.kis_export import build_card
+    from app.main import ArchitectureObject,InfrastructureItem
+    from app.kis_import import _parse
+    from uuid import uuid4
+    system=ArchitectureObject(id=uuid4(),name="CaseOne",kind="system",attributes={"kis_passport":{}})
+    database=InfrastructureItem(id=uuid4(),system_id=system.id,name="DB: caseonedb [prod]",kind="database",details={"environment":"prod","dbms":"PostgreSQL"})
+    parsed=_parse(build_card(system,[database]))
+    assert parsed["databases"][0]["E"]=="caseonedb"
+    assert parsed["databases"][0]["D"]=="prod"

@@ -92,3 +92,15 @@ test('component card shows passport, interfaces and flows tabs', async ({ page }
   await dialog.getByRole('button',{name:/Закрыть/}).click()
   await expect(dialog).toBeHidden()
 })
+
+test('inspector avoids duplicate architecture action when selected architecture is already open', async ({ page }) => {
+  const title='E2E-architecture-context-'+Date.now()
+  const result=await page.request.post('http://127.0.0.1:8001/api/objects',{data:{name:title,kind:'system'}})
+  expect(result.status()).toBe(201)
+  await page.goto('/')
+  await page.getByRole('button',{name:title}).first().click()
+  await page.getByRole('button',{name:'Сервисы и ВМ'}).click()
+  const panel=page.getByRole('complementary',{name:'Карточка архитектурного объекта'})
+  await expect(panel.getByText('Архитектура этой ИС уже открыта')).toBeVisible()
+  await expect(panel.getByRole('button',{name:'Открыть архитектуру →'})).toHaveCount(0)
+})

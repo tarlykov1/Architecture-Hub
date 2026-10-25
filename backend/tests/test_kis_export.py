@@ -48,3 +48,18 @@ def test_kis_imported_database_name_roundtrip():
     parsed=_parse(build_card(system,[database]))
     assert parsed["databases"][0]["E"]=="caseonedb"
     assert parsed["databases"][0]["D"]=="prod"
+
+def test_edit_passport_then_export_current_excel():
+    from app.kis_import import _parse
+    with TestClient(app) as client:
+        original=client.post("/api/objects",headers=ADMIN,json={"name":"Original "+uuid4().hex[:7],"kind":"system","attributes":{"origin":"kis","kis_passport":{"Владелец ИС":"Команда А"}}})
+        assert original.status_code==201,original.text
+        obj=original.json()
+        attrs={**obj["attributes"],"kis_passport":{**obj["attributes"]["kis_passport"],"Владелец ИС":"Команда Б"}}
+        changed=client.put("/api/objects/"+obj["id"],headers=ADMIN,json={"kind":obj["kind"],"name":"Updated KIS "+uuid4().hex[:7],"description":"Updated","status":"active","attributes":attrs})
+        assert changed.status_code==200,changed.text
+        exported=client.get("/api/kis/export/"+obj["id"],headers=ADMIN)
+        assert exported.status_code==200,exported.text
+        card=_parse(b64decode(exported.json()["content_base64"]))
+        assert card["system_name"]==changed.json()["name"]
+        assert card["fields"]["Владелец ИС"]=="Команда Б"

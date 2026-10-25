@@ -124,3 +124,5 @@ button{border-radius:5px;border-color:#dde2e8}.primary{background:var(--hub-blue
 
 /* Keep global action trigger above the optional inspector so export works with a selected system. */
 .layerActions{z-index:32}.layerActionMenu{z-index:42}
+
+.graphFocusToolbar{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin:9px 0;padding:9px 12px;background:#edf4fc;border-radius:7px;font-size:12px;color:#345875}.graphFocusToolbar button{padding:5px 10px}

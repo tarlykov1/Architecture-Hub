@@ -611,7 +611,7 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
         </>}
       </section>}
     </main>
-    {inspectorOpen&&<><button type="button" className="inspectorScrim" aria-label="Закрыть карточку объекта" onClick={()=>setInspectorOpen(false)}></button><aside className={inspectorExpanded ? "details detailsExpanded" : "details"} aria-label="Карточка архитектурного объекта">
+    {inspectorOpen&&<><aside className={inspectorExpanded ? "details detailsExpanded" : "details"} aria-label="Карточка архитектурного объекта">
       <div className="inspectorToolbar"><div className="sideLabel">КАРТОЧКА ОБЪЕКТА</div><button type="button" aria-label="Закрыть правую панель" onClick={()=>{setInspectorOpen(false);setInspectorExpanded(false)}}>Закрыть ×</button><button type="button" onClick={()=>setInspectorExpanded(v=>!v)} aria-label={inspectorExpanded?"Свернуть карточку":"Развернуть карточку"}>{inspectorExpanded?"Свернуть ↘":"Развернуть ↗"}</button></div>
       {detail ? <>
         <h2>{detail.name}</h2><span className="tag">{detail.kind}</span>

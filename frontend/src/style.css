@@ -116,3 +116,6 @@ button{border-radius:5px;border-color:#dde2e8}.primary{background:var(--hub-blue
 .inspectorToolbar{display:flex;align-items:center;flex-wrap:wrap;gap:8px}.inspectorToolbar .sideLabel{flex:1 1 100%;margin-bottom:0}.inspectorToolbar button{font-size:12px}
 @media(max-width:1050px){.shell{grid-template-columns:270px minmax(0,1fr)}.details{display:block!important}}
 @media(max-width:650px){.shell{grid-template-columns:1fr;grid-template-rows:53px auto minmax(0,1fr)}.details,.details.detailsExpanded{top:0;right:0;bottom:0;width:min(100vw,420px);border-radius:0;padding:17px}.inspectorScrim{inset:0}}
+
+/* The panel is non-modal: tabs and the architecture canvas remain usable while it is open. */
+.inspectorScrim{display:none}

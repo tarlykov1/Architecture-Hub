@@ -145,6 +145,20 @@ function App() {
     setFlowSecurity(f?.security || 'TLS');setFlowVerification(f?.verification || 'draft')
     setFlowSchedule(f?.schedule || '');setRegistryError('');setRegistryOpen('flow')
   }
+  function connectComponents(connection:Connection){
+    const source=infra.find(i=>i.id===connection.source)
+    const target=infra.find(i=>i.id===connection.target)
+    if(!source||!target){setError('Компонент не найден. Обновите схему.');return}
+    if(source.id===target.id){setError('Нельзя соединить компонент с самим собой');return}
+    const existing=flows.find(f=>f.source_id===source.id&&f.target_id===target.id)
+    if(existing){editFlow(existing);setNotice('Поток уже существует – открыто его редактирование');return}
+    editFlow()
+    setFlowSource(source.id)
+    setFlowTarget(target.id)
+    setFlowName(source.name+' → '+target.name)
+    setFlowVerification('draft')
+    setNotice('Заполните параметры потока и нажмите «Сохранить» – только после этого связь появится на схеме.')
+  }
   async function saveRegistry(event: React.FormEvent) {
     event.preventDefault();setRegistryBusy(true);setRegistryError('')
     try {
@@ -614,13 +628,13 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
         {layer==='infrastructure' ? <>
           <div className="viewHead"><h2>Компоненты, ВМ и сети</h2><select value={viewMode} onChange={e=>setViewMode(e.target.value as 'architecture'|'security')}><option value="architecture">Архитектура ВМ</option><option value="security">Сети и защита</option></select></div>
           <p className="hint">Выберите систему слева или на общей карте. Каждая ВМ, сервис, API и база создаётся как отдельный объект. Сетевую принадлежность указываем для компонентов, а не для системы целиком.</p>
-          {drill && <div className="graphFocusToolbar"><span>{focusActive?`Связи компонента: ${scopedItems.find(i=>i.id===focusedComponent)?.name||''} · ${scopedFlows.filter(f=>f.source_id===focusedComponent||f.target_id===focusedComponent).length} потоков`:'Нажмите на компонент, чтобы подсветить его зависимости'}</span>{focusActive&&<><button onClick={()=>setImpactMode(v=>!v)}>{impactMode?'Прямые связи':'Влияние отказа →'}</button>{impactMode&&<span role="status">Потенциально затронуто: {impacted.size} компонентов (по направлению зарегистрированных потоков)</span>}<button onClick={()=>{setFocusedComponent('');setImpactMode(false)}}>Сбросить выделение</button></>}</div>}
+          {drill && <div className="graphFocusToolbar"><span>{focusActive?`Связи компонента: ${scopedItems.find(i=>i.id===focusedComponent)?.name||''} · ${scopedFlows.filter(f=>f.source_id===focusedComponent||f.target_id===focusedComponent).length} потоков`:'Нажмите на компонент для подсветки. Чтобы связать компоненты, перетащите линию от нижней точки источника к верхней точке получателя.'}</span>{focusActive&&<><button onClick={()=>setImpactMode(v=>!v)}>{impactMode?'Прямые связи':'Влияние отказа →'}</button>{impactMode&&<span role="status">Потенциально затронуто: {impacted.size} компонентов (по направлению зарегистрированных потоков)</span>}<button onClick={()=>{setFocusedComponent('');setImpactMode(false)}}>Сбросить выделение</button></>}</div>}
           {impactMode&&focusActive&&<div className="impactRoutes" aria-label="Маршруты потенциального влияния">
             <strong>Цепочки потенциального влияния</strong>
             <p className="hint">Маршруты построены по направлению зарегистрированных потоков; даже подтверждённый поток не доказывает фактический отказ получателя.</p>
             {impactPaths.length===0?<p>Исходящие зависимости внутри выбранной схемы не зарегистрированы.</p>:impactPaths.map(route=><div className="impactRoute" key={route.target}><span>{route.nodes.map(id=>scopedItems.find(i=>i.id===id)?.name||id).join(' → ')}</span><small>{route.steps} переходов · {route.verification}</small><button type="button" onClick={()=>setFocusedComponent(route.target)}>Выделить компонент</button></div>)}
           </div>}
-          {drill && <div className="miniArchitecture" style={{height:520}}><ReactFlow key={drill.id+viewMode} nodes={drillNodes} edges={drillEdges} onNodeClick={(_,node)=>setFocusedComponent(node.id)} onPaneClick={()=>setFocusedComponent('')} fitView nodesConnectable={false} nodesDraggable={false}><Background gap={20}/><Controls/></ReactFlow></div>}
+          {drill && <div className="miniArchitecture" style={{height:520}}><ReactFlow key={drill.id+viewMode} nodes={drillNodes} edges={drillEdges} onNodeClick={(_,node)=>setFocusedComponent(node.id)} onPaneClick={()=>setFocusedComponent('')} onConnect={connectComponents} fitView nodesConnectable={true} nodesDraggable={false}><Background gap={20}/><Controls/></ReactFlow></div>}
           {viewMode==='security'&&<div className="networkZones">{zones.map(z=><article key={z} className="zoneCard"><h3>{segments.find(s=>s.id===z)?.name||z}</h3>{scopedItems.filter(i=>(nics.find(n=>n.item_id===i.id)?.zone_id||String(i.details.security_zone||'Зона неизвестна'))===z).map(i=><button key={i.id} onClick={()=>setSelected(i.system_id)}><strong>{i.name}</strong><small>{nics.filter(n=>n.item_id===i.id).map(n=>n.name+' · '+segmentName(n.vrf_id)+' · '+segmentName(n.vlan_id)).join('; ')||'Сетевой интерфейс не задан'}</small></button>)}</article>)}</div>}
           {viewMode==='security'&&<div className="networkLegend">Цвет стрелки: зелёный – указан тип защиты; оранжевый – неизвестно. Наличие TLS не подтверждает защиту всего маршрута. Неподтверждённые параметры требуют проверки.</div>}
           <div className="infraGrid">{infra.filter(filterInfra).map(i=><article className="infraCard" key={i.id}>

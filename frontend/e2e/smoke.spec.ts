@@ -179,3 +179,28 @@ test('infrastructure diagram defaults to view mode and editing is explicit',asyn
  await finish.click()
  await expect(edit).toBeVisible()
 })
+
+test('topology starts with an understandable focused flow, not all unlinked components',async({page})=>{
+ const stamp=Date.now()
+ const created=await page.request.post('http://127.0.0.1:8001/api/objects',{data:{name:'Topology focused '+stamp,kind:'system'}})
+ expect(created.status()).toBe(201)
+ const id=(await created.json()).id
+ const itemIds=[]
+ for(const name of ['Sender '+stamp,'Receiver '+stamp,'Unlinked '+stamp]){
+   const res=await page.request.post('http://127.0.0.1:8001/api/infra',{data:{system_id:id,name,kind:'service'}})
+   expect(res.status()).toBe(201)
+   itemIds.push((await res.json()).id)
+ }
+ const f=await page.request.post('http://127.0.0.1:8001/api/flows',{data:{source_id:itemIds[0],target_id:itemIds[1],name:'Topology focused flow',protocol:'HTTPS',verification:'draft'}})
+ expect(f.status()).toBe(201)
+ await page.goto('/')
+ await page.getByRole('button',{name:'Топология сетей'}).click()
+ await page.getByRole('combobox',{name:'Система'}).selectOption(id)
+ const diagram=page.locator('.react-flow')
+ await expect(diagram.locator('.react-flow__node:not(.react-flow__node-group)')).toHaveCount(2)
+ await expect(page.getByRole('combobox',{name:'Выбрать поток на схеме'})).toHaveValue((await f.json()).id)
+ await page.getByRole('checkbox',{name:'Показать компоненты без потоков'}).check()
+ await expect(diagram.locator('.react-flow__node:not(.react-flow__node-group)')).toHaveCount(2)
+ await page.getByRole('checkbox',{name:'Все потоки'}).check()
+ await expect(diagram.locator('.react-flow__edge')).toHaveCount(1)
+})

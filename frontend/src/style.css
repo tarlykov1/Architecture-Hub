@@ -130,3 +130,6 @@ button{border-radius:5px;border-color:#dde2e8}.primary{background:var(--hub-blue
 .impactRoutes{padding:13px;background:#fff;border:1px solid #dbe5ef;border-radius:8px;margin-bottom:12px;max-height:250px;overflow:auto}.impactRoutes>strong{font-size:13px}.impactRoutes p{font-size:12px}.impactRoute{display:flex;gap:10px;align-items:center;flex-wrap:wrap;border-top:1px solid #e5edf6;padding:9px 0;font-size:12px}.impactRoute span{flex:1 1 250px;overflow-wrap:anywhere}.impactRoute small{color:#64748b}.impactRoute button{white-space:nowrap}
 
 .externalToggle{display:inline-flex;align-items:center;gap:7px;font-size:12px;white-space:nowrap;margin-left:auto}.externalToggle input{width:16px;height:16px}
+
+/* Compact graph legend and clearer ownership without sacrificing canvas width. */
+.diagramLegend{display:flex;align-items:center;gap:10px 18px;flex-wrap:wrap;color:#53647a;font-size:12px;padding:7px 0 12px}.diagramLegend span{display:inline-flex;align-items:center;gap:6px}.legendSwatch{display:inline-block;width:15px;height:12px;border-radius:3px}.legendLocal{border:1px solid #9aafc8;background:#edf4fe}.legendExternal{border:2px dashed #c48a4d;background:#fff7ed}

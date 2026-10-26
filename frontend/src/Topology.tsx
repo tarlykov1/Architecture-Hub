@@ -11,6 +11,7 @@ const unknown='Не определено'
 const colors={verified:'#15805c',unverified:'#bc8323'}
 export default function Topology({systems,items,segments,interfaces,flows,saveInterface}:Props){
  const [showConnections,setShowConnections]=useState(false)
+ const [showAllComponents,setShowAllComponents]=useState(false)
  const [nicEditor,setNicEditor]=useState<Nic|null>(null)
  const [nicDraft,setNicDraft]=useState<Omit<Nic,"id">|null>(null)
  const [nicError,setNicError]=useState('')
@@ -45,9 +46,17 @@ export default function Topology({systems,items,segments,interfaces,flows,saveIn
    if(mode==='external')return a!==b&&(itemById.has(f.source_id)&&itemById.has(f.target_id))
    return (a||b)&&itemById.has(f.source_id)&&itemById.has(f.target_id)
  })
+ const activeFlowId=flowId||(!selected&&!showConnections?visibleFlows[0]?.id||'':'')
+ const activeFlow=visibleFlows.find(f=>f.id===activeFlowId)
+ const focusedIds=new Set<string>()
+ if(!showConnections){
+   if(activeFlow){focusedIds.add(activeFlow.source_id);focusedIds.add(activeFlow.target_id)}
+   else if(selected){focusedIds.add(selected);for(const f of visibleFlows)if(f.source_id===selected||f.target_id===selected){focusedIds.add(f.source_id);focusedIds.add(f.target_id)}}
+ }
  const peerIds=new Set<string>()
  visibleFlows.forEach(f=>{if(!matchingIds.has(f.source_id))peerIds.add(f.source_id);if(!matchingIds.has(f.target_id))peerIds.add(f.target_id)})
- const displayed=[...matching,...Array.from(peerIds).map(id=>itemById.get(id)).filter((i):i is Item=>Boolean(i))]
+ const candidateItems=[...matching,...Array.from(peerIds).map(id=>itemById.get(id)).filter((i):i is Item=>Boolean(i))]
+ const displayed=candidateItems.filter(i=>(showAllComponents||visibleFlows.some(f=>f.source_id===i.id||f.target_id===i.id))&&(showConnections||!focusedIds.size||focusedIds.has(i.id)))
  const groups=new Map<string,{vrf:string|null;vlan:string|null;items:Item[]}>()
  // Multiple interfaces are not silently reduced to the first one:
  // a component is represented once in each VLAN/VRF where it has an interface.
@@ -81,7 +90,7 @@ export default function Topology({systems,items,segments,interfaces,flows,saveIn
  }
  // Resolve arrows to the correct visual copy of multi-homed components.
  const hostNode=(id:string)=>'host:'+id+':'+(memberships.get(id)||[])[0]
- for(const flow of (showConnections?visibleFlows:visibleFlows.filter(f=>f.id===flowId||f.source_id===selected||f.target_id===selected))){
+ for(const flow of (showConnections?visibleFlows:visibleFlows.filter(f=>f.id===activeFlowId||f.source_id===selected||f.target_id===selected))){
    if(!memberships.has(flow.source_id)||!memberships.has(flow.target_id))continue
    const known=flow.verification==='verified'
    edges.push({id:flow.id,source:hostNode(flow.source_id),target:hostNode(flow.target_id),type:'smoothstep',label:[flow.protocol,flow.port].filter(Boolean).join(' : ')||flow.name,markerEnd:{type:MarkerType.ArrowClosed,color:known?colors.verified:colors.unverified},animated:false,style:{stroke:known?colors.verified:colors.unverified,strokeWidth:2},labelStyle:{fontSize:11,fill:'#35465b'},labelBgPadding:[6,3],labelBgBorderRadius:4,labelBgStyle:{fill:'#ffffff',fillOpacity:0.94}})
@@ -96,11 +105,17 @@ export default function Topology({systems,items,segments,interfaces,flows,saveIn
    <select value={environment} onChange={e=>setEnvironment(e.target.value)} aria-label="Контур"><option value="">Все контуры</option>{environments.map(x=><option key={x} value={x}>{x}</option>)}</select>
    <select value={mode} onChange={e=>setMode(e.target.value as 'all'|'internal'|'external')} aria-label="Тип связей"><option value="all">Все связи</option><option value="internal">Только внутренние</option><option value="external">Только внешние</option></select>
    <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Поиск ВМ или системы" aria-label="Поиск компонента" style={{minWidth:180}}/>
-   <label className="topologyConnectionToggle"><input type="checkbox" checked={showConnections} onChange={e=>setShowConnections(e.target.checked)}/> Все потоки</label><button onClick={()=>{setSystem('');setVrf('');setVlan('');setEnvironment('');setMode('all');setSearch('');setSelected('');setFlowId('')}}>Сбросить</button>
+   <label className="topologyConnectionToggle"><input type="checkbox" checked={showConnections} onChange={e=>setShowConnections(e.target.checked)}/> Все потоки</label><button onClick={()=>{setSystem('');setVrf('');setVlan('');setEnvironment('');setMode('all');setSearch('');setSelected('');setFlowId('');setShowConnections(false);setShowAllComponents(false)}}>Сбросить</button>
   </div>
-  <small>Найдено компонентов: {matching.length} · Показано объектов: {displayed.length} · VRF/VLAN-групп: {groups.size} · Потоков: {visibleFlows.length} · На схеме: {showConnections?'все':'только для выбранного узла'} · Без сетевых интерфейсов: {matching.filter(i=>!(nicsByItem.get(i.id)||[]).length).length}</small>
+  <div className="topologyGuide" aria-label="Навигатор потоков">
+    <div><strong>Начните со связи, а не с поиска узла на схеме</strong><p>Выберите поток – будут показаны источник, получатель и направление. Для общего обзора включите «Все потоки».</p></div>
+    <label>Поток данных<select aria-label="Выбрать поток на схеме" value={activeFlowId} onChange={e=>{setFlowId(e.target.value);setSelected('');setShowConnections(false)}}><option value="">Нет выбранного потока</option>{visibleFlows.map(f=><option key={f.id} value={f.id}>{itemById.get(f.source_id)?.name||'?'} → {itemById.get(f.target_id)?.name||'?'} · {f.name}</option>)}</select></label>
+    <label className="topologyConnectionToggle"><input type="checkbox" checked={showAllComponents} onChange={e=>setShowAllComponents(e.target.checked)}/> Показать компоненты без потоков</label>
+    <small>Без известных потоков: {matching.filter(i=>!visibleFlows.some(f=>f.source_id===i.id||f.target_id===i.id)).length}. Отсутствие потока в реестре не доказывает отсутствие зависимости.</small>
+  </div>
+  <small>Найдено компонентов: {matching.length} · Показано объектов: {displayed.length} · VRF/VLAN-групп: {groups.size} · Потоков: {visibleFlows.length} · На схеме: {showConnections?'все зарегистрированные':'выбранный поток или компонент'} · Без сетевых интерфейсов: {matching.filter(i=>!(nicsByItem.get(i.id)||[]).length).length}</small>
   <div style={{flex:1,minHeight:300,position:'relative',border:'1px solid #d5e0ef',borderRadius:12,overflow:'hidden'}}>
-   {displayed.length?<ReactFlow nodes={nodes} edges={edges} nodesDraggable={false} nodesConnectable={false} fitView fitViewOptions={{padding:0.15}} onNodeClick={(_,n)=>{if(n.id.startsWith('host:')){const id=String((n.data as {item_id?:string}).item_id||'');const found=id||displayed.find(i=>n.id.startsWith('host:'+i.id+':'))?.id||'';setSelected(found);setFlowId('')}}} onEdgeClick={(_,e)=>{setFlowId(e.id);setSelected('')}}><Background/><Controls/></ReactFlow>:<p style={{padding:20}}>Нет компонентов для выбранных фильтров. Проверьте систему, контур и сетевые привязки.</p>}
+   {displayed.length?<ReactFlow nodes={nodes} edges={edges} nodesDraggable={false} nodesConnectable={false} fitView fitViewOptions={{padding:0.15}} onNodeClick={(_,n)=>{if(n.id.startsWith('host:')){const id=String((n.data as {item_id?:string}).item_id||'');const found=id||displayed.find(i=>n.id.startsWith('host:'+i.id+':'))?.id||'';setSelected(found);setFlowId('')}}} onEdgeClick={(_,e)=>{setFlowId(e.id);setSelected('');setShowConnections(false)}}><Background/><Controls/></ReactFlow>:<p style={{padding:20}}>Нет компонентов для выбранных фильтров. Проверьте систему, контур и сетевые привязки.</p>}
   </div>
   <small>Нажмите на компонент, чтобы увидеть его потоки. Переключатель «Все потоки» показывает общую картину. Зелёная стрелка – подтверждённый поток; оранжевая – не проверен. Отсутствие стрелки не означает отсутствия сетевого доступа. Схема отображает описанные логические связи, не трассировку физического маршрута.</small>
   {(item||flow)&&<aside style={{position:'absolute',right:20,top:145,zIndex:5,background:'#fff',border:'1px solid #c3d1e5',boxShadow:'0 8px 26px #0002',padding:16,borderRadius:12,width:340,maxHeight:'65vh',overflow:'auto'}}>

@@ -133,3 +133,5 @@ button{border-radius:5px;border-color:#dde2e8}.primary{background:var(--hub-blue
 
 /* Compact graph legend and clearer ownership without sacrificing canvas width. */
 .diagramLegend{display:flex;align-items:center;gap:10px 18px;flex-wrap:wrap;color:#53647a;font-size:12px;padding:7px 0 12px}.diagramLegend span{display:inline-flex;align-items:center;gap:6px}.legendSwatch{display:inline-block;width:15px;height:12px;border-radius:3px}.legendLocal{border:1px solid #9aafc8;background:#edf4fe}.legendExternal{border:2px dashed #c48a4d;background:#fff7ed}
+
+.graphModeHint{margin:6px 0 10px;padding:8px 11px;border:1px solid #dde8f5;border-radius:7px;background:#f3f7fc;color:#44607d;font-size:12px}.viewHead{flex-wrap:wrap;gap:9px}.viewHead>button{white-space:nowrap}

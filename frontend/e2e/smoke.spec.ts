@@ -200,7 +200,7 @@ test('topology starts with an understandable focused flow, not all unlinked comp
  await expect(diagram.locator('.react-flow__node:not(.react-flow__node-group)')).toHaveCount(2)
  await expect(page.getByRole('combobox',{name:'Выбрать поток на схеме'})).toHaveValue((await f.json()).id)
  await page.getByRole('checkbox',{name:'Показать компоненты без потоков'}).check()
- await expect(diagram.locator('.react-flow__node:not(.react-flow__node-group)')).toHaveCount(2)
+ await expect(diagram.locator('.react-flow__node:not(.react-flow__node-group)')).toHaveCount(3)
  await page.getByRole('checkbox',{name:'Все потоки'}).check()
  await expect(diagram.locator('.react-flow__edge')).toHaveCount(1)
 })

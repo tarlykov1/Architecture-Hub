@@ -56,7 +56,7 @@ export default function Topology({systems,items,segments,interfaces,flows,saveIn
  const peerIds=new Set<string>()
  visibleFlows.forEach(f=>{if(!matchingIds.has(f.source_id))peerIds.add(f.source_id);if(!matchingIds.has(f.target_id))peerIds.add(f.target_id)})
  const candidateItems=[...matching,...Array.from(peerIds).map(id=>itemById.get(id)).filter((i):i is Item=>Boolean(i))]
- const displayed=candidateItems.filter(i=>(showAllComponents||visibleFlows.some(f=>f.source_id===i.id||f.target_id===i.id))&&(showConnections||!focusedIds.size||focusedIds.has(i.id)))
+ const displayed=candidateItems.filter(i=>(showAllComponents||visibleFlows.some(f=>f.source_id===i.id||f.target_id===i.id))&&(showConnections||showAllComponents||!focusedIds.size||focusedIds.has(i.id)))
  const groups=new Map<string,{vrf:string|null;vlan:string|null;items:Item[]}>()
  // Multiple interfaces are not silently reduced to the first one:
  // a component is represented once in each VLAN/VRF where it has an interface.

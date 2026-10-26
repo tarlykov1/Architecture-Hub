@@ -79,9 +79,10 @@ export default function Topology({systems,items,segments,interfaces,flows,saveIn
  for(let groupIndex=0;groupIndex<entries.length;groupIndex++){
    const [key,group]=entries[groupIndex]
    const height=95+Math.ceil(group.items.length/3)*132
+   const groupWidth=Math.min(900,24+Math.min(3,group.items.length)*294)
    const groupId='group:'+key
    const isExternal=key==='external'
-   nodes.push({id:groupId,position:{x:0,y:offsetY},data:{label:<div style={{textAlign:'left'}}><strong>{isExternal?'Внешние зависимости':'VRF: '+name(group.vrf)+' · VLAN: '+name(group.vlan)}</strong><div style={{fontSize:12,marginTop:5,color:'#60728b'}}>{group.items.length} компонентов{isExternal?' · вне выбранного фильтра':''}</div></div>},style:{width:900,height,background:isExternal?'#fff4df':'#eaf1fb',border:'1px solid '+(isExternal?'#d6b67b':'#a8bdd6'),borderRadius:14},draggable:false,selectable:false})
+   nodes.push({id:groupId,position:{x:0,y:offsetY},data:{label:<div style={{textAlign:'left'}}><strong>{isExternal?'Внешние зависимости':!group.vrf&&!group.vlan?'Сеть не указана – требуется уточнить VRF/VLAN':'VRF: '+name(group.vrf)+' · VLAN: '+name(group.vlan)}</strong><div style={{fontSize:12,marginTop:5,color:'#60728b'}}>{group.items.length} компонентов{isExternal?' · вне выбранного фильтра':''}</div></div>},style:{width:groupWidth,height,background:isExternal?'#fff4df':!group.vrf&&!group.vlan?'#f4f6f9':'#eaf1fb',border:'1px solid '+(isExternal?'#d6b67b':'#a8bdd6'),borderRadius:14},draggable:false,selectable:false})
    group.items.forEach((item,j)=>{
      const duplicate=(memberships.get(item.id)||[]).indexOf(key)
      nodes.push({id:'host:'+item.id+':'+key,parentId:groupId,extent:'parent',position:{x:16+(j%3)*294,y:74+Math.floor(j/3)*132},sourcePosition:Position.Right,targetPosition:Position.Left,data:{label:<div style={{textAlign:'left',display:'grid',gap:4}}><strong>{item.name}</strong><small>{systemById.get(item.system_id)?.name||'Система неизвестна'}</small><small>{item.kind} · {String(item.details.environment||'Контур не указан')}{isExternal?' · внешняя':''}</small>{(memberships.get(item.id)||[]).length>1&&<small>Сетей: {memberships.get(item.id)?.length}</small>}</div>},style:{width:272,minHeight:100,background:isExternal?'#fffcf5':'white',border:'1px solid '+(duplicate>0?'#669acb':'#adbed3'),borderRadius:9,cursor:'pointer'},draggable:false})

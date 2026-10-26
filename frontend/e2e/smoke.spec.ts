@@ -133,3 +133,32 @@ test('infrastructure graph permits connecting components',async({page})=>{
  const handles=page.locator('.miniArchitecture .react-flow__handle')
  await expect(handles).toHaveCount(4)
 })
+
+test('neighboring systems toggle reveals cross-system linked components',async({page})=>{
+ const stamp=Date.now()
+ const names=['Cross source '+stamp,'Cross neighbor '+stamp]
+ const systems=[]
+ for(const name of names){
+  const response=await page.request.post('http://127.0.0.1:8001/api/objects',{data:{name,kind:'system'}})
+  expect(response.status()).toBe(201)
+  systems.push((await response.json()).id)
+ }
+ const components=[]
+ for(let i=0;i<2;i++){
+  const response=await page.request.post('http://127.0.0.1:8001/api/infra',{data:{system_id:systems[i],name:'Cross VM '+i+' '+stamp,kind:'vm'}})
+  expect(response.status()).toBe(201)
+  components.push((await response.json()).id)
+ }
+ const flow=await page.request.post('http://127.0.0.1:8001/api/flows',{data:{source_id:components[0],target_id:components[1],name:'cross system integration',protocol:'HTTPS',verification:'draft'}})
+ expect(flow.status()).toBe(201)
+ await page.goto('/')
+ await page.getByRole('button',{name:names[0]}).first().dblclick()
+ const diagram=page.locator('.miniArchitecture')
+ await expect(diagram.locator('.react-flow__node')).toHaveCount(1)
+ await page.getByRole('checkbox',{name:'Смежные ИС'}).check()
+ await expect(diagram.locator('.react-flow__node')).toHaveCount(2)
+ await expect(diagram.locator('.react-flow__edge')).toHaveCount(1)
+ await expect(diagram.getByText('ВНЕШНЯЯ ИС')).toBeVisible()
+ await page.getByRole('checkbox',{name:'Смежные ИС'}).uncheck()
+ await expect(diagram.locator('.react-flow__node')).toHaveCount(1)
+})

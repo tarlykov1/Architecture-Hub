@@ -190,6 +190,7 @@ function App() {
   const [workspaceVerified,setWorkspaceVerified] = useState('all')
   const [search,setSearch] = useState('')
   const [viewSystem,setViewSystem] = useState('')
+  const [showExternalDependencies,setShowExternalDependencies] = useState(false)
   const [zoneMode,setZoneMode] = useState(false)
   const [infra, setInfra] = useState<Infra[]>([])
   const [flows, setFlows] = useState<Flow[]>([])
@@ -482,9 +483,17 @@ function App() {
   const detail = objects.find(o => o.id === selected)
   const drill = objects.find(o=>o.id===viewSystem)
   const detailItems = infra.filter(i=>i.system_id===selected)
-  const scopedItems = infra.filter(i=>i.system_id===viewSystem&&(workspaceKind==='all'||i.kind===workspaceKind)&&(!workspaceQuery||[i.name,i.description,i.kind].join(' ').toLowerCase().includes(workspaceQuery.toLowerCase())))
-  const scopedIds = new Set(scopedItems.map(i=>i.id))
-  const scopedFlows = flows.filter(f=>scopedIds.has(f.source_id)||scopedIds.has(f.target_id))
+  const localComponents=infra.filter(i=>i.system_id===viewSystem)
+  const localIds=new Set(localComponents.map(i=>i.id))
+  const externalIds=new Set<string>()
+  if(showExternalDependencies)for(const f of flows){
+    if(localIds.has(f.source_id)&&!localIds.has(f.target_id))externalIds.add(f.target_id)
+    if(localIds.has(f.target_id)&&!localIds.has(f.source_id))externalIds.add(f.source_id)
+  }
+  const scopedItems=infra.filter(i=>(localIds.has(i.id)||externalIds.has(i.id))&&(workspaceKind==='all'||i.kind===workspaceKind)&&(!workspaceQuery||[i.name,i.description,i.kind,objects.find(o=>o.id===i.system_id)?.name||''].join(' ').toLowerCase().includes(workspaceQuery.toLowerCase())))
+  const scopedIds=new Set(scopedItems.map(i=>i.id))
+  const scopedFlows=flows.filter(f=>scopedIds.has(f.source_id)||scopedIds.has(f.target_id))
+  const visibleDrillFlows=scopedFlows.filter(f=>scopedIds.has(f.source_id)&&scopedIds.has(f.target_id))
 const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspaceKind==='all'||i.kind===workspaceKind)&&(!workspaceQuery||[i.name,i.description,i.kind,objects.find(o=>o.id===i.system_id)?.name||''].join(' ').toLowerCase().includes(workspaceQuery.toLowerCase()))
   const filterFlow=(f:Flow)=>(!viewSystem||scopedIds.has(f.source_id)||scopedIds.has(f.target_id))&&(workspaceVerified==='all'||f.verification===workspaceVerified)&&(!workspaceQuery||[f.name,f.data_description,f.protocol,infra.find(i=>i.id===f.source_id)?.name||'',infra.find(i=>i.id===f.target_id)?.name||''].join(' ').toLowerCase().includes(workspaceQuery.toLowerCase()))
   useEffect(()=>{request<SavedWorkspaceView[]>('/api/views').then(setTeamViews).catch(e=>setTeamViewError('Общие виды недоступны: '+String(e)))},[])
@@ -543,7 +552,7 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
   </div>
     const segmentName=(id:string|null)=>segments.find(s=>s.id===id)?.name||'Не указано'
   const zones=Array.from(new Set(scopedItems.map(i=>nics.find(n=>n.item_id===i.id)?.zone_id||String(i.details.security_zone||'Зона неизвестна'))))
-  const drillPositions=dependencyLayout(scopedItems.map(i=>i.id),scopedFlows.map(f=>({source:f.source_id,target:f.target_id})),280,170)
+  const drillPositions=dependencyLayout(scopedItems.map(i=>i.id),visibleDrillFlows.map(f=>({source:f.source_id,target:f.target_id})),280,170)
   const flowPositions=dependencyLayout(
     infra.filter(i=>flows.filter(filterFlow).some(f=>f.source_id===i.id||f.target_id===i.id)).map(i=>i.id),
     flows.filter(filterFlow).map(f=>({source:f.source_id,target:f.target_id})),250,135)
@@ -553,8 +562,8 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
   const impacted=impactMode&&focusActive?downstreamImpact(focusedComponent,scopedFlows,scopedIds):new Set<string>()
   const visibleFocus=impactMode?new Set([focusedComponent,...impacted]):adjacent
   const impactPaths=impactMode&&focusActive?impactRoutes(focusedComponent,scopedFlows,scopedIds):[]
-  const drillNodes:Node[] = scopedItems.map((i,n)=>({id:i.id,position:drillPositions[i.id]||{x:(n%4)*260,y:Math.floor(n/4)*155},data:{label:<div className="systemNode"><strong>{i.name}</strong><small>{i.kind} · {String(i.details.environment||'Среда не задана')}</small><small>{nics.filter(n=>n.item_id===i.id).map(n=>[segments.find(s=>s.id===n.zone_id)?.name,segments.find(s=>s.id===n.vrf_id)?.name,segments.find(s=>s.id===n.vlan_id)?.name].filter(Boolean).join(' / ')).join('; ')||String(i.details.security_zone||'Сеть не указана')}</small></div>},style:{width:220,padding:12,background:i.details.environment==='TEST'?'#fff5e7':viewMode==='security'?'#eaf5f2':'#ffffff',border:i.id===focusedComponent?'2px solid #1377d5':'1px solid #bac8d8',borderRadius:12,opacity:focusActive&&!visibleFocus.has(i.id)?0.28:1}}))
-  const drillEdges:Edge[]=scopedFlows.filter(f=>scopedIds.has(f.source_id)&&scopedIds.has(f.target_id)).map(f=>{
+  const drillNodes:Node[] = scopedItems.map((i,n)=>({id:i.id,position:drillPositions[i.id]||{x:(n%4)*260,y:Math.floor(n/4)*155},data:{label:<div className="systemNode"><strong>{i.name}</strong><small>{externalIds.has(i.id)?'ВНЕШНЯЯ ИС · ':''}{i.kind} · {String(i.details.environment||'Среда не задана')}</small><small>{nics.filter(n=>n.item_id===i.id).map(n=>[segments.find(s=>s.id===n.zone_id)?.name,segments.find(s=>s.id===n.vrf_id)?.name,segments.find(s=>s.id===n.vlan_id)?.name].filter(Boolean).join(' / ')).join('; ')||String(i.details.security_zone||'Сеть не указана')}</small></div>},style:{width:220,padding:12,background:i.details.environment==='TEST'?'#fff5e7':viewMode==='security'?'#eaf5f2':'#ffffff',border:i.id===focusedComponent?'2px solid #1377d5':externalIds.has(i.id)?'2px dashed #c48a4d':'1px solid #bac8d8',borderRadius:12,opacity:focusActive&&!visibleFocus.has(i.id)?0.28:1}}))
+  const drillEdges:Edge[]=visibleDrillFlows.map(f=>{
     const highlighted=impactMode?(visibleFocus.has(f.source_id)&&impacted.has(f.target_id)):(f.source_id===focusedComponent||f.target_id===focusedComponent)
     return {id:f.id,source:f.source_id,target:f.target_id,label:viewMode==='security'?`${f.protocol} : ${f.port} / ${f.security}`:f.name,
       style:{stroke:focusActive&&highlighted?'#166cc2':f.security==='unknown'?'#d58c40':'#369279',
@@ -626,7 +635,7 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
       </section> : <section className="infraPanel">
         {drill && <button onClick={()=>{setViewSystem("");setLayer("systems")}}>← К общей карте</button>}
         {layer==='infrastructure' ? <>
-          <div className="viewHead"><h2>Компоненты, ВМ и сети</h2><select value={viewMode} onChange={e=>setViewMode(e.target.value as 'architecture'|'security')}><option value="architecture">Архитектура ВМ</option><option value="security">Сети и защита</option></select></div>
+          <div className="viewHead"><h2>Компоненты, ВМ и сети</h2><label className="externalToggle"><input type="checkbox" checked={showExternalDependencies} onChange={e=>{setShowExternalDependencies(e.target.checked);setFocusedComponent('');setImpactMode(false)}}/> Смежные ИС</label><select value={viewMode} onChange={e=>setViewMode(e.target.value as 'architecture'|'security')}><option value="architecture">Архитектура ВМ</option><option value="security">Сети и защита</option></select></div>
           <p className="hint">Выберите систему слева или на общей карте. Каждая ВМ, сервис, API и база создаётся как отдельный объект. Сетевую принадлежность указываем для компонентов, а не для системы целиком.</p>
           {drill && <div className="graphFocusToolbar"><span>{focusActive?`Связи компонента: ${scopedItems.find(i=>i.id===focusedComponent)?.name||''} · ${scopedFlows.filter(f=>f.source_id===focusedComponent||f.target_id===focusedComponent).length} потоков`:'Нажмите на компонент для подсветки. Чтобы связать компоненты, перетащите линию от нижней точки источника к верхней точке получателя.'}</span>{focusActive&&<><button onClick={()=>setImpactMode(v=>!v)}>{impactMode?'Прямые связи':'Влияние отказа →'}</button>{impactMode&&<span role="status">Потенциально затронуто: {impacted.size} компонентов (по направлению зарегистрированных потоков)</span>}<button onClick={()=>{setFocusedComponent('');setImpactMode(false)}}>Сбросить выделение</button></>}</div>}
           {impactMode&&focusActive&&<div className="impactRoutes" aria-label="Маршруты потенциального влияния">

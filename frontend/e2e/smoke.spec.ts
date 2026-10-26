@@ -106,8 +106,9 @@ test('inspector avoids duplicate architecture action when selected architecture 
   await page.getByRole('button',{name:title}).first().click()
   await page.getByRole('button',{name:'Сервисы и ВМ'}).click()
   const panel=page.getByRole('complementary',{name:'Карточка архитектурного объекта'})
-  await expect(panel.getByText('Архитектура этой ИС уже открыта')).toBeVisible()
-  await expect(panel.getByRole('button',{name:'Открыть архитектуру →'})).toHaveCount(0)
+  await expect(panel).toHaveCount(0)
+  await expect(page.getByRole('heading',{name:'Компоненты, ВМ и сети'})).toBeVisible()
+  await expect(page.getByRole('button',{name:'Открыть архитектуру →'})).toHaveCount(0)
 })
 
 test('right inspector opens on demand and can be closed to free diagram space', async ({page})=>{

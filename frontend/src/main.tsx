@@ -579,7 +579,7 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
   const drillPositions=dependencyLayout(scopedItems.map(i=>i.id),visibleDrillFlows.map(f=>({source:f.source_id,target:f.target_id})),280,170)
   const flowPositions=dependencyLayout(
     infra.filter(i=>flows.filter(filterFlow).some(f=>f.source_id===i.id||f.target_id===i.id)).map(i=>i.id),
-    flows.filter(filterFlow).map(f=>({source:f.source_id,target:f.target_id})),250,135)
+    flows.filter(filterFlow).map(f=>({source:f.source_id,target:f.target_id})),290,165)
   const adjacent=new Set([focusedComponent])
   for(const f of scopedFlows){if(f.source_id===focusedComponent)adjacent.add(f.target_id);if(f.target_id===focusedComponent)adjacent.add(f.source_id)}
   const focusActive=!!focusedComponent&&scopedIds.has(focusedComponent)
@@ -688,7 +688,7 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
           <div style={{display:'flex',gap:8,alignItems:'center',marginBottom:8}}><label><input type="checkbox" checked={flowFocusOnly} onChange={e=>setFlowFocusOnly(e.target.checked)}/> Только выбранный поток</label>{selectedFlow&&<button type="button" onClick={()=>setSelectedFlow('')}>Снять выделение</button>}</div>
           <div className="miniArchitecture" data-active-graph="flows"><ReactFlow
             nodes={infra.filter(i=>flows.filter(filterFlow).some(f=>f.source_id===i.id||f.target_id===i.id)).map((i,idx)=>({id:i.id,position:flowPositions[i.id]||{x:(idx%5)*230,y:Math.floor(idx/5)*120},data:{label:<div><strong>{i.name}</strong><small>{i.kind} · {String(i.details.security_zone||'зона не задана')}</small></div>},style:{width:200,border:selectedFlow&&flows.some(f=>f.id===selectedFlow&&(f.source_id===i.id||f.target_id===i.id))?'3px solid #2563eb':'1px solid #aab8cb',borderRadius:9,background:'#fff',padding:9,opacity:selectedFlow&&!flows.some(f=>f.id===selectedFlow&&(f.source_id===i.id||f.target_id===i.id))?0.28:1}})).filter(n=>!flowFocusOnly||!selectedFlow||flows.some(f=>f.id===selectedFlow&&(f.source_id===n.id||f.target_id===n.id)))}
-            edges={flows.filter(filterFlow).filter(f=>!flowFocusOnly||!selectedFlow||f.id===selectedFlow).map(f=>({id:f.id,source:f.source_id,target:f.target_id,label:selectedFlow===f.id?f.name:'',style:{stroke:selectedFlow===f.id?'#2563eb':'#94a3b8',strokeWidth:selectedFlow===f.id?4:1.5,opacity:selectedFlow&&selectedFlow!==f.id?0.16:1},labelStyle:{fontSize:12,fontWeight:700},markerEnd:{type:MarkerType.ArrowClosed,color:selectedFlow===f.id?'#2563eb':'#94a3b8'},zIndex:selectedFlow===f.id?100:0}))}
+            edges={flows.filter(filterFlow).filter(f=>!flowFocusOnly||!selectedFlow||f.id===selectedFlow).map(f=>({id:f.id,source:f.source_id,target:f.target_id,type:'smoothstep',label:'',style:{stroke:selectedFlow===f.id?'#2563eb':'#94a3b8',strokeWidth:selectedFlow===f.id?2.5:1.5,opacity:selectedFlow&&selectedFlow!==f.id?0.16:1},markerEnd:{type:MarkerType.ArrowClosed,color:selectedFlow===f.id?'#2563eb':'#94a3b8'},zIndex:selectedFlow===f.id?100:0}))}
             onEdgeClick={(_,edge)=>{const flow=flows.find(f=>f.id===edge.id);if(flow)setSelectedFlow(flow.id)}} onNodeClick={(_,node)=>{const related=flows.filter(filterFlow).filter(f=>f.source_id===node.id||f.target_id===node.id);if(related.length)setSelectedFlow(related[0].id)}} fitView nodesDraggable={false} nodesConnectable={false} elementsSelectable={true}>\n            <FitGraphOnResize watch="flows"/>
             <Background gap={20}/><Controls/>
           </ReactFlow></div>

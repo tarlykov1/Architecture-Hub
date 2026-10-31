@@ -137,3 +137,12 @@ button{border-radius:5px;border-color:#dde2e8}.primary{background:var(--hub-blue
 .graphModeHint{margin:6px 0 10px;padding:8px 11px;border:1px solid #dde8f5;border-radius:7px;background:#f3f7fc;color:#44607d;font-size:12px}.viewHead{flex-wrap:wrap;gap:9px}.viewHead>button{white-space:nowrap}
 
 .topologyGuide{display:flex;gap:16px;align-items:center;flex-wrap:wrap;padding:12px 14px;background:#edf5ff;border:1px solid #cfddf0;border-radius:9px}.topologyGuide>div{flex:1 1 270px}.topologyGuide strong{font-size:13px}.topologyGuide p{font-size:12px;margin:3px 0 0;color:#49617f}.topologyGuide>label{display:grid;gap:5px;flex:1 1 260px;font-size:12px}.topologyGuide>label select{max-width:100%;width:100%}.topologyGuide .topologyConnectionToggle{display:flex;flex:0 1 auto;align-items:center}.topologyGuide>small{width:100%;color:#60758d}
+
+/* Docked inspector: never cover the graph while viewing an object. */
+@media(min-width:1051px){
+ .shell.shellInspectorOpen{grid-template-columns:310px minmax(0,1fr) minmax(290px,340px)}
+ .shell.shellInspectorOpen .details:not(.detailsExpanded){position:relative;grid-column:3;grid-row:2;top:auto;right:auto;bottom:auto;width:auto;min-width:0;height:100%;z-index:1;box-shadow:none;border-left:1px solid var(--hub-line);overflow-y:auto}
+ .shell.shellInspectorOpen .inspectorScrim{display:none}
+ .shell.shellInspectorOpen .main{min-width:0}
+}
+@media(min-width:1051px) and (max-width:1350px){.shell.shellInspectorOpen{grid-template-columns:240px minmax(0,1fr) 290px}}

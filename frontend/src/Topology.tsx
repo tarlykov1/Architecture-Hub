@@ -6,12 +6,19 @@ type System={id:string;name:string}
 type Segment={id:string;kind:string;name:string;description?:string;verification?:string}
 type Nic={id:string;item_id:string;name:string;ip_address:string;vrf_id:string|null;vlan_id:string|null;zone_id:string|null}
 type Flow={id:string;source_id:string;target_id:string;name:string;protocol:string;port:string;security:string;data_description:string;verification:string;schedule:string}
-type Props={systems:System[];items:Item[];segments:Segment[];interfaces:Nic[];flows:Flow[];saveInterface:(value:Omit<Nic,"id">,id?:string)=>Promise<void>}
+type Props={systems:System[];items:Item[];segments:Segment[];interfaces:Nic[];flows:Flow[];saveInterface:(value:Omit<Nic,"id">,id?:string)=>Promise<void>;saveFlow:(value:Omit<Flow,"id">,id?:string)=>Promise<void>}
 const unknown='Не определено'
 const colors={verified:'#15805c',unverified:'#bc8323'}
-export default function Topology({systems,items,segments,interfaces,flows,saveInterface}:Props){
- const [showConnections,setShowConnections]=useState(false)
- const [showAllComponents,setShowAllComponents]=useState(false)
+export default function Topology({systems,items,segments,interfaces,flows,saveInterface,saveFlow}:Props){
+ const [showConnections,setShowConnections]=useState(true)
+ const [showAllComponents,setShowAllComponents]=useState(true)
+ const [editing,setEditing]=useState(false)
+ const [flowDraft,setFlowDraft]=useState<Omit<Flow,'id'>|null>(null)
+ const [flowEditingId,setFlowEditingId]=useState<string|undefined>()
+ const [flowError,setFlowError]=useState('')
+ const [flowSaving,setFlowSaving]=useState(false)
+ function editFlowDraft(f?:Flow,sourceId?:string,targetId?:string){setFlowEditingId(f?.id);setFlowError('');setFlowDraft({source_id:f?.source_id||sourceId||'',target_id:f?.target_id||targetId||'',name:f?.name||(sourceId&&targetId?'Новый поток':''),protocol:f?.protocol||'',port:f?.port||'',security:f?.security||'unknown',data_description:f?.data_description||'',verification:f?.verification||'draft',schedule:f?.schedule||''})}
+ async function submitFlow(event:React.FormEvent){event.preventDefault();if(!flowDraft)return;setFlowError('');setFlowSaving(true);try{await saveFlow(flowDraft,flowEditingId);setFlowDraft(null);setFlowEditingId(undefined);setShowConnections(true)}catch(e){setFlowError(String(e))}finally{setFlowSaving(false)}}
  const [nicEditor,setNicEditor]=useState<Nic|null>(null)
  const [nicDraft,setNicDraft]=useState<Omit<Nic,"id">|null>(null)
  const [nicError,setNicError]=useState('')
@@ -46,7 +53,7 @@ export default function Topology({systems,items,segments,interfaces,flows,saveIn
    if(mode==='external')return a!==b&&(itemById.has(f.source_id)&&itemById.has(f.target_id))
    return (a||b)&&itemById.has(f.source_id)&&itemById.has(f.target_id)
  })
- const activeFlowId=flowId||(!selected&&!showConnections?visibleFlows[0]?.id||'':'')
+ const activeFlowId=flowId
  const activeFlow=visibleFlows.find(f=>f.id===activeFlowId)
  const focusedIds=new Set<string>()
  if(!showConnections){
@@ -56,7 +63,7 @@ export default function Topology({systems,items,segments,interfaces,flows,saveIn
  const peerIds=new Set<string>()
  visibleFlows.forEach(f=>{if(!matchingIds.has(f.source_id))peerIds.add(f.source_id);if(!matchingIds.has(f.target_id))peerIds.add(f.target_id)})
  const candidateItems=[...matching,...Array.from(peerIds).map(id=>itemById.get(id)).filter((i):i is Item=>Boolean(i))]
- const displayed=candidateItems.filter(i=>(showAllComponents||visibleFlows.some(f=>f.source_id===i.id||f.target_id===i.id))&&(showConnections||showAllComponents||!focusedIds.size||focusedIds.has(i.id)))
+ const displayed=candidateItems.filter(i=>(showAllComponents||visibleFlows.some(f=>f.source_id===i.id||f.target_id===i.id))&&(!focusedIds.size||focusedIds.has(i.id)))
  const groups=new Map<string,{vrf:string|null;vlan:string|null;items:Item[]}>()
  // Multiple interfaces are not silently reduced to the first one:
  // a component is represented once in each VLAN/VRF where it has an interface.
@@ -81,11 +88,14 @@ export default function Topology({systems,items,segments,interfaces,flows,saveIn
    const height=95+Math.ceil(group.items.length/3)*132
    const groupWidth=Math.min(900,24+Math.min(3,group.items.length)*294)
    const groupId='group:'+key
+   const groupNics=group.items.flatMap(i=>(nicsByItem.get(i.id)||[]).filter(n=>key==='external'||(n.vrf_id||'none')+'|'+(n.vlan_id||'none')===key))
+   const zoneNames=Array.from(new Set(groupNics.map(n=>name(n.zone_id))))
+   const ipCount=groupNics.filter(n=>n.ip_address).length
    const isExternal=key==='external'
-   nodes.push({id:groupId,position:{x:0,y:offsetY},data:{label:<div style={{textAlign:'left'}}><strong>{isExternal?'Внешние зависимости':!group.vrf&&!group.vlan?'Сеть не указана – требуется уточнить VRF/VLAN':'VRF: '+name(group.vrf)+' · VLAN: '+name(group.vlan)}</strong><div style={{fontSize:12,marginTop:5,color:'#60728b'}}>{group.items.length} компонентов{isExternal?' · вне выбранного фильтра':''}</div></div>},style:{width:groupWidth,height,background:isExternal?'#fff4df':!group.vrf&&!group.vlan?'#f4f6f9':'#eaf1fb',border:'1px solid '+(isExternal?'#d6b67b':'#a8bdd6'),borderRadius:14},draggable:false,selectable:false})
+   nodes.push({id:groupId,position:{x:0,y:offsetY},data:{label:<div style={{textAlign:'left'}}><strong>{isExternal?'Внешние зависимости':!group.vrf&&!group.vlan?'Сеть не указана – требуется уточнить VRF/VLAN':'VRF: '+name(group.vrf)+' · VLAN: '+name(group.vlan)}</strong><div style={{fontSize:12,marginTop:5,color:'#60728b'}}>{group.items.length} компонентов · {groupNics.length} интерфейсов · {ipCount} IP{isExternal?' · вне выбранного фильтра':''}{zoneNames.length?' · Зоны: '+zoneNames.join(', '):''}</div></div>},style:{width:groupWidth,height,background:isExternal?'#fff4df':!group.vrf&&!group.vlan?'#f4f6f9':'#eaf1fb',border:'1px solid '+(isExternal?'#d6b67b':'#a8bdd6'),borderRadius:14},draggable:false,selectable:false})
    group.items.forEach((item,j)=>{
      const duplicate=(memberships.get(item.id)||[]).indexOf(key)
-     nodes.push({id:'host:'+item.id+':'+key,parentId:groupId,extent:'parent',position:{x:16+(j%3)*294,y:74+Math.floor(j/3)*132},sourcePosition:Position.Right,targetPosition:Position.Left,data:{label:<div style={{textAlign:'left',display:'grid',gap:4}}><strong>{item.name}</strong><small>{systemById.get(item.system_id)?.name||'Система неизвестна'}</small><small>{item.kind} · {String(item.details.environment||'Контур не указан')}{isExternal?' · внешняя':''}</small>{(memberships.get(item.id)||[]).length>1&&<small>Сетей: {memberships.get(item.id)?.length}</small>}</div>},style:{width:272,minHeight:100,background:isExternal?'#fffcf5':'white',border:'1px solid '+(duplicate>0?'#669acb':'#adbed3'),borderRadius:9,cursor:'pointer'},draggable:false})
+     nodes.push({id:'host:'+item.id+':'+key,parentId:groupId,extent:'parent',position:{x:16+(j%3)*294,y:74+Math.floor(j/3)*132},sourcePosition:Position.Right,targetPosition:Position.Left,data:{label:<div style={{textAlign:'left',display:'grid',gap:4}}><strong>{item.name}</strong><small>{systemById.get(item.system_id)?.name||'Система неизвестна'}</small><small>{item.kind} · {String(item.details.environment||'Контур не указан')}{isExternal?' · внешняя':''}</small>{(nicsByItem.get(item.id)||[]).filter(n=>(n.vrf_id||'none')+'|'+(n.vlan_id||'none')===key).map(n=><small key={n.id}>{n.name}: {n.ip_address||'IP не указан'} · {name(n.zone_id)}</small>)}{(memberships.get(item.id)||[]).length>1&&<small>Сетей: {memberships.get(item.id)?.length}</small>}</div>},style:{width:272,minHeight:100,background:isExternal?'#fffcf5':'white',border:'1px solid '+(duplicate>0?'#669acb':'#adbed3'),borderRadius:9,cursor:'pointer'},draggable:false})
    })
    offsetY+=height+50
  }
@@ -98,25 +108,25 @@ export default function Topology({systems,items,segments,interfaces,flows,saveIn
  }
  const item=itemById.get(selected),flow=flows.find(f=>f.id===flowId)
  return <section style={{padding:14,height:'calc(100vh - 150px)',display:'flex',flexDirection:'column',gap:10,minHeight:510,position:'relative'}}>
-  <div><h2 style={{margin:'0 0 4px'}}>Топология сетей и потоков · 0.6</h2><p style={{margin:0,fontSize:13,color:'#546a82'}}>VRF → VLAN → сетевые интерфейсы и ВМ → направленные потоки данных. Неподтверждённые сведения отмечены отдельно.</p></div>
-  <div style={{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center'}}>
+  <div><h2 style={{margin:'0 0 4px'}}>Топология сетей и потоков · 0.6</h2><p style={{margin:0,fontSize:13,color:'#546a82'}}>Сетевые группы показывают VRF, VLAN, зоны, интерфейсы и IP. Стрелка означает направление потока; зелёная связь подтверждена, жёлтая требует проверки.</p></div>
+  <div style={{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center'}}><button type="button" className={editing?'primary':''} onClick={()=>setEditing(!editing)}>{editing?'Завершить редактирование':'Редактировать топологию'}</button>{editing&&<><button type="button" onClick={()=>editFlowDraft()}>+ Создать поток</button><span style={{fontSize:12,color:'#546a82'}}>Соедините узлы стрелкой или создайте поток через форму. Выберите линию для изменения параметров.</span></>}
    <select value={system} onChange={e=>setSystem(e.target.value)} aria-label="Система"><option value="">Все системы</option>{systems.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select>
    <select value={vrf} onChange={e=>setVrf(e.target.value)} aria-label="VRF"><option value="">Все VRF</option>{segments.filter(s=>s.kind==='vrf').map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select>
    <select value={vlan} onChange={e=>setVlan(e.target.value)} aria-label="VLAN"><option value="">Все VLAN</option>{segments.filter(s=>s.kind==='vlan').map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select>
    <select value={environment} onChange={e=>setEnvironment(e.target.value)} aria-label="Контур"><option value="">Все контуры</option>{environments.map(x=><option key={x} value={x}>{x}</option>)}</select>
    <select value={mode} onChange={e=>setMode(e.target.value as 'all'|'internal'|'external')} aria-label="Тип связей"><option value="all">Все связи</option><option value="internal">Только внутренние</option><option value="external">Только внешние</option></select>
    <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Поиск ВМ или системы" aria-label="Поиск компонента" style={{minWidth:180}}/>
-   <label className="topologyConnectionToggle"><input type="checkbox" checked={showConnections} onChange={e=>setShowConnections(e.target.checked)}/> Все потоки</label><button onClick={()=>{setSystem('');setVrf('');setVlan('');setEnvironment('');setMode('all');setSearch('');setSelected('');setFlowId('');setShowConnections(false);setShowAllComponents(false)}}>Сбросить</button>
+   <label className="topologyConnectionToggle"><input type="checkbox" checked={showConnections} onChange={e=>setShowConnections(e.target.checked)}/> Все потоки</label><button onClick={()=>{setSystem('');setVrf('');setVlan('');setEnvironment('');setMode('all');setSearch('');setSelected('');setFlowId('');setShowConnections(false);setShowAllComponents(true)}}>Сбросить</button>
   </div>
   <div className="topologyGuide" aria-label="Навигатор потоков">
-    <div><strong>Начните со связи, а не с поиска узла на схеме</strong><p>Выберите поток – будут показаны источник, получатель и направление. Для общего обзора включите «Все потоки».</p></div>
+    <div><strong>Выберите компонент или поток данных</strong><p>По умолчанию показаны все компоненты. Выберите узел для просмотра его зависимостей или поток для просмотра направления и параметров.</p></div>
     <label>Поток данных<select aria-label="Выбрать поток на схеме" value={activeFlowId} onChange={e=>{setFlowId(e.target.value);setSelected('');setShowConnections(false)}}><option value="">Нет выбранного потока</option>{visibleFlows.map(f=><option key={f.id} value={f.id}>{itemById.get(f.source_id)?.name||'?'} → {itemById.get(f.target_id)?.name||'?'} · {f.name}</option>)}</select></label>
     <label className="topologyConnectionToggle"><input type="checkbox" checked={showAllComponents} onChange={e=>setShowAllComponents(e.target.checked)}/> Показать компоненты без потоков</label>
     <small>Без известных потоков: {matching.filter(i=>!visibleFlows.some(f=>f.source_id===i.id||f.target_id===i.id)).length}. Отсутствие потока в реестре не доказывает отсутствие зависимости.</small>
   </div>
-  <small>Найдено компонентов: {matching.length} · Показано объектов: {displayed.length} · VRF/VLAN-групп: {groups.size} · Потоков: {visibleFlows.length} · На схеме: {showConnections?'все зарегистрированные':'выбранный поток или компонент'} · Без сетевых интерфейсов: {matching.filter(i=>!(nicsByItem.get(i.id)||[]).length).length}</small>
+  <small>Найдено компонентов: {matching.length} · Показано объектов: {displayed.length} · VRF/VLAN-групп: {groups.size} · Потоков: {visibleFlows.length} · На схеме: {showConnections?'все потоки':selected||flowId?'выбранные связи':'обзор компонентов'} · Без сетевых интерфейсов: {matching.filter(i=>!(nicsByItem.get(i.id)||[]).length).length}</small>
   <div style={{flex:1,minHeight:300,position:'relative',border:'1px solid #d5e0ef',borderRadius:12,overflow:'hidden'}}>
-   {displayed.length?<ReactFlow nodes={nodes} edges={edges} nodesDraggable={false} nodesConnectable={false} fitView fitViewOptions={{padding:0.15}} onNodeClick={(_,n)=>{if(n.id.startsWith('host:')){const id=String((n.data as {item_id?:string}).item_id||'');const found=id||displayed.find(i=>n.id.startsWith('host:'+i.id+':'))?.id||'';setSelected(found);setFlowId('')}}} onEdgeClick={(_,e)=>{setFlowId(e.id);setSelected('');setShowConnections(false)}}><Background/><Controls/></ReactFlow>:<p style={{padding:20}}>Нет компонентов для выбранных фильтров. Проверьте систему, контур и сетевые привязки.</p>}
+   {displayed.length?<ReactFlow nodes={nodes} edges={edges} nodesDraggable={false} nodesConnectable={editing} onConnect={connection=>{if(!editing)return;const source=connection.source?.split(':')[1],target=connection.target?.split(':')[1];if(source&&target&&source!==target)editFlowDraft(undefined,source,target)}} fitView fitViewOptions={{padding:0.15}} onNodeClick={(_,n)=>{if(n.id.startsWith('host:')){const id=String((n.data as {item_id?:string}).item_id||'');const found=id||displayed.find(i=>n.id.startsWith('host:'+i.id+':'))?.id||'';setSelected(found);setFlowId('')}}} onEdgeClick={(_,e)=>{setFlowId(e.id);setSelected('');setShowConnections(false)}}><Background/><Controls/></ReactFlow>:<p style={{padding:20}}>Нет компонентов для выбранных фильтров. Проверьте систему, контур и сетевые привязки.</p>}
   </div>
   <small>Нажмите на компонент, чтобы увидеть его потоки. Переключатель «Все потоки» показывает общую картину. Зелёная стрелка – подтверждённый поток; оранжевая – не проверен. Отсутствие стрелки не означает отсутствия сетевого доступа. Схема отображает описанные логические связи, не трассировку физического маршрута.</small>
   {(item||flow)&&<aside style={{position:'absolute',right:20,top:145,zIndex:5,background:'#fff',border:'1px solid #c3d1e5',boxShadow:'0 8px 26px #0002',padding:16,borderRadius:12,width:340,maxHeight:'65vh',overflow:'auto'}}>
@@ -138,8 +148,9 @@ export default function Topology({systems,items,segments,interfaces,flows,saveIn
      </button>
    })}
    <h4>Потоки</h4>{flows.filter(f=>f.source_id===item.id||f.target_id===item.id).map(f=><button key={f.id} onClick={()=>{setFlowId(f.id);setSelected('')}} style={{display:'block',marginBottom:6,textAlign:'left'}}>{f.source_id===item.id?'→':'←'} {f.name||f.protocol||'Поток'}</button>)}{!flows.some(f=>f.source_id===item.id||f.target_id===item.id)&&<p>Потоки не описаны.</p>}</>}
-   {flow&&<><h3>{flow.name||'Поток данных'}</h3><p>{itemById.get(flow.source_id)?.name||unknown} → {itemById.get(flow.target_id)?.name||unknown}</p><p>Данные: {flow.data_description||unknown}</p><p>Протокол: {flow.protocol||unknown}; порт: {flow.port||unknown}</p><p>Защита: {flow.security||unknown}</p><p>Проверка: {flow.verification||unknown}</p><p>Расписание: {flow.schedule||unknown}</p></>}
+   {flow&&<><h3>{flow.name||'Поток данных'}</h3><p>{itemById.get(flow.source_id)?.name||unknown} → {itemById.get(flow.target_id)?.name||unknown}</p><p>Данные: {flow.data_description||unknown}</p><p>Протокол: {flow.protocol||unknown}; порт: {flow.port||unknown}</p><p>Защита: {flow.security||unknown}</p><p>Проверка: {flow.verification||unknown}</p><p>Расписание: {flow.schedule||unknown}</p>{editing&&<button type="button" onClick={()=>editFlowDraft(flow)}>Редактировать поток</button>}</>}
   </aside>}
+  {flowDraft&&<div className="topologyNicBackdrop" onClick={()=>setFlowDraft(null)}><div className="topologyNicDialog" role="dialog" aria-modal="true" aria-label="Редактор потока данных" onClick={e=>e.stopPropagation()}><div className="registryHeader"><h3>{flowEditingId?'Редактировать поток':'Создать поток'}</h3><button type="button" onClick={()=>setFlowDraft(null)}>Закрыть ×</button></div><form className="detailForm" onSubmit={submitFlow}><label>Источник<select required value={flowDraft.source_id} onChange={e=>setFlowDraft({...flowDraft,source_id:e.target.value})}><option value="">Выберите источник</option>{items.map(i=><option key={i.id} value={i.id}>{i.name}</option>)}</select></label><label>Получатель<select required value={flowDraft.target_id} onChange={e=>setFlowDraft({...flowDraft,target_id:e.target.value})}><option value="">Выберите получателя</option>{items.map(i=><option key={i.id} value={i.id}>{i.name}</option>)}</select></label><label>Название<input required maxLength={250} value={flowDraft.name} onChange={e=>setFlowDraft({...flowDraft,name:e.target.value})}/></label><label>Описание данных<input value={flowDraft.data_description} onChange={e=>setFlowDraft({...flowDraft,data_description:e.target.value})}/></label><label>Протокол<input value={flowDraft.protocol} onChange={e=>setFlowDraft({...flowDraft,protocol:e.target.value})}/></label><label>Порт<input value={flowDraft.port} onChange={e=>setFlowDraft({...flowDraft,port:e.target.value})}/></label><label>Защита<select value={flowDraft.security} onChange={e=>setFlowDraft({...flowDraft,security:e.target.value})}>{['unknown','TLS','mTLS','VPN','private_connector','none'].map(x=><option key={x} value={x}>{x}</option>)}</select></label><label>Проверка<select value={flowDraft.verification} onChange={e=>setFlowDraft({...flowDraft,verification:e.target.value})}><option value="draft">Черновик</option><option value="verified">Подтверждено</option></select></label><label>Периодичность<input value={flowDraft.schedule} onChange={e=>setFlowDraft({...flowDraft,schedule:e.target.value})}/></label>{flowDraft.source_id&&flowDraft.source_id===flowDraft.target_id&&<p role="alert">Источник и получатель должны отличаться.</p>}{flowError&&<p role="alert">{flowError}</p>}<button className="primary" disabled={flowSaving||!flowDraft.source_id||flowDraft.source_id===flowDraft.target_id}>{flowSaving?'Сохранение…':'Сохранить поток'}</button></form></div></div>}
   {nicDraft&&<div className="topologyNicBackdrop" onClick={()=>setNicDraft(null)}>
    <div className="topologyNicDialog" role="dialog" aria-modal="true" aria-label="Настройка сети компонента" onClick={e=>e.stopPropagation()}>
     <div className="registryHeader"><h3>{nicEditor?'Редактировать сетевой интерфейс':'Новый сетевой интерфейс'}</h3><button type="button" onClick={()=>setNicDraft(null)}>Закрыть ×</button></div>

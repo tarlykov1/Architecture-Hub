@@ -130,7 +130,9 @@ test('infrastructure graph permits connecting components',async({page})=>{
  const id=(await resp.json()).id
  for(const name of ['source-node','target-node'])expect((await page.request.post('http://127.0.0.1:8001/api/infra',{data:{system_id:id,name,kind:'service'}})).ok()).toBeTruthy()
  await page.goto('/')
- await page.getByRole('button',{name:/link-test-/}).first().dblclick()
+ await page.getByRole('button',{name:/link-test-/}).first().click()
+ await page.getByRole('button',{name:'Сервисы и ВМ'}).click()
+ await expect(page.getByRole('heading',{name:'Компоненты, ВМ и сети'})).toBeVisible()
  const handles=page.locator('.miniArchitecture .react-flow__handle')
  await expect(handles).toHaveCount(4)
 })

@@ -192,6 +192,7 @@ function App() {
         })})
         setSegments(await request<Segment[]>('/api/networks'))
       } else if(registryOpen==='flow'){
+        if(!flowSource||!flowTarget)throw new Error('Выберите источник и получателя')
         if(flowSource===flowTarget)throw new Error('Источник и получатель должны отличаться')
         const uri='/api/flows'+(flowEditId?'/'+flowEditId:'')
         await request(uri,{method:flowEditId?'PUT':'POST',body:JSON.stringify({
@@ -789,6 +790,7 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
           </>:<>
             <label>Источник<select required value={flowSource} onChange={e=>setFlowSource(e.target.value)}><option value="">Выберите компонент</option>{infra.map(i=><option key={i.id} value={i.id}>{i.name}</option>)}</select></label>
             <label>Получатель<select required value={flowTarget} onChange={e=>setFlowTarget(e.target.value)}><option value="">Выберите компонент</option>{infra.map(i=><option key={i.id} value={i.id}>{i.name}</option>)}</select></label>
+            <div className="flowDirectionActions"><span>Направление обмена: <strong>{infra.find(i=>i.id===flowSource)?.name||'Источник'} → {infra.find(i=>i.id===flowTarget)?.name||'Получатель'}</strong></span><button type="button" disabled={!flowSource||!flowTarget} onClick={()=>{setFlowSource(flowTarget);setFlowTarget(flowSource);if(!flowEditId)setFlowName((infra.find(i=>i.id===flowTarget)?.name||'Источник')+' → '+(infra.find(i=>i.id===flowSource)?.name||'Получатель'))}}>⇄ Поменять направление</button></div>
             <label>Название<input required value={flowName} onChange={e=>setFlowName(e.target.value)}/></label>
             <label>Состав данных<textarea value={flowData} onChange={e=>setFlowData(e.target.value)}/></label>
             <div className="formPair"><label>Протокол<input value={flowProtocol} onChange={e=>setFlowProtocol(e.target.value)}/></label><label>Порт<input value={flowPort} onChange={e=>setFlowPort(e.target.value)}/></label></div>

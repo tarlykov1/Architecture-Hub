@@ -146,3 +146,5 @@ button{border-radius:5px;border-color:#dde2e8}.primary{background:var(--hub-blue
  .shell.shellInspectorOpen .main{min-width:0}
 }
 @media(min-width:1051px) and (max-width:1350px){.shell.shellInspectorOpen{grid-template-columns:240px minmax(0,1fr) 290px}}
+
+.flowDirectionActions{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;padding:11px 12px;background:#eef5ff;border:1px solid #d3e2f6;border-radius:8px;font-size:12px}.flowDirectionActions strong{overflow-wrap:anywhere}.flowDirectionActions button{font-size:12px;white-space:nowrap}

@@ -573,7 +573,7 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
         strokeWidth:focusActive&&highlighted?3:1.5,opacity:focusActive&&!highlighted?0.2:1},
       labelStyle:{fontSize:10},markerEnd:{type:MarkerType.ArrowClosed}}
   })
-  return <div className="shell">
+  return <div className={`shell${inspectorOpen&&!inspectorExpanded?" shellInspectorOpen":""}`}>
     <header className="globalHeader" aria-label="Главная панель Architecture Hub">
       <div className="globalBrand"><span className="globalBrandMark">◆</span><strong>Architecture Hub</strong><span className="globalBrandSeparator">/</span><span className="globalBrandSubtitle">Единая архитектура ИТ</span></div>
       <div className="globalHeaderActions"><span className="globalHeaderSection">РАБОЧЕЕ ПРОСТРАНСТВО</span><a href={import.meta.env.VITE_WIKI_URL || "http://127.0.0.1:3000"} target="_blank" rel="noopener noreferrer">Wiki.js <span aria-hidden="true">↗</span></a></div>

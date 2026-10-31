@@ -99,7 +99,7 @@ export default function Topology({systems,items,segments,interfaces,flows,saveIn
  const entries=Array.from(groups.entries())
  for(let groupIndex=0;groupIndex<entries.length;groupIndex++){
    const [key,group]=entries[groupIndex]
-   const height=95+Math.ceil(group.items.length/3)*132
+   const height=95+Math.ceil(group.items.length/3)*164
    const groupWidth=Math.min(900,24+Math.min(3,group.items.length)*294)
    const groupId='group:'+key
    const groupNics=group.items.flatMap(i=>(nicsByItem.get(i.id)||[]).filter(n=>key==='external'||(n.vrf_id||'none')+'|'+(n.vlan_id||'none')===key))
@@ -109,16 +109,17 @@ export default function Topology({systems,items,segments,interfaces,flows,saveIn
    nodes.push({id:groupId,position:{x:0,y:offsetY},data:{label:<div style={{textAlign:'left'}}><strong>{isExternal?'Внешние зависимости':!group.vrf&&!group.vlan?'Сеть не указана – требуется уточнить VRF/VLAN':'VRF: '+name(group.vrf)+' · VLAN: '+name(group.vlan)}</strong><div style={{fontSize:12,marginTop:5,color:'#60728b'}}>{group.items.length} компонентов · {groupNics.length} интерфейсов · {ipCount} IP{isExternal?' · вне выбранного фильтра':''}{zoneNames.length?' · Зоны: '+zoneNames.join(', '):''}</div></div>},style:{width:groupWidth,height,background:isExternal?'#fff4df':!group.vrf&&!group.vlan?'#f4f6f9':'#eaf1fb',border:'1px solid '+(isExternal?'#d6b67b':'#a8bdd6'),borderRadius:14},draggable:false,selectable:false})
    group.items.forEach((item,j)=>{
      const duplicate=(memberships.get(item.id)||[]).indexOf(key)
-     nodes.push({id:'host:'+item.id+':'+key,parentId:groupId,extent:'parent',position:{x:16+(j%3)*294,y:74+Math.floor(j/3)*132},sourcePosition:Position.Right,targetPosition:Position.Left,data:{label:<div style={{textAlign:'left',display:'grid',gap:4}}><strong>{item.name}</strong><small>{systemById.get(item.system_id)?.name||'Система неизвестна'}</small><small>{item.kind} · {String(item.details.environment||'Контур не указан')}{isExternal?' · внешняя':''}</small>{(nicsByItem.get(item.id)||[]).filter(n=>(n.vrf_id||'none')+'|'+(n.vlan_id||'none')===key).map(n=><small key={n.id}>{n.name}: {n.ip_address||'IP не указан'} · {name(n.zone_id)}</small>)}{(memberships.get(item.id)||[]).length>1&&<small>Сетей: {memberships.get(item.id)?.length}</small>}</div>},style:{width:272,minHeight:100,background:isExternal?'#fffcf5':'white',border:'1px solid '+(duplicate>0?'#669acb':'#adbed3'),borderRadius:9,cursor:'pointer'},draggable:false})
+     const visibleNics=(nicsByItem.get(item.id)||[]).filter(n=>key==='external'||(n.vrf_id||'none')+'|'+(n.vlan_id||'none')===key)
+     nodes.push({id:'host:'+item.id+':'+key,parentId:groupId,extent:'parent',position:{x:16+(j%3)*294,y:74+Math.floor(j/3)*164},sourcePosition:Position.Right,targetPosition:Position.Left,data:{label:<div style={{textAlign:'left',display:'grid',gap:4}}><strong>{item.name}</strong><small>{systemById.get(item.system_id)?.name||'Система неизвестна'}</small><small>{item.kind} · {String(item.details.environment||'Контур не указан')}{isExternal?' · внешняя':''}</small>{visibleNics.map(n=><small key={n.id}>● {n.name}: {n.ip_address||'IP не указан'} · {name(n.zone_id)}</small>)}{(memberships.get(item.id)||[]).length>1&&<small style={{color:'#2563a6'}}>Подключён к {memberships.get(item.id)?.length} сетям · тот же компонент</small>}</div>},style:{width:272,minHeight:100,background:isExternal?'#fffcf5':'white',border:'1px solid '+(duplicate>0?'#669acb':'#adbed3'),borderRadius:9,cursor:'pointer'},draggable:false})
    })
    offsetY+=height+50
  }
  // Resolve arrows to the correct visual copy of multi-homed components.
- const hostNode=(id:string)=>'host:'+id+':'+(memberships.get(id)||[])[0]
+ const hostNode=(id:string,peerId?:string)=>{const own=memberships.get(id)||[];const peer=memberships.get(peerId||'')||[];return 'host:'+id+':'+(own.find(k=>peer.includes(k))||own[0])}
  for(const flow of (showConnections&&focusMode==='overview'?visibleFlows:directedFlows.filter(f=>f.id===activeFlowId||f.source_id===selected||f.target_id===selected))){
    if(!memberships.has(flow.source_id)||!memberships.has(flow.target_id))continue
    const known=flow.verification==='verified'
-   edges.push({id:flow.id,source:hostNode(flow.source_id),target:hostNode(flow.target_id),type:'smoothstep',label:[flow.protocol,flow.port].filter(Boolean).join(' : ')||flow.name,markerEnd:{type:MarkerType.ArrowClosed,color:known?colors.verified:colors.unverified},animated:false,style:{stroke:known?colors.verified:colors.unverified,strokeWidth:2},labelStyle:{fontSize:11,fill:'#35465b'},labelBgPadding:[6,3],labelBgBorderRadius:4,labelBgStyle:{fill:'#ffffff',fillOpacity:0.94}})
+   edges.push({id:flow.id,source:hostNode(flow.source_id,flow.target_id),target:hostNode(flow.target_id,flow.source_id),type:'smoothstep',label:[flow.protocol,flow.port].filter(Boolean).join(' : ')||flow.name,markerEnd:{type:MarkerType.ArrowClosed,color:known?colors.verified:colors.unverified},animated:false,style:{stroke:known?colors.verified:colors.unverified,strokeWidth:2},labelStyle:{fontSize:11,fill:'#35465b'},labelBgPadding:[6,3],labelBgBorderRadius:4,labelBgStyle:{fill:'#ffffff',fillOpacity:0.94}})
  }
  const item=itemById.get(selected),flow=flows.find(f=>f.id===flowId)
  return <section style={{padding:14,height:'calc(100vh - 150px)',display:'flex',flexDirection:'column',gap:10,minHeight:510,position:'relative'}}>

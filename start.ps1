@@ -82,18 +82,31 @@ if (Test-HttpService 'wiki' 3000) {
     Write-Warning 'Wiki.js was not started: .env is missing. Keep the existing Wiki DB password; do not regenerate it.'
   } else {
     try {
-      docker info --format '{{.ServerVersion}}' 2>&1 | Out-Null
-      if ($LASTEXITCODE -ne 0) { throw 'Docker Desktop engine is not running' }
+      # Docker Desktop often takes longer to initialize than the API and Vite.
+      $dockerReady = $false
+      for ($attempt = 1; $attempt -le 24; $attempt++) {
+        docker info --format '{{.ServerVersion}}' 2>$null | Out-Null
+        if ($LASTEXITCODE -eq 0) { $dockerReady = $true; break }
+        if ($attempt -eq 1) { Write-Host '  Waiting for Docker Desktop (up to 120 seconds)...' -ForegroundColor Yellow }
+        Start-Sleep -Seconds 5
+      }
+      if (-not $dockerReady) { throw 'Docker Desktop engine did not become ready within 120 seconds' }
       Push-Location $root
       try {
-        docker compose -f compose.wikijs.yml up -d
-        if ($LASTEXITCODE -ne 0) { throw 'Docker Compose failed' }
+        docker compose -f compose.wikijs.yml up -d --wait --wait-timeout 120
+        if ($LASTEXITCODE -ne 0) { throw 'Docker Compose failed; inspect Wiki.js and PostgreSQL logs' }
       } finally { Pop-Location }
-      if (Wait-Service 3000 60 'wiki') {
+      if (Wait-Service 3000 90 'wiki') {
         Write-Host '  Wiki.js responded successfully over HTTP.' -ForegroundColor Green
-      } else { Write-Warning 'Wiki.js did not start. See: docker compose -f compose.wikijs.yml logs wiki' }
+      } else {
+        Write-Warning 'Wiki.js did not respond over HTTP. Container status and recent logs:'
+        docker compose -f compose.wikijs.yml ps
+        docker compose -f compose.wikijs.yml logs --tail 30 wiki wikidb
+      }
     } catch {
       Write-Warning "Wiki.js unavailable: $($_.Exception.Message). Check Docker and .env."
+      Write-Host '  Diagnostics: docker compose -f compose.wikijs.yml ps' -ForegroundColor Yellow
+      Write-Host '  Diagnostics: docker compose -f compose.wikijs.yml logs --tail 60 wiki wikidb' -ForegroundColor Yellow
     }
   }
 }

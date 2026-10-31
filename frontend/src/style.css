@@ -148,3 +148,5 @@ button{border-radius:5px;border-color:#dde2e8}.primary{background:var(--hub-blue
 @media(min-width:1051px) and (max-width:1350px){.shell.shellInspectorOpen{grid-template-columns:240px minmax(0,1fr) 290px}}
 
 .flowDirectionActions{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;padding:11px 12px;background:#eef5ff;border:1px solid #d3e2f6;border-radius:8px;font-size:12px}.flowDirectionActions strong{overflow-wrap:anywhere}.flowDirectionActions button{font-size:12px;white-space:nowrap}
+
+.componentFlowHeader{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:14px}.componentFlowHeader h3{flex:1 1 100%;margin:0}.componentFlowHeader button{font-size:12px;padding:8px 10px}

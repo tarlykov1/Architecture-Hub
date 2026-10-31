@@ -177,11 +177,11 @@ export default function Topology({systems,items,segments,interfaces,flows,saveIn
     <div className="registryHeader"><h3>{nicEditor?'Редактировать сетевой интерфейс':'Новый сетевой интерфейс'}</h3><button type="button" onClick={()=>setNicDraft(null)}>Закрыть ×</button></div>
     <p className="hint">Привязки зоны, VRF и VLAN выбираются из сетевого реестра. Сохранение изменяет сетевую принадлежность только этого интерфейса, а не всей системы.</p>{nicEditor&&<p className="hint">Текущая сеть: VRF {name(nicEditor.vrf_id)} · VLAN {name(nicEditor.vlan_id)} · зона {name(nicEditor.zone_id)}. После сохранения компонент появится в новой сетевой группе.</p>}
     <form onSubmit={submitNic} className="detailForm">
-     <label>Имя интерфейса<input required maxLength={100} value={nicDraft.name} onChange={e=>setNicDraft({...nicDraft,name:e.target.value});setNicConfirm(false)}/></label>
-     <label>IP-адрес<input value={nicDraft.ip_address} maxLength={120} placeholder="Не указан" onChange={e=>setNicDraft({...nicDraft,ip_address:e.target.value});setNicConfirm(false)}/></label>
+     <label>Имя интерфейса<input required maxLength={100} value={nicDraft.name} onChange={e=>{setNicDraft({...nicDraft,name:e.target.value});setNicConfirm(false)}}/></label>
+     <label>IP-адрес<input value={nicDraft.ip_address} maxLength={120} placeholder="Не указан" onChange={e=>{setNicDraft({...nicDraft,ip_address:e.target.value});setNicConfirm(false)}}/></label>
      {(['zone','vrf','vlan'] as const).map(kind=>{
       const field=kind+'_id' as 'zone_id'|'vrf_id'|'vlan_id'
-      return <label key={kind}>{kind.toUpperCase()}<select value={nicDraft[field]||''} onChange={e=>setNicDraft({...nicDraft,[field]:e.target.value||null});setNicConfirm(false)}>
+      return <label key={kind}>{kind.toUpperCase()}<select value={nicDraft[field]||''} onChange={e=>{setNicDraft({...nicDraft,[field]:e.target.value||null});setNicConfirm(false)}}>
        <option value="">Не определено</option>{segments.filter(s=>s.kind===kind).map(s=><option key={s.id} value={s.id}>{s.name}</option>)}
       </select></label>
      })}

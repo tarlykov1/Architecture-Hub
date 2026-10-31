@@ -33,6 +33,10 @@ export default function Topology({systems,items,segments,interfaces,flows,saveIn
  async function submitNic(event:React.FormEvent){
    event.preventDefault()
    if(!nicDraft)return
+   if(!nicDraft.name.trim()){setNicError('Укажите имя интерфейса.');return}
+   const duplicates=interfaces.filter(n=>n.item_id===nicDraft.item_id&&n.id!==nicEditor?.id&&n.name.trim().toLocaleLowerCase()===nicDraft.name.trim().toLocaleLowerCase())
+   if(duplicates.length){setNicError('У компонента уже есть интерфейс с таким именем.');return}
+   if(nicDraft.ip_address.trim()&&!/^[0-9a-fA-F:.\/]+$/.test(nicDraft.ip_address.trim())){setNicError('IP-адрес должен быть IPv4 или IPv6, при необходимости с префиксом сети.');return}
    setNicSaving(true);setNicError('')
    try{await saveInterface(nicDraft,nicEditor?.id);setNicDraft(null);setNicEditor(null)}
    catch(e){setNicError(String(e))}
@@ -158,7 +162,7 @@ export default function Topology({systems,items,segments,interfaces,flows,saveIn
   {nicDraft&&<div className="topologyNicBackdrop" onClick={()=>setNicDraft(null)}>
    <div className="topologyNicDialog" role="dialog" aria-modal="true" aria-label="Настройка сети компонента" onClick={e=>e.stopPropagation()}>
     <div className="registryHeader"><h3>{nicEditor?'Редактировать сетевой интерфейс':'Новый сетевой интерфейс'}</h3><button type="button" onClick={()=>setNicDraft(null)}>Закрыть ×</button></div>
-    <p className="hint">Привязки зоны, VRF и VLAN выбираются из сетевого реестра.</p>
+    <p className="hint">Привязки зоны, VRF и VLAN выбираются из сетевого реестра. Сохранение изменяет сетевую принадлежность только этого интерфейса, а не всей системы.</p>{nicEditor&&<p className="hint">Текущая сеть: VRF {name(nicEditor.vrf_id)} · VLAN {name(nicEditor.vlan_id)} · зона {name(nicEditor.zone_id)}. После сохранения компонент появится в новой сетевой группе.</p>}
     <form onSubmit={submitNic} className="detailForm">
      <label>Имя интерфейса<input required maxLength={100} value={nicDraft.name} onChange={e=>setNicDraft({...nicDraft,name:e.target.value})}/></label>
      <label>IP-адрес<input value={nicDraft.ip_address} maxLength={120} placeholder="Не указан" onChange={e=>setNicDraft({...nicDraft,ip_address:e.target.value})}/></label>

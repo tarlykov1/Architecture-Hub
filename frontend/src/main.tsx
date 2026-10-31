@@ -1,12 +1,33 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { createRoot } from 'react-dom/client'
-import { ReactFlow, Background, Controls, applyNodeChanges, type Connection, type Edge, type Node, type NodeChange, MarkerType } from '@xyflow/react'
+import { ReactFlow, Background, Controls, applyNodeChanges, type Connection, type Edge, type Node, type NodeChange, MarkerType, useReactFlow } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import './style.css'
 import Topology from './Topology'
 import {dependencyLayout} from './graphLayout'
 import {downstreamImpact,impactRoutes} from './dependencyImpact'
 import Incidents from './Incidents'
+
+/** Refit the diagram after its container changes width (e.g. docked inspector). */
+function FitGraphOnResize({watch}: {watch:string}) {
+ const {fitView}=useReactFlow()
+ useEffect(()=>{
+  const root=document.querySelector('[data-active-graph="'+watch+'"]')
+  if(!root || typeof ResizeObserver==='undefined')return
+  let lastWidth=0
+  let pending=0
+  const observer=new ResizeObserver(entries=>{
+   const width=entries[0]?.contentRect.width||0
+   if(width<100||Math.abs(width-lastWidth)<4)return
+   lastWidth=width
+   cancelAnimationFrame(pending)
+   pending=requestAnimationFrame(()=>{void fitView({padding:0.18,duration:220,maxZoom:1.2})})
+  })
+  observer.observe(root)
+  return()=>{observer.disconnect();cancelAnimationFrame(pending)}
+ },[fitView,watch])
+ return null
+}
 
 type Obj = { id: string; kind: string; name: string; description: string; status: string; attributes: Record<string, unknown> }
 type Rel = { id: string; source_id: string; target_id: string; kind: string; description: string }
@@ -633,7 +654,7 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
       {!categories.length&&<p>Бизнес-процессы пока не добавлены.</p>}</section> : layer==='systems' ? <section className="canvas">
         <ReactFlow nodes={nodes} edges={edges} onNodesChange={onNodesChange} onConnect={onConnect}
           onNodeClick={(_event: React.MouseEvent, node: Node) => {setSelected(node.id);setInspectorOpen(true);setPanelTab("overview")}} onNodeDoubleClick={(_event: React.MouseEvent, node: Node) => {setViewSystem(node.id);setSelected(node.id);setLayer("infrastructure");setInspectorOpen(false);setInspectorExpanded(false)}} onPaneClick={() => setSelected('')} fitView>
-          <Background color="#d1dae5" gap={20} size={1}/><Controls/>
+          <FitGraphOnResize watch="systems"/><Background color="#d1dae5" gap={20} size={1}/><Controls/>
         </ReactFlow>
         {!objects.length && <div className="emptyHint">Создайте первый объект в панели слева, затем добавьте второй и соедините их точками на схеме.</div>}
       </section> : <section className="infraPanel">
@@ -652,7 +673,7 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
             {impactPaths.length===0?<p>Исходящие зависимости внутри выбранной схемы не зарегистрированы.</p>:impactPaths.map(route=><div className="impactRoute" key={route.target}><span>{route.nodes.map(id=>scopedItems.find(i=>i.id===id)?.name||id).join(' → ')}</span><small>{route.steps} переходов · {route.verification}</small><button type="button" onClick={()=>setFocusedComponent(route.target)}>Выделить компонент</button></div>)}
           </div>}
           {drill && <div className="graphModeHint" role="status">{diagramEditMode?'Режим редактирования – соедините точки компонентов для создания потока; нажмите на линию для изменения связи.':'Режим просмотра – схема защищена от случайных соединений. Для изменения связей нажмите «Редактировать схему».'}</div>}
-          {drill && <div className="miniArchitecture" style={{height:520}}><ReactFlow key={drill.id+viewMode} nodes={drillNodes} edges={drillEdges} onNodeClick={(_,node)=>setFocusedComponent(node.id)} onPaneClick={()=>setFocusedComponent('')} onConnect={diagramEditMode?connectComponents:undefined} onEdgeClick={(_,edge)=>{const flow=flows.find(f=>f.id===edge.id);if(flow){setSelectedFlow(flow.id);if(diagramEditMode)editFlow(flow)}}} fitView nodesConnectable={diagramEditMode} nodesDraggable={false}><Background gap={20}/><Controls/></ReactFlow></div>}
+          {drill && <div className="miniArchitecture" style={{height:520}} data-active-graph="infrastructure"><ReactFlow key={drill.id+viewMode} nodes={drillNodes} edges={drillEdges} onNodeClick={(_,node)=>setFocusedComponent(node.id)} onPaneClick={()=>setFocusedComponent('')} onConnect={diagramEditMode?connectComponents:undefined} onEdgeClick={(_,edge)=>{const flow=flows.find(f=>f.id===edge.id);if(flow){setSelectedFlow(flow.id);if(diagramEditMode)editFlow(flow)}}} fitView nodesConnectable={diagramEditMode} nodesDraggable={false}><FitGraphOnResize watch="infrastructure"/><Background gap={20}/><Controls/></ReactFlow></div>}
           {viewMode==='security'&&<div className="networkZones">{zones.map(z=><article key={z} className="zoneCard"><h3>{segments.find(s=>s.id===z)?.name||z}</h3>{scopedItems.filter(i=>(nics.find(n=>n.item_id===i.id)?.zone_id||String(i.details.security_zone||'Зона неизвестна'))===z).map(i=><button key={i.id} onClick={()=>setSelected(i.system_id)}><strong>{i.name}</strong><small>{nics.filter(n=>n.item_id===i.id).map(n=>n.name+' · '+segmentName(n.vrf_id)+' · '+segmentName(n.vlan_id)).join('; ')||'Сетевой интерфейс не задан'}</small></button>)}</article>)}</div>}
           {viewMode==='security'&&<div className="networkLegend">Цвет стрелки: зелёный – указан тип защиты; оранжевый – неизвестно. Наличие TLS не подтверждает защиту всего маршрута. Неподтверждённые параметры требуют проверки.</div>}
           <div className="infraGrid">{infra.filter(filterInfra).map(i=><article className="infraCard" key={i.id}>
@@ -668,7 +689,7 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
           <div className="miniArchitecture"><ReactFlow
             nodes={infra.filter(i=>flows.filter(filterFlow).some(f=>f.source_id===i.id||f.target_id===i.id)).map((i,idx)=>({id:i.id,position:flowPositions[i.id]||{x:(idx%5)*230,y:Math.floor(idx/5)*120},data:{label:<div><strong>{i.name}</strong><small>{i.kind} · {String(i.details.security_zone||'зона не задана')}</small></div>},style:{width:200,border:selectedFlow&&flows.some(f=>f.id===selectedFlow&&(f.source_id===i.id||f.target_id===i.id))?'3px solid #2563eb':'1px solid #aab8cb',borderRadius:9,background:'#fff',padding:9,opacity:selectedFlow&&!flows.some(f=>f.id===selectedFlow&&(f.source_id===i.id||f.target_id===i.id))?0.28:1}})).filter(n=>!flowFocusOnly||!selectedFlow||flows.some(f=>f.id===selectedFlow&&(f.source_id===n.id||f.target_id===n.id)))}
             edges={flows.filter(filterFlow).filter(f=>!flowFocusOnly||!selectedFlow||f.id===selectedFlow).map(f=>({id:f.id,source:f.source_id,target:f.target_id,label:selectedFlow===f.id?f.name:'',style:{stroke:selectedFlow===f.id?'#2563eb':'#94a3b8',strokeWidth:selectedFlow===f.id?4:1.5,opacity:selectedFlow&&selectedFlow!==f.id?0.16:1},labelStyle:{fontSize:12,fontWeight:700},markerEnd:{type:MarkerType.ArrowClosed,color:selectedFlow===f.id?'#2563eb':'#94a3b8'},zIndex:selectedFlow===f.id?100:0}))}
-            onEdgeClick={(_,edge)=>{const flow=flows.find(f=>f.id===edge.id);if(flow)setSelectedFlow(flow.id)}} onNodeClick={(_,node)=>{const related=flows.filter(filterFlow).filter(f=>f.source_id===node.id||f.target_id===node.id);if(related.length)setSelectedFlow(related[0].id)}} fitView nodesDraggable={false} nodesConnectable={false} elementsSelectable={true}>
+            onEdgeClick={(_,edge)=>{const flow=flows.find(f=>f.id===edge.id);if(flow)setSelectedFlow(flow.id)}} onNodeClick={(_,node)=>{const related=flows.filter(filterFlow).filter(f=>f.source_id===node.id||f.target_id===node.id);if(related.length)setSelectedFlow(related[0].id)}} fitView nodesDraggable={false} nodesConnectable={false} elementsSelectable={true}>\n            <FitGraphOnResize watch="flows"/>
             <Background gap={20}/><Controls/>
           </ReactFlow></div>
           <div className="infraGrid">{flows.filter(filterFlow).map(f=><article className="infraCard" key={f.id} role="button" tabIndex={0} aria-pressed={selectedFlow===f.id} onKeyDown={e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();setSelectedFlow(selectedFlow===f.id?"":f.id)}}} onClick={()=>setSelectedFlow(selectedFlow===f.id?"":f.id)} style={{cursor:"pointer",borderColor:selectedFlow===f.id?"#2563eb":undefined}}>

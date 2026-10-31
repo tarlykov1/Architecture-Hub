@@ -10,14 +10,14 @@ type Props={systems:System[];items:Item[];segments:Segment[];interfaces:Nic[];fl
 const unknown='Не определено'
 const colors={verified:'#15805c',unverified:'#bc8323'}
 export default function Topology({systems,items,segments,interfaces,flows,saveInterface,saveFlow}:Props){
- const [showConnections,setShowConnections]=useState(false)
+ const [showConnections,setShowConnections]=useState(true)
  const [showAllComponents,setShowAllComponents]=useState(true)
  const [editing,setEditing]=useState(false)
  const [flowDraft,setFlowDraft]=useState<Omit<Flow,'id'>|null>(null)
  const [flowEditingId,setFlowEditingId]=useState<string|undefined>()
  const [flowError,setFlowError]=useState('')
  const [flowSaving,setFlowSaving]=useState(false)
- function editFlowDraft(f?:Flow,sourceId?:string,targetId?:string){setFlowEditingId(f?.id);setFlowError('');setFlowDraft({source_id:f?.source_id||sourceId||'',target_id:f?.target_id||targetId||'',name:f?.name||'',protocol:f?.protocol||'',port:f?.port||'',security:f?.security||'unknown',data_description:f?.data_description||'',verification:f?.verification||'draft',schedule:f?.schedule||''})}
+ function editFlowDraft(f?:Flow,sourceId?:string,targetId?:string){setFlowEditingId(f?.id);setFlowError('');setFlowDraft({source_id:f?.source_id||sourceId||'',target_id:f?.target_id||targetId||'',name:f?.name||(sourceId&&targetId?'Новый поток':''),protocol:f?.protocol||'',port:f?.port||'',security:f?.security||'unknown',data_description:f?.data_description||'',verification:f?.verification||'draft',schedule:f?.schedule||''})}
  async function submitFlow(event:React.FormEvent){event.preventDefault();if(!flowDraft)return;setFlowError('');setFlowSaving(true);try{await saveFlow(flowDraft,flowEditingId);setFlowDraft(null);setFlowEditingId(undefined);setShowConnections(true)}catch(e){setFlowError(String(e))}finally{setFlowSaving(false)}}
  const [nicEditor,setNicEditor]=useState<Nic|null>(null)
  const [nicDraft,setNicDraft]=useState<Omit<Nic,"id">|null>(null)
@@ -88,11 +88,14 @@ export default function Topology({systems,items,segments,interfaces,flows,saveIn
    const height=95+Math.ceil(group.items.length/3)*132
    const groupWidth=Math.min(900,24+Math.min(3,group.items.length)*294)
    const groupId='group:'+key
+   const groupNics=group.items.flatMap(i=>(nicsByItem.get(i.id)||[]).filter(n=>key==='external'||(n.vrf_id||'none')+'|'+(n.vlan_id||'none')===key))
+   const zoneNames=Array.from(new Set(groupNics.map(n=>name(n.zone_id))))
+   const ipCount=groupNics.filter(n=>n.ip_address).length
    const isExternal=key==='external'
-   nodes.push({id:groupId,position:{x:0,y:offsetY},data:{label:<div style={{textAlign:'left'}}><strong>{isExternal?'Внешние зависимости':!group.vrf&&!group.vlan?'Сеть не указана – требуется уточнить VRF/VLAN':'VRF: '+name(group.vrf)+' · VLAN: '+name(group.vlan)}</strong><div style={{fontSize:12,marginTop:5,color:'#60728b'}}>{group.items.length} компонентов{isExternal?' · вне выбранного фильтра':''}</div></div>},style:{width:groupWidth,height,background:isExternal?'#fff4df':!group.vrf&&!group.vlan?'#f4f6f9':'#eaf1fb',border:'1px solid '+(isExternal?'#d6b67b':'#a8bdd6'),borderRadius:14},draggable:false,selectable:false})
+   nodes.push({id:groupId,position:{x:0,y:offsetY},data:{label:<div style={{textAlign:'left'}}><strong>{isExternal?'Внешние зависимости':!group.vrf&&!group.vlan?'Сеть не указана – требуется уточнить VRF/VLAN':'VRF: '+name(group.vrf)+' · VLAN: '+name(group.vlan)}</strong><div style={{fontSize:12,marginTop:5,color:'#60728b'}}>{group.items.length} компонентов · {groupNics.length} интерфейсов · {ipCount} IP{isExternal?' · вне выбранного фильтра':''}{zoneNames.length?' · Зоны: '+zoneNames.join(', '):''}</div></div>},style:{width:groupWidth,height,background:isExternal?'#fff4df':!group.vrf&&!group.vlan?'#f4f6f9':'#eaf1fb',border:'1px solid '+(isExternal?'#d6b67b':'#a8bdd6'),borderRadius:14},draggable:false,selectable:false})
    group.items.forEach((item,j)=>{
      const duplicate=(memberships.get(item.id)||[]).indexOf(key)
-     nodes.push({id:'host:'+item.id+':'+key,parentId:groupId,extent:'parent',position:{x:16+(j%3)*294,y:74+Math.floor(j/3)*132},sourcePosition:Position.Right,targetPosition:Position.Left,data:{label:<div style={{textAlign:'left',display:'grid',gap:4}}><strong>{item.name}</strong><small>{systemById.get(item.system_id)?.name||'Система неизвестна'}</small><small>{item.kind} · {String(item.details.environment||'Контур не указан')}{isExternal?' · внешняя':''}</small>{(memberships.get(item.id)||[]).length>1&&<small>Сетей: {memberships.get(item.id)?.length}</small>}</div>},style:{width:272,minHeight:100,background:isExternal?'#fffcf5':'white',border:'1px solid '+(duplicate>0?'#669acb':'#adbed3'),borderRadius:9,cursor:'pointer'},draggable:false})
+     nodes.push({id:'host:'+item.id+':'+key,parentId:groupId,extent:'parent',position:{x:16+(j%3)*294,y:74+Math.floor(j/3)*132},sourcePosition:Position.Right,targetPosition:Position.Left,data:{label:<div style={{textAlign:'left',display:'grid',gap:4}}><strong>{item.name}</strong><small>{systemById.get(item.system_id)?.name||'Система неизвестна'}</small><small>{item.kind} · {String(item.details.environment||'Контур не указан')}{isExternal?' · внешняя':''}</small>{(nicsByItem.get(item.id)||[]).filter(n=>(n.vrf_id||'none')+'|'+(n.vlan_id||'none')===key).map(n=><small key={n.id}>{n.name}: {n.ip_address||'IP не указан'} · {name(n.zone_id)}</small>)}{(memberships.get(item.id)||[]).length>1&&<small>Сетей: {memberships.get(item.id)?.length}</small>}</div>},style:{width:272,minHeight:100,background:isExternal?'#fffcf5':'white',border:'1px solid '+(duplicate>0?'#669acb':'#adbed3'),borderRadius:9,cursor:'pointer'},draggable:false})
    })
    offsetY+=height+50
  }
@@ -105,8 +108,8 @@ export default function Topology({systems,items,segments,interfaces,flows,saveIn
  }
  const item=itemById.get(selected),flow=flows.find(f=>f.id===flowId)
  return <section style={{padding:14,height:'calc(100vh - 150px)',display:'flex',flexDirection:'column',gap:10,minHeight:510,position:'relative'}}>
-  <div><h2 style={{margin:'0 0 4px'}}>Топология сетей и потоков · 0.6</h2><p style={{margin:0,fontSize:13,color:'#546a82'}}>VRF → VLAN → сетевые интерфейсы и ВМ → направленные потоки данных. Неподтверждённые сведения отмечены отдельно.</p></div>
-  <div style={{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center'}}><button type="button" className={editing?'primary':''} onClick={()=>setEditing(!editing)}>{editing?'Завершить редактирование':'Редактировать топологию'}</button>{editing&&<button type="button" onClick={()=>editFlowDraft()}>+ Создать поток</button>}
+  <div><h2 style={{margin:'0 0 4px'}}>Топология сетей и потоков · 0.6</h2><p style={{margin:0,fontSize:13,color:'#546a82'}}>Сетевые группы показывают VRF, VLAN, зоны, интерфейсы и IP. Стрелка означает направление потока; зелёная связь подтверждена, жёлтая требует проверки.</p></div>
+  <div style={{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center'}}><button type="button" className={editing?'primary':''} onClick={()=>setEditing(!editing)}>{editing?'Завершить редактирование':'Редактировать топологию'}</button>{editing&&<><button type="button" onClick={()=>editFlowDraft()}>+ Создать поток</button><span style={{fontSize:12,color:'#546a82'}}>Соедините узлы стрелкой или создайте поток через форму. Выберите линию для изменения параметров.</span></>}
    <select value={system} onChange={e=>setSystem(e.target.value)} aria-label="Система"><option value="">Все системы</option>{systems.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select>
    <select value={vrf} onChange={e=>setVrf(e.target.value)} aria-label="VRF"><option value="">Все VRF</option>{segments.filter(s=>s.kind==='vrf').map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select>
    <select value={vlan} onChange={e=>setVlan(e.target.value)} aria-label="VLAN"><option value="">Все VLAN</option>{segments.filter(s=>s.kind==='vlan').map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select>

@@ -12,6 +12,7 @@ const colors={verified:'#15805c',unverified:'#bc8323'}
 export default function Topology({systems,items,segments,interfaces,flows,saveInterface,saveFlow}:Props){
  const [showConnections,setShowConnections]=useState(true)
  const [showAllComponents,setShowAllComponents]=useState(true)
+ const [focusMode,setFocusMode]=useState<'overview'|'dependencies'>('overview')
  const [editing,setEditing]=useState(false)
  const [flowDraft,setFlowDraft]=useState<Omit<Flow,'id'>|null>(null)
  const [flowEditingId,setFlowEditingId]=useState<string|undefined>()
@@ -56,7 +57,7 @@ export default function Topology({systems,items,segments,interfaces,flows,saveIn
  const activeFlowId=flowId
  const activeFlow=visibleFlows.find(f=>f.id===activeFlowId)
  const focusedIds=new Set<string>()
- if(!showConnections){
+ if(!showConnections||focusMode==='dependencies'){
    if(activeFlow){focusedIds.add(activeFlow.source_id);focusedIds.add(activeFlow.target_id)}
    else if(selected){focusedIds.add(selected);for(const f of visibleFlows)if(f.source_id===selected||f.target_id===selected){focusedIds.add(f.source_id);focusedIds.add(f.target_id)}}
  }
@@ -116,9 +117,9 @@ export default function Topology({systems,items,segments,interfaces,flows,saveIn
    <select value={environment} onChange={e=>setEnvironment(e.target.value)} aria-label="Контур"><option value="">Все контуры</option>{environments.map(x=><option key={x} value={x}>{x}</option>)}</select>
    <select value={mode} onChange={e=>setMode(e.target.value as 'all'|'internal'|'external')} aria-label="Тип связей"><option value="all">Все связи</option><option value="internal">Только внутренние</option><option value="external">Только внешние</option></select>
    <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Поиск ВМ или системы" aria-label="Поиск компонента" style={{minWidth:180}}/>
-   <label className="topologyConnectionToggle"><input type="checkbox" checked={showConnections} onChange={e=>setShowConnections(e.target.checked)}/> Все потоки</label><button onClick={()=>{setSystem('');setVrf('');setVlan('');setEnvironment('');setMode('all');setSearch('');setSelected('');setFlowId('');setShowConnections(false);setShowAllComponents(true)}}>Сбросить</button>
+   <label className="topologyConnectionToggle"><input type="checkbox" checked={showConnections} onChange={e=>setShowConnections(e.target.checked)}/> Все потоки</label><button onClick={()=>{setSystem('');setVrf('');setVlan('');setEnvironment('');setMode('all');setSearch('');setSelected('');setFlowId('');setShowConnections(true);setShowAllComponents(true);setFocusMode('overview')}}>Сбросить</button>
   </div>
-  <div className="topologyGuide" aria-label="Навигатор потоков">
+  <div className="topologyGuide" aria-label="Навигатор потоков"><label>Режим просмотра<select aria-label="Режим просмотра топологии" value={focusMode} onChange={e=>setFocusMode(e.target.value as 'overview'|'dependencies')}><option value="overview">Обзор всей сети</option><option value="dependencies">Только связанные с выбранным</option></select></label>
     <div><strong>Выберите компонент или поток данных</strong><p>По умолчанию показаны все компоненты. Выберите узел для просмотра его зависимостей или поток для просмотра направления и параметров.</p></div>
     <label>Поток данных<select aria-label="Выбрать поток на схеме" value={activeFlowId} onChange={e=>{setFlowId(e.target.value);setSelected('');setShowConnections(false)}}><option value="">Нет выбранного потока</option>{visibleFlows.map(f=><option key={f.id} value={f.id}>{itemById.get(f.source_id)?.name||'?'} → {itemById.get(f.target_id)?.name||'?'} · {f.name}</option>)}</select></label>
     <label className="topologyConnectionToggle"><input type="checkbox" checked={showAllComponents} onChange={e=>setShowAllComponents(e.target.checked)}/> Показать компоненты без потоков</label>

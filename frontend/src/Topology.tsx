@@ -32,10 +32,12 @@ export default function Topology({systems,items,segments,interfaces,flows,saveIn
  const [nicDraft,setNicDraft]=useState<Omit<Nic,"id">|null>(null)
  const [nicError,setNicError]=useState('')
  const [nicSaving,setNicSaving]=useState(false)
+ const [nicConfirm,setNicConfirm]=useState(false)
  function editNic(item:Item,nic?:Nic){
    setNicEditor(nic||null)
    setNicDraft({item_id:item.id,name:nic?.name||'eth0',ip_address:nic?.ip_address||'',zone_id:nic?.zone_id||null,vrf_id:nic?.vrf_id||null,vlan_id:nic?.vlan_id||null})
    setNicError('')
+   setNicConfirm(false)
  }
  async function submitNic(event:React.FormEvent){
    event.preventDefault()
@@ -44,6 +46,7 @@ export default function Topology({systems,items,segments,interfaces,flows,saveIn
    const duplicates=interfaces.filter(n=>n.item_id===nicDraft.item_id&&n.id!==nicEditor?.id&&n.name.trim().toLocaleLowerCase()===nicDraft.name.trim().toLocaleLowerCase())
    if(duplicates.length){setNicError('У компонента уже есть интерфейс с таким именем.');return}
    if(nicDraft.ip_address.trim()&&!/^[0-9a-fA-F:.\/]+$/.test(nicDraft.ip_address.trim())){setNicError('IP-адрес должен быть IPv4 или IPv6, при необходимости с префиксом сети.');return}
+   if(nicEditor&&!nicConfirm){setNicConfirm(true);return}
    setNicSaving(true);setNicError('')
    try{await saveInterface(nicDraft,nicEditor?.id);setNicDraft(null);setNicEditor(null)}
    catch(e){setNicError(String(e))}
@@ -174,16 +177,17 @@ export default function Topology({systems,items,segments,interfaces,flows,saveIn
     <div className="registryHeader"><h3>{nicEditor?'Редактировать сетевой интерфейс':'Новый сетевой интерфейс'}</h3><button type="button" onClick={()=>setNicDraft(null)}>Закрыть ×</button></div>
     <p className="hint">Привязки зоны, VRF и VLAN выбираются из сетевого реестра. Сохранение изменяет сетевую принадлежность только этого интерфейса, а не всей системы.</p>{nicEditor&&<p className="hint">Текущая сеть: VRF {name(nicEditor.vrf_id)} · VLAN {name(nicEditor.vlan_id)} · зона {name(nicEditor.zone_id)}. После сохранения компонент появится в новой сетевой группе.</p>}
     <form onSubmit={submitNic} className="detailForm">
-     <label>Имя интерфейса<input required maxLength={100} value={nicDraft.name} onChange={e=>setNicDraft({...nicDraft,name:e.target.value})}/></label>
-     <label>IP-адрес<input value={nicDraft.ip_address} maxLength={120} placeholder="Не указан" onChange={e=>setNicDraft({...nicDraft,ip_address:e.target.value})}/></label>
+     <label>Имя интерфейса<input required maxLength={100} value={nicDraft.name} onChange={e=>{setNicDraft({...nicDraft,name:e.target.value});setNicConfirm(false)}}/></label>
+     <label>IP-адрес<input value={nicDraft.ip_address} maxLength={120} placeholder="Не указан" onChange={e=>{setNicDraft({...nicDraft,ip_address:e.target.value});setNicConfirm(false)}}/></label>
      {(['zone','vrf','vlan'] as const).map(kind=>{
       const field=kind+'_id' as 'zone_id'|'vrf_id'|'vlan_id'
-      return <label key={kind}>{kind.toUpperCase()}<select value={nicDraft[field]||''} onChange={e=>setNicDraft({...nicDraft,[field]:e.target.value||null})}>
+      return <label key={kind}>{kind.toUpperCase()}<select value={nicDraft[field]||''} onChange={e=>{setNicDraft({...nicDraft,[field]:e.target.value||null});setNicConfirm(false)}}>
        <option value="">Не определено</option>{segments.filter(s=>s.kind===kind).map(s=><option key={s.id} value={s.id}>{s.name}</option>)}
       </select></label>
      })}
+     {nicEditor&&<div style={{border:'1px solid #c3d1e5',borderRadius:8,padding:12,display:'grid',gap:6}} aria-label="Предварительный просмотр изменений"><strong>До и после</strong><small>До: {nicEditor.name} · {nicEditor.ip_address||'IP не указан'} · VRF {name(nicEditor.vrf_id)} · VLAN {name(nicEditor.vlan_id)} · зона {name(nicEditor.zone_id)}</small><small>После: {nicDraft.name} · {nicDraft.ip_address||'IP не указан'} · VRF {name(nicDraft.vrf_id)} · VLAN {name(nicDraft.vlan_id)} · зона {name(nicDraft.zone_id)}</small><small>Изменяется только выбранный интерфейс, не другие интерфейсы или потоки.</small></div>}{nicConfirm&&<p role="status">Проверьте изменения и подтвердите сохранение.</p>}
      {nicError&&<p className="kisError" role="alert">{nicError}</p>}
-     <button className="primary" disabled={nicSaving}>{nicSaving?'Сохранение…':'Сохранить сеть компонента'}</button>
+     <button className="primary" disabled={nicSaving}>{nicSaving?'Сохранение…':nicConfirm?'Подтвердить и сохранить':nicEditor?'Проверить изменения':'Сохранить сеть компонента'}</button>
     </form>
    </div>
   </div>}

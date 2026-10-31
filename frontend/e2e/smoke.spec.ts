@@ -180,7 +180,7 @@ test('infrastructure diagram defaults to view mode and editing is explicit',asyn
  await expect(edit).toBeVisible()
 })
 
-test('topology starts with an understandable focused flow, not all unlinked components',async({page})=>{
+test('topology starts with all components and no arbitrary selected flow',async({page})=>{
  const stamp=Date.now()
  const created=await page.request.post('http://127.0.0.1:8001/api/objects',{data:{name:'Topology focused '+stamp,kind:'system'}})
  expect(created.status()).toBe(201)
@@ -197,10 +197,38 @@ test('topology starts with an understandable focused flow, not all unlinked comp
  await page.getByRole('button',{name:'Топология сетей'}).click()
  await page.getByRole('combobox',{name:'Система'}).selectOption(id)
  const diagram=page.locator('.react-flow')
- await expect(diagram.locator('.react-flow__node[data-id^="host:"]')).toHaveCount(2)
- await expect(page.getByRole('combobox',{name:'Выбрать поток на схеме'})).toHaveValue((await f.json()).id)
- await page.getByRole('checkbox',{name:'Показать компоненты без потоков'}).check()
+ await expect(page.getByRole('combobox',{name:'Выбрать поток на схеме'})).toHaveValue('')
+ await expect(page.getByRole('checkbox',{name:'Показать компоненты без потоков'})).toBeChecked()
  await expect(diagram.locator('.react-flow__node[data-id^="host:"]')).toHaveCount(3)
  await page.getByRole('checkbox',{name:'Все потоки'}).check()
  await expect(diagram.locator('.react-flow__edge')).toHaveCount(1)
+})
+
+
+test('topology editor creates and updates a flow via API',async({page})=>{
+ const stamp=Date.now()
+ const created=await page.request.post('http://127.0.0.1:8001/api/objects',{data:{name:'Topology editor '+stamp,kind:'system'}})
+ expect(created.status()).toBe(201)
+ const id=(await created.json()).id
+ for(const name of ['Editor source '+stamp,'Editor target '+stamp]){
+  const res=await page.request.post('http://127.0.0.1:8001/api/infra',{data:{system_id:id,name,kind:'service'}})
+  expect(res.status()).toBe(201)
+ }
+ await page.goto('/')
+ await page.getByRole('button',{name:'Топология сетей'}).click()
+ await page.getByRole('combobox',{name:'Система'}).selectOption(id)
+ await page.getByRole('button',{name:'Редактировать топологию'}).click()
+ await page.getByRole('button',{name:'+ Создать поток'}).click()
+ const dialog=page.getByRole('dialog',{name:'Редактор потока данных'})
+ await dialog.getByLabel('Источник').selectOption({label:'Editor source '+stamp})
+ await dialog.getByLabel('Получатель').selectOption({label:'Editor target '+stamp})
+ await dialog.getByLabel('Название').fill('Editor flow '+stamp)
+ await dialog.getByLabel('Протокол').fill('HTTPS')
+ await dialog.getByRole('button',{name:'Сохранить поток'}).click()
+ await expect(dialog).toHaveCount(0)
+ await page.reload()
+ await page.getByRole('button',{name:'Топология сетей'}).click()
+ await page.getByRole('combobox',{name:'Система'}).selectOption(id)
+ await page.getByRole('checkbox',{name:'Все потоки'}).check()
+ await expect(page.locator('.react-flow__edge')).toHaveCount(1)
 })

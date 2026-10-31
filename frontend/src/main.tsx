@@ -153,6 +153,7 @@ function App() {
   const [networkDescription,setNetworkDescription] = useState('')
   const [networkVerification,setNetworkVerification] = useState('draft')
   const [flowEditId,setFlowEditId] = useState('')
+  const [createReverseFlow,setCreateReverseFlow] = useState(false)
   const [flowSchedule,setFlowSchedule] = useState('')
   const [registryBusy,setRegistryBusy] = useState(false)
   const [registryError,setRegistryError] = useState('')
@@ -162,6 +163,7 @@ function App() {
     setRegistryError('');setRegistryOpen('network')
   }
   const editFlow = (f?: Flow) => {
+    setCreateReverseFlow(false)
     setFlowEditId(f?.id || '');setFlowName(f?.name || '');setFlowSource(f?.source_id || '')
     setFlowTarget(f?.target_id || '');setFlowData(f?.data_description || '')
     setFlowProtocol(f?.protocol || 'HTTPS');setFlowPort(f?.port || '443')
@@ -195,10 +197,22 @@ function App() {
         if(!flowSource||!flowTarget)throw new Error('Выберите источник и получателя')
         if(flowSource===flowTarget)throw new Error('Источник и получатель должны отличаться')
         const uri='/api/flows'+(flowEditId?'/'+flowEditId:'')
+        if(createReverseFlow&&!flowEditId&&flows.some(f=>f.source_id===flowTarget&&f.target_id===flowSource))throw new Error('Обратный поток уже существует. Откройте его для отдельного редактирования.')
+        const shared={data_description:flowData,protocol:flowProtocol,port:flowPort,security:flowSecurity,verification:flowVerification,schedule:flowSchedule}
         await request(uri,{method:flowEditId?'PUT':'POST',body:JSON.stringify({
-          source_id:flowSource,target_id:flowTarget,name:flowName.trim(),data_description:flowData,
-          protocol:flowProtocol,port:flowPort,security:flowSecurity,verification:flowVerification,schedule:flowSchedule
+          ...shared,source_id:flowSource,target_id:flowTarget,name:flowName.trim()
         })})
+        if(createReverseFlow&&!flowEditId){
+          try{
+            await request('/api/flows',{method:'POST',body:JSON.stringify({
+              ...shared,source_id:flowTarget,target_id:flowSource,
+              name:(infra.find(i=>i.id===flowTarget)?.name||'Получатель')+' → '+(infra.find(i=>i.id===flowSource)?.name||'Источник')
+            })})
+          }catch(e){
+            setFlows(await request<Flow[]>('/api/flows'))
+            throw new Error('Прямой поток сохранён, но обратный создать не удалось: '+String(e))
+          }
+        }
         setFlows(await request<Flow[]>('/api/flows'))
       }
       setRegistryOpen(null);setNotice('Изменения сохранены')
@@ -791,6 +805,7 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
             <label>Источник<select required value={flowSource} onChange={e=>setFlowSource(e.target.value)}><option value="">Выберите компонент</option>{infra.map(i=><option key={i.id} value={i.id}>{i.name}</option>)}</select></label>
             <label>Получатель<select required value={flowTarget} onChange={e=>setFlowTarget(e.target.value)}><option value="">Выберите компонент</option>{infra.map(i=><option key={i.id} value={i.id}>{i.name}</option>)}</select></label>
             <div className="flowDirectionActions"><span>Направление обмена: <strong>{infra.find(i=>i.id===flowSource)?.name||'Источник'} → {infra.find(i=>i.id===flowTarget)?.name||'Получатель'}</strong></span><button type="button" disabled={!flowSource||!flowTarget} onClick={()=>{setFlowSource(flowTarget);setFlowTarget(flowSource);if(!flowEditId)setFlowName((infra.find(i=>i.id===flowTarget)?.name||'Источник')+' → '+(infra.find(i=>i.id===flowSource)?.name||'Получатель'))}}>⇄ Поменять направление</button></div>
+            {!flowEditId&&<label className="reverseFlowOption"><input type="checkbox" checked={createReverseFlow} onChange={e=>setCreateReverseFlow(e.target.checked)}/> Создать также обратный поток (две независимые связи)</label>}
             <label>Название<input required value={flowName} onChange={e=>setFlowName(e.target.value)}/></label>
             <label>Состав данных<textarea value={flowData} onChange={e=>setFlowData(e.target.value)}/></label>
             <div className="formPair"><label>Протокол<input value={flowProtocol} onChange={e=>setFlowProtocol(e.target.value)}/></label><label>Порт<input value={flowPort} onChange={e=>setFlowPort(e.target.value)}/></label></div>

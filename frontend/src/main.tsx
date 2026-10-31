@@ -214,6 +214,7 @@ function App() {
   const [positions, setPositions] = useState<Record<string, { x: number; y: number }>>({})
   const [selected, setSelected] = useState('')
   const [name, setName] = useState('')
+  const [createObjectOpen,setCreateObjectOpen] = useState(false)
   const [kind, setKind] = useState('system')
   const [description, setDescription] = useState('')
   const [error, setError] = useState('')
@@ -304,7 +305,7 @@ function App() {
     try {
       await request('/api/objects', { method: 'POST', body: JSON.stringify({ name: name.trim(), kind, description }) })
       setObjects(await request<Obj[]>('/api/objects'))
-      setName(''); setDescription('')
+      setName(''); setDescription(''); setCreateObjectOpen(false)
     } catch (e) { setError(String(e)) }
     finally { setBusy(false) }
   }
@@ -582,7 +583,8 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
       <div className="catalog">{visibleObjects.map(o => <button key={o.id} className={'catalogItem ' + (selected === o.id ? 'active' : '')} onClick={() => {setSelected(o.id);setInspectorOpen(true);setPanelTab("overview")}} onDoubleClick={()=>{setViewSystem(o.id);setLayer("infrastructure");setInspectorOpen(false);setInspectorExpanded(false)}}>
         <span className="objectIcon">▦</span><span><strong>{o.name}</strong><small>{o.kind}</small></span>
       </button>)}</div>
-      <form className="createForm" onSubmit={addObject}>
+      <div style={{padding:"12px 14px",borderTop:"1px solid #e1e7ef"}}><button type="button" className="primary" style={{width:"100%"}} aria-expanded={createObjectOpen} onClick={()=>setCreateObjectOpen(v=>!v)}>{createObjectOpen?"Закрыть создание":"+ Добавить объект"}</button></div>
+      {createObjectOpen&&<form className="createForm" onSubmit={addObject}>
         <h3>Новый объект</h3>
         <input aria-label="Название" placeholder="Название системы" value={name} onChange={e => setName(e.target.value)} required />
         <select aria-label="Тип" value={kind} onChange={e => setKind(e.target.value)}>
@@ -592,7 +594,7 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
         </select>
         <textarea aria-label="Описание" placeholder="Описание (необязательно)" value={description} onChange={e => setDescription(e.target.value)} rows={3} />
         <button className="primary" disabled={busy}>+ Добавить</button>
-      </form>
+      </form>}
     </aside>
     <main className="main">
       <header className="topbar"><div><h1>{drill?drill.name:"Карта архитектуры"}</h1><p>{drill?"Детализация компонентов и потоков · синтетическая модель":"Единый реестр систем и взаимосвязей"}</p></div><div className="topActions">

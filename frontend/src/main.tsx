@@ -72,6 +72,7 @@ function App() {
   const [flowFocusOnly,setFlowFocusOnly] = useState(false)
   const [groupFlowEdges,setGroupFlowEdges] = useState(true)
   const [expandedFlowPair,setExpandedFlowPair] = useState('')
+  const [flowDirection,setFlowDirection] = useState<'both'|'incoming'|'outgoing'>('both')
   const [flowComponentQuery,setFlowComponentQuery] = useState('')
   const [flowComponentFocus,setFlowComponentFocus] = useState('')
   const [flowDepth,setFlowDepth] = useState(1)
@@ -691,7 +692,7 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
     return {item:i,issues}
   })
   const incompleteComponents=componentQuality.filter(x=>x.issues.length>0)
-  const visibleFlows=flows.filter(filterFlow).filter(f=>!flowComponentFocus||visibleFlowIds.has(f.id))
+  const visibleFlows=flows.filter(filterFlow).filter(f=>!flowComponentFocus||visibleFlowIds.has(f.id)).filter(f=>!flowComponentFocus||flowDirection==='both'||(flowDirection==='incoming'?f.target_id===flowComponentFocus:f.source_id===flowComponentFocus))
   const unverifiedFlows=visibleFlows.filter(f=>!f.verification||!['verified','confirmed','подтверждено','подтверждён','проверено'].includes(f.verification.trim().toLowerCase()))
   const incompleteFlows=visibleFlows.filter(f=>!f.data_description?.trim()||!f.protocol?.trim()||!f.port?.trim()||!f.security?.trim())
   function exportVisibleFlowsCsv(){
@@ -821,6 +822,7 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
           <p className="hint">Каждый поток – отдельная запись от конкретного компонента-источника до компонента-получателя. Обратный независимый поток создаётся отдельно.</p>
           <div style={{display:'flex',gap:8,alignItems:'center',marginBottom:8}}><label><input type="checkbox" checked={flowFocusOnly} onChange={e=>setFlowFocusOnly(e.target.checked)}/> Только выбранный поток</label>{selectedFlow&&<button type="button" onClick={()=>setSelectedFlow('')}>Снять выделение</button>}</div>
           <div className="flowComponentSearch"><label>Поиск компонента <input type="search" aria-label="Поиск компонента на схеме" value={flowComponentQuery} onChange={e=>setFlowComponentQuery(e.target.value)} placeholder="Название системы или компонента"/></label><label>Показать связи компонента <select aria-label="Показать связи компонента" value={flowComponentFocus} onChange={e=>{setFlowComponentFocus(e.target.value);setFlowDepth(1);setSelectedFlow('');setExpandedFlowPair('')}}><option value="">Все компоненты</option>{infra.filter(i=>flows.filter(filterFlow).some(f=>f.source_id===i.id||f.target_id===i.id)).filter(i=>!flowComponentQuery||[i.name,i.kind,objects.find(o=>o.id===i.system_id)?.name||''].join(' ').toLowerCase().includes(flowComponentQuery.toLowerCase())).sort((a,b)=>a.name.localeCompare(b.name,'ru')).map(i=><option key={i.id} value={i.id}>{i.name}</option>)}</select></label>{flowComponentFocus&&<button type="button" onClick={()=>{setFlowComponentFocus('');setSelectedFlow('');setExpandedFlowPair('')}}>Сбросить фокус</button>}</div>
+          {flowComponentFocus&&<label className="flowDepthSelect">Направление <select aria-label="Направление потоков" value={flowDirection} onChange={e=>setFlowDirection(e.target.value as 'both'|'incoming'|'outgoing')}><option value="both">Все направления</option><option value="incoming">Входящие</option><option value="outgoing">Исходящие</option></select></label>}
           {flowComponentFocus&&<label className="flowDepthSelect">Глубина связей <select aria-label="Глубина связей" value={flowDepth} onChange={e=>setFlowDepth(Number(e.target.value))}><option value={1}>1 уровень</option><option value={2}>2 уровня</option><option value={3}>3 уровня</option></select></label>}
           <button type="button" onClick={exportVisibleFlowsCsv} disabled={!visibleFlows.length} title="Экспортировать отображаемые потоки в CSV для Excel">Экспорт потоков CSV ({visibleFlows.length})</button>
           <label className="flowGroupingToggle"><input type="checkbox" checked={groupFlowEdges} onChange={e=>setGroupFlowEdges(e.target.checked)}/> Группировать параллельные потоки на схеме <small>(все направления доступны в карточках ниже)</small></label>

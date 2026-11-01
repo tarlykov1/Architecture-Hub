@@ -173,3 +173,5 @@ button{border-radius:5px;border-color:#dde2e8}.primary{background:var(--hub-blue
 .componentFieldEditor input{width:100%;box-sizing:border-box}
 .componentFieldEditor button{flex:none;margin-bottom:1px}
 @media(max-width:600px){.componentFieldEditor{flex-wrap:wrap}.componentFieldEditor label{flex-basis:100%}}
+
+.componentFieldGroups{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0 14px}.componentFieldGroups button{border:1px solid #cbd5e1;border-radius:7px;padding:6px 11px;background:#fff;cursor:pointer}.componentFieldGroups button.current{background:#e2e8f0;border-color:#94a3b8;font-weight:600}.componentFieldEditor input[readonly]{background:#f1f5f9;color:#475569}

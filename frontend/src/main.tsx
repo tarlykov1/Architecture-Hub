@@ -40,7 +40,7 @@ type BusinessProcess = {id:string;category_id:string;name:string;description:str
 type BusinessLink = {id:string;process_id:string;system_id:string;role:string}
 type Diagram = { id: string; name: string; positions: Record<string, { x: number; y: number }> }
 
-type SavedWorkspaceView={id:string;name:string;layer:'business'|'systems'|'infrastructure'|'flows';query:string;kind:string;verification:string}
+type SavedWorkspaceView={id:string;name:string;layer:'business'|'systems'|'infrastructure'|'flows';query:string;kind:string;verification:string;flowLayoutOrientation?:'horizontal'|'vertical';flowLayoutDensity?:'compact'|'normal'|'spacious';flowSystemOverview?:boolean;flowDepth?:number;flowDirection?:'both'|'incoming'|'outgoing'}
 const VIEWS_STORAGE_KEY='architecture-hub:views:v1'
 function readSavedWorkspaceViews():SavedWorkspaceView[]{
  try{
@@ -625,7 +625,7 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
     if(!workspaceLayer)return
     const name=window.prompt('Название представления (например, Только критичные потоки)')
     if(!name?.trim())return
-    const view:SavedWorkspaceView={id:crypto.randomUUID(),name:name.trim().slice(0,80),layer:workspaceLayer,query:workspaceQuery,kind:workspaceKind,verification:workspaceVerified}
+    const view:SavedWorkspaceView={id:crypto.randomUUID(),name:name.trim().slice(0,80),layer:workspaceLayer,query:workspaceQuery,kind:workspaceKind,verification:workspaceVerified,...(workspaceLayer==='flows'?{flowLayoutOrientation,flowLayoutDensity,flowSystemOverview,flowDepth,flowDirection}:{})}
     const next=[...savedViews.filter(v=>v.name!==view.name||v.layer!==view.layer),view].slice(-30)
     try{localStorage.setItem(VIEWS_STORAGE_KEY,JSON.stringify(next));setSavedViews(next);setViewSelection(view.id);setNotice('Представление сохранено в этом браузере')}catch{setError('Не удалось сохранить представление в браузере')}
   }
@@ -633,7 +633,7 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
     setViewSelection(id)
     const saved=savedViews.find(v=>v.id===id&&v.layer===workspaceLayer)
     if(!saved)return
-    setWorkspaceQuery(saved.query);setWorkspaceKind(saved.kind);setWorkspaceVerified(saved.verification)
+    setWorkspaceQuery(saved.query);setWorkspaceKind(saved.kind);setWorkspaceVerified(saved.verification);if(saved.layer==='flows'){setFlowLayoutOrientation(saved.flowLayoutOrientation||'horizontal');setFlowLayoutDensity(saved.flowLayoutDensity||'normal');setFlowSystemOverview(saved.flowSystemOverview??false);setFlowDepth(saved.flowDepth??1);setFlowDirection(saved.flowDirection||'both')}
   }
   function deleteSavedView(){
     const next=savedViews.filter(v=>v.id!==viewSelection)

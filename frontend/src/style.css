@@ -164,3 +164,5 @@ button{border-radius:5px;border-color:#dde2e8}.primary{background:var(--hub-blue
 .flowDepthSelect{display:inline-flex;align-items:center;gap:8px;margin:4px 0 10px;font-size:13px}.flowDepthSelect select{padding:6px 9px;border:1px solid #cbd5e1;border-radius:7px}.miniArchitecture .react-flow__edge-path{stroke-linecap:round;stroke-linejoin:round}.miniArchitecture .react-flow__edge:hover .react-flow__edge-path{stroke-width:1.8px}
 
 .qualityAudit{margin:14px 0;padding:14px;border:1px solid #cbd5e1;border-radius:10px;background:#fff}.qualityAudit summary{cursor:pointer;margin:10px 0;font-weight:600}.qualityAuditRow{display:flex;align-items:center;justify-content:space-between;gap:12px;border-top:1px solid #e2e8f0;padding:8px 0}.qualityAuditRow small{color:#64748b;text-align:right}
+
+.flowAudit{padding:14px;margin:12px 0;border:1px solid #cbd5e1;border-radius:10px;background:#fff}.flowAuditSummary{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}.flowAuditSummary span{font-size:13px;color:#475569}.flowAudit details{margin-top:10px}.flowAudit summary{cursor:pointer;font-weight:600}.flowAudit details[open]{max-height:330px;overflow:auto}

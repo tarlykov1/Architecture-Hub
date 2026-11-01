@@ -643,6 +643,21 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
     }
   }
   const visibleFlows=flows.filter(filterFlow).filter(f=>!flowComponentFocus||visibleFlowIds.has(f.id))
+  function exportVisibleFlowsCsv(){
+    const columns=['ID','Название','Источник','Получатель','Данные','Протокол','Порт','Защита','Периодичность','Достоверность']
+    const rows=visibleFlows.map(f=>[f.id,f.name,infra.find(i=>i.id===f.source_id)?.name||f.source_id,infra.find(i=>i.id===f.target_id)?.name||f.target_id,f.data_description,f.protocol,f.port,f.security,f.schedule,f.verification])
+    const escapeCell=(value:unknown)=>'"'+String(value??'').replace(/"/g,'""')+'"'
+    const csv='\uFEFF'+[columns,...rows].map(row=>row.map(escapeCell).join(';')).join('\r\n')
+    const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}))
+    const link=document.createElement('a')
+    link.href=url
+    link.download='architecture-hub-flows-'+new Date().toISOString().slice(0,10)+'.csv'
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    URL.revokeObjectURL(url)
+  }
+
   const flowPositions=dependencyLayout(
     infra.filter(i=>visibleFlows.some(f=>f.source_id===i.id||f.target_id===i.id)).map(i=>i.id),
     visibleFlows.map(f=>({source:f.source_id,target:f.target_id})),330,175)
@@ -754,6 +769,7 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
           <div style={{display:'flex',gap:8,alignItems:'center',marginBottom:8}}><label><input type="checkbox" checked={flowFocusOnly} onChange={e=>setFlowFocusOnly(e.target.checked)}/> Только выбранный поток</label>{selectedFlow&&<button type="button" onClick={()=>setSelectedFlow('')}>Снять выделение</button>}</div>
           <div className="flowComponentSearch"><label>Показать связи компонента <select aria-label="Показать связи компонента" value={flowComponentFocus} onChange={e=>{setFlowComponentFocus(e.target.value);setFlowDepth(1);setSelectedFlow('');setExpandedFlowPair('')}}><option value="">Все компоненты</option>{infra.filter(i=>flows.filter(filterFlow).some(f=>f.source_id===i.id||f.target_id===i.id)).sort((a,b)=>a.name.localeCompare(b.name,'ru')).map(i=><option key={i.id} value={i.id}>{i.name}</option>)}</select></label>{flowComponentFocus&&<button type="button" onClick={()=>{setFlowComponentFocus('');setSelectedFlow('');setExpandedFlowPair('')}}>Сбросить фокус</button>}</div>
           {flowComponentFocus&&<label className="flowDepthSelect">Глубина связей <select aria-label="Глубина связей" value={flowDepth} onChange={e=>setFlowDepth(Number(e.target.value))}><option value={1}>1 уровень</option><option value={2}>2 уровня</option><option value={3}>3 уровня</option></select></label>}
+          <button type="button" onClick={exportVisibleFlowsCsv} disabled={!visibleFlows.length} title="Экспортировать отображаемые потоки в CSV для Excel">Экспорт потоков CSV ({visibleFlows.length})</button>
           <label className="flowGroupingToggle"><input type="checkbox" checked={groupFlowEdges} onChange={e=>setGroupFlowEdges(e.target.checked)}/> Группировать параллельные потоки на схеме <small>(все направления доступны в карточках ниже)</small></label>
           {expandedFlowPair&&<section className="expandedFlowPanel" aria-label="Потоки выбранной группы"><div className="expandedFlowHead"><strong>Потоки выбранного направления</strong><button type="button" onClick={()=>setExpandedFlowPair('')}>Свернуть ×</button></div>{flows.filter(filterFlow).filter(f=>f.source_id+'|'+f.target_id===expandedFlowPair).map(f=><div className="expandedFlowRow" key={f.id}><button type="button" aria-pressed={selectedFlow===f.id} onClick={()=>setSelectedFlow(f.id)}>{f.name} · {f.protocol||'Протокол не указан'} · {f.port||'порт ?'}</button><button type="button" onClick={()=>editFlow(f)}>Редактировать</button></div>)}</section>}
           <div className="miniArchitecture" data-active-graph="flows"><ReactFlow

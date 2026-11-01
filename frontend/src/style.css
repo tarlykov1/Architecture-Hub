@@ -162,3 +162,5 @@ button{border-radius:5px;border-color:#dde2e8}.primary{background:var(--hub-blue
 .flowComponentSearch{display:flex;align-items:end;flex-wrap:wrap;gap:10px;margin:10px 0}.flowComponentSearch label{display:flex;flex-direction:column;gap:4px;font-size:13px}.flowComponentSearch select{min-width:220px;max-width:100%;padding:8px;border:1px solid #cbd5e1;border-radius:7px}
 
 .flowDepthSelect{display:inline-flex;align-items:center;gap:8px;margin:4px 0 10px;font-size:13px}.flowDepthSelect select{padding:6px 9px;border:1px solid #cbd5e1;border-radius:7px}.miniArchitecture .react-flow__edge-path{stroke-linecap:round;stroke-linejoin:round}.miniArchitecture .react-flow__edge:hover .react-flow__edge-path{stroke-width:1.8px}
+
+.qualityAudit{margin:14px 0;padding:14px;border:1px solid #cbd5e1;border-radius:10px;background:#fff}.qualityAudit summary{cursor:pointer;margin:10px 0;font-weight:600}.qualityAuditRow{display:flex;align-items:center;justify-content:space-between;gap:12px;border-top:1px solid #e2e8f0;padding:8px 0}.qualityAuditRow small{color:#64748b;text-align:right}

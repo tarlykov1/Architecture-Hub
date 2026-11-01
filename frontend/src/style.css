@@ -190,3 +190,5 @@ button{border-radius:5px;border-color:#dde2e8}.primary{background:var(--hub-blue
 
 /* Stage 2 layout controls */
 .flowLayoutControls{display:flex;align-items:flex-end;flex-wrap:wrap;gap:12px;margin:12px 0}.flowLayoutControls label{display:flex;flex-direction:column;gap:5px;font-size:12px}.flowLayoutControls select{padding:8px;border:1px solid #cbd5e1;border-radius:7px;background:#fff}.flowLayoutControls small{color:#64748b;padding-bottom:8px}
+
+.flowOverviewToggle{display:flex!important;flex-direction:row!important;align-items:center;gap:7px!important;white-space:nowrap;padding:8px 0}.flowOverviewToggle input{accent-color:#2563eb}

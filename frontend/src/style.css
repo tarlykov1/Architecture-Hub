@@ -175,3 +175,5 @@ button{border-radius:5px;border-color:#dde2e8}.primary{background:var(--hub-blue
 @media(max-width:600px){.componentFieldEditor{flex-wrap:wrap}.componentFieldEditor label{flex-basis:100%}}
 
 .componentFieldGroups{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0 14px}.componentFieldGroups button{border:1px solid #cbd5e1;border-radius:7px;padding:6px 11px;background:#fff;cursor:pointer}.componentFieldGroups button.current{background:#e2e8f0;border-color:#94a3b8;font-weight:600}.componentFieldEditor input[readonly]{background:#f1f5f9;color:#475569}
+
+.componentPassportHealth{border:1px solid #cbd5e1;border-radius:10px;padding:12px;margin-bottom:14px;display:flex;flex-wrap:wrap;gap:7px 14px;align-items:center}.componentPassportHealth span{font-size:13px;color:#475569}.componentPassportHealth small{flex-basis:100%;color:#64748b}.componentPassportLinks{display:flex;flex-wrap:wrap;gap:8px;width:100%}.componentPassportLinks button{padding:6px 10px}

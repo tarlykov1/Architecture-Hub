@@ -90,6 +90,11 @@ function App() {
   const componentSystemKeys=new Set(['environment','hostname','os','owner','version','cpu','memory','storage'])
   const [newComponentField,setNewComponentField]=useState('')
   const componentFieldLabels:Record<string,string>={environment:'Контур',security_zone:'Зона безопасности',vrf:'VRF',network_notes:'Примечания по сети',owner:'Ответственный',hostname:'Имя хоста',os:'Операционная система'}
+  const [registrySelected,setRegistrySelected]=useState<string[]>([])
+  const [registryBulkField,setRegistryBulkField]=useState('owner')
+  const [registryBulkValue,setRegistryBulkValue]=useState('')
+  const [registryBusy,setRegistryBusy]=useState(false)
+  const [registrySort,setRegistrySort]=useState<'name'|'kind'|'system'>('name')
   const [componentEditing,setComponentEditing]=useState(false)
   const [componentSaving,setComponentSaving]=useState(false)
   const [componentDraft,setComponentDraft]=useState<{name:string;description:string;details:Record<string,unknown>}>({name:'',description:'',details:{}})
@@ -657,6 +662,23 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
       for(const id of next)visited.add(id)
       frontier=next
     }
+  }
+  const registryItems=infra.filter(filterInfra).sort((a,b)=>registrySort==='system'?(objects.find(o=>o.id===a.system_id)?.name||'').localeCompare(objects.find(o=>o.id===b.system_id)?.name||'','ru'):String(registrySort==='kind'?a.kind:a.name).localeCompare(String(registrySort==='kind'?b.kind:b.name),'ru'))
+  function exportRegistryCsv(){
+    const columns=['ID','Название','Тип','Система','Описание','Контур','Владелец','Ответственный','SLA','Зона безопасности','ОС','Версия','Хост','IP','Примечания']
+    const rows=registryItems.map(i=>[i.id,i.name,i.kind,objects.find(o=>o.id===i.system_id)?.name||'',i.description,...['environment','owner','responsible','sla','security_zone','os','version','hostname','ip_address','network_notes'].map(k=>String(i.details[k]??''))])
+    const escapeCsv=(v:string)=>'"'+v.replace(/"/g,'""')+'"'
+    const csv='\uFEFF'+[columns,...rows].map(row=>row.map(v=>escapeCsv(String(v))).join(';')).join('\r\n')
+    const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));const a=document.createElement('a');a.href=url;a.download='architecture-registry.csv';a.click();URL.revokeObjectURL(url)
+  }
+  async function applyRegistryBulk(){
+    const ids=registrySelected.filter(id=>infra.some(i=>i.id===id));if(!ids.length)return
+    if(!window.confirm('Изменить поле у '+ids.length+' компонентов?'))return
+    setRegistryBusy(true);setError('')
+    let updated=0
+    try{for(const id of ids){const item=infra.find(i=>i.id===id);if(!item)continue;await request('/api/infra/'+id,{method:'PUT',body:JSON.stringify({system_id:item.system_id,parent_id:item.parent_id,kind:item.kind,name:item.name,description:item.description,details:{...item.details,[registryBulkField]:registryBulkValue}})});updated++}
+      setNotice('Обновлено компонентов: '+updated);setRegistrySelected([]);setInfra(await request<Infra[]>('/api/infra'))
+    }catch(e){setError('Обновлено '+updated+' из '+ids.length+'. '+String(e));setInfra(await request<Infra[]>('/api/infra'))}finally{setRegistryBusy(false)}
   }
   const componentQuality=infra.filter(filterInfra).map(i=>{
     const issues:string[]=[]

@@ -160,3 +160,5 @@ button{border-radius:5px;border-color:#dde2e8}.primary{background:var(--hub-blue
 .expandedFlowPanel{border:1px solid #cbd5e1;border-radius:10px;padding:12px;margin:10px 0;background:#f8fafc}.expandedFlowHead,.expandedFlowRow{display:flex;align-items:center;justify-content:space-between;gap:10px}.expandedFlowRow{border-top:1px solid #e2e8f0;padding:8px 0}.expandedFlowRow button:first-child{flex:1;text-align:left;overflow-wrap:anywhere}.expandedFlowRow button[aria-pressed=true]{border-color:#2563eb;color:#1d4ed8}
 
 .flowComponentSearch{display:flex;align-items:end;flex-wrap:wrap;gap:10px;margin:10px 0}.flowComponentSearch label{display:flex;flex-direction:column;gap:4px;font-size:13px}.flowComponentSearch select{min-width:220px;max-width:100%;padding:8px;border:1px solid #cbd5e1;border-radius:7px}
+
+.flowDepthSelect{display:inline-flex;align-items:center;gap:8px;margin:4px 0 10px;font-size:13px}.flowDepthSelect select{padding:6px 9px;border:1px solid #cbd5e1;border-radius:7px}.miniArchitecture .react-flow__edge-path{stroke-linecap:round;stroke-linejoin:round}.miniArchitecture .react-flow__edge:hover .react-flow__edge-path{stroke-width:1.8px}

@@ -199,3 +199,15 @@ button{border-radius:5px;border-color:#dde2e8}.primary{background:var(--hub-blue
 .exchangePairOverrides{margin:14px 0;padding:12px;border:1px solid #cbd5e1;border-radius:10px;background:#f8fafc}.exchangePairOverrides h3{margin:0 0 5px;font-size:15px}.exchangePairOverrides p{font-size:12px;color:#64748b}.exchangePairCard{margin:8px 0;background:white;border:1px solid #cbd5e1;border-radius:8px;padding:10px}.exchangePairCard summary{cursor:pointer;font-weight:600;overflow-wrap:anywhere}.exchangePairCard[open]{display:grid;gap:10px}.exchangePairCard label{display:grid;gap:5px}.exchangePairCard input,.exchangePairCard select,.exchangePairCard textarea{box-sizing:border-box;width:100%}
 
 .reciprocalEdgeLabel{max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:3px 6px;border:1px solid #dbe4ee;border-radius:5px;background:rgba(255,255,255,.94);color:#334155;font-size:10px;box-shadow:0 1px 3px #00000012}
+
+/* Single application header: page context and diagram actions share one row. */
+.globalHeader{padding:7px 16px;min-height:54px;height:auto;flex-wrap:wrap}
+.globalHeaderActions{margin-left:auto;gap:12px}
+.globalHeaderControls{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+.globalHeaderControls button,.globalHeaderControls select{background:#242b35;color:#f8fafc;border:1px solid #485363;border-radius:7px;padding:7px 10px;font-size:12px;min-height:34px;max-width:185px}
+.globalHeaderControls button:hover,.globalHeaderControls select:hover{background:#344155}
+.globalHeaderControls button.primary{background:#1769c2;border-color:#1769c2;color:white}
+.globalHeaderControls select option{background:white;color:#111827}
+.sidebar{padding-top:14px}
+@media(max-width:1100px){.globalBrandSubtitle{display:none}.globalHeaderControls button,.globalHeaderControls select{max-width:145px}}
+@media(max-width:720px){.globalHeader{align-items:flex-start}.globalHeaderActions{width:100%;justify-content:space-between}.globalHeaderControls{gap:5px}.globalHeaderControls button,.globalHeaderControls select{font-size:11px;padding:5px}}

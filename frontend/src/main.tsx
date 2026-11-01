@@ -642,6 +642,16 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
       frontier=next
     }
   }
+  const componentQuality=infra.filter(filterInfra).map(i=>{
+    const issues:string[]=[]
+    if(!i.description?.trim())issues.push('Нет описания')
+    if(!String(i.details.environment||'').trim())issues.push('Не указана среда')
+    if(!String(i.details.security_zone||'').trim())issues.push('Не указана зона безопасности')
+    if(!flows.some(f=>f.source_id===i.id||f.target_id===i.id))issues.push('Нет потоков данных')
+    if(!nics.some(n=>n.item_id===i.id))issues.push('Нет сетевых интерфейсов')
+    return {item:i,issues}
+  })
+  const incompleteComponents=componentQuality.filter(x=>x.issues.length>0)
   const visibleFlows=flows.filter(filterFlow).filter(f=>!flowComponentFocus||visibleFlowIds.has(f.id))
   function exportVisibleFlowsCsv(){
     const columns=['ID','Название','Источник','Получатель','Данные','Протокол','Порт','Защита','Периодичность','Достоверность']
@@ -757,6 +767,7 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
           {drill && <div className="miniArchitecture" style={{height:520}} data-active-graph="infrastructure"><ReactFlow key={drill.id+viewMode} nodes={drillNodes} edges={drillEdges} onNodeClick={(_,node)=>setFocusedComponent(node.id)} onPaneClick={()=>setFocusedComponent('')} onConnect={diagramEditMode?connectComponents:undefined} onEdgeClick={(_,edge)=>{const flow=flows.find(f=>f.id===edge.id);if(flow){setSelectedFlow(flow.id);if(diagramEditMode)editFlow(flow)}}} fitView nodesConnectable={diagramEditMode} nodesDraggable={false}><FitGraphOnResize watch="infrastructure"/><Background gap={20}/><Controls/></ReactFlow></div>}
           {viewMode==='security'&&<div className="networkZones">{zones.map(z=><article key={z} className="zoneCard"><h3>{segments.find(s=>s.id===z)?.name||z}</h3>{scopedItems.filter(i=>(nics.find(n=>n.item_id===i.id)?.zone_id||String(i.details.security_zone||'Зона неизвестна'))===z).map(i=><button key={i.id} onClick={()=>setSelected(i.system_id)}><strong>{i.name}</strong><small>{nics.filter(n=>n.item_id===i.id).map(n=>n.name+' · '+segmentName(n.vrf_id)+' · '+segmentName(n.vlan_id)).join('; ')||'Сетевой интерфейс не задан'}</small></button>)}</article>)}</div>}
           {viewMode==='security'&&<div className="networkLegend">Цвет стрелки: зелёный – указан тип защиты; оранжевый – неизвестно. Наличие TLS не подтверждает защиту всего маршрута. Неподтверждённые параметры требуют проверки.</div>}
+          <section className="qualityAudit"><strong>Полнота реестра: {componentQuality.length-incompleteComponents.length} из {componentQuality.length} без замечаний</strong><p className="hint">Проверяются описание, среда, зона безопасности, сетевой интерфейс и потоки. Отсутствие интерфейса или потока может быть допустимым.</p><details><summary>Компоненты с замечаниями ({incompleteComponents.length})</summary>{incompleteComponents.map(({item,issues})=><div className="qualityAuditRow" key={item.id}><button type="button" onClick={()=>{setComponentInspectId(item.id);setComponentInspectTab('passport')}}>{item.name}</button><small>{issues.join(' · ')}</small></div>)}</details></section>
           <div className="infraGrid">{infra.filter(filterInfra).map(i=><article className="infraCard" key={i.id}>
             <span className="tag">{i.kind}</span><h3>{i.name}</h3><button type="button" onClick={()=>{setComponentInspectId(i.id);setComponentInspectTab("passport")}}>Карточка компонента</button>
             <p>{objects.find(o=>o.id===i.system_id)?.name}</p>

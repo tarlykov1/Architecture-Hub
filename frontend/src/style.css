@@ -195,3 +195,19 @@ button{border-radius:5px;border-color:#dde2e8}.primary{background:var(--hub-blue
 
 /* Layered architecture landing page */
 .homeMap{display:grid;gap:14px;min-width:0}.homeMapHead{display:flex;justify-content:space-between;gap:16px;align-items:flex-start}.homeMapHead h2{margin:0}.homeMapHead p{margin:5px 0;color:#64748b}.homeMapStats{display:flex;flex-wrap:wrap;gap:8px}.homeMapStats span{background:#eff6ff;color:#1e40af;border-radius:8px;padding:7px 10px;font-size:12px;white-space:nowrap}.homeMapTools,.homeMapLayers{display:flex;gap:10px;flex-wrap:wrap}.homeMapTools input,.homeMapTools select{min-width:180px;flex:1;padding:9px;border:1px solid #cbd5e1;border-radius:8px;background:white}.homeMapLayers{padding:10px 12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px}.homeMapLayers label{display:flex;align-items:center;gap:6px;font-size:13px}.homeMapLayers input{accent-color:#2563eb}.homeMapGraph{height:min(65vh,650px);min-height:350px;border:1px solid #cbd5e1;border-radius:12px;overflow:hidden;background:#f8fafc}.homeNode{display:grid;gap:7px;text-align:left}.homeNode strong{font-size:14px}.homeNode small{font-size:11px;color:#64748b}.homeNode button,.homeMapDetails button{padding:6px 9px;border-radius:7px;border:1px solid #cbd5e1;background:white;cursor:pointer}.homeMapDetails{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}.homeMapDetails article{border:1px solid #e2e8f0;border-radius:12px;padding:14px;min-width:0}.homeMapDetails h3{margin:0 0 8px}.homeMapDetails p{font-size:13px;color:#64748b}.homeMapChip{display:inline-block;background:#f1f5f9;border-radius:6px;margin:3px;padding:5px 7px;font-size:12px}.homeMapComponentList{display:grid;gap:5px;max-height:240px;overflow:auto}.homeMapComponentList button{text-align:left}.homeMapComponentList small{color:#64748b}.homeMapEmpty{padding:70px 20px;text-align:center;background:#f8fafc;border-radius:12px;color:#64748b}
+
+/* Focused UX: one header and one search on the home map */
+.shell.shellHome{grid-template-columns:minmax(0,1fr)!important}
+.shellHome>.sidebar,.shellHome>.details{display:none!important}
+.shellHome>.main{grid-column:1/-1;min-width:0}
+.shellHome .topbar{display:none}
+.shellHome .layerTabs{margin-top:0}
+.shellHome .homeMap{gap:10px;padding:14px 20px 20px}
+.shellHome .homeMapHead{align-items:center}
+.shellHome .homeMapHead h2{font-size:19px;line-height:1.25}
+.shellHome .homeMapTools{flex-wrap:nowrap}
+.shellHome .homeMapTools input{flex:2;min-width:180px}
+.shellHome .homeMapTools select{flex:1;max-width:240px}
+.shellHome .homeMapLayers{padding:8px 12px}
+.shellHome .homeMapGraph{height:min(73vh,760px)}
+@media(max-width:720px){.shellHome .homeMapTools{flex-wrap:wrap}.shellHome .homeMapTools select{max-width:none}.shellHome .homeMapStats{gap:4px}.shellHome .homeMap{padding:10px}}

@@ -154,6 +154,9 @@ function App() {
   const [networkVerification,setNetworkVerification] = useState('draft')
   const [flowEditId,setFlowEditId] = useState('')
   const [createReverseFlow,setCreateReverseFlow] = useState(false)
+  const [multiExchange,setMultiExchange] = useState(false)
+  const [exchangeSources,setExchangeSources] = useState<string[]>([])
+  const [exchangeTargets,setExchangeTargets] = useState<string[]>([])
   const [flowSchedule,setFlowSchedule] = useState('')
   const [registryBusy,setRegistryBusy] = useState(false)
   const [registryError,setRegistryError] = useState('')
@@ -164,6 +167,9 @@ function App() {
   }
   const editFlow = (f?: Flow) => {
     setCreateReverseFlow(false)
+    setMultiExchange(false)
+    setExchangeSources([])
+    setExchangeTargets([])
     setFlowEditId(f?.id || '');setFlowName(f?.name || '');setFlowSource(f?.source_id || '')
     setFlowTarget(f?.target_id || '');setFlowData(f?.data_description || '')
     setFlowProtocol(f?.protocol || 'HTTPS');setFlowPort(f?.port || '443')
@@ -194,8 +200,31 @@ function App() {
         })})
         setSegments(await request<Segment[]>('/api/networks'))
       } else if(registryOpen==='flow'){
-        if(!flowSource||!flowTarget)throw new Error('Выберите источник и получателя')
-        if(flowSource===flowTarget)throw new Error('Источник и получатель должны отличаться')
+        if(!multiExchange&&(!flowSource||!flowTarget))throw new Error('Выберите источник и получателя')
+        if(!multiExchange&&flowSource===flowTarget)throw new Error('Источник и получатель должны отличаться')
+        if(multiExchange&&!flowEditId){
+          const sources=[...new Set(exchangeSources)]
+          const targets=[...new Set(exchangeTargets)]
+          if(!sources.length||!targets.length)throw new Error('Выберите хотя бы один источник и одного получателя')
+          const pairs=sources.flatMap(source=>targets.filter(target=>target!==source).map(target=>({source,target})))
+          if(!pairs.length)throw new Error('Источник и получатель должны отличаться')
+          const shared={data_description:flowData,protocol:flowProtocol,port:flowPort,security:flowSecurity,verification:flowVerification,schedule:flowSchedule}
+          let created=0
+          try{
+            for(const pair of pairs){
+              if(flows.some(f=>f.source_id===pair.source&&f.target_id===pair.target))continue
+              await request('/api/flows',{method:'POST',body:JSON.stringify({...shared,source_id:pair.source,target_id:pair.target,name:flowName.trim()+' · '+(infra.find(i=>i.id===pair.source)?.name||'Источник')+' → '+(infra.find(i=>i.id===pair.target)?.name||'Получатель')})})
+              created++
+            }
+          }catch(e){
+            setFlows(await request<Flow[]>('/api/flows'))
+            throw new Error('Создано связей: '+created+'. Остальные не сохранены: '+String(e))
+          }
+          setFlows(await request<Flow[]>('/api/flows'))
+          setRegistryOpen(null)
+          setNotice('Создано связей: '+created+'. Уже существующие направления пропущены.')
+          return
+        }
         const uri='/api/flows'+(flowEditId?'/'+flowEditId:'')
         if(createReverseFlow&&!flowEditId&&flows.some(f=>f.source_id===flowTarget&&f.target_id===flowSource))throw new Error('Обратный поток уже существует. Откройте его для отдельного редактирования.')
         const shared={data_description:flowData,protocol:flowProtocol,port:flowPort,security:flowSecurity,verification:flowVerification,schedule:flowSchedule}
@@ -802,10 +831,13 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
             <label>Описание<textarea value={networkDescription} onChange={e=>setNetworkDescription(e.target.value)}/></label>
             <label>Достоверность<select value={networkVerification} onChange={e=>setNetworkVerification(e.target.value)}><option value="draft">Черновик</option><option value="assumed">Предположение</option><option value="verified">Подтверждено</option></select></label>
           </>:<>
+            {!flowEditId&&<label className="reverseFlowOption"><input type="checkbox" checked={multiExchange} onChange={e=>{setMultiExchange(e.target.checked);setCreateReverseFlow(false);if(e.target.checked){setExchangeSources(flowSource?[flowSource]:[]);setExchangeTargets(flowTarget?[flowTarget]:[])}}}/> Несколько источников и получателей</label>}
+            {multiExchange&&!flowEditId?<div className="exchangeEndpoints"><p>Выберите участников. Будет создан отдельный направленный поток для каждой пары «источник → получатель».</p>{([['Источники',exchangeSources,setExchangeSources],['Получатели',exchangeTargets,setExchangeTargets]] as const).map(([title,values,setValues])=><fieldset key={title}><legend>{title}</legend>{infra.map(i=><label key={i.id}><input type="checkbox" checked={values.includes(i.id)} onChange={e=>setValues(e.target.checked?[...values,i.id]:values.filter(id=>id!==i.id))}/>{i.name}</label>)}</fieldset>)}</div>:<>
             <label>Источник<select required value={flowSource} onChange={e=>setFlowSource(e.target.value)}><option value="">Выберите компонент</option>{infra.map(i=><option key={i.id} value={i.id}>{i.name}</option>)}</select></label>
             <label>Получатель<select required value={flowTarget} onChange={e=>setFlowTarget(e.target.value)}><option value="">Выберите компонент</option>{infra.map(i=><option key={i.id} value={i.id}>{i.name}</option>)}</select></label>
             <div className="flowDirectionActions"><span>Направление обмена: <strong>{infra.find(i=>i.id===flowSource)?.name||'Источник'} → {infra.find(i=>i.id===flowTarget)?.name||'Получатель'}</strong></span><button type="button" disabled={!flowSource||!flowTarget} onClick={()=>{setFlowSource(flowTarget);setFlowTarget(flowSource);if(!flowEditId)setFlowName((infra.find(i=>i.id===flowTarget)?.name||'Источник')+' → '+(infra.find(i=>i.id===flowSource)?.name||'Получатель'))}}>⇄ Поменять направление</button></div>
-            {!flowEditId&&<label className="reverseFlowOption"><input type="checkbox" checked={createReverseFlow} onChange={e=>setCreateReverseFlow(e.target.checked)}/> Создать также обратный поток (две независимые связи)</label>}
+            {!flowEditId&&!multiExchange&&<label className="reverseFlowOption"><input type="checkbox" checked={createReverseFlow} onChange={e=>setCreateReverseFlow(e.target.checked)}/> Создать также обратный поток (две независимые связи)</label>}
+            </>}
             <label>Название<input required value={flowName} onChange={e=>setFlowName(e.target.value)}/></label>
             <label>Состав данных<textarea value={flowData} onChange={e=>setFlowData(e.target.value)}/></label>
             <div className="formPair"><label>Протокол<input value={flowProtocol} onChange={e=>setFlowProtocol(e.target.value)}/></label><label>Порт<input value={flowPort} onChange={e=>setFlowPort(e.target.value)}/></label></div>

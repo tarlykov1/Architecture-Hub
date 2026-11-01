@@ -187,3 +187,6 @@ button{border-radius:5px;border-color:#dde2e8}.primary{background:var(--hub-blue
 
 /* Stage 2: flow diagram navigation */
 .flowComponentSearch{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end}.flowComponentSearch label{display:flex;flex-direction:column;gap:5px;min-width:200px;flex:1}.flowComponentSearch input[type=search],.flowComponentSearch select{box-sizing:border-box;width:100%;padding:8px;border:1px solid #cbd5e1;border-radius:7px}.expandedFlowPanel{margin:12px 0;max-height:280px;overflow:auto;border:1px solid #cbd5e1;border-radius:10px;background:#fff}.expandedFlowHead{position:sticky;top:0;z-index:2;background:#f8fafc}
+
+/* Stage 2 layout controls */
+.flowLayoutControls{display:flex;align-items:flex-end;flex-wrap:wrap;gap:12px;margin:12px 0}.flowLayoutControls label{display:flex;flex-direction:column;gap:5px;font-size:12px}.flowLayoutControls select{padding:8px;border:1px solid #cbd5e1;border-radius:7px;background:#fff}.flowLayoutControls small{color:#64748b;padding-bottom:8px}

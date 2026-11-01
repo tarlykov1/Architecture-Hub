@@ -166,3 +166,10 @@ button{border-radius:5px;border-color:#dde2e8}.primary{background:var(--hub-blue
 .qualityAudit{margin:14px 0;padding:14px;border:1px solid #cbd5e1;border-radius:10px;background:#fff}.qualityAudit summary{cursor:pointer;margin:10px 0;font-weight:600}.qualityAuditRow{display:flex;align-items:center;justify-content:space-between;gap:12px;border-top:1px solid #e2e8f0;padding:8px 0}.qualityAuditRow small{color:#64748b;text-align:right}
 
 .flowAudit{padding:14px;margin:12px 0;border:1px solid #cbd5e1;border-radius:10px;background:#fff}.flowAuditSummary{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}.flowAuditSummary span{font-size:13px;color:#475569}.flowAudit details{margin-top:10px}.flowAudit summary{cursor:pointer;font-weight:600}.flowAudit details[open]{max-height:330px;overflow:auto}
+
+/* Passport editor: compact responsive technical-field rows. */
+.componentFieldEditor{display:flex;align-items:flex-end;gap:10px;margin:10px 0}
+.componentFieldEditor label{flex:1;min-width:0}
+.componentFieldEditor input{width:100%;box-sizing:border-box}
+.componentFieldEditor button{flex:none;margin-bottom:1px}
+@media(max-width:600px){.componentFieldEditor{flex-wrap:wrap}.componentFieldEditor label{flex-basis:100%}}

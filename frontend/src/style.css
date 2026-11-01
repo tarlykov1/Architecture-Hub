@@ -154,3 +154,5 @@ button{border-radius:5px;border-color:#dde2e8}.primary{background:var(--hub-blue
 .reverseFlowOption{display:flex!important;align-items:center;gap:9px;padding:11px 12px;border:1px solid #d3e2f6;background:#f2f7ff;border-radius:8px;font-size:13px}.reverseFlowOption input{width:16px;height:16px;flex:none}
 
 .exchangeEndpoints{display:grid;gap:10px}.exchangeEndpoints p{font-size:12px;color:#52647c}.exchangeEndpoints fieldset{max-height:190px;overflow:auto;border:1px solid #d5e1ee;border-radius:8px;padding:10px}.exchangeEndpoints legend{font-weight:700;font-size:13px}.exchangeEndpoints fieldset label{display:flex;flex-direction:row;align-items:center;gap:8px;padding:5px}.exchangeEndpoints input{width:16px;height:16px;flex:none}
+
+.flowGroupingToggle{display:flex;align-items:center;flex-wrap:wrap;gap:7px;margin:0 0 10px;font-size:13px}.flowGroupingToggle input{width:16px;height:16px}.flowGroupingToggle small{color:#64748b}

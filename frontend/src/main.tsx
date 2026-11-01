@@ -188,6 +188,8 @@ function App() {
   const [multiExchange,setMultiExchange] = useState(false)
   const [exchangeSources,setExchangeSources] = useState<string[]>([])
   const [exchangeTargets,setExchangeTargets] = useState<string[]>([])
+  const [exchangeSourceQuery,setExchangeSourceQuery] = useState('')
+  const [exchangeTargetQuery,setExchangeTargetQuery] = useState('')
   const [exchangeOverrides,setExchangeOverrides] = useState<Record<string,{protocol:string;port:string;security:string;data_description:string;schedule:string;verification:string}>>({})
   const [flowSchedule,setFlowSchedule] = useState('')
   const [registryBusy,setRegistryBusy] = useState(false)
@@ -202,6 +204,8 @@ function App() {
     setMultiExchange(false)
     setExchangeSources([])
     setExchangeTargets([])
+    setExchangeSourceQuery('')
+    setExchangeTargetQuery('')
     setExchangeOverrides({})
     setFlowEditId(f?.id || '');setFlowName(f?.name || '');setFlowSource(f?.source_id || '')
     setFlowTarget(f?.target_id || '');setFlowData(f?.data_description || '')
@@ -945,7 +949,7 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
             <label>Достоверность<select value={networkVerification} onChange={e=>setNetworkVerification(e.target.value)}><option value="draft">Черновик</option><option value="assumed">Предположение</option><option value="verified">Подтверждено</option></select></label>
           </>:<>
             {!flowEditId&&<label className="reverseFlowOption"><input type="checkbox" checked={multiExchange} onChange={e=>{setMultiExchange(e.target.checked);setCreateReverseFlow(false);if(e.target.checked){setExchangeSources(flowSource?[flowSource]:[]);setExchangeTargets(flowTarget?[flowTarget]:[])}}}/> Несколько источников и получателей</label>}
-            {multiExchange&&!flowEditId?<div className="exchangeEndpoints"><p>Выберите участников. Будет создан отдельный направленный поток для каждой пары «источник → получатель».</p>{([['Источники',exchangeSources,setExchangeSources],['Получатели',exchangeTargets,setExchangeTargets]] as const).map(([title,values,setValues])=><fieldset key={title}><legend>{title}</legend>{infra.map(i=><label key={i.id}><input type="checkbox" checked={values.includes(i.id)} onChange={e=>setValues(e.target.checked?[...values,i.id]:values.filter(id=>id!==i.id))}/>{i.name}</label>)}</fieldset>)}</div>:<>
+            {multiExchange&&!flowEditId?<div className="exchangeEndpoints"><p>Выберите участников. Будет создан отдельный направленный поток для каждой пары «источник → получатель».</p>{([['Источники',exchangeSources,setExchangeSources,exchangeSourceQuery,setExchangeSourceQuery],['Получатели',exchangeTargets,setExchangeTargets,exchangeTargetQuery,setExchangeTargetQuery]] as const).map(([title,values,setValues,query,setQuery])=>{const matches=infra.filter(i=>[i.name,i.kind,objects.find(o=>o.id===i.system_id)?.name||''].join(' ').toLowerCase().includes(query.trim().toLowerCase()));return <fieldset className="exchangeParticipantFieldset" key={title}><legend>{title} · выбрано {values.length}</legend><input className="exchangeParticipantSearch" type="search" aria-label={'Поиск: '+title.toLowerCase()} placeholder="Поиск по имени, типу или ИС" value={query} onChange={e=>setQuery(e.target.value)}/><div className="exchangeParticipantActions"><button type="button" onClick={()=>setValues([...new Set([...values,...matches.map(i=>i.id)])])}>Выбрать найденные ({matches.length})</button><button type="button" onClick={()=>setValues(values.filter(id=>!matches.some(i=>i.id===id)))}>Снять найденные</button></div><div className="exchangeParticipantList">{matches.length===0?<p>Ничего не найдено</p>:matches.map(i=><label key={i.id}><input type="checkbox" checked={values.includes(i.id)} onChange={e=>setValues(e.target.checked?[...values,i.id]:values.filter(id=>id!==i.id))}/><span>{i.name}<small>{objects.find(o=>o.id===i.system_id)?.name||'Без ИС'} · {i.kind}</small></span></label>)}</div></fieldset>})}</div>:<>
             <label>Источник<select required value={flowSource} onChange={e=>setFlowSource(e.target.value)}><option value="">Выберите компонент</option>{infra.map(i=><option key={i.id} value={i.id}>{i.name}</option>)}</select></label>
             <label>Получатель<select required value={flowTarget} onChange={e=>setFlowTarget(e.target.value)}><option value="">Выберите компонент</option>{infra.map(i=><option key={i.id} value={i.id}>{i.name}</option>)}</select></label>
             <div className="flowDirectionActions"><span>Направление обмена: <strong>{infra.find(i=>i.id===flowSource)?.name||'Источник'} → {infra.find(i=>i.id===flowTarget)?.name||'Получатель'}</strong></span><button type="button" disabled={!flowSource||!flowTarget} onClick={()=>{setFlowSource(flowTarget);setFlowTarget(flowSource);if(!flowEditId)setFlowName((infra.find(i=>i.id===flowTarget)?.name||'Источник')+' → '+(infra.find(i=>i.id===flowSource)?.name||'Получатель'))}}>⇄ Поменять направление</button></div>

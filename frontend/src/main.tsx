@@ -281,6 +281,26 @@ function App() {
       setRegistryOpen(null);setNotice('Изменения сохранены')
     }catch(e){setRegistryError(String(e))}finally{setRegistryBusy(false)}
   }
+  async function deleteRegistryEntry() {
+    const isFlow=registryOpen==='flow'
+    const id=isFlow?flowEditId:networkEditId
+    if(!id||!registryOpen)return
+    const label=isFlow?'поток данных':'сетевой сегмент'
+    if(!window.confirm('Удалить '+label+'? Это действие нельзя отменить.'))return
+    setRegistryBusy(true);setRegistryError('')
+    try{
+      await request((isFlow?'/api/flows/':'/api/networks/')+id,{method:'DELETE'})
+      if(isFlow){
+        setFlows(await request<Flow[]>('/api/flows'))
+        if(selectedFlow===id)setSelectedFlow('')
+      }else{
+        setSegments(await request<Segment[]>('/api/networks'))
+        if(networkDetailId===id)setNetworkDetailId('')
+      }
+      setRegistryOpen(null);setNotice((isFlow?'Поток':'Сетевой сегмент')+' удалён')
+    }catch(e){setRegistryError('Не удалось удалить: '+String(e))}
+    finally{setRegistryBusy(false)}
+  }
   const [savedViews,setSavedViews]=useState<SavedWorkspaceView[]>(readSavedWorkspaceViews)
   const [teamViews,setTeamViews]=useState<SavedWorkspaceView[]>([])
   const [teamViewSelection,setTeamViewSelection]=useState('')
@@ -963,7 +983,10 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
             <label>Достоверность<select value={flowVerification} onChange={e=>setFlowVerification(e.target.value)}><option value="draft">Черновик</option><option value="assumed">Предположение</option><option value="verified">Подтверждено</option></select></label>
           </>}
           {registryError&&<p role="alert" className="kisError">{registryError}</p>}
-          <button className="primary" disabled={registryBusy}>{registryBusy?'Сохранение…':'Сохранить'}</button>
+          <div className="registryFormActions">
+            <button className="primary" disabled={registryBusy}>{registryBusy?'Сохранение…':'Сохранить'}</button>
+            {(registryOpen==='flow'?Boolean(flowEditId):Boolean(networkEditId))&&<button type="button" className="dangerAction" disabled={registryBusy} onClick={()=>void deleteRegistryEntry()}>Удалить {registryOpen==='flow'?'поток':'сеть'}</button>}
+          </div>
         </form>
       </div>
     </div>}

@@ -199,3 +199,9 @@ button{border-radius:5px;border-color:#dde2e8}.primary{background:var(--hub-blue
 .exchangePairOverrides{margin:14px 0;padding:12px;border:1px solid #cbd5e1;border-radius:10px;background:#f8fafc}.exchangePairOverrides h3{margin:0 0 5px;font-size:15px}.exchangePairOverrides p{font-size:12px;color:#64748b}.exchangePairCard{margin:8px 0;background:white;border:1px solid #cbd5e1;border-radius:8px;padding:10px}.exchangePairCard summary{cursor:pointer;font-weight:600;overflow-wrap:anywhere}.exchangePairCard[open]{display:grid;gap:10px}.exchangePairCard label{display:grid;gap:5px}.exchangePairCard input,.exchangePairCard select,.exchangePairCard textarea{box-sizing:border-box;width:100%}
 
 .reciprocalEdgeLabel{max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:3px 6px;border:1px solid #dbe4ee;border-radius:5px;background:rgba(255,255,255,.94);color:#334155;font-size:10px;box-shadow:0 1px 3px #00000012}
+
+/* Explicit, low-risk destructive actions in the architecture registry. */
+.registryFormActions{display:flex;align-items:center;flex-wrap:wrap;gap:12px;margin-top:12px}
+.registryFormActions .dangerAction{border:1px solid #fecaca;border-radius:8px;background:#fff;color:#b91c1c;padding:9px 14px;font-weight:600;cursor:pointer}
+.registryFormActions .dangerAction:hover:not(:disabled){background:#fef2f2;border-color:#f87171}
+.registryFormActions .dangerAction:disabled{opacity:.5;cursor:not-allowed}

@@ -513,6 +513,32 @@ def update_flow(flow_id: UUID, payload: FlowInput, db: Session = Depends(db_sess
     return flow
 
 
+@app.delete("/api/flows/{flow_id}", status_code=204)
+def delete_flow(flow_id: UUID, db: Session = Depends(db_session)):
+    flow = db.get(DataFlow, flow_id)
+    if flow is None:
+        raise HTTPException(status_code=404, detail="Flow not found")
+    db.delete(flow)
+    db.commit()
+
+
+@app.delete("/api/infra/{item_id}", status_code=204)
+def delete_infra(item_id: UUID, db: Session = Depends(db_session)):
+    item = db.get(InfrastructureItem, item_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="Infrastructure item not found")
+    if db.scalars(select(InfrastructureItem).where(InfrastructureItem.parent_id == item_id)).first():
+        raise HTTPException(status_code=409, detail="Delete child components first")
+    if db.scalars(select(DataFlow).where(
+        (DataFlow.source_id == item_id) | (DataFlow.target_id == item_id)
+    )).first():
+        raise HTTPException(status_code=409, detail="Delete connected data flows first")
+    if db.scalars(select(NetworkInterface).where(NetworkInterface.item_id == item_id)).first():
+        raise HTTPException(status_code=409, detail="Delete network interfaces first")
+    db.delete(item)
+    db.commit()
+
+
 # Fully synthetic scenario: never use these names or network notes as confirmed production topology.
 ENTERPRISE_DEMO_KEY = "enterprise_demo_v1"
 
@@ -715,6 +741,30 @@ def update_nic(interface_id: UUID, payload: NICInput, db: Session = Depends(db_s
     db.commit()
     db.refresh(row)
     return row
+
+
+@app.delete("/api/network-interfaces/{interface_id}", status_code=204)
+def delete_nic(interface_id: UUID, db: Session = Depends(db_session)):
+    row = db.get(NetworkInterface, interface_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Network interface not found")
+    db.delete(row)
+    db.commit()
+
+
+@app.delete("/api/networks/{segment_id}", status_code=204)
+def delete_network(segment_id: UUID, db: Session = Depends(db_session)):
+    segment = db.get(NetworkSegment, segment_id)
+    if segment is None:
+        raise HTTPException(status_code=404, detail="Network not found")
+    if db.scalars(select(NetworkInterface).where(
+        (NetworkInterface.zone_id == segment_id) |
+        (NetworkInterface.vlan_id == segment_id) |
+        (NetworkInterface.vrf_id == segment_id)
+    )).first():
+        raise HTTPException(status_code=409, detail="Network is referenced by interfaces")
+    db.delete(segment)
+    db.commit()
 
 
 @app.post("/api/demo/networks")

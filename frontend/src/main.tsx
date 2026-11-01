@@ -7,6 +7,7 @@ import Topology from './Topology'
 import {dependencyLayout} from './graphLayout'
 import {downstreamImpact,impactRoutes} from './dependencyImpact'
 import Incidents from './Incidents'
+import ArchitectureHome from './ArchitectureHome'
 
 /** Refit the diagram after its container changes width (e.g. docked inspector). */
 function FitGraphOnResize({watch}: {watch:string}) {
@@ -291,7 +292,7 @@ function App() {
   const [zoneMode,setZoneMode] = useState(false)
   const [infra, setInfra] = useState<Infra[]>([])
   const [flows, setFlows] = useState<Flow[]>([])
-  const [layer, setLayer] = useState<'business'|'systems'|'infrastructure'|'flows'|'topology'|'networks'|'incidents'>('systems')
+  const [layer, setLayer] = useState<'home'|'business'|'systems'|'infrastructure'|'flows'|'topology'|'networks'|'incidents'>('home')
   const [infraName,setInfraName] = useState('')
   const [infraKind,setInfraKind] = useState('vm')
   const [infraParent,setInfraParent] = useState('')
@@ -773,14 +774,14 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
       </div></header>
       {notice && <div className="notice" role="status">{notice}<button onClick={()=>setNotice('')}>×</button></div>}
       {error && <div className="error" role="alert">{error}<button onClick={() => setError('')}>×</button></div>}
-      <div className="layerTabs">
+      <div className="layerTabs"><button className={layer==='home'?'current':''} onClick={()=>{setViewSystem('');setLayer('home')}}>Главная карта</button>
         <button className={layer==='business'?'current':''} onClick={()=>setLayer('business')}>Бизнес-процессы</button><button className={layer==='systems'?'current':''} onClick={()=>{setViewSystem("");setLayer("systems")}}>Системы</button>
         <button className={layer==='infrastructure'?'current':''} onClick={()=>{if(selected)setViewSystem(selected);setLayer('infrastructure');setInspectorOpen(false);setInspectorExpanded(false)}}>Сервисы и ВМ</button>
         <button className={layer==='flows'?'current':''} onClick={()=>setLayer('flows')}>Потоки данных</button>
         <button className={layer==='incidents'?'current':''} onClick={()=>setLayer('incidents')}>Инциденты</button><button className={layer==='networks'?'current':''} onClick={()=>setLayer('networks')}>Реестр сетей</button><button className={layer==='topology'?'current':''} onClick={()=>setLayer('topology')}>Топология сетей</button><details className="layerActions" onToggle={e=>{if(e.currentTarget.open){setInspectorOpen(false);setInspectorExpanded(false)}}}><summary>+ Создать / Действия</summary><div className="layerActionMenu"><button onClick={()=>setEditorOpen(true)}>+ Компонент</button><button onClick={()=>editNetwork()}>+ Сеть</button><button onClick={()=>editFlow()}>+ Поток</button><button onClick={()=>setKisOpen(true)}>Импорт КИС</button><button disabled={!selected||kisExporting} onClick={()=>selected&&exportKis(selected)}>{kisExporting?"Экспорт…":"Экспорт КИС в Excel"}</button></div></details>
       </div>
       {['business','systems','infrastructure','flows'].includes(layer)&&workspaceFilters}
-      {layer==='incidents' ? <Incidents request={request} systems={objects} components={infra} networks={segments} flows={flows}/> : layer==='networks' ? <section className="infraPanel networkRegistry">
+      {layer==='home' ? <ArchitectureHome systems={objects} components={infra} flows={flows} processes={processes} links={businessLinks} networks={segments} interfaces={nics} onOpenSystem={id=>{setViewSystem(id);setLayer('infrastructure')}} onOpenComponent={id=>{setComponentInspectId(id);setComponentInspectTab('passport')}} onOpenFlows={()=>setLayer('flows')} onOpenNetworks={()=>setLayer('networks')}/> : layer==='incidents' ? <Incidents request={request} systems={objects} components={infra} networks={segments} flows={flows}/> : layer==='networks' ? <section className="infraPanel networkRegistry">
  <div className="registryHeader"><div><h2>Реестр сетей</h2><p className="hint">Зоны безопасности, VLAN, VRF и их фактические привязки к интерфейсам</p></div><button className="primary" onClick={()=>editNetwork()}>+ Создать сеть</button></div>
  <div className="networkRegistryFilters"><input aria-label="Поиск сети" placeholder="Поиск по имени и описанию" value={networkFilter} onChange={e=>setNetworkFilter(e.target.value)}/><select aria-label="Тип сети" value={networkTypeFilter} onChange={e=>setNetworkTypeFilter(e.target.value)}><option value="all">Все типы</option><option value="zone">Зоны</option><option value="vrf">VRF</option><option value="vlan">VLAN</option></select><span>{segments.filter(n=>(networkTypeFilter==='all'||n.kind===networkTypeFilter)&&[n.name,n.description].join(' ').toLowerCase().includes(networkFilter.toLowerCase())).length} записей</span></div>
  <div className="networkTableWrap"><table className="networkTable"><thead><tr><th>Имя сети</th><th>Тип</th><th>Достоверность</th><th>Интерфейсы</th><th>Описание</th><th>Действия</th></tr></thead><tbody>{segments.filter(n=>(networkTypeFilter==='all'||n.kind===networkTypeFilter)&&[n.name,n.description].join(' ').toLowerCase().includes(networkFilter.toLowerCase())).sort((a,b)=>a.kind.localeCompare(b.kind)||a.name.localeCompare(b.name)).map(n=>{

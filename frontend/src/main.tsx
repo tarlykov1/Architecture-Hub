@@ -188,6 +188,7 @@ function App() {
   const [multiExchange,setMultiExchange] = useState(false)
   const [exchangeSources,setExchangeSources] = useState<string[]>([])
   const [exchangeTargets,setExchangeTargets] = useState<string[]>([])
+  const [exchangeOverrides,setExchangeOverrides] = useState<Record<string,{protocol:string;port:string;security:string;data_description:string;schedule:string;verification:string}>>({})
   const [flowSchedule,setFlowSchedule] = useState('')
   const [registryBusy,setRegistryBusy] = useState(false)
   const [registryError,setRegistryError] = useState('')
@@ -201,6 +202,7 @@ function App() {
     setMultiExchange(false)
     setExchangeSources([])
     setExchangeTargets([])
+    setExchangeOverrides({})
     setFlowEditId(f?.id || '');setFlowName(f?.name || '');setFlowSource(f?.source_id || '')
     setFlowTarget(f?.target_id || '');setFlowData(f?.data_description || '')
     setFlowProtocol(f?.protocol || 'HTTPS');setFlowPort(f?.port || '443')
@@ -244,7 +246,7 @@ function App() {
           try{
             for(const pair of pairs){
               if(flows.some(f=>f.source_id===pair.source&&f.target_id===pair.target))continue
-              await request('/api/flows',{method:'POST',body:JSON.stringify({...shared,source_id:pair.source,target_id:pair.target,name:flowName.trim()+' · '+(infra.find(i=>i.id===pair.source)?.name||'Источник')+' → '+(infra.find(i=>i.id===pair.target)?.name||'Получатель')})})
+              await request('/api/flows',{method:'POST',body:JSON.stringify({...shared,...exchangeOverrides[pair.source+'|'+pair.target],source_id:pair.source,target_id:pair.target,name:flowName.trim()+' · '+(infra.find(i=>i.id===pair.source)?.name||'Источник')+' → '+(infra.find(i=>i.id===pair.target)?.name||'Получатель')})})
               created++
             }
           }catch(e){
@@ -949,6 +951,7 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
             <div className="flowDirectionActions"><span>Направление обмена: <strong>{infra.find(i=>i.id===flowSource)?.name||'Источник'} → {infra.find(i=>i.id===flowTarget)?.name||'Получатель'}</strong></span><button type="button" disabled={!flowSource||!flowTarget} onClick={()=>{setFlowSource(flowTarget);setFlowTarget(flowSource);if(!flowEditId)setFlowName((infra.find(i=>i.id===flowTarget)?.name||'Источник')+' → '+(infra.find(i=>i.id===flowSource)?.name||'Получатель'))}}>⇄ Поменять направление</button></div>
             {!flowEditId&&!multiExchange&&<label className="reverseFlowOption"><input type="checkbox" checked={createReverseFlow} onChange={e=>setCreateReverseFlow(e.target.checked)}/> Создать также обратный поток (две независимые связи)</label>}
             </>}
+            {multiExchange&&!flowEditId&&exchangeSources.length>0&&exchangeTargets.length>0&&<section className="exchangePairOverrides"><h3>Параметры отдельных потоков</h3><p>Поля ниже применяются к каждой связи независимо. Изначально используются общие значения; изменение одного потока не влияет на другие.</p>{exchangeSources.flatMap(source=>exchangeTargets.filter(target=>target!==source).map(target=>{const key=source+'|'+target;const base={protocol:flowProtocol,port:flowPort,security:flowSecurity,data_description:flowData,schedule:flowSchedule,verification:flowVerification};const current=exchangeOverrides[key]||base;const update=(field:keyof typeof base,value:string)=>setExchangeOverrides(prev=>({...prev,[key]:{...(prev[key]||base),[field]:value}}));return <details className="exchangePairCard" key={key}><summary>{infra.find(i=>i.id===source)?.name||source} → {infra.find(i=>i.id===target)?.name||target}{exchangeOverrides[key]?' · настроен':''}</summary><div className="formPair"><label>Протокол<input aria-label={'Протокол '+key} value={current.protocol} onChange={e=>update('protocol',e.target.value)}/></label><label>Порт<input aria-label={'Порт '+key} value={current.port} onChange={e=>update('port',e.target.value)}/></label></div><label>Состав данных<textarea value={current.data_description} onChange={e=>update('data_description',e.target.value)}/></label><label>Защита<select value={current.security} onChange={e=>update('security',e.target.value)}>{['unknown','TLS','mTLS','VPN','private_connector','none'].map(v=><option key={v}>{v}</option>)}</select></label><label>Периодичность<input value={current.schedule} onChange={e=>update('schedule',e.target.value)}/></label><label>Достоверность<select value={current.verification} onChange={e=>update('verification',e.target.value)}><option value="draft">Черновик</option><option value="assumed">Предположение</option><option value="verified">Подтверждено</option></select></label><button type="button" onClick={()=>setExchangeOverrides(prev=>{const next={...prev};delete next[key];return next})}>Вернуть общие значения</button></details>}))}</section>}
             <label>Название<input required value={flowName} onChange={e=>setFlowName(e.target.value)}/></label>
             <label>Состав данных<textarea value={flowData} onChange={e=>setFlowData(e.target.value)}/></label>
             <div className="formPair"><label>Протокол<input value={flowProtocol} onChange={e=>setFlowProtocol(e.target.value)}/></label><label>Порт<input value={flowPort} onChange={e=>setFlowPort(e.target.value)}/></label></div>

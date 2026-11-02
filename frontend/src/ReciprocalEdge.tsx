@@ -6,7 +6,7 @@ export function ReciprocalEdge({id,sourceX,sourceY,targetX,targetY,markerEnd,sty
   const dx=targetX-sourceX,dy=targetY-sourceY
   const distance=Math.max(1,Math.hypot(dx,dy))
   // The perpendicular reverses with the edge direction, separating the lanes.
-  const offset=52
+  // Keep short links readable without producing exaggerated loops.\n  const offset=Math.min(36,Math.max(10,distance*0.16))
   const nx=-dy/distance,ny=dx/distance
   const midX=(sourceX+targetX)/2+nx*offset
   const midY=(sourceY+targetY)/2+ny*offset
@@ -14,7 +14,7 @@ export function ReciprocalEdge({id,sourceX,sourceY,targetX,targetY,markerEnd,sty
   const labelX=(sourceX+2*midX+targetX)/4
   const labelY=(sourceY+2*midY+targetY)/4
   return <>
-    <BaseEdge id={id} path={path} markerEnd={markerEnd} style={style} interactionWidth={22}/>
+    <BaseEdge id={id} path={path} markerEnd={markerEnd} style={style} interactionWidth={18}/>
     {typeof data?.caption==='string'&&data.caption.trim()&&<EdgeLabelRenderer><div className="reciprocalEdgeLabel" style={{position:'absolute',transform:`translate(-50%,-50%) translate(${labelX}px,${labelY}px)`,pointerEvents:'none',opacity:style?.opacity??1}}>{data.caption}</div></EdgeLabelRenderer>}
   </>
 }

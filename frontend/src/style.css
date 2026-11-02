@@ -233,3 +233,7 @@ button{border-radius:5px;border-color:#dde2e8}.primary{background:var(--hub-blue
 .layerTabs .layerActionMenu button{text-align:left;width:100%;border:0;border-radius:6px;padding:10px 12px;color:#334155;background:transparent}
 .layerTabs .layerActionMenu button:hover,.layerTabs .layerActionMenu button.current{background:#edf4ff}
 @media(max-width:1020px){.workspaceEyebrow,.navActionText{display:none}.layerTabs{overflow-x:auto}.layerTabs .layerActions{position:static}.topbar{flex-wrap:wrap}}
+
+/* The active tab already names the workspace; avoid a duplicate title row. */
+.topbar .workspaceContext{display:none}
+.topbar{justify-content:flex-end}

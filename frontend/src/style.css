@@ -211,3 +211,25 @@ button{border-radius:5px;border-color:#dde2e8}.primary{background:var(--hub-blue
 .flowFocusBanner span{flex:1 1 260px}
 .flowFocusBanner button{border:1px solid #93c5fd;border-radius:7px;background:#fff;color:#1d4ed8;padding:7px 10px;cursor:pointer}
 .flowFocusBanner button:hover{background:#dbeafe}
+
+/* Workspace-first navigation: compact, consistent, with rare actions in menus. */
+.globalBrandSubtitle,.globalBrandSeparator,.globalHeaderSection{display:none}
+.globalHeader{min-height:48px;padding:0 18px}
+.sidebarHeading small,.sideLabel{display:none}
+.sidebarHeading{padding:12px 14px}
+.topbar{padding:10px 16px!important;min-height:54px;gap:12px}
+.workspaceContext{display:flex;align-items:center;gap:10px;min-width:0}
+.workspaceContext strong{font-size:16px;font-weight:650;color:#1c3555;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.workspaceEyebrow{font-size:10px;letter-spacing:.09em;color:#8491a0}
+.topActions{gap:7px}
+.layerTabs{display:flex;align-items:center;gap:3px;flex-wrap:nowrap;padding:0 12px;min-height:46px;overflow:visible}
+.layerTabs>button{white-space:nowrap}
+.layerTabs .navEnd{margin-left:auto}
+.layerTabs .layerActions{position:relative;flex-shrink:0}
+.layerTabs .layerActions summary{cursor:pointer;border:0;padding:12px 14px;color:#4b6078;font-size:12px;list-style:none}
+.layerTabs .layerActions summary::-webkit-details-marker{display:none}
+.layerTabs .layerActionMenu{z-index:100;position:absolute;top:100%;left:0;min-width:205px;display:flex;flex-direction:column;padding:6px;background:#fff;border:1px solid #dbe3ed;border-radius:10px;box-shadow:0 12px 32px #0f172a21}
+.layerTabs .navEnd .layerActionMenu{left:auto;right:0}
+.layerTabs .layerActionMenu button{text-align:left;width:100%;border:0;border-radius:6px;padding:10px 12px;color:#334155;background:transparent}
+.layerTabs .layerActionMenu button:hover,.layerTabs .layerActionMenu button.current{background:#edf4ff}
+@media(max-width:1020px){.workspaceEyebrow,.navActionText{display:none}.layerTabs{overflow-x:auto}.layerTabs .layerActions{position:static}.topbar{flex-wrap:wrap}}

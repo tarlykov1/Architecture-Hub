@@ -816,23 +816,40 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
       </form>}
     </aside>
     <main className="main">
-      <header className="topbar"><div><h1>{drill?drill.name:"Карта архитектуры"}</h1><p>{drill?"Детализация компонентов и потоков · синтетическая модель":"Единый реестр систем и взаимосвязей"}</p></div><div className="topActions">
+      <header className="topbar"><div className="workspaceContext"><span className="workspaceEyebrow">АРХИТЕКТУРА</span><strong>{drill?drill.name:({home:"Обзор",systems:"Системы",business:"Бизнес-процессы",infrastructure:"Компоненты",flows:"Потоки данных",networks:"Реестр сетей",topology:"Топология сетей",incidents:"Инциденты"} as Record<string,string>)[layer]}</strong></div><div className="topActions">
         {tokenReady ? <button type="button" title="Завершить сеанс и удалить ключ доступа из вкладки" onClick={()=>{saveAccessToken('');setTokenReady(false);setObjects([]);setRelations([]);setDiagrams([]);setInfra([]);setFlows([]);setSegments([]);setNics([]);setCategories([]);setProcesses([]);setBusinessLinks([]);setSelected('');setSelectedFlow('');setError('');setNotice('Сеанс завершён')}}>Выйти</button> : <button type="button" onClick={()=>{const value=window.prompt('Ключ доступа Architecture Hub (Bearer token)');if(value===null)return;saveAccessToken(value);setTokenReady(Boolean(accessToken));refresh().then(()=>setError('')).catch(e=>setError(e.message))}}>Ключ доступа</button>}
         <select aria-label="Схема" value={diagramId} onChange={e => selectDiagram(e.target.value)}>
           {!diagrams.length && <option value="">Основная карта</option>}
           {diagrams.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
         </select>
-        <button onClick={addDiagram}>+ Схема</button>
-        <button className="primary" onClick={saveDiagram}>Сохранить{dirty ? ' *' : ''}</button>
+        <button title="Создать схему" aria-label="Создать схему" onClick={addDiagram}>＋</button>
+        {dirty&&<button className="primary" onClick={saveDiagram}>Сохранить изменения</button>}
       </div></header>
       {notice && <div className="notice" role="status">{notice}<button onClick={()=>setNotice('')}>×</button></div>}
       {error && <div className="error" role="alert">{error}<button onClick={() => setError('')}>×</button></div>}
-      <div className="layerTabs"><button className={layer==='home'?'current':''} onClick={()=>{setViewSystem('');setLayer('home')}}>Главная карта</button>
-        <button className={layer==='business'?'current':''} onClick={()=>setLayer('business')}>Бизнес-процессы</button><button className={layer==='systems'?'current':''} onClick={()=>{setViewSystem("");setLayer("systems")}}>Системы</button>
-        <button className={layer==='infrastructure'?'current':''} onClick={()=>{if(selected)setViewSystem(selected);setLayer('infrastructure');setInspectorOpen(false);setInspectorExpanded(false)}}>Сервисы и ВМ</button>
-        <button className={layer==='flows'?'current':''} onClick={()=>setLayer('flows')}>Потоки данных</button>
-        <button className={layer==='incidents'?'current':''} onClick={()=>setLayer('incidents')}>Инциденты</button><button className={layer==='networks'?'current':''} onClick={()=>setLayer('networks')}>Реестр сетей</button><button className={layer==='topology'?'current':''} onClick={()=>setLayer('topology')}>Топология сетей</button><details className="layerActions" onToggle={e=>{if(e.currentTarget.open){setInspectorOpen(false);setInspectorExpanded(false)}}}><summary>+ Создать / Действия</summary><div className="layerActionMenu"><button onClick={()=>setEditorOpen(true)}>+ Компонент</button><button onClick={()=>editNetwork()}>+ Сеть</button><button onClick={()=>editFlow()}>+ Поток</button><button onClick={()=>setKisOpen(true)}>Импорт КИС</button><button disabled={!selected||kisExporting} onClick={()=>selected&&exportKis(selected)}>{kisExporting?"Экспорт…":"Экспорт КИС в Excel"}</button></div></details>
-      </div>
+      <nav className="layerTabs" aria-label="Разделы архитектуры">
+        <button className={layer==='home'?'current':''} onClick={()=>{setViewSystem('');setLayer('home')}}>Обзор</button>
+        <button className={layer==='systems'?'current':''} onClick={()=>{setViewSystem('');setLayer('systems')}}>Системы</button>
+        <button className={layer==='infrastructure'?'current':''} onClick={()=>{if(selected)setViewSystem(selected);setLayer('infrastructure');setInspectorOpen(false);setInspectorExpanded(false)}}>Компоненты</button>
+        <button className={layer==='flows'?'current':''} onClick={()=>setLayer('flows')}>Потоки</button>
+        <details className="layerActions secondaryNavigation">
+          <summary aria-label="Другие разделы">{({business:'Бизнес-процессы',networks:'Реестр сетей',topology:'Топология сетей',incidents:'Инциденты'} as Record<string,string>)[layer]||'Ещё'} ▾</summary>
+          <div className="layerActionMenu">
+            {([['business','Бизнес-процессы'],['networks','Реестр сетей'],['topology','Топология сетей'],['incidents','Инциденты']] as const).map(([id,label])=><button type="button" key={id} className={layer===id?'current':''} onClick={e=>{setLayer(id);e.currentTarget.closest('details')?.removeAttribute('open')}}>{label}</button>)}
+          </div>
+        </details>
+        <div className="navEnd"><details className="layerActions">
+          <summary title="Создание и импорт объектов" aria-label="Создать или импортировать">＋ <span className="navActionText">Создать</span></summary>
+          <div className="layerActionMenu">
+            <button onClick={()=>setCreateObjectOpen(true)}>Система</button>
+            <button onClick={()=>setEditorOpen(true)}>Компонент</button>
+            <button onClick={()=>editNetwork()}>Сеть</button>
+            <button onClick={()=>editFlow()}>Поток</button>
+            <button onClick={()=>setKisOpen(true)}>Импорт КИС</button>
+            <button disabled={!selected||kisExporting} onClick={()=>selected&&exportKis(selected)}>{kisExporting?'Экспорт…':'Экспорт КИС в Excel'}</button>
+          </div>
+        </details></div>
+      </nav>
       {['business','systems','infrastructure','flows'].includes(layer)&&workspaceFilters}
       {layer==='home' ? <ArchitectureHome systems={objects} components={infra} flows={flows} processes={processes} links={businessLinks} networks={segments} interfaces={nics} onOpenSystem={id=>{setViewSystem(id);setLayer('infrastructure')}} onOpenComponent={id=>{setComponentInspectId(id);setComponentInspectTab('passport')}} onOpenFlows={()=>setLayer('flows')} onOpenNetworks={()=>setLayer('networks')}/> : layer==='incidents' ? <Incidents request={request} systems={objects} components={infra} networks={segments} flows={flows}/> : layer==='networks' ? <section className="infraPanel networkRegistry">
  <div className="registryHeader"><div><h2>Реестр сетей</h2><p className="hint">Зоны безопасности, VLAN, VRF и их фактические привязки к интерфейсам</p></div><button className="primary" onClick={()=>editNetwork()}>+ Создать сеть</button></div>

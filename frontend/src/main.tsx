@@ -53,7 +53,20 @@ function readSavedWorkspaceViews():SavedWorkspaceView[]{
  }catch{return []}
 }
 
-let accessToken = ""
+// Keep the API token across reloads in this tab, but not in persistent localStorage.
+const ACCESS_TOKEN_STORAGE_KEY = 'architecture-hub:access-token:session'
+function readAccessToken(): string {
+  try { return sessionStorage.getItem(ACCESS_TOKEN_STORAGE_KEY) || '' }
+  catch { return '' }
+}
+let accessToken = readAccessToken()
+function saveAccessToken(value: string): void {
+  accessToken = value.trim()
+  try {
+    if (accessToken) sessionStorage.setItem(ACCESS_TOKEN_STORAGE_KEY, accessToken)
+    else sessionStorage.removeItem(ACCESS_TOKEN_STORAGE_KEY)
+  } catch { /* Private browsing can disable session storage. */ }
+}
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, { ...init, headers: { 'Content-Type': 'application/json', ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}), ...init?.headers } })
   if (!response.ok) {
@@ -339,7 +352,7 @@ function App() {
   const [description, setDescription] = useState('')
   const [error, setError] = useState('')
   const [notice,setNotice] = useState('')
-  const [tokenReady, setTokenReady] = useState(false)
+  const [tokenReady, setTokenReady] = useState(Boolean(accessToken))
   const [busy, setBusy] = useState(false)
   const [dirty, setDirty] = useState(false)
 
@@ -789,7 +802,7 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
     </aside>
     <main className="main">
       <header className="topbar"><div><h1>{drill?drill.name:"Карта архитектуры"}</h1><p>{drill?"Детализация компонентов и потоков · синтетическая модель":"Единый реестр систем и взаимосвязей"}</p></div><div className="topActions">
-        <button title="Ключ хранится только в памяти вкладки. Используйте HTTPS при удалённом доступе." onClick={()=>{const value=window.prompt('Ключ доступа Architecture Hub (Bearer token)');if(value===null)return;accessToken=value.trim();setTokenReady(Boolean(accessToken));refresh().then(()=>setError('')).catch(e=>setError(e.message))}}>{tokenReady?'Доступ: ключ задан':'Ключ доступа'}</button>
+        <button title="Ключ сохраняется в sessionStorage этой вкладки и переживает обновление страницы. Оставьте поле пустым, чтобы удалить ключ." onClick={()=>{const value=window.prompt('Ключ доступа Architecture Hub (Bearer token). Пустое значение удаляет ключ.');if(value===null)return;saveAccessToken(value);setTokenReady(Boolean(accessToken));refresh().then(()=>setError('')).catch(e=>setError(e.message))}}>{tokenReady?'Доступ: ключ задан':'Ключ доступа'}</button>
         <select aria-label="Схема" value={diagramId} onChange={e => selectDiagram(e.target.value)}>
           {!diagrams.length && <option value="">Основная карта</option>}
           {diagrams.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}

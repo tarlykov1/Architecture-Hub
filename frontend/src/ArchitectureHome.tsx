@@ -1,5 +1,5 @@
-import React, {useMemo,useState} from 'react'
-import {ReactFlow,Background,Controls,MarkerType} from '@xyflow/react'
+import React, {useEffect,useMemo,useRef,useState} from 'react'
+import {ReactFlow,Background,Controls,MarkerType,useNodesInitialized,useReactFlow} from '@xyflow/react'
 import {dependencyLayout} from './graphLayout'
 
 type System={id:string;name:string;kind:string}
@@ -9,6 +9,42 @@ type Process={id:string;name:string}
 type Link={process_id:string;system_id:string}
 type Network={id:string;name:string;kind:string}
 type Interface={item_id:string;zone_id:string|null;vlan_id:string|null;vrf_id:string|null}
+
+/** Centre and fit the loaded home graph only after React Flow measures its nodes. */
+function HomeMapAutoFit({nodeIds}:{nodeIds:string}) {
+ const {fitView}=useReactFlow()
+ const initialized=useNodesInitialized()
+ const graphRef=useRef<HTMLDivElement|null>(null)
+ useEffect(()=>{
+  if(!initialized||!nodeIds)return
+  const el=document.querySelector<HTMLDivElement>('.homeMapGraph')
+  if(!el)return
+  graphRef.current=el
+  let raf1=0
+  let raf2=0
+  const refit=()=>{
+   cancelAnimationFrame(raf1)
+   cancelAnimationFrame(raf2)
+   raf1=requestAnimationFrame(()=>{
+    raf2=requestAnimationFrame(()=>{
+     void fitView({padding:0.22,minZoom:0.12,maxZoom:1,duration:220})
+    })
+   })
+  }
+  refit()
+  let lastWidth=0,lastHeight=0
+  const observer=typeof ResizeObserver!=='undefined'?new ResizeObserver(entries=>{
+   const width=entries[0]?.contentRect.width||0
+   const height=entries[0]?.contentRect.height||0
+   if(width<100||height<100)return
+   if(Math.abs(width-lastWidth)<4&&Math.abs(height-lastHeight)<4)return
+   lastWidth=width;lastHeight=height;refit()
+  }):null
+  observer?.observe(el)
+  return()=>{observer?.disconnect();cancelAnimationFrame(raf1);cancelAnimationFrame(raf2)}
+ },[fitView,initialized,nodeIds])
+ return null
+}
 
 export function architectureIcon(kind:string):string{
  const k=kind.toLowerCase()
@@ -40,7 +76,7 @@ export default function ArchitectureHome({systems,components,flows,processes,lin
   <header className="homeMapHead"><div><h2>ИТ-ландшафт</h2><p>Общая картина на основе единого реестра. Выберите слой или откройте информационную систему.</p></div><div className="homeMapStats"><span>{systems.length} ИС</span><span>{components.length} компонентов</span><span>{flows.length} потоков</span></div></header>
   <div className="homeMapTools"><input aria-label="Поиск на карте" value={query} onChange={e=>setQuery(e.target.value)} placeholder="Найти ИС или компонент…"/><select aria-label="Контур карты" value={environment} onChange={e=>setEnvironment(e.target.value)}><option value="all">Все контуры</option>{environments.map(e=><option key={e} value={e}>{e}</option>)}</select><select aria-label="Фокус на ИС" value={focus} onChange={e=>setFocus(e.target.value)}><option value="">Все системы</option>{systems.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select></div>
   <div className="homeMapLayers" aria-label="Слои карты">{([['systems','Информационные системы'],['components','Компоненты'],['flows','Потоки'],['business','Бизнес'],['networks','Сети']] as const).map(([key,label])=><label key={key}><input type="checkbox" checked={layers[key]} onChange={e=>setLayers(old=>({...old,[key]:e.target.checked}))}/>{label}</label>)}</div>
-  {layers.systems&&<div className="homeMapGraph"><ReactFlow nodes={nodes} edges={layers.flows?edges:[]} fitView nodesDraggable={false} nodesConnectable={false} onNodeClick={(_,node)=>onOpenSystem(node.id)}><Background gap={20}/><Controls/></ReactFlow></div>}
+  {layers.systems&&<div className="homeMapGraph"><ReactFlow nodes={nodes} edges={layers.flows?edges:[]} fitView fitViewOptions={{padding:0.22,minZoom:0.12,maxZoom:1}} nodesDraggable={false} nodesConnectable={false} onNodeClick={(_,node)=>onOpenSystem(node.id)}><HomeMapAutoFit nodeIds={filteredSystems.map(s=>s.id).join("|")}/><Background gap={20}/><Controls/></ReactFlow></div>}
   {!layers.systems&&<div className="homeMapEmpty">Включите слой «Информационные системы», чтобы показать карту связей.</div>}
   <div className="homeMapDetails">
    {layers.business&&<article><h3>Бизнес-процессы</h3><p>{processes.length} процессов · {links.length} связей с ИС</p><div>{processes.slice(0,12).map(p=><span className="homeMapChip" key={p.id}>{p.name}</span>)}</div></article>}

@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { createRoot } from 'react-dom/client'
-import { ReactFlow, Background, Controls, applyNodeChanges, type Connection, type Edge, type Node, type NodeChange, MarkerType, useReactFlow } from '@xyflow/react'
+import { ReactFlow, Background, Controls, applyNodeChanges, type Connection, type Edge, type Node, type NodeChange, MarkerType, useReactFlow, useNodesInitialized } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import './style.css'
 import Topology from './Topology'
@@ -10,24 +10,39 @@ import Incidents from './Incidents'
 import ArchitectureHome from './ArchitectureHome'
 import {ReciprocalEdge} from './ReciprocalEdge'
 
-/** Refit the diagram after its container changes width (e.g. docked inspector). */
-function FitGraphOnResize({watch}: {watch:string}) {
+/** Fit after React Flow has measured asynchronously loaded nodes and after panels resize. */
+function FitGraphOnResize({watch,count}: {watch:string;count:number}) {
  const {fitView}=useReactFlow()
+ const nodesInitialized=useNodesInitialized()
  useEffect(()=>{
+  if(!nodesInitialized || count===0)return
   const root=document.querySelector('[data-active-graph="'+watch+'"]')
-  if(!root || typeof ResizeObserver==='undefined')return
-  let lastWidth=0
-  let pending=0
-  const observer=new ResizeObserver(entries=>{
-   const width=entries[0]?.contentRect.width||0
-   if(width<100||Math.abs(width-lastWidth)<4)return
-   lastWidth=width
-   cancelAnimationFrame(pending)
-   pending=requestAnimationFrame(()=>{void fitView({padding:0.18,duration:220,maxZoom:1.2})})
-  })
-  observer.observe(root)
-  return()=>{observer.disconnect();cancelAnimationFrame(pending)}
- },[fitView,watch])
+  if(!root)return
+  let frame=0
+  let innerFrame=0
+  let previousWidth=0
+  let previousHeight=0
+  const fit=()=>{
+   cancelAnimationFrame(frame)
+   cancelAnimationFrame(innerFrame)
+   frame=requestAnimationFrame(()=>{
+    innerFrame=requestAnimationFrame(()=>{
+     void fitView({padding:0.2,duration:250,minZoom:0.1,maxZoom:1})
+    })
+   })
+  }
+  fit()
+  const observer=typeof ResizeObserver!=='undefined'?new ResizeObserver(entries=>{
+   const {width,height}=entries[0].contentRect
+   if(width<100||height<100)return
+   if(Math.abs(width-previousWidth)<4&&Math.abs(height-previousHeight)<4)return
+   previousWidth=width
+   previousHeight=height
+   fit()
+  }):null
+  observer?.observe(root)
+  return()=>{observer?.disconnect();cancelAnimationFrame(frame);cancelAnimationFrame(innerFrame)}
+ },[fitView,watch,count,nodesInitialized])
  return null
 }
 
@@ -53,7 +68,20 @@ function readSavedWorkspaceViews():SavedWorkspaceView[]{
  }catch{return []}
 }
 
-let accessToken = ""
+// Keep the API token across reloads in this tab, but not in persistent localStorage.
+const ACCESS_TOKEN_STORAGE_KEY = 'architecture-hub:access-token:session'
+function readAccessToken(): string {
+  try { return sessionStorage.getItem(ACCESS_TOKEN_STORAGE_KEY) || '' }
+  catch { return '' }
+}
+let accessToken = readAccessToken()
+function saveAccessToken(value: string): void {
+  accessToken = value.trim()
+  try {
+    if (accessToken) sessionStorage.setItem(ACCESS_TOKEN_STORAGE_KEY, accessToken)
+    else sessionStorage.removeItem(ACCESS_TOKEN_STORAGE_KEY)
+  } catch { /* Private browsing can disable session storage. */ }
+}
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, { ...init, headers: { 'Content-Type': 'application/json', ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}), ...init?.headers } })
   if (!response.ok) {
@@ -339,7 +367,7 @@ function App() {
   const [description, setDescription] = useState('')
   const [error, setError] = useState('')
   const [notice,setNotice] = useState('')
-  const [tokenReady, setTokenReady] = useState(false)
+  const [tokenReady, setTokenReady] = useState(Boolean(accessToken))
   const [busy, setBusy] = useState(false)
   const [dirty, setDirty] = useState(false)
 
@@ -789,7 +817,7 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
     </aside>
     <main className="main">
       <header className="topbar"><div><h1>{drill?drill.name:"Карта архитектуры"}</h1><p>{drill?"Детализация компонентов и потоков · синтетическая модель":"Единый реестр систем и взаимосвязей"}</p></div><div className="topActions">
-        <button title="Ключ хранится только в памяти вкладки. Используйте HTTPS при удалённом доступе." onClick={()=>{const value=window.prompt('Ключ доступа Architecture Hub (Bearer token)');if(value===null)return;accessToken=value.trim();setTokenReady(Boolean(accessToken));refresh().then(()=>setError('')).catch(e=>setError(e.message))}}>{tokenReady?'Доступ: ключ задан':'Ключ доступа'}</button>
+        {tokenReady ? <button type="button" title="Завершить сеанс и удалить ключ доступа из вкладки" onClick={()=>{saveAccessToken('');setTokenReady(false);setObjects([]);setRelations([]);setDiagrams([]);setInfra([]);setFlows([]);setSegments([]);setNics([]);setCategories([]);setProcesses([]);setBusinessLinks([]);setSelected('');setSelectedFlow('');setError('');setNotice('Сеанс завершён')}}>Выйти</button> : <button type="button" onClick={()=>{const value=window.prompt('Ключ доступа Architecture Hub (Bearer token)');if(value===null)return;saveAccessToken(value);setTokenReady(Boolean(accessToken));refresh().then(()=>setError('')).catch(e=>setError(e.message))}}>Ключ доступа</button>}
         <select aria-label="Схема" value={diagramId} onChange={e => selectDiagram(e.target.value)}>
           {!diagrams.length && <option value="">Основная карта</option>}
           {diagrams.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
@@ -823,7 +851,7 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
       {!categories.length&&<p>Бизнес-процессы пока не добавлены.</p>}</section> : layer==='systems' ? <section className="canvas">
         <ReactFlow nodes={nodes} edges={edges} onNodesChange={onNodesChange} onConnect={onConnect}
           onNodeClick={(_event: React.MouseEvent, node: Node) => {setSelected(node.id);setInspectorOpen(true);setPanelTab("overview")}} onNodeDoubleClick={(_event: React.MouseEvent, node: Node) => {setViewSystem(node.id);setSelected(node.id);setLayer("infrastructure");setInspectorOpen(false);setInspectorExpanded(false)}} onPaneClick={() => setSelected('')} fitView>
-          <FitGraphOnResize watch="systems"/><Background color="#d1dae5" gap={20} size={1}/><Controls/>
+          <FitGraphOnResize watch="systems" count={nodes.length}/><Background color="#d1dae5" gap={20} size={1}/><Controls/>
         </ReactFlow>
         {!objects.length && <div className="emptyHint">Создайте первый объект в панели слева, затем добавьте второй и соедините их точками на схеме.</div>}
       </section> : <section className="infraPanel">
@@ -842,7 +870,7 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
             {impactPaths.length===0?<p>Исходящие зависимости внутри выбранной схемы не зарегистрированы.</p>:impactPaths.map(route=><div className="impactRoute" key={route.target}><span>{route.nodes.map(id=>scopedItems.find(i=>i.id===id)?.name||id).join(' → ')}</span><small>{route.steps} переходов · {route.verification}</small><button type="button" onClick={()=>setFocusedComponent(route.target)}>Выделить компонент</button></div>)}
           </div>}
           {drill && <div className="graphModeHint" role="status">{diagramEditMode?'Режим редактирования – соедините точки компонентов для создания потока; нажмите на линию для изменения связи.':'Режим просмотра – схема защищена от случайных соединений. Для изменения связей нажмите «Редактировать схему».'}</div>}
-          {drill && <div className="miniArchitecture" style={{height:520}} data-active-graph="infrastructure"><ReactFlow key={drill.id+viewMode} nodes={drillNodes} edges={drillEdges} edgeTypes={{reciprocal:ReciprocalEdge}} onNodeClick={(_,node)=>setFocusedComponent(node.id)} onPaneClick={()=>setFocusedComponent('')} onConnect={diagramEditMode?connectComponents:undefined} onEdgeClick={(_,edge)=>{const flow=flows.find(f=>f.id===edge.id);if(flow){setSelectedFlow(flow.id);if(diagramEditMode)editFlow(flow)}}} fitView nodesConnectable={diagramEditMode} nodesDraggable={false}><FitGraphOnResize watch="infrastructure"/><Background gap={20}/><Controls/></ReactFlow></div>}
+          {drill && <div className="miniArchitecture" style={{height:520}} data-active-graph="infrastructure"><ReactFlow key={drill.id+viewMode} nodes={drillNodes} edges={drillEdges} edgeTypes={{reciprocal:ReciprocalEdge}} onNodeClick={(_,node)=>setFocusedComponent(node.id)} onPaneClick={()=>setFocusedComponent('')} onConnect={diagramEditMode?connectComponents:undefined} onEdgeClick={(_,edge)=>{const flow=flows.find(f=>f.id===edge.id);if(flow){setSelectedFlow(flow.id);if(diagramEditMode)editFlow(flow)}}} fitView nodesConnectable={diagramEditMode} nodesDraggable={false}><FitGraphOnResize watch="infrastructure" count={drillNodes.length}/><Background gap={20}/><Controls/></ReactFlow></div>}
           {viewMode==='security'&&<div className="networkZones">{zones.map(z=><article key={z} className="zoneCard"><h3>{segments.find(s=>s.id===z)?.name||z}</h3>{scopedItems.filter(i=>(nics.find(n=>n.item_id===i.id)?.zone_id||String(i.details.security_zone||'Зона неизвестна'))===z).map(i=><button key={i.id} onClick={()=>setSelected(i.system_id)}><strong>{i.name}</strong><small>{nics.filter(n=>n.item_id===i.id).map(n=>n.name+' · '+segmentName(n.vrf_id)+' · '+segmentName(n.vlan_id)).join('; ')||'Сетевой интерфейс не задан'}</small></button>)}</article>)}</div>}
           {viewMode==='security'&&<div className="networkLegend">Цвет стрелки: зелёный – указан тип защиты; оранжевый – неизвестно. Наличие TLS не подтверждает защиту всего маршрута. Неподтверждённые параметры требуют проверки.</div>}
           <section className="architectureRegistry" aria-label="Архитектурный реестр"><div className="architectureRegistryHeader"><div><h3>Архитектурный реестр</h3><small>Компонентов: {registryItems.length}. Поиск и фильтры применяются из панели выше.</small></div><button type="button" onClick={exportRegistryCsv} disabled={!registryItems.length}>Экспорт CSV ({registryItems.length})</button></div><div className="architectureRegistryControls"><label>Сортировать <select value={registrySort} onChange={e=>setRegistrySort(e.target.value as 'name'|'kind'|'system')}><option value="name">По названию</option><option value="kind">По типу</option><option value="system">По системе</option></select></label><label>Массовое изменение <select value={registryBulkField} onChange={e=>setRegistryBulkField(e.target.value)}><option value="owner">Владелец</option><option value="responsible">Ответственный</option><option value="sla">SLA</option><option value="environment">Контур</option><option value="security_zone">Зона безопасности</option></select></label><label>Значение <input value={registryBulkValue} onChange={e=>setRegistryBulkValue(e.target.value)} placeholder="Новое значение"/></label><button type="button" disabled={registryBulkBusy||!registrySelected.length} onClick={()=>void applyRegistryBulk()}>{registryBulkBusy?'Сохранение…':'Изменить выбранные ('+registrySelected.length+')'}</button></div><div className="architectureRegistryTableWrap"><table><thead><tr><th><input type="checkbox" aria-label="Выбрать все отображаемые" checked={registryItems.length>0&&registryItems.every(i=>registrySelected.includes(i.id))} onChange={e=>setRegistrySelected(e.target.checked?registryItems.map(i=>i.id):[])}/></th><th>Компонент</th><th>Тип</th><th>ИС</th><th>Родитель</th><th>Контур</th><th>Владелец</th><th>Ответственный</th><th>SLA</th><th>Зона</th><th>Интерфейсы</th><th>Потоки</th><th>Паспорт</th></tr></thead><tbody>{registryItems.map(i=><tr key={i.id}><td><input type="checkbox" aria-label={'Выбрать '+i.name} checked={registrySelected.includes(i.id)} onChange={e=>setRegistrySelected(prev=>e.target.checked?[...prev.filter(id=>id!==i.id),i.id]:prev.filter(id=>id!==i.id))}/></td><td>{i.name}</td><td>{i.kind}</td><td>{objects.find(o=>o.id===i.system_id)?.name||'—'}</td><td>{infra.find(x=>x.id===i.parent_id)?.name||'—'}</td><td>{String(i.details.environment||'—')}</td><td>{String(i.details.owner||'—')}</td><td>{String(i.details.responsible||'—')}</td><td>{String(i.details.sla||'—')}</td><td>{String(i.details.security_zone||'—')}</td><td>{nics.filter(n=>n.item_id===i.id).length}</td><td>{flows.filter(f=>f.source_id===i.id||f.target_id===i.id).length}</td><td><button type="button" onClick={()=>{setComponentInspectId(i.id);setComponentInspectTab('passport')}}>Открыть</button></td></tr>)}</tbody></table></div></section>
@@ -865,10 +893,10 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
           <label className="flowGroupingToggle"><input type="checkbox" checked={groupFlowEdges} onChange={e=>setGroupFlowEdges(e.target.checked)}/> Группировать параллельные потоки на схеме <small>(все направления доступны в карточках ниже)</small></label>
                     <section className="flowAudit" aria-label="Контроль достоверности потоков"><div className="flowAuditSummary"><strong>Качество данных потоков</strong><span>Всего: {visibleFlows.length} · Требуют подтверждения: {unverifiedFlows.length} · Неполные характеристики: {incompleteFlows.length}</span></div><details><summary>Потоки, требующие проверки ({unverifiedFlows.length})</summary><p className="hint">Подтверждёнными считаются только записи с явно указанным статусом подтверждения. Статус не заменяет фактическую проверку.</p>{unverifiedFlows.map(f=><div className="qualityAuditRow" key={f.id}><button type="button" onClick={()=>editFlow(f)}>{f.name}</button><small>{f.verification||'Статус не указан'}</small></div>)}</details><details><summary>Неполные технические характеристики ({incompleteFlows.length})</summary>{incompleteFlows.map(f=><div className="qualityAuditRow" key={f.id}><button type="button" onClick={()=>editFlow(f)}>{f.name}</button><small>{[!f.data_description?.trim()?'данные':null,!f.protocol?.trim()?'протокол':null,!f.port?.trim()?'порт':null,!f.security?.trim()?'защита':null].filter(Boolean).join(', ')}</small></div>)}</details></section>
           <div className="flowLayoutControls" aria-label="Настройки расположения схемы"><label className="flowOverviewToggle"><input type="checkbox" checked={flowSystemOverview} onChange={e=>{setFlowSystemOverview(e.target.checked);setSelectedFlow('');setExpandedFlowPair('')}}/> Обзор по ИС</label><label>Расположение <select value={flowLayoutOrientation} onChange={e=>setFlowLayoutOrientation(e.target.value as 'horizontal'|'vertical')}><option value="horizontal">Слева направо</option><option value="vertical">Сверху вниз</option></select></label><label>Расстояния <select value={flowLayoutDensity} onChange={e=>setFlowLayoutDensity(e.target.value as 'compact'|'normal'|'spacious')}><option value="compact">Компактно</option><option value="normal">Стандартно</option><option value="spacious">Просторно</option></select></label><small>Положение узлов рассчитывается автоматически по зависимостям.</small></div>
-          <div className="miniArchitecture" data-active-graph="flows">{flowSystemOverview?<ReactFlow nodes={flowSystemIds.map((id,index)=>({id,position:flowOverviewPositions[id]||{x:(index%4)*320,y:Math.floor(index/4)*180},data:{label:<div><strong>{objects.find(o=>o.id===id)?.name||'ИС'}</strong><small>{infra.filter(i=>i.system_id===id).length} компонентов · {visibleFlows.filter(f=>infra.some(i=>i.id===f.source_id&&i.system_id===id)||infra.some(i=>i.id===f.target_id&&i.system_id===id)).length} потоков</small></div>},style:{width:230,border:'1px solid #94a3b8',borderRadius:12,padding:12,background:'#eff6ff'}}))} edges={overviewPairs.map(pair=>{const [source,target]=pair.split('|');const count=flowSystemEdges.filter(x=>x.source===source&&x.target===target).length;return {id:pair,source,target,type:'smoothstep',label:count+' потоков',style:{stroke:'#64748b',strokeWidth:1.5},markerEnd:{type:MarkerType.ArrowClosed,width:12,height:12,color:'#64748b'}}})} onNodeClick={(_,node)=>{setViewSystem(node.id);setFlowSystemOverview(false);setFlowComponentFocus('');setSelectedFlow('')}} onEdgeClick={(_,edge)=>{const item=flowSystemEdges.find(x=>x.source+'|'+x.target===edge.id);if(item){setFlowSystemOverview(false);setViewSystem('');setSelectedFlow(item.flow.id);setExpandedFlowPair(item.flow.source_id+'|'+item.flow.target_id)}}} fitView nodesDraggable={false} nodesConnectable={false}><FitGraphOnResize watch="system-overview"/><Background gap={20}/><Controls/></ReactFlow>:<ReactFlow
+          <div className="miniArchitecture" data-active-graph="flows">{flowSystemOverview?<ReactFlow nodes={flowSystemIds.map((id,index)=>({id,position:flowOverviewPositions[id]||{x:(index%4)*320,y:Math.floor(index/4)*180},data:{label:<div><strong>{objects.find(o=>o.id===id)?.name||'ИС'}</strong><small>{infra.filter(i=>i.system_id===id).length} компонентов · {visibleFlows.filter(f=>infra.some(i=>i.id===f.source_id&&i.system_id===id)||infra.some(i=>i.id===f.target_id&&i.system_id===id)).length} потоков</small></div>},style:{width:230,border:'1px solid #94a3b8',borderRadius:12,padding:12,background:'#eff6ff'}}))} edges={overviewPairs.map(pair=>{const [source,target]=pair.split('|');const count=flowSystemEdges.filter(x=>x.source===source&&x.target===target).length;return {id:pair,source,target,type:'smoothstep',label:count+' потоков',style:{stroke:'#64748b',strokeWidth:1.5},markerEnd:{type:MarkerType.ArrowClosed,width:12,height:12,color:'#64748b'}}})} onNodeClick={(_,node)=>{setViewSystem(node.id);setFlowSystemOverview(false);setFlowComponentFocus('');setSelectedFlow('')}} onEdgeClick={(_,edge)=>{const item=flowSystemEdges.find(x=>x.source+'|'+x.target===edge.id);if(item){setFlowSystemOverview(false);setViewSystem('');setSelectedFlow(item.flow.id);setExpandedFlowPair(item.flow.source_id+'|'+item.flow.target_id)}}} fitView nodesDraggable={false} nodesConnectable={false}><FitGraphOnResize watch="system-overview" count={flowSystemIds.length}/><Background gap={20}/><Controls/></ReactFlow>:<ReactFlow
             nodes={infra.filter(i=>visibleFlows.some(f=>f.source_id===i.id||f.target_id===i.id)).map((i,idx)=>({id:i.id,position:flowPositions[i.id]||{x:(idx%5)*230,y:Math.floor(idx/5)*120},data:{label:<div><strong>{i.name}</strong><small>{i.kind} · {String(i.details.security_zone||'зона не задана')}</small></div>},style:{width:200,border:selectedFlow&&flows.some(f=>f.id===selectedFlow&&(f.source_id===i.id||f.target_id===i.id))?'3px solid #2563eb':'1px solid #aab8cb',borderRadius:9,background:'#fff',padding:9,opacity:selectedFlow&&!flows.some(f=>f.id===selectedFlow&&(f.source_id===i.id||f.target_id===i.id))?0.28:1}})).filter(n=>!flowFocusOnly||!selectedFlow||flows.some(f=>f.id===selectedFlow&&(f.source_id===n.id||f.target_id===n.id)))}
             edges={visibleFlows.filter(f=>!flowFocusOnly||!selectedFlow||f.id===selectedFlow).filter((f,idx,all)=>!groupFlowEdges||!all.slice(0,idx).some(previous=>previous.source_id===f.source_id&&previous.target_id===f.target_id)).map(f=>({id:f.id,source:f.source_id,target:f.target_id,type:'smoothstep',pathOptions:{borderRadius:12,offset:24},label:groupFlowEdges&&visibleFlows.filter(x=>x.source_id===f.source_id&&x.target_id===f.target_id).length>1?String(visibleFlows.filter(x=>x.source_id===f.source_id&&x.target_id===f.target_id).length)+' '+(visibleFlows.filter(x=>x.source_id===f.source_id&&x.target_id===f.target_id).length%10===1&&visibleFlows.filter(x=>x.source_id===f.source_id&&x.target_id===f.target_id).length%100!==11?'поток':visibleFlows.filter(x=>x.source_id===f.source_id&&x.target_id===f.target_id).length%10>=2&&visibleFlows.filter(x=>x.source_id===f.source_id&&x.target_id===f.target_id).length%10<=4&&!([12,13,14].includes(visibleFlows.filter(x=>x.source_id===f.source_id&&x.target_id===f.target_id).length%100))?'потока':'потоков'):'',labelStyle:{fontSize:11,fill:'#475569'},labelBgStyle:{fill:'#fff',fillOpacity:0.92},style:{stroke:visibleFlows.some(x=>x.id===selectedFlow&&x.source_id===f.source_id&&x.target_id===f.target_id)?'#2563eb':'#94a3b8',strokeWidth:visibleFlows.some(x=>x.id===selectedFlow&&x.source_id===f.source_id&&x.target_id===f.target_id)?1.8:1.15,opacity:selectedFlow&&!visibleFlows.some(x=>x.id===selectedFlow&&x.source_id===f.source_id&&x.target_id===f.target_id)?0.16:1},markerEnd:{type:MarkerType.ArrowClosed,width:12,height:12,color:visibleFlows.some(x=>x.id===selectedFlow&&x.source_id===f.source_id&&x.target_id===f.target_id)?'#2563eb':'#94a3b8'},zIndex:visibleFlows.some(x=>x.id===selectedFlow&&x.source_id===f.source_id&&x.target_id===f.target_id)?100:0}))}
-            onEdgeClick={(_,edge)=>{const flow=flows.find(f=>f.id===edge.id);if(flow){setSelectedFlow(flow.id);const pair=flow.source_id+'|'+flow.target_id;setExpandedFlowPair(current=>current===pair?'':pair)}}} onNodeClick={(_,node)=>{setFlowComponentFocus(node.id);setFlowDepth(1);setSelectedFlow('');setExpandedFlowPair('');setNotice('Показаны непосредственные связи выбранного компонента. Фильтры направления и глубины доступны над схемой.')}} fitView nodesDraggable={false} nodesConnectable={false} elementsSelectable={true}>\n            <FitGraphOnResize watch="flows"/>
+            onEdgeClick={(_,edge)=>{const flow=flows.find(f=>f.id===edge.id);if(flow){setSelectedFlow(flow.id);const pair=flow.source_id+'|'+flow.target_id;setExpandedFlowPair(current=>current===pair?'':pair)}}} onNodeClick={(_,node)=>{setFlowComponentFocus(node.id);setFlowDepth(1);setSelectedFlow('');setExpandedFlowPair('');setNotice('Показаны непосредственные связи выбранного компонента. Фильтры направления и глубины доступны над схемой.')}} fitView nodesDraggable={false} nodesConnectable={false} elementsSelectable={true}>\n            <FitGraphOnResize watch="flows" count={flowSystemOverview?flowSystemIds.length:infra.filter(i=>visibleFlows.some(f=>f.source_id===i.id||f.target_id===i.id)).length}/>
             <Background gap={20}/><Controls/>
           </ReactFlow>}</div>
           {expandedFlowPair&&<section className="expandedFlowPanel" aria-label="Потоки выбранной группы"><div className="expandedFlowHead"><div><strong>Потоки выбранного направления</strong><small>{infra.find(i=>i.id===expandedFlowPair.split('|')[0])?.name||'Источник'} → {infra.find(i=>i.id===expandedFlowPair.split('|')[1])?.name||'Получатель'} · {visibleFlows.filter(f=>f.source_id+'|'+f.target_id===expandedFlowPair).length} связей</small></div><button type="button" onClick={()=>setExpandedFlowPair('')}>Свернуть ×</button></div>{visibleFlows.filter(f=>f.source_id+'|'+f.target_id===expandedFlowPair).map(f=><div className="expandedFlowRow" key={f.id}><button type="button" aria-pressed={selectedFlow===f.id} onClick={()=>setSelectedFlow(f.id)}>{f.name} · {f.protocol||'Протокол не указан'} · {f.port||'порт ?'} · {f.security||'защита не указана'}</button><button type="button" onClick={()=>editFlow(f)}>Редактировать</button></div>)}</section>}

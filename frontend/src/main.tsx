@@ -369,6 +369,15 @@ function App() {
   const [error, setError] = useState('')
   const [notice,setNotice] = useState('')
   const [tokenReady, setTokenReady] = useState(Boolean(accessToken))
+  const [wikiConfigured,setWikiConfigured]=useState(false)
+  useEffect(()=>{
+    if(!tokenReady){setWikiConfigured(false);return}
+    let active=true
+    request<{configured:boolean}>('/api/knowledge/status')
+      .then(result=>{if(active)setWikiConfigured(result.configured)})
+      .catch(()=>{if(active)setWikiConfigured(false)})
+    return()=>{active=false}
+  },[tokenReady])
   const [busy, setBusy] = useState(false)
   const [dirty, setDirty] = useState(false)
 
@@ -935,14 +944,14 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
           <button className={panelTab==='overview'?'current':''} onClick={()=>setPanelTab('overview')}>Обзор</button>
           <button className={panelTab==='components'?'current':''} onClick={()=>setPanelTab('components')}>Компоненты</button>
           <button className={panelTab==='flows'?'current':''} onClick={()=>setPanelTab('flows')}>Потоки</button>
-          <button className={panelTab==='incidents'?'current':''} onClick={()=>setPanelTab('incidents')}>Инциденты</button><button className={panelTab==='knowledge'?'current':''} onClick={()=>{setKbMessage('');setPanelTab('knowledge')}}>База знаний</button>
+          <button className={panelTab==='incidents'?'current':''} onClick={()=>setPanelTab('incidents')}>Инциденты</button>{wikiConfigured&&<button className={panelTab==='knowledge'?'current':''} onClick={()=>{setKbMessage('');setPanelTab('knowledge')}}>База знаний</button>}
         </div>
         {panelTab==='incidents'&&detail&&<Incidents request={request} systems={objects} components={infra} networks={segments} flows={flows} context={{entity_type:'system',entity_id:detail.id}}/>}
-        {panelTab==='knowledge'&&<div className="knowledgePanel">
+        {panelTab==='knowledge'&&wikiConfigured&&<div className="knowledgePanel">
           <div className="knowledgeHeading"><h3>Документация</h3><span className="knowledgeCount">{kbLinks.length}</span></div><p className="knowledgeIntro">Статьи хранятся в Wiki.js. Изменения доступны в обеих системах.</p>
           {kbLinks.map(k=><div key={k.id} className="inspectorItem"><a className="knowledgeArticleLink" href={k.url} target="_blank" rel="noopener noreferrer">📄 {k.title} ↗</a><button className="knowledgeUnlink" onClick={()=>unlinkWiki(k.id)}>Убрать связь</button></div>)}
           {!kbLinks.length&&<p>Связанных статей пока нет.</p>}
-          <div className="knowledgeHeading"><h3>Найти или создать статью</h3></div><a className="knowledgeCreate" href={import.meta.env.VITE_WIKI_URL || "http://127.0.0.1:3000"} target="_blank" rel="noopener noreferrer">+ Новая статья в Wiki.js ↗</a>
+          <div className="knowledgeHeading"><h3>Найти или создать статью</h3></div>{import.meta.env.VITE_WIKI_URL&&<a className="knowledgeCreate" href={import.meta.env.VITE_WIKI_URL} target="_blank" rel="noopener noreferrer">+ Новая статья в Wiki.js ↗</a>}
           <input value={kbQuery} onChange={e=>setKbQuery(e.target.value)} placeholder="Поиск по названию или пути" className="knowledgeSearch"/>
           <button disabled={kbLoading} onClick={searchWiki}>{kbLoading?'Поиск…':'Найти в Wiki.js'}</button>
           {kbPages.filter(p=>!kbLinks.some(k=>k.url===p.url)).map(p=><div className="inspectorItem knowledgeSearchResult" key={p.id}><div><strong>{p.title}</strong><small>{p.path}</small></div><button onClick={()=>attachWiki(p)}>+ Связать</button></div>)}

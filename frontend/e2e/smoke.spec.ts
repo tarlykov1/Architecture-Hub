@@ -2,7 +2,7 @@ import { expect, test, type Page } from '@playwright/test'
 
 async function navigateTo(page: Page, section: 'Реестр сетей'|'Инциденты'|'Топология сетей') {
   const mobile=page.locator('nav.layerTabs details.mobileSectionMenu')
-  if(await mobile.isVisible()){
+  if(page.viewportSize()!.width<650){
     await mobile.locator('summary').click()
     await mobile.getByRole('button',{name:section,exact:true}).click()
     return

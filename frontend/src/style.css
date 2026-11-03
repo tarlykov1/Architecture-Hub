@@ -347,3 +347,47 @@ button:disabled{cursor:not-allowed;opacity:.55}
 .componentGroupNode strong{font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .componentGroupNode small{font-size:11px;color:#64748b}
 @media(max-width:750px){.componentGroupSelector{width:100%;justify-content:space-between}.componentGroupSelector select{max-width:none;flex:1}}
+
+/* One compact application header: brand, workspace navigation and session actions. */
+.globalHeader{display:flex;align-items:center;gap:14px;min-height:56px;height:56px;padding:0 14px;z-index:50}
+.globalHeader .globalBrand{flex:0 0 auto;gap:9px;white-space:nowrap}
+.globalHeader .layerTabs{flex:1 1 auto;display:flex;align-items:stretch;justify-content:flex-start;gap:2px;min-height:0;height:100%;width:auto;padding:0;margin:0;background:transparent;border:0;min-width:0;overflow:visible}
+.globalHeader .layerTabs>button{display:flex;align-items:center;height:100%;flex:0 0 auto;padding:0 12px;border:0;border-bottom:2px solid transparent;border-radius:0;background:transparent;color:#bac5d5;font-size:12px;white-space:nowrap}
+.globalHeader .layerTabs>button:hover{background:#1e293b;color:#fff}
+.globalHeader .layerTabs>button.current{background:transparent;color:#fff;border-bottom:2px solid #66b3ff}
+.globalHeader .layerTabs .layerActions{display:flex;align-items:center;margin-left:3px;position:relative;z-index:auto}
+.globalHeader .layerTabs .layerActions summary{padding:8px 10px;color:#c5d1df;background:#202c3b;border-radius:6px;white-space:nowrap}
+.globalHeader .layerTabs .layerActions summary:hover{color:#fff;background:#324256}
+.globalHeader .layerTabs .layerActionMenu{position:absolute;left:0;top:calc(100% - 2px);z-index:80;min-width:206px;background:#fff}
+.globalHeader .layerTabs .navEnd{margin-left:4px;display:flex;align-items:center}
+.globalHeader .layerTabs .navEnd .layerActionMenu{left:auto;right:0}
+.globalHeader .topActions{flex:0 0 auto;margin-left:auto;gap:5px;min-width:0}
+.globalHeader .topActions button{color:#fff;background:#263546;border:1px solid #36495f;padding:6px 10px;font-size:12px;white-space:nowrap}
+.globalHeader .topActions button:hover{background:#344961}
+.globalHeader .topActions button.primary{background:#2563eb;border-color:#2563eb}
+.globalHeader .topActions select{max-width:170px;padding:6px 8px;font-size:12px}
+.globalHeader .globalHeaderActions{flex:0 0 auto;gap:0}
+.globalHeader .globalHeaderActions a{font-size:11px;padding-left:8px}
+.shell,.shell.shellSidebarCollapsed{grid-template-rows:56px minmax(0,1fr)}
+@media(max-width:1100px){
+ .globalHeader{gap:8px;padding:0 8px}
+ .globalHeader .globalBrand strong{font-size:13px}
+ .globalHeader .layerTabs>button{padding:0 7px}
+ .globalHeader .layerTabs .layerActions summary{padding:7px}
+ .globalHeader .topActions select{max-width:125px}
+}
+@media(max-width:850px){
+ .globalHeader{gap:6px}
+ .globalHeader .globalBrand strong{display:none}
+ .globalHeader .layerTabs{overflow-x:auto;overflow-y:hidden;scrollbar-width:thin;align-items:stretch}
+ .globalHeader .layerTabs .layerActions{position:static}
+ .globalHeader .layerTabs .layerActionMenu{position:fixed;top:54px;left:auto;right:12px;max-height:65vh;overflow:auto}
+ .globalHeader .topActions select{max-width:105px}
+ .globalHeader .globalHeaderActions{display:none}
+}
+@media(max-width:650px){
+ .shell,.shell.shellSidebarCollapsed{grid-template-rows:56px minmax(0,1fr);height:100dvh}
+ .globalHeader .layerTabs>button{padding:0 9px}
+ .globalHeader .topActions select{display:none}
+ .globalHeader .topActions button{padding:6px 8px}
+}

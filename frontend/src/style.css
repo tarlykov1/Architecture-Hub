@@ -407,3 +407,13 @@ button:disabled{cursor:not-allowed;opacity:.55}
 .knowledgeWorkspaceList button span{font-size:13px;font-weight:600;overflow-wrap:anywhere}
 .knowledgeWorkspaceList button small{font-size:11px;color:#6b819b}
 @media(max-width:650px){.knowledgeWorkspace{padding:12px}.knowledgeWorkspaceList{grid-template-columns:1fr}}
+
+/* Prevent global horizontal overflow at narrow viewports after header consolidation. */
+@media(max-width:850px){
+ .globalHeader{width:100%;max-width:100vw;min-width:0;overflow:clip}
+ .globalHeader .globalBrand{flex-shrink:0;min-width:0}
+ .globalHeader .layerTabs{flex:1 1 0;min-width:0;max-width:100%;overflow-x:auto!important;overflow-y:hidden;flex-wrap:nowrap;scrollbar-width:none}
+ .globalHeader .layerTabs::-webkit-scrollbar{display:none}
+ .globalHeader .layerTabs>button,.globalHeader .layerTabs .layerActions{flex-shrink:0}
+ .globalHeader .topActions{flex:0 0 auto;min-width:0;margin-left:0}
+}

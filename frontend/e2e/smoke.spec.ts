@@ -12,7 +12,7 @@ test('Wiki.js entry remains discoverable without configured connector',async({pa
   await page.goto('/')
   const menu=page.getByRole('navigation',{name:'Разделы архитектуры'}).locator('details.secondaryNavigation')
   await menu.locator('summary').click()
-  await menu.getByRole('button',{name:'База знаний',exact:true}).click()
+  await menu.getByRole('button',{name:'Wiki.js · База знаний',exact:true}).click()
   const knowledge=page.getByRole('region',{name:'База знаний Wiki.js'})
   await expect(knowledge).toBeVisible()
   await expect(knowledge.getByRole('heading',{name:'База знаний · Wiki.js'})).toBeVisible()

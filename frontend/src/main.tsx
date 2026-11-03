@@ -226,11 +226,13 @@ function App() {
   const [registryBusy,setRegistryBusy] = useState(false)
   const [registryError,setRegistryError] = useState('')
   const editNetwork = (n?: Segment) => {
+    setPassportEditId('');setComponentInspectId('');setCreateObjectOpen(false);setKisOpen(false)
     setNetworkEditId(n?.id || '');setNetworkName(n?.name || '');setNetworkKind(n?.kind || 'zone')
     setNetworkDescription(n?.description || '');setNetworkVerification(n?.verification || 'draft')
     setRegistryError('');setRegistryOpen('network')
   }
   const editFlow = (f?: Flow) => {
+    setPassportEditId('');setComponentInspectId('');setCreateObjectOpen(false);setKisOpen(false)
     setCreateReverseFlow(false)
     setMultiExchange(false)
     setExchangeSources([])
@@ -809,6 +811,12 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
   const groupedDrillEdges:Edge[]=groupedComponents?.edges.map(edge=>({id:edge.id,source:edge.source,target:edge.target,type:'smoothstep',label:String(edge.count)+' потоков',style:{stroke:'#64748b',strokeWidth:1.6},labelStyle:{fontSize:11},markerEnd:{type:MarkerType.ArrowClosed,width:13,height:13}}))||[]
   const renderedDrillNodes=isComponentGroupOverview?groupedDrillNodes:isComponentGroupDetail?drillNodes.filter(n=>groupMemberIds.has(n.id)):drillNodes
   const renderedDrillEdges=isComponentGroupOverview?groupedDrillEdges:isComponentGroupDetail?drillEdges.filter(e=>groupMemberIds.has(e.source)&&groupMemberIds.has(e.target)):drillEdges
+  const modalOpen=authOpen||kisOpen||Boolean(passportEditId)||Boolean(componentInspectId)||createObjectOpen||Boolean(registryOpen)
+  useEffect(()=>{
+    if(!modalOpen)return
+    setViewsMenuOpen(false)
+    document.querySelectorAll<HTMLDetailsElement>('details.layerActions[open], details.registryColumnPicker[open]').forEach(menu=>{menu.open=false})
+  },[modalOpen,authOpen,kisOpen,passportEditId,componentInspectId,createObjectOpen,registryOpen])
   return <div className={`shell${inspectorOpen&&!inspectorExpanded?" shellInspectorOpen":""}${sidebarCollapsed?" shellSidebarCollapsed":""}`}>
     <header className="globalHeader" aria-label="Главная панель Architecture Hub">
       <div className="globalBrand"><button type="button" className="sidebarToggle" aria-label={sidebarCollapsed?"Открыть каталог":"Скрыть каталог"} aria-expanded={!sidebarCollapsed} title={sidebarCollapsed?"Показать каталог":"Скрыть каталог"} onClick={()=>setSidebarCollapsed(value=>!value)}>☰</button><span className="globalBrandMark">◆</span><strong>Architecture Hub</strong></div>
@@ -848,11 +856,11 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
         <div className="navEnd"><details className="layerActions">
           <summary title="Создание и импорт объектов" aria-label="Создать или импортировать">＋ <span className="navActionText">Создать</span></summary>
           <div className="layerActionMenu">
-            <button onClick={()=>setCreateObjectOpen(true)}>Система</button>
+            <button onClick={()=>{setPassportEditId('');setComponentInspectId('');setRegistryOpen(null);setCreateObjectOpen(true)}}>Система</button>
             <button onClick={()=>setEditorOpen(true)}>Компонент</button>
             <button onClick={()=>editNetwork()}>Сеть</button>
             <button onClick={()=>editFlow()}>Поток</button>
-            <button onClick={()=>setKisOpen(true)}>Импорт КИС</button>
+            <button onClick={()=>{setPassportEditId('');setComponentInspectId('');setRegistryOpen(null);setKisOpen(true)}}>Импорт КИС</button>
             <button disabled={!selected||kisExporting} onClick={()=>selected&&exportKis(selected)}>{kisExporting?'Экспорт…':'Экспорт КИС в Excel'}</button>
           </div>
         </details></div>

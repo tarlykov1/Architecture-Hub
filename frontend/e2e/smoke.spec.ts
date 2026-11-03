@@ -1,6 +1,12 @@
 import { expect, test, type Page } from '@playwright/test'
 
 async function navigateTo(page: Page, section: 'Реестр сетей'|'Инциденты'|'Топология сетей') {
+  const mobile=page.locator('nav.layerTabs details.mobileSectionMenu')
+  if(await mobile.isVisible()){
+    await mobile.locator('summary').click()
+    await mobile.getByRole('button',{name:section,exact:true}).click()
+    return
+  }
   const menu=page.locator('nav.layerTabs details.secondaryNavigation')
   await menu.locator('summary').click()
   await menu.getByRole('button',{name:section,exact:true}).click()
@@ -516,7 +522,14 @@ for(const width of [390,768,1440]) {
     await page.getByRole('button',{name:'Скрыть каталог'}).click()
     await assertNoOverflow()
     for(const name of ['Системы','Компоненты','Потоки']) {
-      await page.getByRole('navigation',{name:'Разделы архитектуры'}).getByRole('button',{name,exact:true}).click()
+      const nav=page.getByRole('navigation',{name:'Разделы архитектуры'})
+      if(width<650){
+        const mobile=nav.locator('details.mobileSectionMenu')
+        await mobile.locator('summary').click()
+        await mobile.getByRole('button',{name,exact:true}).click()
+      }else{
+        await nav.getByRole('button',{name,exact:true}).click()
+      }
       await assertNoOverflow()
     }
     for(const section of ['Реестр сетей','Топология сетей','Инциденты'] as const) {

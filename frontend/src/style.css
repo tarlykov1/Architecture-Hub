@@ -417,3 +417,21 @@ button:disabled{cursor:not-allowed;opacity:.55}
  .globalHeader .layerTabs>button,.globalHeader .layerTabs .layerActions{flex-shrink:0}
  .globalHeader .topActions{flex:0 0 auto;min-width:0;margin-left:0}
 }
+
+/* Mobile navigation uses one select-like menu rather than tabs sliding under header actions. */
+.mobileSectionMenu{display:none}
+@media(max-width:650px){
+ .globalHeader{overflow:visible}
+ .globalHeader .globalBrandMark{display:none}
+ .globalHeader .layerTabs{overflow:visible!important;flex:1 1 auto;min-width:0;max-width:none;align-items:center}
+ .globalHeader .layerTabs>button,.globalHeader .layerTabs>.secondaryNavigation{display:none!important}
+ .globalHeader .layerTabs>.mobileSectionMenu{display:block;position:relative;min-width:0;max-width:100%}
+ .mobileSectionMenu>summary{display:block;cursor:pointer;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;list-style:none;padding:8px 10px;color:#fff;background:#253446;border-radius:7px;font-size:12px}
+ .mobileSectionMenu>summary::-webkit-details-marker{display:none}
+ .mobileSectionMenu>summary:after{content:' ▾'}
+ .mobileSectionOptions{position:fixed;left:8px;right:8px;top:53px;z-index:120;max-height:min(70vh,480px);overflow-y:auto;display:grid;gap:2px;padding:8px;border:1px solid #d4dce8;border-radius:10px;background:#fff;box-shadow:0 14px 34px #172b4240}
+ .mobileSectionOptions button{padding:11px 12px;text-align:left;border:0;background:#fff;color:#203653;border-radius:6px;font-size:13px}
+ .mobileSectionOptions button.current,.mobileSectionOptions button:hover{color:#1260ac;background:#edf4ff}
+ .globalHeader .layerTabs .navEnd{margin:0;flex-shrink:0}
+ .globalHeader .topActions{flex-shrink:0}
+}

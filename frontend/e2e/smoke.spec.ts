@@ -368,14 +368,13 @@ test('registry columns are configurable and persist after reload',async({page})=
   await page.getByRole('navigation',{name:'Разделы архитектуры'}).getByRole('button',{name:'Компоненты',exact:true}).click()
   const registry=page.getByRole('region',{name:'Архитектурный реестр'})
   await expect(registry).toBeVisible()
-  await expect(registry.getByRole('columnheader',{name:'Владелец'})).toHaveCount(0)
+  await expect(registry.locator('.architectureRegistryTableWrap th').filter({hasText:'Владелец'})).toHaveCount(0)
   await registry.locator('.registryColumnPicker summary').click()
   await registry.getByRole('group',{name:'Видимые столбцы реестра'}).getByRole('checkbox',{name:'Владелец'}).check()
-  console.log('REGISTRY_COLUMN_DIAGNOSTIC',await page.evaluate(()=>({saved:localStorage.getItem('architecture-hub-registry-columns-v1'),headers:[...document.querySelectorAll('.architectureRegistry th')].map(n=>n.textContent),checkbox:document.querySelector<HTMLInputElement>('.registryColumnPicker input[type=checkbox]:nth-child(1)')?.checked})))
   await expect(registry.getByRole('columnheader',{name:'Владелец'})).toBeVisible()
   await page.reload()
   await page.getByRole('navigation',{name:'Разделы архитектуры'}).getByRole('button',{name:'Компоненты',exact:true}).click()
-  await expect(page.getByRole('region',{name:'Архитектурный реестр'}).getByRole('columnheader',{name:'Владелец'})).toBeVisible()
+  await expect(page.getByRole('region',{name:'Архитектурный реестр'}).locator('.architectureRegistryTableWrap th').filter({hasText:'Владелец'})).toBeVisible()
 })
 
 test('component view choice survives a reload',async({page})=>{

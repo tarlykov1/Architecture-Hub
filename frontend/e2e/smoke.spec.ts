@@ -7,6 +7,21 @@ async function navigateTo(page: Page, section: 'Реестр сетей'|'Инц
 }
 
 
+
+test('compact navigation keeps secondary tools accessible and catalog can be hidden',async({page})=>{
+  await page.goto('/')
+  const catalog=page.locator('aside.sidebar')
+  await expect(catalog).toBeVisible()
+  await page.getByRole('button',{name:'Скрыть каталог'}).click()
+  await expect(catalog).toBeHidden()
+  await page.getByRole('button',{name:'Открыть каталог'}).click()
+  await expect(catalog).toBeVisible()
+  await navigateTo(page,'Реестр сетей')
+  await expect(page.getByRole('textbox',{name:'Поиск сети'})).toBeVisible()
+  await navigateTo(page,'Топология сетей')
+  await expect(page.getByRole('button',{name:'Редактировать топологию'})).toBeVisible()
+})
+
 test('catalog loads and saved workspace views survive reload', async ({ page }) => {
   await page.goto('/')
   await expect(page.getByRole('navigation',{name:'Разделы архитектуры'}).getByRole('button',{name:'Обзор'})).toBeVisible()

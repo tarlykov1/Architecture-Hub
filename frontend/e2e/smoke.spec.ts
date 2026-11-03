@@ -429,6 +429,24 @@ test('access dialog masks the key, contains focus and returns focus on Escape',a
   await expect(key).toHaveValue('')
 })
 
+test('opening an editor dismisses the create menu and does not stack dialogs',async({page})=>{
+  await page.goto('/')
+  const menu=page.locator('nav.layerTabs .navEnd details.layerActions')
+  await menu.locator('summary').click()
+  await menu.getByRole('button',{name:'Система',exact:true}).click()
+  const dialog=page.getByRole('dialog',{name:'Создать объект архитектуры'})
+  await expect(dialog).toBeVisible()
+  await expect(menu).not.toHaveAttribute('open','')
+  await expect(page.locator('.editorBackdrop')).toHaveCount(1)
+  await dialog.getByRole('button',{name:'Закрыть ×'}).click()
+  await expect(page.locator('.editorBackdrop')).toHaveCount(0)
+  await menu.locator('summary').click()
+  await menu.getByRole('button',{name:'Поток',exact:true}).click()
+  await expect(page.getByRole('dialog',{name:'Редактор потока'})).toBeVisible()
+  await expect(menu).not.toHaveAttribute('open','')
+  await expect(page.locator('.editorBackdrop')).toHaveCount(1)
+})
+
 test('action menus close after choosing an action, outside click and Escape',async({page})=>{
   await page.goto('/')
   const menu=page.locator('nav.layerTabs .navEnd details.layerActions')

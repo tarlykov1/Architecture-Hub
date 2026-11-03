@@ -337,3 +337,13 @@ button:disabled{cursor:not-allowed;opacity:.55}
 .flowDetailControl{display:inline-flex;align-items:center;gap:8px;font-size:12px;color:#53647a;white-space:nowrap}
 .flowDetailControl select{min-width:160px;padding:6px 8px;border:1px solid #d7e0ec;border-radius:7px;background:#fff}
 @media(max-width:640px){.flowDetailControl{width:100%;justify-content:space-between}.flowDetailControl select{flex:1;min-width:0}}
+
+/* Infrastructure overview: group at scale, open a group for its real components. */
+.componentGroupSelector{display:inline-flex;align-items:center;gap:8px;white-space:nowrap;color:#53647a;font-size:12px}
+.componentGroupSelector select{border:1px solid #d7e0ec;background:#fff;padding:6px 8px;border-radius:7px;max-width:195px}
+.componentGroupBar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:9px 12px;margin:5px 0 8px;border:1px solid #dbe7f4;border-radius:8px;background:#f4f8fd;color:#425872;font-size:12px}
+.componentGroupBar button{padding:6px 9px;background:#fff;border:1px solid #cbdced;border-radius:6px}
+.componentGroupNode{display:flex;flex-direction:column;gap:5px;overflow:hidden}
+.componentGroupNode strong{font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.componentGroupNode small{font-size:11px;color:#64748b}
+@media(max-width:750px){.componentGroupSelector{width:100%;justify-content:space-between}.componentGroupSelector select{max-width:none;flex:1}}

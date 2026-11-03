@@ -820,28 +820,6 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
   return <div className={`shell${inspectorOpen&&!inspectorExpanded?" shellInspectorOpen":""}${sidebarCollapsed?" shellSidebarCollapsed":""}`}>
     <header className="globalHeader" aria-label="Главная панель Architecture Hub">
       <div className="globalBrand"><button type="button" className="sidebarToggle" aria-label={sidebarCollapsed?"Открыть каталог":"Скрыть каталог"} aria-expanded={!sidebarCollapsed} title={sidebarCollapsed?"Показать каталог":"Скрыть каталог"} onClick={()=>setSidebarCollapsed(value=>!value)}>☰</button><span className="globalBrandMark">◆</span><strong>Architecture Hub</strong></div>
-      <div className="topActions">
-        {tokenReady ? <button type="button" title="Завершить сеанс и удалить ключ доступа из вкладки" onClick={()=>{saveAccessToken('');setTokenReady(false);setObjects([]);setRelations([]);setDiagrams([]);setInfra([]);setFlows([]);setSegments([]);setNics([]);setCategories([]);setProcesses([]);setBusinessLinks([]);setSelected('');setSelectedFlow('');setError('');setNotice('Сеанс завершён')}}>Выйти</button> : <button type="button" onClick={()=>setAuthOpen(true)}>Ключ доступа</button>}
-        {layer==='systems'&&<><select aria-label="Схема" value={diagramId} onChange={e => selectDiagram(e.target.value)}>
-          {!diagrams.length && <option value="">Основная карта</option>}
-          {diagrams.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
-        </select>
-        <button title="Создать схему" aria-label="Создать схему" onClick={addDiagram}>＋</button>
-        </>}{dirty&&<button className="primary" onClick={saveDiagram}>Сохранить изменения</button>}
-      </div>
-<div className="globalHeaderActions"><span className="globalHeaderSection">РАБОЧЕЕ ПРОСТРАНСТВО</span>{import.meta.env.VITE_WIKI_URL&&<a href={import.meta.env.VITE_WIKI_URL} target="_blank" rel="noopener noreferrer">Wiki.js <span aria-hidden="true">↗</span></a>}</div>
-    </header>
-    <aside className="sidebar">
-      <div className="sidebarHeading"><span className="sidebarHeadingIcon">▦</span><div><strong>Каталог архитектуры</strong><small>Системы и связанные объекты</small></div></div>
-      <div className="sideLabel">РЕЕСТР ОБЪЕКТОВ <span>{objects.length}</span></div><input className="catalogSearch" aria-label="Поиск системы в каталоге" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Поиск системы..."/>
-      <div className="catalog">{catalogObjects.map(o => <button key={o.id} className={'catalogItem ' + (selected === o.id ? 'active' : '')} onClick={() => {setSelected(o.id);setInspectorOpen(true);setPanelTab("overview")}} onDoubleClick={()=>{setViewSystem(o.id);setComponentView('diagram');setLayer("infrastructure");setInspectorOpen(false);setInspectorExpanded(false)}}>
-        <span className="objectIcon">▦</span><span><strong>{o.name}</strong><small>{o.kind}</small></span>
-      </button>)}</div>
-      </aside>
-    {authOpen&&<div className="editorBackdrop"><section className="editorDialog" role="dialog" aria-modal="true" aria-label="Вход в Architecture Hub"><div className="dialogHead"><h2>Ключ доступа</h2><button aria-label="Закрыть вход" onClick={()=>{setAuthOpen(false);setAuthDraft('')}}>×</button></div><p>Ключ хранится только в текущей вкладке до завершения сеанса.</p><form className="detailForm" onSubmit={async e=>{e.preventDefault();setAuthBusy(true);saveAccessToken(authDraft);try{await refresh();setTokenReady(true);setAuthOpen(false);setAuthDraft('');setError('')}catch(err){saveAccessToken('');setTokenReady(false);setError((err as Error).message)}finally{setAuthBusy(false)}}}><label>Ключ<input type="password" autoComplete="off" required value={authDraft} onChange={e=>setAuthDraft(e.target.value)}/></label><button className="primary" disabled={authBusy}>{authBusy?'Проверка…':'Войти'}</button></form></section></div>}
-    <main className="main">
-      {notice && <div className="notice" role="status">{notice}<button onClick={()=>setNotice('')}>×</button></div>}
-      {error && <div className="error" role="alert">{error}<button onClick={() => setError('')}>×</button></div>}
       <nav className="layerTabs" aria-label="Разделы архитектуры">
         <button className={layer==='home'?'current':''} onClick={()=>{setViewSystem('');setLayer('home')}}>Обзор</button>
         <button className={layer==='systems'?'current':''} onClick={()=>{setViewSystem('');setLayer('systems')}}>Системы</button>
@@ -865,6 +843,29 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
           </div>
         </details></div>
       </nav>
+      <div className="topActions">
+        {tokenReady ? <button type="button" title="Завершить сеанс и удалить ключ доступа из вкладки" onClick={()=>{saveAccessToken('');setTokenReady(false);setObjects([]);setRelations([]);setDiagrams([]);setInfra([]);setFlows([]);setSegments([]);setNics([]);setCategories([]);setProcesses([]);setBusinessLinks([]);setSelected('');setSelectedFlow('');setError('');setNotice('Сеанс завершён')}}>Выйти</button> : <button type="button" onClick={()=>setAuthOpen(true)}>Ключ доступа</button>}
+        {layer==='systems'&&<><select aria-label="Схема" value={diagramId} onChange={e => selectDiagram(e.target.value)}>
+          {!diagrams.length && <option value="">Основная карта</option>}
+          {diagrams.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+        </select>
+        <button title="Создать схему" aria-label="Создать схему" onClick={addDiagram}>＋</button>
+        </>}{dirty&&<button className="primary" onClick={saveDiagram}>Сохранить изменения</button>}
+      </div>
+<div className="globalHeaderActions"><span className="globalHeaderSection">РАБОЧЕЕ ПРОСТРАНСТВО</span>{import.meta.env.VITE_WIKI_URL&&<a href={import.meta.env.VITE_WIKI_URL} target="_blank" rel="noopener noreferrer">Wiki.js <span aria-hidden="true">↗</span></a>}</div>
+    </header>
+    <aside className="sidebar">
+      <div className="sidebarHeading"><span className="sidebarHeadingIcon">▦</span><div><strong>Каталог архитектуры</strong><small>Системы и связанные объекты</small></div></div>
+      <div className="sideLabel">РЕЕСТР ОБЪЕКТОВ <span>{objects.length}</span></div><input className="catalogSearch" aria-label="Поиск системы в каталоге" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Поиск системы..."/>
+      <div className="catalog">{catalogObjects.map(o => <button key={o.id} className={'catalogItem ' + (selected === o.id ? 'active' : '')} onClick={() => {setSelected(o.id);setInspectorOpen(true);setPanelTab("overview")}} onDoubleClick={()=>{setViewSystem(o.id);setComponentView('diagram');setLayer("infrastructure");setInspectorOpen(false);setInspectorExpanded(false)}}>
+        <span className="objectIcon">▦</span><span><strong>{o.name}</strong><small>{o.kind}</small></span>
+      </button>)}</div>
+      </aside>
+    {authOpen&&<div className="editorBackdrop"><section className="editorDialog" role="dialog" aria-modal="true" aria-label="Вход в Architecture Hub"><div className="dialogHead"><h2>Ключ доступа</h2><button aria-label="Закрыть вход" onClick={()=>{setAuthOpen(false);setAuthDraft('')}}>×</button></div><p>Ключ хранится только в текущей вкладке до завершения сеанса.</p><form className="detailForm" onSubmit={async e=>{e.preventDefault();setAuthBusy(true);saveAccessToken(authDraft);try{await refresh();setTokenReady(true);setAuthOpen(false);setAuthDraft('');setError('')}catch(err){saveAccessToken('');setTokenReady(false);setError((err as Error).message)}finally{setAuthBusy(false)}}}><label>Ключ<input type="password" autoComplete="off" required value={authDraft} onChange={e=>setAuthDraft(e.target.value)}/></label><button className="primary" disabled={authBusy}>{authBusy?'Проверка…':'Войти'}</button></form></section></div>}
+    <main className="main">
+      {notice && <div className="notice" role="status">{notice}<button onClick={()=>setNotice('')}>×</button></div>}
+      {error && <div className="error" role="alert">{error}<button onClick={() => setError('')}>×</button></div>}
+
       {['business','systems','infrastructure','flows'].includes(layer)&&workspaceFilters}
       {layer==='home' ? <ArchitectureHome systems={objects} components={infra} flows={flows} processes={processes} links={businessLinks} networks={segments} interfaces={nics} onOpenSystem={id=>{setSelected(id);setInspectorOpen(true);setPanelTab('overview')}} onOpenComponents={id=>{setSelected(id);setViewSystem(id);setComponentView('diagram');setLayer('infrastructure');setInspectorOpen(false)}} onOpenComponent={id=>{setComponentInspectId(id);setComponentInspectTab('passport')}} onOpenFlows={()=>setLayer('flows')} onOpenNetworks={()=>setLayer('networks')}/> : layer==='incidents' ? <Incidents request={request} systems={objects} components={infra} networks={segments} flows={flows}/> : layer==='networks' ? <section className="infraPanel networkRegistry">
  <div className="registryHeader"><div><h2>Реестр сетей</h2><p className="hint">Зоны безопасности, VLAN, VRF и их фактические привязки к интерфейсам</p></div><button className="primary" onClick={()=>editNetwork()}>+ Создать сеть</button></div>

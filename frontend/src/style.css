@@ -237,3 +237,20 @@ button{border-radius:5px;border-color:#dde2e8}.primary{background:var(--hub-blue
 /* The active tab already names the workspace; avoid a duplicate title row. */
 .topbar .workspaceContext{display:none}
 .topbar{justify-content:flex-end}
+
+/* The catalog can be tucked away while reviewing large architecture diagrams. */
+.sidebarToggle{border:0;background:transparent;color:#dae5f3;font-size:19px;cursor:pointer;padding:6px 8px;border-radius:7px}
+.sidebarToggle:hover,.sidebarToggle:focus-visible{background:#283749;color:#fff}
+.globalBrand{display:flex;align-items:center;gap:10px}
+@media (min-width:901px){
+ .shell.shellSidebarCollapsed{grid-template-columns:minmax(0,1fr)}
+ .shell.shellSidebarCollapsed.shellInspectorOpen{grid-template-columns:minmax(0,1fr) minmax(290px,340px)}
+ .shell.shellSidebarCollapsed .sidebar{display:none}
+ .shell.shellSidebarCollapsed .main{grid-column:1}
+ .shell.shellSidebarCollapsed.shellInspectorOpen .details:not(.detailsExpanded){grid-column:2}
+}
+@media (max-width:900px){
+ .shell.shellSidebarCollapsed{grid-template-rows:53px minmax(0,1fr)}
+ .shell.shellSidebarCollapsed .sidebar{display:none}
+ .shell.shellSidebarCollapsed .main{grid-row:2}
+}

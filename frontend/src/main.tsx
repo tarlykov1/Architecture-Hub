@@ -92,6 +92,7 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
 }
 
 function App() {
+  const [sidebarCollapsed,setSidebarCollapsed]=useState(false)
   const [categories,setCategories] = useState<Category[]>([])
   const [processes,setProcesses] = useState<BusinessProcess[]>([])
   const [businessLinks,setBusinessLinks] = useState<BusinessLink[]>([])
@@ -791,10 +792,10 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
         strokeWidth:focusActive&&highlighted?2:1.5,opacity:focusActive&&!highlighted?0.2:1},
       labelStyle:{fontSize:10},markerEnd:{type:MarkerType.ArrowClosed,width:13,height:13}}
   })
-  return <div className={`shell${inspectorOpen&&!inspectorExpanded?" shellInspectorOpen":""}`}>
+  return <div className={`shell${inspectorOpen&&!inspectorExpanded?" shellInspectorOpen":""}${sidebarCollapsed?" shellSidebarCollapsed":""}`}>
     <header className="globalHeader" aria-label="Главная панель Architecture Hub">
-      <div className="globalBrand"><span className="globalBrandMark">◆</span><strong>Architecture Hub</strong><span className="globalBrandSeparator">/</span><span className="globalBrandSubtitle">Единая архитектура ИТ</span></div>
-      <div className="globalHeaderActions"><span className="globalHeaderSection">РАБОЧЕЕ ПРОСТРАНСТВО</span><a href={import.meta.env.VITE_WIKI_URL || "http://127.0.0.1:3000"} target="_blank" rel="noopener noreferrer">Wiki.js <span aria-hidden="true">↗</span></a></div>
+      <div className="globalBrand"><button type="button" className="sidebarToggle" aria-label={sidebarCollapsed?"Открыть каталог":"Скрыть каталог"} aria-expanded={!sidebarCollapsed} title={sidebarCollapsed?"Показать каталог":"Скрыть каталог"} onClick={()=>setSidebarCollapsed(value=>!value)}>☰</button><span className="globalBrandMark">◆</span><strong>Architecture Hub</strong></div>
+      <div className="globalHeaderActions"><span className="globalHeaderSection">РАБОЧЕЕ ПРОСТРАНСТВО</span>{import.meta.env.VITE_WIKI_URL&&<a href={import.meta.env.VITE_WIKI_URL} target="_blank" rel="noopener noreferrer">Wiki.js <span aria-hidden="true">↗</span></a>}</div>
     </header>
     <aside className="sidebar">
       <div className="sidebarHeading"><span className="sidebarHeadingIcon">▦</span><div><strong>Каталог архитектуры</strong><small>Системы и связанные объекты</small></div></div>

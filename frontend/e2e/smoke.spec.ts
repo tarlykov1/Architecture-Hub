@@ -362,6 +362,21 @@ test('component views are exclusive and bulk actions appear with a selection',as
   await expect(page.getByRole('button',{name:'Редактировать схему',exact:true})).toHaveAttribute('aria-pressed','false')
 })
 
+test('registry columns are configurable and persist after reload',async({page})=>{
+  await uxSystem(page)
+  await page.goto('/')
+  await page.getByRole('navigation',{name:'Разделы архитектуры'}).getByRole('button',{name:'Компоненты',exact:true}).click()
+  const registry=page.getByRole('region',{name:'Архитектурный реестр'})
+  await expect(registry).toBeVisible()
+  await expect(registry.getByRole('columnheader',{name:'Владелец'})).toHaveCount(0)
+  await registry.locator('.registryColumnPicker summary').click()
+  await registry.getByRole('group',{name:'Видимые столбцы реестра'}).getByRole('checkbox',{name:'Владелец'}).check()
+  await expect(registry.getByRole('columnheader',{name:'Владелец'})).toBeVisible()
+  await page.reload()
+  await page.getByRole('navigation',{name:'Разделы архитектуры'}).getByRole('button',{name:'Компоненты',exact:true}).click()
+  await expect(page.getByRole('region',{name:'Архитектурный реестр'}).getByRole('columnheader',{name:'Владелец'})).toBeVisible()
+})
+
 test('access dialog masks the key, contains focus and returns focus on Escape',async({page})=>{
   await page.goto('/')
   const trigger=page.getByRole('button',{name:'Ключ доступа',exact:true})

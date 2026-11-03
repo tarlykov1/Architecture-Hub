@@ -8,6 +8,20 @@ async function navigateTo(page: Page, section: 'Реестр сетей'|'Инц
 
 
 
+test('system creation has a single action in the create menu',async({page})=>{
+  await page.goto('/')
+  await expect(page.getByRole('button',{name:'+ Добавить объект'})).toHaveCount(0)
+  await page.locator('nav.layerTabs .navEnd summary').click()
+  await page.locator('nav.layerTabs .navEnd').getByRole('button',{name:'Система',exact:true}).click()
+  const editor=page.getByRole('dialog',{name:'Создать объект архитектуры'})
+  await expect(editor).toBeVisible()
+  const name='E2E new system '+Date.now()
+  await editor.getByRole('textbox',{name:'Название'}).fill(name)
+  await editor.getByRole('button',{name:'+ Добавить'}).click()
+  await expect(editor).toBeHidden()
+  await expect(page.getByRole('button',{name})).toBeVisible()
+})
+
 test('compact navigation keeps secondary tools accessible and catalog can be hidden',async({page})=>{
   await page.goto('/')
   const catalog=page.locator('aside.sidebar')

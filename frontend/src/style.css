@@ -332,3 +332,8 @@ button:disabled{cursor:not-allowed;opacity:.55}
 .registryColumnPicker>div label{display:flex;align-items:center;gap:8px;font-size:12px;white-space:nowrap}
 .registryColumnPicker>div input{margin:0}
 .registryColumnPicker>div button{margin-top:5px}
+
+/* Progressive disclosure for dense data-flow diagrams. */
+.flowDetailControl{display:inline-flex;align-items:center;gap:8px;font-size:12px;color:#53647a;white-space:nowrap}
+.flowDetailControl select{min-width:160px;padding:6px 8px;border:1px solid #d7e0ec;border-radius:7px;background:#fff}
+@media(max-width:640px){.flowDetailControl{width:100%;justify-content:space-between}.flowDetailControl select{flex:1;min-width:0}}

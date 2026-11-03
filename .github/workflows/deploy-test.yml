@@ -1,0 +1,95 @@
+name: Deploy Architecture Hub frontend (test)
+
+# Deploy only after the CI workflow has passed for a push to main.
+# Explicit repository variable DEPLOY_ENABLED=true is required to arm deployment.
+on:
+  workflow_run:
+    workflows: ["Architecture Hub CI"]
+    types: [completed]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: architecture-hub-test-frontend-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Publish verified frontend to test.web-tie.ru
+    if: >-
+      vars.DEPLOY_ENABLED == 'true' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main'
+    runs-on: ubuntu-24.04
+    environment: test
+    timeout-minutes: 15
+    env:
+      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }
+      DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }
+      DEPLOY_USER: ${{ secrets.DEPLOY_USER }
+      DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }
+      DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }
+      DEPLOY_DIR: /var/www/webtie.ru/data/www/test.web-tie.ru
+
+    steps:
+      - name: Checkout the exact commit that passed CI
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }
+          persist-credentials: false
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Build frontend
+        working-directory: frontend
+        env:
+          VITE_WIKI_URL: ${{ vars.VITE_WIKI_URL }
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build
+
+      - name: Install SSH identity and pinned host key
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in DEPLOY_HOST DEPLOY_PORT DEPLOY_USER DEPLOY_SSH_KEY DEPLOY_KNOWN_HOSTS; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Missing deployment secret: $name"
+              exit 1
+            fi
+          done
+          install -m 700 -d "$HOME/.ssh"
+          printf '%s\n' "$DEPLOY_SSH_KEY" > "$HOME/.ssh/id_ed25519"
+          chmod 600 "$HOME/.ssh/id_ed25519"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+          chmod 600 "$HOME/.ssh/known_hosts"
+          ssh-keygen -y -f "$HOME/.ssh/id_ed25519" >/dev/null
+
+      - name: Verify remote deployment directory
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh -p "$DEPLOY_PORT" -o BatchMode=yes -o StrictHostKeyChecking=yes -o IdentitiesOnly=yes \
+            "$DEPLOY_USER@$DEPLOY_HOST" "test -d '$DEPLOY_DIR' && test -w '$DEPLOY_DIR'"
+
+      - name: Publish frontend (never touch API, SQLite, or .well-known)
+        shell: bash
+        run: |
+          set -euo pipefail
+          export RSYNC_RSH="ssh -p $DEPLOY_PORT -o BatchMode=yes -o StrictHostKeyChecking=yes -o IdentitiesOnly=yes"
+          rsync -az --no-perms --no-owner --no-group \
+            --exclude='.well-known/' --exclude='.git/' \
+            frontend/dist/ "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_DIR/"
+
+      - name: Verify public HTTPS (valid certificate required)
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --show-error --silent --retry 3 --retry-delay 2 --head https://test.web-tie.ru/

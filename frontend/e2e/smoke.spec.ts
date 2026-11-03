@@ -8,6 +8,22 @@ async function navigateTo(page: Page, section: 'Реестр сетей'|'Инц
 
 
 
+test('workspace navigation is integrated into the single global header',async({page})=>{
+  await page.goto('/')
+  const header=page.getByRole('banner',{name:'Главная панель Architecture Hub'})
+  const navigation=header.getByRole('navigation',{name:'Разделы архитектуры'})
+  await expect(navigation).toBeVisible()
+  await expect(page.locator('main.main nav.layerTabs')).toHaveCount(0)
+  await expect(header.getByRole('button',{name:'Обзор',exact:true})).toBeVisible()
+  await navigation.getByRole('button',{name:'Системы',exact:true}).click()
+  await expect(navigation.getByRole('button',{name:'Системы',exact:true})).toHaveClass(/current/)
+  await navigation.getByRole('button',{name:'Компоненты',exact:true}).click()
+  await expect(navigation.getByRole('button',{name:'Компоненты',exact:true})).toHaveClass(/current/)
+  await navigation.locator('details.secondaryNavigation summary').click()
+  await navigation.getByRole('button',{name:'Реестр сетей',exact:true}).click()
+  await expect(navigation.locator('details.secondaryNavigation summary')).toContainText('Реестр сетей')
+})
+
 test('system creation has a single action in the create menu',async({page})=>{
   await page.goto('/')
   await expect(page.getByRole('button',{name:'+ Добавить объект'})).toHaveCount(0)

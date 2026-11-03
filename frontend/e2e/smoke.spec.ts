@@ -292,6 +292,26 @@ async function uxSystem(page: Page) {
   return {id,name,components}
 }
 
+test('component group overview opens real members and keeps editing locked',async({page})=>{
+  const system=await uxSystem(page)
+  await page.goto('/')
+  await page.getByRole('navigation',{name:'Разделы архитектуры'}).getByRole('button',{name:'Компоненты',exact:true}).click()
+  await page.getByRole('combobox',{name:'Система компонентов'}).selectOption(system.id)
+  await page.getByRole('group',{name:'Представление компонентов'}).getByRole('button',{name:'Схема',exact:true}).click()
+  await page.getByRole('combobox',{name:'Группировка компонентов'}).selectOption('environment')
+  const diagram=page.locator('[data-active-graph="infrastructure"]')
+  await expect(diagram.locator('.react-flow__node')).toHaveCount(1)
+  await expect(page.getByRole('button',{name:'Редактировать схему',exact:true})).toBeDisabled()
+  await expect(diagram.locator('.react-flow__node').first()).toContainText('2 компонентов')
+  await diagram.locator('.react-flow__node').first().click()
+  await expect(diagram.locator('.react-flow__node')).toHaveCount(2)
+  await page.getByRole('button',{name:'← Ко всем группам'}).click()
+  await expect(diagram.locator('.react-flow__node')).toHaveCount(1)
+  await page.getByRole('combobox',{name:'Группировка компонентов'}).selectOption('components')
+  await expect(diagram.locator('.react-flow__node')).toHaveCount(2)
+  await expect(page.getByRole('button',{name:'Редактировать схему',exact:true})).toBeEnabled()
+})
+
 test('systems are read-only until editing is explicitly enabled and leaving resets it',async({page})=>{
   const system=await uxSystem(page)
   await page.goto('/')

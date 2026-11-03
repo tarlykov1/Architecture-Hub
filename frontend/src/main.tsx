@@ -350,7 +350,7 @@ function App() {
   const [zoneMode,setZoneMode] = useState(false)
   const [infra, setInfra] = useState<Infra[]>([])
   const [flows, setFlows] = useState<Flow[]>([])
-  const [layer, setLayer] = useState<'home'|'business'|'systems'|'infrastructure'|'flows'|'topology'|'networks'|'incidents'>('home')
+  const [layer, setLayer] = useState<'home'|'business'|'systems'|'infrastructure'|'flows'|'topology'|'networks'|'incidents'|'knowledge'>('home')
   const [infraName,setInfraName] = useState('')
   const [infraKind,setInfraKind] = useState('vm')
   const [infraParent,setInfraParent] = useState('')
@@ -376,12 +376,21 @@ function App() {
   const [notice,setNotice] = useState('')
   const [tokenReady, setTokenReady] = useState(Boolean(accessToken))
   const [wikiConfigured,setWikiConfigured]=useState(false)
+  const [wikiStatus,setWikiStatus]=useState<'checking'|'connected'|'unconfigured'|'unavailable'>('checking')
+  const [wikiPublicUrl,setWikiPublicUrl]=useState('')
   useEffect(()=>{
-    if(!tokenReady){setWikiConfigured(false);return}
+    if(!tokenReady){setWikiConfigured(false);setWikiStatus('unavailable');setWikiPublicUrl('');return}
     let active=true
-    request<{configured:boolean}>('/api/knowledge/status')
-      .then(result=>{if(active)setWikiConfigured(result.configured)})
-      .catch(()=>{if(active)setWikiConfigured(false)})
+    setWikiStatus('checking')
+    request<{configured:boolean;public_url?:string}>('/api/knowledge/status')
+      .then(result=>{
+        if(!active)return
+        setWikiConfigured(result.configured)
+        setWikiStatus(result.configured?'connected':'unconfigured')
+        const url=result.public_url||''
+        setWikiPublicUrl(/^https:\/\//i.test(url)||/^http:\/\/(?!localhost|127\.0\.0\.1|0\.0\.0\.0)/i.test(url)?url:'')
+      })
+      .catch(()=>{if(active){setWikiConfigured(false);setWikiStatus('unavailable');setWikiPublicUrl('')}})
     return()=>{active=false}
   },[tokenReady])
   const [busy, setBusy] = useState(false)
@@ -826,9 +835,9 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
         <button className={layer==='infrastructure'?'current':''} onClick={()=>{setLayer('infrastructure');setInspectorOpen(false);setInspectorExpanded(false)}}>Компоненты</button>
         <button className={layer==='flows'?'current':''} onClick={()=>{setViewSystem('');setFlowComponentFocus('');setLayer('flows')}}>Потоки</button>
         <details className="layerActions secondaryNavigation">
-          <summary aria-label="Другие разделы">{({business:'Бизнес-процессы',networks:'Реестр сетей',topology:'Топология сетей',incidents:'Инциденты'} as Record<string,string>)[layer]||'Ещё'} ▾</summary>
+          <summary aria-label="Другие разделы">{({business:'Бизнес-процессы',networks:'Реестр сетей',topology:'Топология сетей',incidents:'Инциденты',knowledge:'База знаний'} as Record<string,string>)[layer]||'Ещё'} ▾</summary>
           <div className="layerActionMenu">
-            {([['business','Бизнес-процессы'],['networks','Реестр сетей'],['topology','Топология сетей'],['incidents','Инциденты']] as const).map(([id,label])=><button type="button" key={id} className={layer===id?'current':''} onClick={e=>{setLayer(id);e.currentTarget.closest('details')?.removeAttribute('open')}}>{label}</button>)}
+            {([['business','Бизнес-процессы'],['networks','Реестр сетей'],['topology','Топология сетей'],['incidents','Инциденты'],['knowledge','База знаний']] as const).map(([id,label])=><button type="button" key={id} className={layer===id?'current':''} onClick={e=>{setLayer(id);e.currentTarget.closest('details')?.removeAttribute('open')}}>{label}</button>)}
           </div>
         </details>
         <div className="navEnd"><details className="layerActions">
@@ -867,7 +876,11 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
       {error && <div className="error" role="alert">{error}<button onClick={() => setError('')}>×</button></div>}
 
       {['business','systems','infrastructure','flows'].includes(layer)&&workspaceFilters}
-      {layer==='home' ? <ArchitectureHome systems={objects} components={infra} flows={flows} processes={processes} links={businessLinks} networks={segments} interfaces={nics} onOpenSystem={id=>{setSelected(id);setInspectorOpen(true);setPanelTab('overview')}} onOpenComponents={id=>{setSelected(id);setViewSystem(id);setComponentView('diagram');setLayer('infrastructure');setInspectorOpen(false)}} onOpenComponent={id=>{setComponentInspectId(id);setComponentInspectTab('passport')}} onOpenFlows={()=>setLayer('flows')} onOpenNetworks={()=>setLayer('networks')}/> : layer==='incidents' ? <Incidents request={request} systems={objects} components={infra} networks={segments} flows={flows}/> : layer==='networks' ? <section className="infraPanel networkRegistry">
+      {layer==='knowledge'?<section className="knowledgeWorkspace" aria-label="База знаний Wiki.js">
+        <div className="knowledgeWorkspaceHead"><div><h2>База знаний · Wiki.js</h2><p>Документация информационных систем и связи со статьями</p></div>{wikiPublicUrl&&<a href={wikiPublicUrl} target="_blank" rel="noopener noreferrer" className="knowledgeOpenLink">Открыть Wiki.js ↗</a>}</div>
+        {wikiStatus==='connected'?<div className="knowledgeWorkspaceStatus" role="status"><strong>Интеграция подключена</strong><p>Выберите информационную систему, чтобы искать статьи и привязывать документацию к её паспорту.</p></div>:<div className="knowledgeWorkspaceStatus" role="status"><strong>{wikiStatus==='checking'?'Проверяем подключение…':wikiStatus==='unconfigured'?'Wiki.js ещё не подключена к Architecture Hub':'Подключение Wiki.js не удалось проверить'}</strong><p>{wikiStatus==='unconfigured'?'Для поиска и привязки статей настройте WIKI_API_TOKEN и WIKI_PUBLIC_URL в окружении backend. Для прямой ссылки также можно задать VITE_WIKI_URL при сборке frontend.':wikiStatus==='unavailable'?'Проверьте авторизацию и доступность /api/knowledge/status.':'Настройка и состояние Wiki.js проверяются через backend.'}</p></div>}
+        <div className="knowledgeWorkspaceSystems"><h3>Документация по системам</h3><div className="knowledgeWorkspaceList">{objects.filter(o=>!search||o.name.toLowerCase().includes(search.toLowerCase())).map(o=><button key={o.id} type="button" onClick={()=>{setSelected(o.id);setInspectorOpen(true);setPanelTab('knowledge')}}><span>{o.name}</span><small>Открыть документацию</small></button>)}</div>{!objects.length&&<p>После входа здесь появятся информационные системы.</p>}</div>
+      </section>:layer==='home' ? <ArchitectureHome systems={objects} components={infra} flows={flows} processes={processes} links={businessLinks} networks={segments} interfaces={nics} onOpenSystem={id=>{setSelected(id);setInspectorOpen(true);setPanelTab('overview')}} onOpenComponents={id=>{setSelected(id);setViewSystem(id);setComponentView('diagram');setLayer('infrastructure');setInspectorOpen(false)}} onOpenComponent={id=>{setComponentInspectId(id);setComponentInspectTab('passport')}} onOpenFlows={()=>setLayer('flows')} onOpenNetworks={()=>setLayer('networks')}/> : layer==='incidents' ? <Incidents request={request} systems={objects} components={infra} networks={segments} flows={flows}/> : layer==='networks' ? <section className="infraPanel networkRegistry">
  <div className="registryHeader"><div><h2>Реестр сетей</h2><p className="hint">Зоны безопасности, VLAN, VRF и их фактические привязки к интерфейсам</p></div><button className="primary" onClick={()=>editNetwork()}>+ Создать сеть</button></div>
  <div className="networkRegistryFilters"><input aria-label="Поиск сети" placeholder="Поиск по имени и описанию" value={networkFilter} onChange={e=>setNetworkFilter(e.target.value)}/><select aria-label="Тип сети" value={networkTypeFilter} onChange={e=>setNetworkTypeFilter(e.target.value)}><option value="all">Все типы</option><option value="zone">Зоны</option><option value="vrf">VRF</option><option value="vlan">VLAN</option></select><span>{segments.filter(n=>(networkTypeFilter==='all'||n.kind===networkTypeFilter)&&[n.name,n.description].join(' ').toLowerCase().includes(networkFilter.toLowerCase())).length} записей</span></div>
  <div className="networkTableWrap"><table className="networkTable"><thead><tr><th>Имя сети</th><th>Тип</th><th>Достоверность</th>{registryColumnVisible('interfaces')&&<th>Интерфейсы</th>}<th>Описание</th><th>Действия</th></tr></thead><tbody>{segments.filter(n=>(networkTypeFilter==='all'||n.kind===networkTypeFilter)&&[n.name,n.description].join(' ').toLowerCase().includes(networkFilter.toLowerCase())).sort((a,b)=>a.kind.localeCompare(b.kind)||a.name.localeCompare(b.name)).map(n=>{
@@ -957,18 +970,21 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
           <button className={panelTab==='overview'?'current':''} onClick={()=>setPanelTab('overview')}>Обзор</button>
           <button className={panelTab==='components'?'current':''} onClick={()=>setPanelTab('components')}>Компоненты</button>
           <button className={panelTab==='flows'?'current':''} onClick={()=>setPanelTab('flows')}>Потоки</button>
-          <button className={panelTab==='incidents'?'current':''} onClick={()=>setPanelTab('incidents')}>Инциденты</button>{wikiConfigured&&<button className={panelTab==='knowledge'?'current':''} onClick={()=>{setKbMessage('');setPanelTab('knowledge')}}>База знаний</button>}
+          <button className={panelTab==='incidents'?'current':''} onClick={()=>setPanelTab('incidents')}>Инциденты</button><button className={panelTab==='knowledge'?'current':''} onClick={()=>{setKbMessage('');setPanelTab('knowledge')}}>База знаний</button>
         </div>
         {panelTab==='incidents'&&detail&&<Incidents request={request} systems={objects} components={infra} networks={segments} flows={flows} context={{entity_type:'system',entity_id:detail.id}}/>}
-        {panelTab==='knowledge'&&wikiConfigured&&<div className="knowledgePanel">
+        {panelTab==='knowledge'&&<div className="knowledgePanel">
+          {!wikiConfigured&&<div className="knowledgeWorkspaceStatus" role="status"><strong>Wiki.js не подключена</strong><p>Откройте раздел «База знаний» для состояния подключения и параметров настройки.</p></div>}
+          {wikiConfigured&&<>
           <div className="knowledgeHeading"><h3>Документация</h3><span className="knowledgeCount">{kbLinks.length}</span></div><p className="knowledgeIntro">Статьи хранятся в Wiki.js. Изменения доступны в обеих системах.</p>
           {kbLinks.map(k=><div key={k.id} className="inspectorItem"><a className="knowledgeArticleLink" href={k.url} target="_blank" rel="noopener noreferrer">📄 {k.title} ↗</a><button className="knowledgeUnlink" onClick={()=>unlinkWiki(k.id)}>Убрать связь</button></div>)}
           {!kbLinks.length&&<p>Связанных статей пока нет.</p>}
-          <div className="knowledgeHeading"><h3>Найти или создать статью</h3></div>{import.meta.env.VITE_WIKI_URL&&<a className="knowledgeCreate" href={import.meta.env.VITE_WIKI_URL} target="_blank" rel="noopener noreferrer">+ Новая статья в Wiki.js ↗</a>}
+          <div className="knowledgeHeading"><h3>Найти или создать статью</h3></div>{(wikiPublicUrl||import.meta.env.VITE_WIKI_URL)&&<a className="knowledgeCreate" href={wikiPublicUrl||import.meta.env.VITE_WIKI_URL} target="_blank" rel="noopener noreferrer">+ Новая статья в Wiki.js ↗</a>}
           <input value={kbQuery} onChange={e=>setKbQuery(e.target.value)} placeholder="Поиск по названию или пути" className="knowledgeSearch"/>
           <button disabled={kbLoading} onClick={searchWiki}>{kbLoading?'Поиск…':'Найти в Wiki.js'}</button>
           {kbPages.filter(p=>!kbLinks.some(k=>k.url===p.url)).map(p=><div className="inspectorItem knowledgeSearchResult" key={p.id}><div><strong>{p.title}</strong><small>{p.path}</small></div><button onClick={()=>attachWiki(p)}>+ Связать</button></div>)}
           {kbMessage&&<p role="status">{kbMessage}</p>}
+          </>}
         </div>}
         {panelTab==='overview'&&<><button type="button" onClick={()=>editPassport(detail)}>Редактировать паспорт КИС</button><h3>Назначение</h3><p>{detail.description||'Описание не указано'}</p><h3>Статус</h3><p>{detail.status}</p>
           <div className="statPills"><span>{detailItems.length} компонентов</span><span>{flows.filter(f=>detailItems.some(i=>i.id===f.source_id||i.id===f.target_id)).length} потоков</span></div>

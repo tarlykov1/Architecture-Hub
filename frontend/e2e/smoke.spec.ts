@@ -115,17 +115,20 @@ test('selected system downloads a KIS Excel file', async ({ page }) => {
 })
 
 test('component card shows passport, interfaces and flows tabs', async ({ page }) => {
-  const name='E2E Component System '+Date.now()
+  const name='UX-TEST Component System '+Date.now()
+  const componentName=name+' VM'
   const created=await page.request.post('http://127.0.0.1:8001/api/objects',{data:{name,kind:'system'}})
   expect(created.status()).toBe(201)
   const systemId=(await created.json()).id
-  const vm=await page.request.post('http://127.0.0.1:8001/api/infra',{data:{system_id:systemId,name:'E2E component',kind:'vm',description:'Test node'}})
+  const vm=await page.request.post('http://127.0.0.1:8001/api/infra',{data:{system_id:systemId,name:componentName,kind:'vm',description:'Test node'}})
   expect(vm.status()).toBe(201)
   await page.goto('/')
   await page.getByRole('navigation',{name:'Разделы архитектуры'}).getByRole('button',{name:'Компоненты',exact:true}).click()
-  await page.getByRole('textbox',{name:'Фильтр по названию'}).fill('E2E component')
+  await page.getByRole('combobox',{name:'Система компонентов'}).selectOption(systemId)
+  await page.getByRole('textbox',{name:'Фильтр по названию'}).fill(componentName)
+  await page.getByRole('group',{name:'Представление компонентов'}).getByRole('button',{name:'Карточки',exact:true}).click()
   await page.getByRole('button',{name:'Карточка компонента'}).click()
-  const dialog=page.getByRole('dialog',{name:'Карточка компонента E2E component'})
+  const dialog=page.getByRole('dialog',{name:'Карточка компонента '+componentName})
   await expect(dialog).toBeVisible()
   await expect(dialog.getByText('Test node')).toBeVisible()
   await dialog.getByRole('tab',{name:'Сети'}).click()
@@ -145,7 +148,7 @@ test('inspector avoids duplicate architecture action when selected architecture 
   await page.getByRole('navigation',{name:'Разделы архитектуры'}).getByRole('button',{name:'Компоненты',exact:true}).click()
   const panel=page.getByRole('complementary',{name:'Карточка архитектурного объекта'})
   await expect(panel).toHaveCount(0)
-  await expect(page.getByRole('heading',{name:'Компоненты, ВМ и сети'})).toBeVisible()
+  await expect(page.getByRole('combobox',{name:'Система компонентов'})).toBeVisible()
   await expect(page.getByRole('button',{name:'Открыть архитектуру →'})).toHaveCount(0)
 })
 
@@ -170,7 +173,8 @@ test('infrastructure graph permits connecting components',async({page})=>{
  await page.goto('/')
  await page.getByRole('button',{name:/link-test-/}).first().click()
  await page.getByRole('navigation',{name:'Разделы архитектуры'}).getByRole('button',{name:'Компоненты',exact:true}).click()
- await expect(page.getByRole('heading',{name:'Компоненты, ВМ и сети'})).toBeVisible()
+ await page.getByRole('combobox',{name:'Система компонентов'}).selectOption(id)
+ await page.getByRole('group',{name:'Представление компонентов'}).getByRole('button',{name:'Схема',exact:true}).click()
  const handles=page.locator('.miniArchitecture .react-flow__handle')
  await expect(handles).toHaveCount(4)
 })
@@ -237,6 +241,7 @@ test('topology starts with all components and no arbitrary selected flow',async(
  await navigateTo(page,'Топология сетей')
  await page.getByRole('combobox',{name:'Система'}).selectOption(id)
  const diagram=page.locator('.react-flow')
+ await page.locator('details.workspaceDisclosure > summary').filter({hasText:'Отображение и направления'}).click()
  await expect(page.getByRole('combobox',{name:'Выбрать поток на схеме'})).toHaveValue('')
  await expect(page.getByRole('checkbox',{name:'Показать компоненты без потоков'})).toBeChecked()
  await expect(diagram.locator('.react-flow__node[data-id^="host:"]')).toHaveCount(3)
@@ -271,4 +276,188 @@ test('topology editor creates and updates a flow via API',async({page})=>{
  await page.getByRole('combobox',{name:'Система'}).selectOption(id)
  await page.getByRole('checkbox',{name:'Все потоки'}).check()
  await expect(page.locator('.react-flow__edge')).toHaveCount(1)
+})
+
+async function uxSystem(page: Page) {
+  const name='UX-TEST workspace '+Date.now()+'-'+Math.random().toString(36).slice(2,7)
+  const created=await page.request.post('http://127.0.0.1:8001/api/objects',{data:{name,kind:'system',description:'Isolated browser UX scenario'}})
+  expect(created.status()).toBe(201)
+  const id=(await created.json()).id as string
+  const components=[] as string[]
+  for(const suffix of ['API','VM']) {
+    const result=await page.request.post('http://127.0.0.1:8001/api/infra',{data:{system_id:id,name:name+' '+suffix,kind:suffix==='VM'?'vm':'service'}})
+    expect(result.status()).toBe(201)
+    components.push((await result.json()).id)
+  }
+  return {id,name,components}
+}
+
+test('systems are read-only until editing is explicitly enabled and leaving resets it',async({page})=>{
+  const system=await uxSystem(page)
+  await page.goto('/')
+  await page.getByRole('navigation',{name:'Разделы архитектуры'}).getByRole('button',{name:'Системы',exact:true}).click()
+  await page.getByRole('textbox',{name:'Фильтр по названию'}).fill(system.name)
+  const diagram=page.locator('[data-active-graph="systems"]')
+  const node=diagram.locator('.react-flow__node').filter({hasText:system.name})
+  await expect(node).toBeVisible()
+  const edit=page.getByRole('button',{name:'Редактировать схему',exact:true})
+  await expect(edit).toHaveAttribute('aria-pressed','false')
+  await expect(diagram.locator('.react-flow__controls-interactive')).toHaveCount(0)
+  const position=await node.evaluate(element=>(element as HTMLElement).style.transform)
+  const box=await node.boundingBox()
+  expect(box).toBeTruthy()
+  const mutations: string[]=[]
+  page.on('request',request=>{if(request.method()==='POST'&&request.url().includes('/api/relations'))mutations.push(request.url())})
+  await page.mouse.move(box!.x+box!.width/2,box!.y+20)
+  await page.mouse.down()
+  await page.mouse.move(box!.x+box!.width/2+90,box!.y+70,{steps:8})
+  await page.mouse.up()
+  await expect.poll(()=>node.evaluate(element=>(element as HTMLElement).style.transform)).toBe(position)
+  expect(mutations).toEqual([])
+  await edit.click()
+  await expect(page.getByRole('button',{name:'Завершить редактирование',exact:true})).toHaveAttribute('aria-pressed','true')
+  await page.getByRole('navigation',{name:'Разделы архитектуры'}).getByRole('button',{name:'Обзор',exact:true}).click()
+  await page.getByRole('navigation',{name:'Разделы архитектуры'}).getByRole('button',{name:'Системы',exact:true}).click()
+  await expect(edit).toHaveAttribute('aria-pressed','false')
+})
+
+test('overview passport and components retain the same system context',async({page})=>{
+  const system=await uxSystem(page)
+  await page.goto('/')
+  await page.getByRole('textbox',{name:'Поиск на карте'}).fill(system.name)
+  const node=page.locator('.homeMapGraph .react-flow__node').filter({hasText:system.name})
+  await node.getByRole('button',{name:'Паспорт ИС',exact:true}).click()
+  const passport=page.getByRole('complementary',{name:'Карточка архитектурного объекта'})
+  await expect(passport.getByRole('heading',{name:system.name,exact:true})).toBeVisible()
+  await expect(page.locator('.homeMapGraph')).toBeVisible()
+  await passport.getByRole('button',{name:'Закрыть правую панель'}).click()
+  await node.locator('strong').click()
+  const selection=page.getByRole('complementary',{name:'Выбранная информационная система'})
+  await selection.getByRole('button',{name:'Компоненты',exact:true}).click()
+  await expect(page.getByRole('combobox',{name:'Система компонентов'})).toHaveValue(system.id)
+  await expect(page.locator('[data-active-graph="infrastructure"] .react-flow__node')).toHaveCount(2)
+  await expect(passport).toHaveCount(0)
+})
+
+test('component views are exclusive and bulk actions appear with a selection',async({page})=>{
+  const system=await uxSystem(page)
+  await page.goto('/')
+  await page.getByRole('navigation',{name:'Разделы архитектуры'}).getByRole('button',{name:'Компоненты',exact:true}).click()
+  await page.getByRole('combobox',{name:'Система компонентов'}).selectOption(system.id)
+  const views=page.getByRole('group',{name:'Представление компонентов'})
+  await views.getByRole('button',{name:'Реестр',exact:true}).click()
+  const registry=page.getByRole('region',{name:'Архитектурный реестр'})
+  await expect(registry).toBeVisible()
+  await expect(page.locator('.infraGrid')).toHaveCount(0)
+  await expect(page.locator('[data-active-graph="infrastructure"]')).toHaveCount(0)
+  await expect(page.getByLabel('Массовое изменение',{exact:true})).toHaveCount(0)
+  await registry.getByRole('checkbox',{name:'Выбрать все отображаемые'}).check()
+  await expect(page.getByLabel('Массовое изменение',{exact:true})).toBeVisible()
+  await views.getByRole('button',{name:'Карточки',exact:true}).click()
+  await expect(registry).toHaveCount(0)
+  await expect(page.locator('.infraGrid .infraCard')).toHaveCount(2)
+  await views.getByRole('button',{name:'Схема',exact:true}).click()
+  await expect(page.locator('.infraGrid')).toHaveCount(0)
+  await expect(page.locator('[data-active-graph="infrastructure"] .react-flow__node')).toHaveCount(2)
+  await expect(page.getByRole('button',{name:'Редактировать схему',exact:true})).toHaveAttribute('aria-pressed','false')
+})
+
+test('access dialog masks the key, contains focus and returns focus on Escape',async({page})=>{
+  await page.goto('/')
+  const trigger=page.getByRole('button',{name:'Ключ доступа',exact:true})
+  await trigger.click()
+  const dialog=page.getByRole('dialog',{name:'Вход в Architecture Hub'})
+  const key=dialog.getByLabel('Ключ',{exact:true})
+  await expect(key).toHaveAttribute('type','password')
+  await key.fill('UX-TEST-unsent-key')
+  await dialog.getByRole('button',{name:'Войти',exact:true}).focus()
+  await page.keyboard.press('Tab')
+  await expect(dialog.getByRole('button',{name:'Закрыть вход'})).toBeFocused()
+  await page.keyboard.press('Shift+Tab')
+  await expect(dialog.getByRole('button',{name:'Войти',exact:true})).toBeFocused()
+  await page.keyboard.press('Escape')
+  await expect(dialog).toHaveCount(0)
+  await expect(trigger).toBeFocused()
+  await trigger.click()
+  await expect(key).toHaveValue('')
+})
+
+test('action menus close after choosing an action, outside click and Escape',async({page})=>{
+  await page.goto('/')
+  const menu=page.locator('nav.layerTabs .navEnd details.layerActions')
+  const trigger=menu.locator('summary')
+  await trigger.click()
+  await menu.getByRole('button',{name:'Система',exact:true}).click()
+  await expect(menu).not.toHaveAttribute('open','')
+  await page.keyboard.press('Escape')
+  await expect(page.getByRole('dialog',{name:'Создать объект архитектуры'})).toHaveCount(0)
+  await trigger.click()
+  await page.keyboard.press('Escape')
+  await expect(menu).not.toHaveAttribute('open','')
+  await expect(trigger).toBeFocused()
+  await trigger.click()
+  await page.getByRole('textbox',{name:'Поиск на карте'}).click()
+  await expect(menu).not.toHaveAttribute('open','')
+})
+
+for(const width of [390,768,1440]) {
+  test('workspace navigation and content stay within viewport at '+width+'px',async({page})=>{
+    await page.setViewportSize({width,height:900})
+    const errors: string[]=[]
+    page.on('pageerror',error=>errors.push(error.message))
+    await page.goto('/')
+    const assertNoOverflow=async()=>{
+      expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+1)).toBe(true)
+      const main=page.locator('main.main')
+      const box=await main.boundingBox()
+      expect(box).toBeTruthy()
+      expect(box!.x+box!.width).toBeLessThanOrEqual(width+1)
+    }
+    await assertNoOverflow()
+    if(width<650){
+      await expect(page.locator('aside.sidebar')).toBeHidden()
+      await page.getByRole('button',{name:'Открыть каталог'}).click()
+      await expect(page.locator('aside.sidebar')).toBeVisible()
+      await assertNoOverflow()
+    }
+    await page.getByRole('button',{name:'Скрыть каталог'}).click()
+    await assertNoOverflow()
+    for(const name of ['Системы','Компоненты','Потоки']) {
+      await page.getByRole('navigation',{name:'Разделы архитектуры'}).getByRole('button',{name,exact:true}).click()
+      await assertNoOverflow()
+    }
+    for(const section of ['Реестр сетей','Топология сетей','Инциденты'] as const) {
+      await navigateTo(page,section)
+      await assertNoOverflow()
+    }
+    expect(errors).toEqual([])
+  })
+}
+
+test('topology fits tall groups after loading, resize and catalog collapse',async({page})=>{
+  const name='UX-TEST tall topology '+Date.now()
+  const created=await page.request.post('http://127.0.0.1:8001/api/objects',{data:{name,kind:'system'}})
+  expect(created.status()).toBe(201)
+  const id=(await created.json()).id
+  for(let i=0;i<25;i++){
+    const item=await page.request.post('http://127.0.0.1:8001/api/infra',{data:{system_id:id,name:name+' VM '+i,kind:'vm'}})
+    expect(item.status()).toBe(201)
+  }
+  await page.goto('/')
+  await navigateTo(page,'Топология сетей')
+  await page.getByRole('combobox',{name:'Система',exact:true}).selectOption(id)
+  const canvas=page.locator('.topologyCanvas')
+  await expect(canvas.locator('.react-flow__node[data-id^="host:"]')).toHaveCount(25)
+  const contained=()=>canvas.evaluate(root=>{
+    const box=root.getBoundingClientRect()
+    return [...root.querySelectorAll('.react-flow__node')].every(node=>{
+      const r=node.getBoundingClientRect()
+      return r.left>=box.left-2&&r.right<=box.right+2&&r.top>=box.top-2&&r.bottom<=box.bottom+2
+    })
+  })
+  await expect.poll(contained).toBe(true)
+  await page.getByRole('button',{name:'Скрыть каталог'}).click()
+  await expect.poll(contained).toBe(true)
+  await page.setViewportSize({width:1000,height:720})
+  await expect.poll(contained).toBe(true)
 })

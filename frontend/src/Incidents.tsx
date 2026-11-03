@@ -15,7 +15,7 @@ export default function Incidents({request,systems,components,networks,flows,con
   const [busy,setBusy]=useState(false)
   const [search,setSearch]=useState('')
   const [filter,setFilter]=useState('all')
-  const load=useCallback(()=>{request<Incident[]>('/api/incidents').then(setItems).catch(e=>setError(String(e)))},[request])
+  const load=useCallback(()=>{request<Incident[]>('/api/incidents').then(result=>{setItems(result);setError('')}).catch(e=>setError(String(e)))},[request])
   useEffect(()=>{load()},[load])
   function open(item:Incident){setCurrent(item);setForm({...item,links:item.links});setEditing(false);setAffected([]);setError('');request<{potentially_affected:{name:string;entity_id:string}[]}>(`/api/incidents/${item.id}/impact`).then(r=>setAffected(r.potentially_affected)).catch(()=>setAffected([]))}
   function create(){setCurrent(null);setForm({...fresh(),links:context?[context]:[]});setEditing(true);setAffected([]);setError('')}
@@ -28,7 +28,8 @@ export default function Incidents({request,systems,components,networks,flows,con
     {!context&&<div className="incidentStats">{['open','investigating','monitoring','resolved','closed'].map(s=><div key={s}><strong>{items.filter(x=>x.status===s).length}</strong><span>{statuses[s]}</span></div>)}</div>}
     <div className="incidentFilters"><input aria-label="Поиск инцидентов" placeholder="Поиск по инцидентам" value={search} onChange={e=>setSearch(e.target.value)}/><select aria-label="Фильтр статуса" value={filter} onChange={e=>setFilter(e.target.value)}><option value="all">Все статусы</option>{Object.entries(statuses).map(([k,v])=><option key={k} value={k}>{v}</option>)}</select></div>
     <div className="incidentTable">{selected.map(item=><button className={'incidentRow '+(current?.id===item.id?'incidentActive':'')} key={item.id} onClick={()=>open(item)}><span className={'incidentSeverity severity-'+item.severity}>{levels[item.severity]||item.severity}</span><span><strong>{item.title}</strong><small>{item.links.map(l=>name(l.entity_type,l.entity_id)).join(' · ')||'Нет привязанных объектов'}</small></span><span>{statuses[item.status]||item.status}</span><small>{new Date(item.updated_at).toLocaleDateString('ru-RU')}</small></button>)}</div>
-    {!selected.length&&<p className="hint">Нет инцидентов по выбранному фильтру.</p>}
+    {error&&!editing&&<p role="alert" className="kisError">{error}</p>}
+    {!error&&!selected.length&&<p className="hint">Нет инцидентов по выбранному фильтру.</p>}
     {(editing||current)&&<div className="incidentDetail">
       <div className="registryHeader"><h3>{editing?(current?'Изменить инцидент':'Новый инцидент'):current?.title}</h3><div className="incidentActions">{current&&!editing&&<button onClick={()=>setEditing(true)}>Редактировать</button>}<button onClick={()=>{setCurrent(null);setEditing(false)}}>Закрыть ×</button></div></div>
       {editing?<form className="incidentForm" onSubmit={save}>

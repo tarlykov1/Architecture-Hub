@@ -391,3 +391,19 @@ button:disabled{cursor:not-allowed;opacity:.55}
  .globalHeader .topActions select{display:none}
  .globalHeader .topActions button{padding:6px 8px}
 }
+
+/* Knowledge integration is visible even before the server-side Wiki.js connector is configured. */
+.knowledgeWorkspace{flex:1;min-height:0;overflow:auto;padding:20px 22px;background:#f7f9fc}
+.knowledgeWorkspaceHead{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;margin-bottom:18px}
+.knowledgeWorkspaceHead h2{font-size:18px;color:#1b3b59;font-weight:650;margin:0 0 5px}
+.knowledgeWorkspaceHead p{color:#64748b;font-size:12px;margin:0}
+.knowledgeOpenLink{font-size:12px;padding:9px 12px;background:#fff;border:1px solid #ceddeb;border-radius:8px;text-decoration:none;color:#1366b6}
+.knowledgeWorkspaceStatus{padding:14px 16px;border:1px solid #d6e3f0;border-radius:10px;background:#fff;max-width:850px;margin-bottom:18px}
+.knowledgeWorkspaceStatus strong{font-size:13px;color:#234765}
+.knowledgeWorkspaceStatus p{font-size:12px;line-height:1.55;margin:6px 0 0;color:#526981}
+.knowledgeWorkspaceSystems h3{font-size:14px;margin:18px 0 10px}
+.knowledgeWorkspaceList{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:8px;max-width:1100px}
+.knowledgeWorkspaceList button{display:flex;flex-direction:column;align-items:flex-start;text-align:left;gap:5px;padding:12px;border:1px solid #dce6f1;border-radius:9px;background:#fff;min-width:0}
+.knowledgeWorkspaceList button span{font-size:13px;font-weight:600;overflow-wrap:anywhere}
+.knowledgeWorkspaceList button small{font-size:11px;color:#6b819b}
+@media(max-width:650px){.knowledgeWorkspace{padding:12px}.knowledgeWorkspaceList{grid-template-columns:1fr}}

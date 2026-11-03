@@ -343,6 +343,7 @@ function App() {
   const [workspaceVerified,setWorkspaceVerified] = useState('all')
   const [search,setSearch] = useState('')
   const [viewSystem,setViewSystem] = useState('')
+  useEffect(()=>{setExpandedComponentGroup('')},[viewSystem])
   const [showExternalDependencies,setShowExternalDependencies] = useState(false)
   const [zoneMode,setZoneMode] = useState(false)
   const [infra, setInfra] = useState<Infra[]>([])

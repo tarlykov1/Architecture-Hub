@@ -260,3 +260,63 @@ button{border-radius:5px;border-color:#dde2e8}.primary{background:var(--hub-blue
 .homeMapLayersDisclosure>summary::-webkit-details-marker{display:none}
 .homeMapLayersDisclosure>summary:hover{background:#edf3fa}
 .homeMapLayersDisclosure>.homeMapLayers{margin-top:5px;border:1px solid #e2e8f0;border-radius:9px;padding:9px 12px;background:#fff}
+
+/* Daily workspace: one global header, explicit representations, optional tools. */
+:focus-visible{outline:2px solid #2563eb;outline-offset:3px}
+button:disabled{cursor:not-allowed;opacity:.55}
+.shell{height:100dvh;min-height:0;grid-template-rows:52px minmax(0,1fr)}
+.main{min-height:0;overflow:hidden}
+.globalHeader{gap:12px;min-width:0}
+.globalHeader .topActions{margin-left:auto;font-size:12px;min-width:0}
+.globalHeader .topActions button{padding:6px 9px}
+.globalHeader .topActions select{padding:6px;max-width:180px;color:#233a55}
+.globalHeaderActions:empty{display:none}
+.layerTabs{flex-shrink:0;min-height:44px}
+.workspaceFilters{flex-shrink:0;padding:9px 16px}
+.infraPanel{padding:16px;min-height:0}
+.viewHead{margin-bottom:12px;justify-content:flex-start}
+.viewHead>select{max-width:min(310px,100%);min-width:0}
+.viewSwitch{display:inline-flex;gap:2px;padding:3px;border:1px solid #dbe3ed;border-radius:8px;background:#fff}
+.viewSwitch button{padding:6px 10px;border:0;background:transparent;font-size:12px}
+.viewSwitch button[aria-pressed=true]{background:#e8effa;color:#1d4ed8}
+.workspaceDisclosure{margin:8px 0;min-width:0}
+.workspaceDisclosure>summary{cursor:pointer;padding:8px 10px;font-size:12px;color:#475569;width:fit-content;border-radius:6px;background:#f1f5f9}
+.disclosureContent{padding:10px 0;display:flex;flex-wrap:wrap;align-items:flex-start;gap:10px}
+.disclosureContent>section,.disclosureContent>.flowComponentSearch,.disclosureContent>.flowLayoutControls,.disclosureContent>p{width:100%}
+.disclosureContent select{max-width:100%}
+.qualityAudit,.flowAudit{margin:0;width:100%}
+.architectureRegistry{margin:0;padding:12px}
+.architectureRegistryHeader h3{font-size:14px}
+.architectureRegistryTableWrap{max-height:calc(100dvh - 290px)}
+.miniArchitecture{height:clamp(360px,calc(100dvh - 270px),900px);margin:10px 0}
+.diagramLegend{padding-bottom:4px}
+.graphFocusToolbar{margin:5px 0;padding:7px 10px}
+.graphModeHint{font-size:11px;padding:5px 9px;margin:5px 0}
+.canvasMode{position:absolute;z-index:5;right:12px;top:12px}
+.canvasMode button{font-size:12px;padding:7px 10px}
+.homeMap{padding:14px 16px;overflow:auto;min-height:0;gap:10px;flex:1;grid-template-rows:auto auto minmax(340px,1fr);align-content:start}
+.homeMapHead{align-items:center}
+.homeMapStats span{padding:3px 0;background:transparent;color:#64748b}
+.homeMapTools{align-items:flex-start}
+.homeMapTools>input{flex:1;min-width:140px}
+.homeMapTools>.workspaceDisclosure{margin:0}
+.homeMapTools .disclosureContent{max-width:540px}
+.homeMapGraph{height:100%;min-height:340px}
+.homeMapDetails:empty{display:none}
+.homeMapSelection{margin:0!important;padding:10px!important}
+.topologyWorkspace{padding:14px;display:flex;flex:1;flex-direction:column;gap:8px;min-height:0;position:relative;overflow:auto}
+.topologyWorkspace>.workspaceDisclosure{flex:none}
+.topologyGuide{padding:8px;font-size:12px}
+.topologyCanvas{flex:1;min-height:360px;position:relative;border:1px solid #d5e0ef;border-radius:9px;overflow:hidden}
+.topologyInspector{position:relative;width:100%;padding:12px;border:1px solid #d5e0ef;background:white;border-radius:8px;max-height:300px;overflow:auto}
+@media(min-width:1250px){.topologyWorkspace:has(.topologyInspector){display:grid;grid-template-columns:minmax(0,1fr) 300px;grid-template-rows:auto auto minmax(360px,1fr)}.topologyWorkspace:has(.topologyInspector)>:not(.topologyInspector){grid-column:1}.topologyInspector{grid-column:2;grid-row:1 / -1;height:100%;max-height:none}}
+@media(max-width:1020px){.layerTabs{overflow:visible;flex-wrap:wrap}.layerTabs .layerActions{position:relative}.layerTabs .layerActionMenu{position:absolute}.globalHeader{padding:0 10px}.globalBrandMark{display:none}}
+@media(max-width:900px){.shell{grid-template-columns:220px minmax(0,1fr);grid-template-rows:52px minmax(0,1fr)}.main{grid-column:2;grid-row:2}.shell.shellSidebarCollapsed{grid-template-columns:minmax(0,1fr);grid-template-rows:52px minmax(0,1fr)}.shell.shellSidebarCollapsed .main{grid-column:1;grid-row:2}}
+@media(max-width:650px){.shell{grid-template-columns:minmax(0,1fr)}.sidebar{position:fixed;left:0;top:52px;bottom:0;width:min(280px,85vw);max-height:none;z-index:20;box-shadow:8px 0 20px #0f172a22}.catalog{display:block}.catalogItem{min-width:0}.main{grid-column:1;grid-row:2}.globalBrand strong{font-size:12px}.globalHeader .topActions select{max-width:110px}.globalHeaderActions{display:none}.layerTabs{padding:0 5px;gap:0}.layerTabs button{padding:10px 7px}.layerTabs .layerActions summary{padding:10px 7px}.infraPanel{padding:10px}.homeMap{padding:10px}.homeMapTools input,.networkRegistryFilters input{min-width:120px}.workspaceFiltersCompact input{min-width:120px}.viewHead{gap:8px}.viewSwitch button{padding:6px 8px}.topologyWorkspace{padding:10px}.topologyGuide{display:block}.topologyGuide label{margin-bottom:8px}.formPair{grid-template-columns:1fr}.infraGrid,.businessGrid{grid-template-columns:minmax(0,1fr)}.homeMapDetails{grid-template-columns:minmax(0,1fr)}}
+.miniArchitecture .react-flow__node strong,.miniArchitecture .react-flow__node small{display:block;overflow-wrap:anywhere}
+.miniArchitecture .react-flow__node small{font-size:11px;color:#64748b;margin-top:5px}
+.topologyWorkspace .disclosureContent select{min-width:130px;padding:7px;border:1px solid #d5e0ef;border-radius:6px}
+.topologyWorkspace>small{font-size:11px;color:#64748b}
+/* Dialogs must own input above navigation popovers. */
+.editorBackdrop,.topologyNicBackdrop{z-index:200}
+@media(min-width:901px) and (max-width:1050px){.shell.shellSidebarCollapsed.shellInspectorOpen{grid-template-columns:minmax(0,1fr)}}

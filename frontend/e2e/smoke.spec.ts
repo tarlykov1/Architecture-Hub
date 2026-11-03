@@ -1,8 +1,15 @@
-import { expect, test } from '@playwright/test'
+import { expect, test, type Page } from '@playwright/test'
+
+async function navigateTo(page: Page, section: 'Реестр сетей'|'Инциденты'|'Топология сетей') {
+  const menu=page.locator('nav.layerTabs details.secondaryNavigation')
+  await menu.locator('summary').click()
+  await menu.getByRole('button',{name:section,exact:true}).click()
+}
+
 
 test('catalog loads and saved workspace views survive reload', async ({ page }) => {
   await page.goto('/')
-  await expect(page.getByRole('heading', { name: 'Карта архитектуры' })).toBeVisible()
+  await expect(page.getByRole('navigation',{name:'Разделы архитектуры'}).getByRole('button',{name:'Обзор'})).toBeVisible()
   await page.getByRole('button', { name: 'Системы', exact: true }).click()
   const filter = page.getByRole('textbox', { name: 'Фильтр по названию' })
   await filter.fill('ci-nonexistent-system')
@@ -21,10 +28,10 @@ test('catalog loads and saved workspace views survive reload', async ({ page }) 
 
 test('network registry and incidents navigation do not crash', async ({ page }) => {
   await page.goto('/')
-  await page.getByRole('button', { name: 'Реестр сетей' }).click()
+  await navigateTo(page,'Реестр сетей')
   await expect(page.getByRole('heading', { name: 'Реестр сетей' })).toBeVisible()
   await expect(page.getByRole('textbox', { name: 'Поиск сети' })).toBeVisible()
-  await page.getByRole('button', { name: 'Инциденты', exact: true }).first().click()
+  await navigateTo(page,'Инциденты')
   await expect(page.getByRole('heading', { name: 'Реестр инцидентов' })).toBeVisible()
 })
 
@@ -47,7 +54,7 @@ test('team view is saved through API and reused after reload', async ({ page }) 
 
 test('create network and incident from visible forms', async ({ page }) => {
   await page.goto('/')
-  await page.getByRole('button', { name: 'Реестр сетей' }).click()
+  await navigateTo(page,'Реестр сетей')
   await page.getByRole('button', { name: '+ Создать сеть' }).click()
   const networkDialog=page.getByRole('dialog', { name: 'Редактор сети' })
   await expect(networkDialog).toBeVisible()
@@ -55,7 +62,7 @@ test('create network and incident from visible forms', async ({ page }) => {
   await networkDialog.getByRole('button', { name: 'Сохранить', exact: true }).click()
   await expect(networkDialog).toBeHidden()
   await expect(page.getByRole('cell', { name: 'CI-NETWORK-E2E' })).toBeVisible()
-  await page.getByRole('button', { name: 'Инциденты', exact: true }).first().click()
+  await navigateTo(page,'Инциденты')
   await page.getByRole('button', { name: '+ Инцидент' }).click()
   const incident=page.locator('.incidentDetail')
   await incident.getByRole('textbox', { name: 'Название' }).fill('CI incident browser test')
@@ -69,7 +76,7 @@ test('selected system downloads a KIS Excel file', async ({ page }) => {
   expect(created.status()).toBe(201)
   await page.goto('/')
   await page.getByRole('button',{name:name}).first().click()
-  await page.locator('.layerActions summary').click()
+  await page.locator('nav.layerTabs .navEnd details.layerActions summary').click()
   const exportButton=page.getByRole('button',{name:'Экспорт КИС в Excel'})
   await expect(exportButton).toBeEnabled()
   const [download]=await Promise.all([page.waitForEvent('download'),exportButton.click()])
@@ -86,7 +93,7 @@ test('component card shows passport, interfaces and flows tabs', async ({ page }
   const vm=await page.request.post('http://127.0.0.1:8001/api/infra',{data:{system_id:systemId,name:'E2E component',kind:'vm',description:'Test node'}})
   expect(vm.status()).toBe(201)
   await page.goto('/')
-  await page.getByRole('button',{name:'Сервисы и ВМ'}).click()
+  await page.getByRole('button',{name:'Компоненты',exact:true}).click()
   await page.getByRole('textbox',{name:'Фильтр по названию'}).fill('E2E component')
   await page.getByRole('button',{name:'Карточка компонента'}).click()
   const dialog=page.getByRole('dialog',{name:'Карточка компонента E2E component'})
@@ -106,7 +113,7 @@ test('inspector avoids duplicate architecture action when selected architecture 
   expect(result.status()).toBe(201)
   await page.goto('/')
   await page.getByRole('button',{name:title}).first().click()
-  await page.getByRole('button',{name:'Сервисы и ВМ'}).click()
+  await page.getByRole('button',{name:'Компоненты',exact:true}).click()
   const panel=page.getByRole('complementary',{name:'Карточка архитектурного объекта'})
   await expect(panel).toHaveCount(0)
   await expect(page.getByRole('heading',{name:'Компоненты, ВМ и сети'})).toBeVisible()
@@ -133,7 +140,7 @@ test('infrastructure graph permits connecting components',async({page})=>{
  for(const name of ['source-node','target-node'])expect((await page.request.post('http://127.0.0.1:8001/api/infra',{data:{system_id:id,name,kind:'service'}})).ok()).toBeTruthy()
  await page.goto('/')
  await page.getByRole('button',{name:/link-test-/}).first().click()
- await page.getByRole('button',{name:'Сервисы и ВМ'}).click()
+ await page.getByRole('button',{name:'Компоненты',exact:true}).click()
  await expect(page.getByRole('heading',{name:'Компоненты, ВМ и сети'})).toBeVisible()
  const handles=page.locator('.miniArchitecture .react-flow__handle')
  await expect(handles).toHaveCount(4)
@@ -198,7 +205,7 @@ test('topology starts with all components and no arbitrary selected flow',async(
  const f=await page.request.post('http://127.0.0.1:8001/api/flows',{data:{source_id:itemIds[0],target_id:itemIds[1],name:'Topology focused flow',protocol:'HTTPS',verification:'draft'}})
  expect(f.status()).toBe(201)
  await page.goto('/')
- await page.getByRole('button',{name:'Топология сетей'}).click()
+ await navigateTo(page,'Топология сетей')
  await page.getByRole('combobox',{name:'Система'}).selectOption(id)
  const diagram=page.locator('.react-flow')
  await expect(page.getByRole('combobox',{name:'Выбрать поток на схеме'})).toHaveValue('')
@@ -219,7 +226,7 @@ test('topology editor creates and updates a flow via API',async({page})=>{
   expect(res.status()).toBe(201)
  }
  await page.goto('/')
- await page.getByRole('button',{name:'Топология сетей'}).click()
+ await navigateTo(page,'Топология сетей')
  await page.getByRole('combobox',{name:'Система'}).selectOption(id)
  await page.getByRole('button',{name:'Редактировать топологию'}).click()
  await page.getByRole('button',{name:'+ Создать поток'}).click()
@@ -231,7 +238,7 @@ test('topology editor creates and updates a flow via API',async({page})=>{
  await dialog.getByRole('button',{name:'Сохранить поток'}).click()
  await expect(dialog).toHaveCount(0)
  await page.reload()
- await page.getByRole('button',{name:'Топология сетей'}).click()
+ await navigateTo(page,'Топология сетей')
  await page.getByRole('combobox',{name:'Система'}).selectOption(id)
  await page.getByRole('checkbox',{name:'Все потоки'}).check()
  await expect(page.locator('.react-flow__edge')).toHaveCount(1)

@@ -343,7 +343,7 @@ function App() {
   const [workspaceVerified,setWorkspaceVerified] = useState('all')
   const [search,setSearch] = useState('')
   const [viewSystem,setViewSystem] = useState('')
-  useEffect(()=>{setExpandedComponentGroup('')},[viewSystem])
+
   const [showExternalDependencies,setShowExternalDependencies] = useState(false)
   const [zoneMode,setZoneMode] = useState(false)
   const [infra, setInfra] = useState<Infra[]>([])
@@ -658,6 +658,7 @@ function App() {
     if(localIds.has(f.source_id)&&!localIds.has(f.target_id))externalIds.add(f.target_id)
     if(localIds.has(f.target_id)&&!localIds.has(f.source_id))externalIds.add(f.source_id)
   }
+  useEffect(()=>{setExpandedComponentGroup('')},[viewSystem,workspaceQuery,workspaceKind,showExternalDependencies])
   const scopedItems=infra.filter(i=>(localIds.has(i.id)||externalIds.has(i.id))&&(workspaceKind==='all'||i.kind===workspaceKind)&&(!workspaceQuery||[i.name,i.description,i.kind,...Object.values(i.details).map(v=>typeof v==='object'?JSON.stringify(v):String(v)),objects.find(o=>o.id===i.system_id)?.name||''].join(' ').toLowerCase().includes(workspaceQuery.toLowerCase())))
   const scopedIds=new Set(scopedItems.map(i=>i.id))
   const scopedFlows=flows.filter(f=>scopedIds.has(f.source_id)||scopedIds.has(f.target_id))

@@ -377,6 +377,18 @@ test('registry columns are configurable and persist after reload',async({page})=
   await expect(page.getByRole('region',{name:'Архитектурный реестр'}).getByRole('columnheader',{name:'Владелец'})).toBeVisible()
 })
 
+test('component view choice survives a reload',async({page})=>{
+  await uxSystem(page)
+  await page.goto('/')
+  await page.getByRole('navigation',{name:'Разделы архитектуры'}).getByRole('button',{name:'Компоненты',exact:true}).click()
+  const views=page.getByRole('group',{name:'Представление компонентов'})
+  await views.getByRole('button',{name:'Карточки',exact:true}).click()
+  await expect(page.locator('.infraGrid .infraCard')).toHaveCount(2)
+  await page.reload()
+  await page.getByRole('navigation',{name:'Разделы архитектуры'}).getByRole('button',{name:'Компоненты',exact:true}).click()
+  await expect(page.getByRole('group',{name:'Представление компонентов'}).getByRole('button',{name:'Карточки',exact:true})).toHaveAttribute('aria-pressed','true')
+})
+
 test('access dialog masks the key, contains focus and returns focus on Escape',async({page})=>{
   await page.goto('/')
   const trigger=page.getByRole('button',{name:'Ключ доступа',exact:true})

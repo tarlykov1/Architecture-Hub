@@ -62,8 +62,18 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
 
 function App() {
   useWorkspaceKeyboard()
-  const [componentView,setComponentView]=useState<'diagram'|'registry'|'cards'>('registry')
-  const [flowView,setFlowView]=useState<'diagram'|'cards'>('diagram')
+  const [componentView,setComponentView]=useState<'diagram'|'registry'|'cards'>(()=>{
+    try{const saved=localStorage.getItem('architecture-hub-component-view-v1');return saved==='diagram'||saved==='registry'||saved==='cards'?saved:'registry'}catch{return 'registry'}
+  })
+  const [flowView,setFlowView]=useState<'diagram'|'cards'>(()=>{
+    try{return localStorage.getItem('architecture-hub-flow-view-v1')==='cards'?'cards':'diagram'}catch{return 'diagram'}
+  })
+  useEffect(()=>{
+    try{localStorage.setItem('architecture-hub-component-view-v1',componentView)}catch{/* Storage unavailable. */}
+  },[componentView])
+  useEffect(()=>{
+    try{localStorage.setItem('architecture-hub-flow-view-v1',flowView)}catch{/* Storage unavailable. */}
+  },[flowView])
   const [authOpen,setAuthOpen]=useState(false)
   const [authDraft,setAuthDraft]=useState('')
   const [authBusy,setAuthBusy]=useState(false)

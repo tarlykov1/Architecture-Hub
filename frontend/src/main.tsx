@@ -812,19 +812,7 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
       <div className="catalog">{visibleObjects.map(o => <button key={o.id} className={'catalogItem ' + (selected === o.id ? 'active' : '')} onClick={() => {setSelected(o.id);setInspectorOpen(true);setPanelTab("overview")}} onDoubleClick={()=>{setViewSystem(o.id);setLayer("infrastructure");setInspectorOpen(false);setInspectorExpanded(false)}}>
         <span className="objectIcon">▦</span><span><strong>{o.name}</strong><small>{o.kind}</small></span>
       </button>)}</div>
-      <div style={{padding:"12px 14px",borderTop:"1px solid #e1e7ef"}}><button type="button" className="primary" style={{width:"100%"}} aria-expanded={createObjectOpen} onClick={()=>setCreateObjectOpen(v=>!v)}>{createObjectOpen?"Закрыть создание":"+ Добавить объект"}</button></div>
-      {createObjectOpen&&<form className="createForm" onSubmit={addObject}>
-        <h3>Новый объект</h3>
-        <input aria-label="Название" placeholder="Название системы" value={name} onChange={e => setName(e.target.value)} required />
-        <select aria-label="Тип" value={kind} onChange={e => setKind(e.target.value)}>
-          <option value="system">ИТ-система</option><option value="process">Бизнес-процесс</option>
-          <option value="database">База данных</option><option value="integration">Интеграция</option>
-          <option value="service">Сервис</option><option value="other">Другое</option>
-        </select>
-        <textarea aria-label="Описание" placeholder="Описание (необязательно)" value={description} onChange={e => setDescription(e.target.value)} rows={3} />
-        <button className="primary" disabled={busy}>+ Добавить</button>
-      </form>}
-    </aside>
+      </aside>
     <main className="main">
       <header className="topbar"><div className="workspaceContext"><span className="workspaceEyebrow">АРХИТЕКТУРА</span><strong>{drill?drill.name:({home:"Обзор",systems:"Системы",business:"Бизнес-процессы",infrastructure:"Компоненты",flows:"Потоки данных",networks:"Реестр сетей",topology:"Топология сетей",incidents:"Инциденты"} as Record<string,string>)[layer]}</strong></div><div className="topActions">
         {tokenReady ? <button type="button" title="Завершить сеанс и удалить ключ доступа из вкладки" onClick={()=>{saveAccessToken('');setTokenReady(false);setObjects([]);setRelations([]);setDiagrams([]);setInfra([]);setFlows([]);setSegments([]);setNics([]);setCategories([]);setProcesses([]);setBusinessLinks([]);setSelected('');setSelectedFlow('');setError('');setNotice('Сеанс завершён')}}>Выйти</button> : <button type="button" onClick={()=>{const value=window.prompt('Ключ доступа Architecture Hub (Bearer token)');if(value===null)return;saveAccessToken(value);setTokenReady(Boolean(accessToken));refresh().then(()=>setError('')).catch(e=>setError(e.message))}}>Ключ доступа</button>}
@@ -1013,6 +1001,22 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
         </div>
       </div>
     })()}
+    {createObjectOpen&&<div className="editorBackdrop" onClick={()=>setCreateObjectOpen(false)}>
+      <div className="editorDialog" role="dialog" aria-modal="true" aria-label="Создать объект архитектуры" onClick={event=>event.stopPropagation()}>
+        <div className="dialogHead"><h2>Новый объект</h2><button type="button" onClick={()=>setCreateObjectOpen(false)}>Закрыть ×</button></div>
+        <form className="detailForm" onSubmit={addObject}>
+        
+        <input aria-label="Название" placeholder="Название системы" value={name} onChange={e => setName(e.target.value)} required />
+        <select aria-label="Тип" value={kind} onChange={e => setKind(e.target.value)}>
+          <option value="system">ИТ-система</option><option value="process">Бизнес-процесс</option>
+          <option value="database">База данных</option><option value="integration">Интеграция</option>
+          <option value="service">Сервис</option><option value="other">Другое</option>
+        </select>
+        <textarea aria-label="Описание" placeholder="Описание (необязательно)" value={description} onChange={e => setDescription(e.target.value)} rows={3} />
+        <button className="primary" disabled={busy}>+ Добавить</button>
+      </form>
+      </div>
+    </div>}
     {registryOpen&&<div className="editorBackdrop" onClick={()=>setRegistryOpen(null)}>
       <div className="editorDialog registryDialog" role="dialog" aria-modal="true" aria-label={registryOpen==='network'?'Редактор сети':'Редактор потока'} onClick={e=>e.stopPropagation()}>
         <div className="dialogHead"><h2>{registryOpen==='network'?(networkEditId?'Редактировать сеть':'Создать сеть'):(flowEditId?'Редактировать поток':'Создать поток')}</h2><button onClick={()=>setRegistryOpen(null)}>Закрыть ×</button></div>

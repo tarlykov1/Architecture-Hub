@@ -26,18 +26,18 @@ jobs:
     environment: test
     timeout-minutes: 15
     env:
-      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }
-      DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }
-      DEPLOY_USER: ${{ secrets.DEPLOY_USER }
-      DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }
-      DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }
+      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+      DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+      DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+      DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+      DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
       DEPLOY_DIR: /var/www/webtie.ru/data/www/test.web-tie.ru
 
     steps:
       - name: Checkout the exact commit that passed CI
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.workflow_run.head_sha }
+          ref: ${{ github.event.workflow_run.head_sha }}
           persist-credentials: false
 
       - name: Setup Node.js 22
@@ -50,7 +50,7 @@ jobs:
       - name: Build frontend
         working-directory: frontend
         env:
-          VITE_WIKI_URL: ${{ vars.VITE_WIKI_URL }
+          VITE_WIKI_URL: ${{ vars.VITE_WIKI_URL }}
         run: |
           npm ci --no-audit --no-fund
           npm run build

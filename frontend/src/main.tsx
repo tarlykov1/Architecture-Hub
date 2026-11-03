@@ -835,9 +835,9 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
         <button className={layer==='infrastructure'?'current':''} onClick={()=>{setLayer('infrastructure');setInspectorOpen(false);setInspectorExpanded(false)}}>Компоненты</button>
         <button className={layer==='flows'?'current':''} onClick={()=>{setViewSystem('');setFlowComponentFocus('');setLayer('flows')}}>Потоки</button>
         <details className="layerActions secondaryNavigation">
-          <summary aria-label="Другие разделы">{({business:'Бизнес-процессы',networks:'Реестр сетей',topology:'Топология сетей',incidents:'Инциденты',knowledge:'База знаний'} as Record<string,string>)[layer]||'Ещё'} ▾</summary>
+          <summary aria-label="Другие разделы">{({business:'Бизнес-процессы',networks:'Реестр сетей',topology:'Топология сетей',incidents:'Инциденты',knowledge:'Wiki.js'} as Record<string,string>)[layer]||'Ещё'} ▾</summary>
           <div className="layerActionMenu">
-            {([['business','Бизнес-процессы'],['networks','Реестр сетей'],['topology','Топология сетей'],['incidents','Инциденты'],['knowledge','База знаний']] as const).map(([id,label])=><button type="button" key={id} className={layer===id?'current':''} onClick={e=>{setLayer(id);e.currentTarget.closest('details')?.removeAttribute('open')}}>{label}</button>)}
+            {([['business','Бизнес-процессы'],['networks','Реестр сетей'],['topology','Топология сетей'],['incidents','Инциденты'],['knowledge','Wiki.js · База знаний']] as const).map(([id,label])=><button type="button" key={id} className={layer===id?'current':''} onClick={e=>{setLayer(id);e.currentTarget.closest('details')?.removeAttribute('open')}}>{label}</button>)}
           </div>
         </details>
         <div className="navEnd"><details className="layerActions">

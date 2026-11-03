@@ -32,13 +32,13 @@ export function Disclosure({label,children}:{label:string;children:ReactNode}){
 export function useWorkspaceKeyboard(){
  useEffect(()=>{
   const closeMenus=(target:EventTarget|null)=>{
-   document.querySelectorAll<HTMLDetailsElement>('details.layerActions[open]').forEach(menu=>{
+   document.querySelectorAll<HTMLDetailsElement>('details.layerActions[open], details.mobileSectionMenu[open]').forEach(menu=>{
     if(!(target instanceof Node)||!menu.contains(target))menu.open=false
    })
   }
   const click=(event:MouseEvent)=>{
    closeMenus(event.target)
-   if(event.target instanceof Element&&event.target.closest('.layerActionMenu button'))event.target.closest('details')?.removeAttribute('open')
+   if(event.target instanceof Element&&event.target.closest('.layerActionMenu button, .mobileSectionOptions button'))event.target.closest('details')?.removeAttribute('open')
   }
   let active:HTMLElement|null=null,returnTo:HTMLElement|null=null
   const sync=()=>{
@@ -50,7 +50,7 @@ export function useWorkspaceKeyboard(){
   }
   const key=(event:KeyboardEvent)=>{
    if(event.key==='Escape'){
-    const menu=document.querySelector<HTMLDetailsElement>('details.layerActions[open]')
+    const menu=document.querySelector<HTMLDetailsElement>('details.layerActions[open], details.mobileSectionMenu[open]')
     if(menu){menu.open=false;menu.querySelector<HTMLElement>('summary')?.focus();event.preventDefault();return}
     if(active){const close=active.querySelector<HTMLButtonElement>('.dialogHead button,button[aria-label^="Закрыть"]');if(close&&!close.disabled){close.click();event.preventDefault()}}
    }

@@ -8,6 +8,18 @@ async function navigateTo(page: Page, section: 'Реестр сетей'|'Инц
 
 
 
+test('Wiki.js entry remains discoverable without configured connector',async({page})=>{
+  await page.goto('/')
+  const menu=page.getByRole('navigation',{name:'Разделы архитектуры'}).locator('details.secondaryNavigation')
+  await menu.locator('summary').click()
+  await menu.getByRole('button',{name:'База знаний',exact:true}).click()
+  const knowledge=page.getByRole('region',{name:'База знаний Wiki.js'})
+  await expect(knowledge).toBeVisible()
+  await expect(knowledge.getByRole('heading',{name:'База знаний · Wiki.js'})).toBeVisible()
+  await expect(knowledge.getByRole('status')).toBeVisible()
+  await expect(knowledge.getByRole('heading',{name:'Документация по системам'})).toBeVisible()
+})
+
 test('workspace navigation is integrated into the single global header',async({page})=>{
   await page.goto('/')
   const header=page.getByRole('banner',{name:'Главная панель Architecture Hub'})

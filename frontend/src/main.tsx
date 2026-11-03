@@ -9,6 +9,7 @@ import {downstreamImpact,impactRoutes} from './dependencyImpact'
 import Incidents from './Incidents'
 import ArchitectureHome from './ArchitectureHome'
 import {scopedFlowIds} from './flowScope'
+import {shouldShowSystemsOverview} from './flowDetail'
 import {ReciprocalEdge} from './ReciprocalEdge'
 
 import {AutoFit, Disclosure, useWorkspaceKeyboard} from './WorkspaceUI'
@@ -772,9 +773,7 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
   const flowSystemPositions=dependencyLayout(flowSystemIds,flowSystemEdges.map(x=>({source:x.source,target:x.target})),flowLayoutGaps[0],flowLayoutGaps[1])
   const flowOverviewPositions=flowLayoutOrientation==='vertical'?Object.fromEntries(Object.entries(flowSystemPositions).map(([id,p])=>[id,{x:p.y,y:p.x}])):flowSystemPositions
   const overviewPairs=[...new Set(flowSystemEdges.map(x=>x.source+'|'+x.target))]
-  const activeFlowComponentCount=new Set(visibleFlows.flatMap(f=>[f.source_id,f.target_id])).size
-  const autoFlowOverview=!viewSystem&&!flowComponentFocus&&flowSystemIds.length>1&&activeFlowComponentCount>20
-  const effectiveFlowOverview=flowDetailPreference==='systems'||(flowDetailPreference==='auto'&&(flowSystemOverview||autoFlowOverview))
+  const effectiveFlowOverview=shouldShowSystemsOverview(visibleFlows,flowSystemIds.length,Boolean(viewSystem),Boolean(flowComponentFocus),flowDetailPreference,flowSystemOverview)
 
   const adjacent=new Set([focusedComponent])
   for(const f of scopedFlows){if(f.source_id===focusedComponent)adjacent.add(f.target_id);if(f.target_id===focusedComponent)adjacent.add(f.source_id)}

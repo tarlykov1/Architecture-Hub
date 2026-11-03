@@ -824,12 +824,18 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
   useEffect(()=>{
     if(!modalOpen)return
     setViewsMenuOpen(false)
-    document.querySelectorAll<HTMLDetailsElement>('details.layerActions[open], details.registryColumnPicker[open]').forEach(menu=>{menu.open=false})
+    document.querySelectorAll<HTMLDetailsElement>('details.layerActions[open], details.mobileSectionMenu[open], details.registryColumnPicker[open]').forEach(menu=>{menu.open=false})
   },[modalOpen,authOpen,kisOpen,passportEditId,componentInspectId,createObjectOpen,registryOpen])
   return <div className={`shell${inspectorOpen&&!inspectorExpanded?" shellInspectorOpen":""}${sidebarCollapsed?" shellSidebarCollapsed":""}`}>
     <header className="globalHeader" aria-label="Главная панель Architecture Hub">
       <div className="globalBrand"><button type="button" className="sidebarToggle" aria-label={sidebarCollapsed?"Открыть каталог":"Скрыть каталог"} aria-expanded={!sidebarCollapsed} title={sidebarCollapsed?"Показать каталог":"Скрыть каталог"} onClick={()=>setSidebarCollapsed(value=>!value)}>☰</button><span className="globalBrandMark">◆</span><strong>Architecture Hub</strong></div>
       <nav className="layerTabs" aria-label="Разделы архитектуры">
+        <details className="mobileSectionMenu">
+          <summary aria-label="Выбрать раздел">{({home:'Обзор',systems:'Системы',infrastructure:'Компоненты',flows:'Потоки',business:'Бизнес-процессы',networks:'Реестр сетей',topology:'Топология сетей',incidents:'Инциденты',knowledge:'Wiki.js'} as Record<string,string>)[layer]}</summary>
+          <div className="mobileSectionOptions">
+            {([['home','Обзор'],['systems','Системы'],['infrastructure','Компоненты'],['flows','Потоки'],['business','Бизнес-процессы'],['networks','Реестр сетей'],['topology','Топология сетей'],['incidents','Инциденты'],['knowledge','Wiki.js · База знаний']] as const).map(([id,label])=><button key={id} type="button" className={layer===id?'current':''} onClick={e=>{if(id==='home'||id==='systems'||id==='flows')setViewSystem('');if(id==='flows')setFlowComponentFocus('');if(id==='infrastructure'){setInspectorOpen(false);setInspectorExpanded(false)}setLayer(id);e.currentTarget.closest('details')?.removeAttribute('open')}}>{label}</button>)}
+          </div>
+        </details>
         <button className={layer==='home'?'current':''} onClick={()=>{setViewSystem('');setLayer('home')}}>Обзор</button>
         <button className={layer==='systems'?'current':''} onClick={()=>{setViewSystem('');setLayer('systems')}}>Системы</button>
         <button className={layer==='infrastructure'?'current':''} onClick={()=>{setLayer('infrastructure');setInspectorOpen(false);setInspectorExpanded(false)}}>Компоненты</button>

@@ -56,6 +56,7 @@ export default function ArchitectureHome({systems,components,flows,processes,lin
     {filteredSystems.length===0&&<span>По этому запросу системы не найдены.</span>}
     {filteredSystems.slice(0,12).map(system=><div key={system.id} className="homeMapSearchMatch">
       <span>{system.name}</span>
+      <button type="button" onClick={()=>setSelectedSystem(system.id)} aria-label={`Выбрать ИС из поиска: ${system.name}`}>Выбрать</button>
       <button type="button" onClick={()=>{setSelectedSystem(system.id);onOpenSystem(system.id)}} aria-label={`Открыть паспорт ИС из поиска: ${system.name}`}>Паспорт</button>
       <button type="button" onClick={()=>onOpenComponents(system.id)} aria-label={`Открыть компоненты ИС из поиска: ${system.name}`}>Компоненты</button>
     </div>)}

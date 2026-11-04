@@ -728,6 +728,7 @@ test('flow attribute drawer reuses dictionary fields for distinct business consu
   await page.getByRole('button',{name:'Справочник атрибутов и состав данных'}).click()
   const drawer=page.getByRole('dialog',{name:'Атрибуты потоков данных'})
   await expect(drawer).toBeVisible()
+  await drawer.getByRole('tab',{name:/Справочник/}).click()
   await drawer.getByRole('button',{name:'+ Атрибут',exact:true}).click()
   await drawer.getByRole('textbox',{name:'Уникальный код'}).fill('employee.name.'+suffix)
   await drawer.getByRole('textbox',{name:'Название',exact:true}).fill('ФИО')

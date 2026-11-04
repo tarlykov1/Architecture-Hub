@@ -20,6 +20,7 @@ def test_declared_flow_network_path_is_ordered_validated_and_reusable():
         flow=create(client,"/api/flows",{"name":"HR data "+suffix,"source_id":source,"target_id":target})
         firewall=create(client,"/api/network-assets",{
             "name":"Firewall "+suffix,"kind":"firewall","description":"Boundary","verification":"assumed"})
+        vrf=create(client,"/api/networks",{"name":"VRF-"+suffix,"kind":"vrf","verification":"verified"})
         ptaf=create(client,"/api/network-assets",{
             "name":"PTAF "+suffix,"kind":"ptaf","description":"Application protection","verification":"draft"})
         assert client.get("/api/network-assets",headers=VIEWER).status_code==403
@@ -55,6 +56,18 @@ def test_declared_flow_network_path_is_ordered_validated_and_reusable():
             {"asset_id":ptaf,"position":0,"verification":"verified"},
         ]).status_code==200
         assert [x["asset_id"] for x in client.get(path,headers=ADMIN).json()["hops"]]==[ptaf]
+        mixed=client.put(path,headers=ADMIN,json=[
+            {"segment_id":vrf,"position":0,"verification":"verified"},
+            {"asset_id":ptaf,"position":1,"verification":"assumed"},
+        ])
+        assert mixed.status_code==200,mixed.text
+        assert [x["kind"] for x in client.get(path,headers=ADMIN).json()["hops"]]==["vrf","ptaf"]
+        assert client.delete("/api/networks/"+vrf,headers=ADMIN).status_code==409
+        assert client.put(path,headers=ADMIN,json=[
+            {"asset_id":ptaf,"segment_id":vrf,"position":0},
+        ]).status_code==422
+        assert len(client.get(path,headers=ADMIN).json()["hops"])==2
         assert client.delete("/api/network-assets/"+firewall,headers=ADMIN).status_code==204
         assert client.delete("/api/flows/"+flow,headers=ADMIN).status_code==204
+        assert client.delete("/api/networks/"+vrf,headers=ADMIN).status_code==204
         assert client.delete("/api/network-assets/"+ptaf,headers=ADMIN).status_code==204

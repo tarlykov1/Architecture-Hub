@@ -223,6 +223,24 @@ test('infrastructure graph permits connecting components',async({page})=>{
  await expect(handles).toHaveCount(4)
 })
 
+test('single component diagram stays compact after auto-fit',async({page})=>{
+  const name='Compact component '+Date.now()
+  const res=await page.request.post('http://127.0.0.1:8001/api/objects',{data:{name,kind:'system'}})
+  expect(res.status()).toBe(201)
+  const id=(await res.json()).id
+  const vm=await page.request.post('http://127.0.0.1:8001/api/infra',{data:{system_id:id,name:'Only VM',kind:'vm'}})
+  expect(vm.status()).toBe(201)
+  await page.goto('/')
+  await openSystemComponents(page,name)
+  const graph=page.locator('.miniArchitecture')
+  await expect(graph.locator('.react-flow__node')).toHaveCount(1)
+  await expect.poll(async()=>graph.locator('.react-flow__viewport').evaluate(el=>{
+    const transform=(el as HTMLElement).style.transform
+    const scale=Number(transform.match(/scale\\(([^)]+)\\)/)?.[1]||0)
+    return scale>0&&scale<=0.851
+  })).toBe(true)
+})
+
 test('neighboring systems toggle reveals cross-system linked components',async({page})=>{
  const stamp=Date.now()
  const names=['Cross source '+stamp,'Cross neighbor '+stamp]

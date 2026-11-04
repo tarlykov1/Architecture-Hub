@@ -572,5 +572,19 @@ test('topology fits tall groups after loading, resize and catalog collapse',asyn
   await expect(page.locator('aside.sidebar')).toHaveCount(0)
   await expect.poll(contained).toBe(true)
   await page.setViewportSize({width:1000,height:720})
-  await expect.poll(contained).toBe(true)
+  try {
+    await expect.poll(contained).toBe(true)
+  } catch (error) {
+    const diagnostics=await canvas.evaluate(root=>{
+      const box=root.getBoundingClientRect()
+      const nodes=[...root.querySelectorAll('.react-flow__node')].map(node=>{
+        const r=node.getBoundingClientRect()
+        return {id:node.getAttribute('data-id'),left:Math.round(r.left-box.left),right:Math.round(r.right-box.right),top:Math.round(r.top-box.top),bottom:Math.round(r.bottom-box.bottom)}
+      })
+      const pane=root.querySelector('.react-flow__viewport') as HTMLElement|null
+      return {canvas:{width:box.width,height:box.height},transform:pane?.style.transform,clipped:nodes.filter(n=>n.left< -2||n.top< -2||n.right>box.width+2||n.bottom>box.height+2).slice(0,12)}
+    })
+    console.log('TOPOLOGY_RESIZE_DIAGNOSTICS',JSON.stringify(diagnostics))
+    throw error
+  }
 })

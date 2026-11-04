@@ -4,7 +4,7 @@ import { ReactFlow, Background, Controls, applyNodeChanges, type Connection, typ
 import '@xyflow/react/dist/style.css'
 import './style.css'
 import Topology from './Topology'
-import {dependencyLayout} from './graphLayout'
+import {dependencyLayout,compactComponentLayout} from './graphLayout'
 import {downstreamImpact,impactRoutes} from './dependencyImpact'
 import Incidents from './Incidents'
 import ArchitectureHome from './ArchitectureHome'
@@ -111,6 +111,29 @@ function App() {
   const [focusedComponent,setFocusedComponent]=useState('')
   const [impactMode,setImpactMode]=useState(false)
   const [diagramEditMode,setDiagramEditMode]=useState(false)
+  // Personal canvas positions are independent of technical flow data.
+  // They survive navigation/reload on this browser; no infrastructure attributes are changed.
+  const [componentCanvasPositions,setComponentCanvasPositions]=useState<Record<string,Record<string,{x:number;y:number}>>>(()=>{
+    try{
+      const saved=JSON.parse(localStorage.getItem('architecture-hub-component-canvas-v1')||'{}')
+      if(!saved||typeof saved!=='object'||Array.isArray(saved))return {}
+      return saved
+    }catch{return {}}
+  })
+  useEffect(()=>{
+    try{localStorage.setItem('architecture-hub-component-canvas-v1',JSON.stringify(componentCanvasPositions))}catch{/* Storage unavailable. */}
+  },[componentCanvasPositions])
+  const moveComponentOnCanvas=(systemId:string,node:Node)=>{
+    if(!systemId)return
+    setComponentCanvasPositions(previous=>({...previous,[systemId]:{...previous[systemId],[node.id]:{x:node.position.x,y:node.position.y}}}))
+  }
+  const resetComponentCanvas=(systemId:string)=>{
+    setComponentCanvasPositions(previous=>{
+      const next={...previous}
+      delete next[systemId]
+      return next
+    })
+  }
   const [componentFieldGroup,setComponentFieldGroup]=useState<'all'|'network'|'system'|'other'>('all')
   const componentNetworkKeys=new Set(['security_zone','vrf','network_notes','ip_address','vlan','subnet','gateway','dns'])
   const componentSystemKeys=new Set(['environment','hostname','os','owner','version','cpu','memory','storage'])
@@ -738,7 +761,7 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
   </div>
     const segmentName=(id:string|null)=>segments.find(s=>s.id===id)?.name||'Не указано'
   const zones=Array.from(new Set(scopedItems.map(i=>nics.find(n=>n.item_id===i.id)?.zone_id||String(i.details.security_zone||'Зона неизвестна'))))
-  const drillPositions=dependencyLayout(scopedItems.map(i=>i.id),visibleDrillFlows.map(f=>({source:f.source_id,target:f.target_id})),280,170)
+  const drillPositions=compactComponentLayout(scopedItems.map(i=>i.id),visibleDrillFlows.map(f=>({source:f.source_id,target:f.target_id})),280,170)
   const visibleFlowIds=flowComponentFocus?scopedFlowIds(flowComponentFocus,flows.filter(filterFlow),flowDepth,flowDirection):new Set<string>()
   const registryItems=infra.filter(filterInfra).sort((a,b)=>registrySort==='system'?(objects.find(o=>o.id===a.system_id)?.name||'').localeCompare(objects.find(o=>o.id===b.system_id)?.name||'','ru'):String(registrySort==='kind'?a.kind:a.name).localeCompare(String(registrySort==='kind'?b.kind:b.name),'ru'))
   function exportRegistryCsv(){
@@ -803,7 +826,7 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
   const impacted=impactMode&&focusActive?downstreamImpact(focusedComponent,scopedFlows,scopedIds):new Set<string>()
   const visibleFocus=impactMode?new Set([focusedComponent,...impacted]):adjacent
   const impactPaths=impactMode&&focusActive?impactRoutes(focusedComponent,scopedFlows,scopedIds):[]
-  const drillNodes:Node[] = scopedItems.map((i,n)=>({id:i.id,position:drillPositions[i.id]||{x:(n%4)*260,y:Math.floor(n/4)*155},data:{label:<div className="systemNode"><strong>{i.name}</strong><small>{externalIds.has(i.id)?'ВНЕШНЯЯ ИС · ':''}{i.kind} · {String(i.details.environment||'Среда не задана')}</small><small>{nics.filter(n=>n.item_id===i.id).map(n=>[segments.find(s=>s.id===n.zone_id)?.name,segments.find(s=>s.id===n.vrf_id)?.name,segments.find(s=>s.id===n.vlan_id)?.name].filter(Boolean).join(' / ')).join('; ')||String(i.details.security_zone||'Сеть не указана')}</small></div>},style:{width:220,padding:12,background:i.details.environment==='TEST'?'#fff5e7':viewMode==='security'?'#eaf5f2':'#ffffff',border:i.id===focusedComponent?'2px solid #1377d5':externalIds.has(i.id)?'2px dashed #c48a4d':'1px solid #bac8d8',borderRadius:12,opacity:focusActive&&!visibleFocus.has(i.id)?0.28:1}}))
+  const drillNodes:Node[] = scopedItems.map((i,n)=>({id:i.id,position:(componentCanvasPositions[viewSystem]?.[i.id]||drillPositions[i.id]||{x:(n%4)*260,y:Math.floor(n/4)*155}),data:{label:<div className="systemNode"><strong>{i.name}</strong><small>{externalIds.has(i.id)?'ВНЕШНЯЯ ИС · ':''}{i.kind} · {String(i.details.environment||'Среда не задана')}</small><small>{nics.filter(n=>n.item_id===i.id).map(n=>[segments.find(s=>s.id===n.zone_id)?.name,segments.find(s=>s.id===n.vrf_id)?.name,segments.find(s=>s.id===n.vlan_id)?.name].filter(Boolean).join(' / ')).join('; ')||String(i.details.security_zone||'Сеть не указана')}</small></div>},style:{width:220,padding:12,background:i.details.environment==='TEST'?'#fff5e7':viewMode==='security'?'#eaf5f2':'#ffffff',border:i.id===focusedComponent?'2px solid #1377d5':externalIds.has(i.id)?'2px dashed #c48a4d':'1px solid #bac8d8',borderRadius:12,opacity:focusActive&&!visibleFocus.has(i.id)?0.28:1}}))
   const drillEdges:Edge[]=visibleDrillFlows.map(f=>{
     const highlighted=impactMode?(visibleFocus.has(f.source_id)&&impacted.has(f.target_id)):(f.source_id===focusedComponent||f.target_id===focusedComponent)
     const reciprocal=visibleDrillFlows.some(other=>other.source_id===f.target_id&&other.target_id===f.source_id)
@@ -923,7 +946,8 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
           </div>}
           {drill && <div className="graphModeHint" role="status">{effectiveComponentGroupMode?'Сгруппированная схема только для просмотра. Чтобы редактировать связи, выберите «Все компоненты».':diagramEditMode?'Режим редактирования – соедините точки компонентов для создания потока; нажмите на линию для изменения связи.':'Режим просмотра – схема защищена от случайных соединений. Для изменения связей нажмите «Редактировать схему».'}</div>}
           {drill && effectiveComponentGroupMode&&<div className="componentGroupBar" role="status">{isComponentGroupOverview?`Группы: ${displayedComponentCount} · компонентов: ${scopedItems.length} · потоки между группами: ${groupedComponents?.edges.reduce((n,e)=>n+e.count,0)||0}`:`Группа: ${groupedComponents?.nodes.find(group=>group.id===expandedComponentGroup)?.label||'Неизвестная'} · компонентов: ${displayedComponentCount}`}{expandedComponentGroup&&<button type="button" onClick={()=>{setExpandedComponentGroup('');setFocusedComponent('');setImpactMode(false)}}>← Ко всем группам</button>}</div>}
-          {drill && <div className="miniArchitecture" data-active-graph="infrastructure"><ReactFlow minZoom={0.08} maxZoom={renderedDrillNodes.length<=2?0.85:1.2} fitViewOptions={{padding:0.22,maxZoom:renderedDrillNodes.length<=2?0.85:1.2}} key={drill.id+viewMode+(effectiveComponentGroupMode||'components')+expandedComponentGroup} nodes={renderedDrillNodes} edges={renderedDrillEdges} edgeTypes={{reciprocal:ReciprocalEdge}} onNodeClick={(_,node)=>{if(isComponentGroupOverview){setExpandedComponentGroup(node.id);setFocusedComponent('');setImpactMode(false)}else setFocusedComponent(node.id)}} onPaneClick={()=>setFocusedComponent('')} onConnect={diagramEditMode&&!effectiveComponentGroupMode?connectComponents:undefined} onEdgeClick={(_,edge)=>{const flow=flows.find(f=>f.id===edge.id);if(flow){setSelectedFlow(flow.id);if(diagramEditMode)editFlow(flow);else{setComponentInspectId(flow.source_id);setComponentInspectTab('flows')}}}} fitView nodesConnectable={diagramEditMode&&!effectiveComponentGroupMode} nodesDraggable={false}><AutoFit maxFitZoom={renderedDrillNodes.length<=2?0.85:1.2} layoutKey={viewMode+(effectiveComponentGroupMode||'components')+expandedComponentGroup+visibleDrillFlows.map(f=>f.source_id+f.target_id).join('|')}/><Background gap={20}/><Controls showInteractive={false}/></ReactFlow></div>}
+          {drill&&diagramEditMode&&!effectiveComponentGroupMode&&<div className="canvasEditTools" role="toolbar" aria-label="Инструменты схемы компонентов"><span>Перетащите карточки для размещения. Для связи протяните линию между точками – затем заполните технический паспорт потока.</span><button type="button" onClick={()=>resetComponentCanvas(viewSystem)}>Сбросить расположение</button><small>Расположение сохраняется в этом браузере</small></div>}
+          {drill && <div className="miniArchitecture" data-active-graph="infrastructure"><ReactFlow minZoom={0.08} maxZoom={renderedDrillNodes.length<=2?0.85:1.2} fitViewOptions={{padding:0.22,maxZoom:renderedDrillNodes.length<=2?0.85:1.2}} key={drill.id+viewMode+(effectiveComponentGroupMode||'components')+expandedComponentGroup} nodes={renderedDrillNodes} edges={renderedDrillEdges} edgeTypes={{reciprocal:ReciprocalEdge}} onNodeClick={(_,node)=>{if(isComponentGroupOverview){setExpandedComponentGroup(node.id);setFocusedComponent('');setImpactMode(false)}else setFocusedComponent(node.id)}} onPaneClick={()=>setFocusedComponent('')} onConnect={diagramEditMode&&!effectiveComponentGroupMode?connectComponents:undefined} onEdgeClick={(_,edge)=>{const flow=flows.find(f=>f.id===edge.id);if(flow){setSelectedFlow(flow.id);if(diagramEditMode)editFlow(flow);else{setComponentInspectId(flow.source_id);setComponentInspectTab('flows')}}}} fitView nodesConnectable={diagramEditMode&&!effectiveComponentGroupMode} nodesDraggable={diagramEditMode&&!effectiveComponentGroupMode} onNodeDragStop={(_,node)=>{if(diagramEditMode&&!effectiveComponentGroupMode)moveComponentOnCanvas(viewSystem,node)}}><AutoFit maxFitZoom={renderedDrillNodes.length<=2?0.85:1.2} layoutKey={viewMode+(effectiveComponentGroupMode||'components')+expandedComponentGroup+visibleDrillFlows.map(f=>f.source_id+f.target_id).join('|')}/><Background gap={20}/><Controls showInteractive={false}/></ReactFlow></div>}
           {viewMode==='security'&&<div className="networkZones">{zones.map(z=><article key={z} className="zoneCard"><h3>{segments.find(s=>s.id===z)?.name||z}</h3>{scopedItems.filter(i=>(nics.find(n=>n.item_id===i.id)?.zone_id||String(i.details.security_zone||'Зона неизвестна'))===z).map(i=><button key={i.id} onClick={()=>setSelected(i.system_id)}><strong>{i.name}</strong><small>{nics.filter(n=>n.item_id===i.id).map(n=>n.name+' · '+segmentName(n.vrf_id)+' · '+segmentName(n.vlan_id)).join('; ')||'Сетевой интерфейс не задан'}</small></button>)}</article>)}</div>}
           {viewMode==='security'&&<div className="networkLegend">Цвет стрелки: зелёный – указан тип защиты; оранжевый – неизвестно. Наличие TLS не подтверждает защиту всего маршрута. Неподтверждённые параметры требуют проверки.</div>}
           </>}

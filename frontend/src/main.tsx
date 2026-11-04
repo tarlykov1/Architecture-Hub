@@ -69,6 +69,7 @@ function App() {
   const [componentView,setComponentView]=useState<'diagram'|'registry'|'cards'>(()=>{
     try{const saved=localStorage.getItem('architecture-hub-component-view-v1');return saved==='diagram'||saved==='registry'||saved==='cards'?saved:'registry'}catch{return 'registry'}
   })
+  const [systemsShowDiagram,setSystemsShowDiagram]=useState(false)
   const [flowView,setFlowView]=useState<'diagram'|'cards'>(()=>{
     try{return localStorage.getItem('architecture-hub-flow-view-v1')==='cards'?'cards':'diagram'}catch{return 'diagram'}
   })
@@ -891,13 +892,19 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
       setNics(await request<Nic[]>('/api/network-interfaces'))
     }} saveSegment={async (value,id)=>{await request(id?'/api/networks/'+id:'/api/networks',{method:id?'PUT':'POST',body:JSON.stringify(value)});setSegments(await request<Segment[]>('/api/networks'))}} saveFlow={async (value,id)=>{ await request(id?'/api/flows/'+id:'/api/flows',{method:id?'PUT':'POST',body:JSON.stringify(value)}); setFlows(await request<Flow[]>('/api/flows')) }}/> : layer==='business' ? <section className="infraPanel"><h2>Бизнес-архитектура</h2><p className="hint">Категория → процесс → поддерживающие системы. Достоверность связей проверяется отдельно.</p>
       <div className="businessGrid">{categories.filter(cat=>!workspaceQuery||cat.name.toLowerCase().includes(workspaceQuery.toLowerCase())||processes.some(p=>p.category_id===cat.id&&[p.name,p.description].join(' ').toLowerCase().includes(workspaceQuery.toLowerCase()))).map(cat=><article className="businessCategory" key={cat.id}><h3>{cat.name}</h3>{processes.filter(p=>p.category_id===cat.id&&(!workspaceQuery||[p.name,p.description,cat.name].join(' ').toLowerCase().includes(workspaceQuery.toLowerCase()))).map(p=><div className="businessProcess" key={p.id}><strong>{p.name}</strong><p>{p.description}</p><div className="processSystems">{businessLinks.filter(l=>l.process_id===p.id).map(l=><button key={l.id} onClick={()=>{setSelected(l.system_id);setLayer('systems')}}>{objects.find(o=>o.id===l.system_id)?.name||'Система'}</button>)}</div></div>)}</article>)}</div>
-      {!categories.length&&<p>Бизнес-процессы пока не добавлены.</p>}</section> : layer==='systems' ? <section className="canvas" data-active-graph="systems">
+      {!categories.length&&<p>Бизнес-процессы пока не добавлены.</p>}</section> : layer==='systems' ? <section className="systemsWorkspace" aria-label="Реестр информационных систем">
+        <div className="systemsWorkspaceHead"><div><h2>Информационные системы</h2><p>Реестр, паспорта и состав ИС. Общая карта связей находится в разделе «Обзор».</p></div><div className="systemsWorkspaceActions"><button type="button" onClick={()=>setSystemsShowDiagram(v=>!v)} aria-pressed={systemsShowDiagram}>{systemsShowDiagram?'Показать реестр':'Редактор схемы'}</button><button type="button" className="primary" onClick={()=>{setPassportEditId('');setCreateObjectOpen(true)}}>+ Создать ИС</button></div></div>
+        {systemsShowDiagram ? <section className="canvas" data-active-graph="systems">
         <div className="canvasMode"><button aria-pressed={diagramEditMode} onClick={()=>setDiagramEditMode(v=>!v)}>{diagramEditMode?'Завершить редактирование':'Редактировать схему'}</button></div>
         <ReactFlow minZoom={0.08} nodes={nodes} edges={edges} onNodesChange={onNodesChange} onConnect={onConnect} nodesDraggable={diagramEditMode} nodesConnectable={diagramEditMode} deleteKeyCode={null}
           onNodeClick={(_event: React.MouseEvent, node: Node) => {setSelected(node.id);setInspectorOpen(true);setPanelTab("overview")}} onNodeDoubleClick={(_event: React.MouseEvent, node: Node) => {setViewSystem(node.id);setSelected(node.id);setComponentView('diagram');setLayer("infrastructure");setInspectorOpen(false);setInspectorExpanded(false)}} onPaneClick={() => setSelected('')} fitView>
           <AutoFit layoutKey={diagramId}/><Background color="#d1dae5" gap={20} size={1}/><Controls showInteractive={false}/>
         </ReactFlow>
         {!objects.length && <div className="emptyHint">Создайте систему через меню «Создать». Для изменения связей включите редактирование схемы.</div>}
+      </section> : <div className="systemsTableWrap"><table className="systemsTable"><thead><tr><th>Система</th><th>Тип</th><th>Статус</th><th>Компоненты</th><th>Действия</th></tr></thead><tbody>
+          {objects.filter(o=>!workspaceQuery||[o.name,o.kind,o.status,o.description].join(' ').toLowerCase().includes(workspaceQuery.toLowerCase())).map(o=><tr key={o.id}><td><button type="button" className="systemNameLink" onClick={()=>{setSelected(o.id);setInspectorOpen(true);setPanelTab('overview')}}>{o.name}</button>{o.description&&<small className="systemDescription">{o.description}</small>}</td><td>{o.kind||'ИС'}</td><td><span className="tag">{o.status||'Не указан'}</span></td><td>{infra.filter(i=>i.system_id===o.id).length}</td><td><div className="systemRowActions"><button type="button" onClick={()=>{setSelected(o.id);setInspectorOpen(true);setPanelTab('overview')}}>Паспорт</button><button type="button" onClick={()=>{setViewSystem(o.id);setComponentView('diagram');setLayer('infrastructure');setInspectorOpen(false)}}>Компоненты</button></div></td></tr>)}
+          {!objects.length&&<tr><td colSpan={5}>Информационные системы пока не добавлены.</td></tr>}
+        </tbody></table></div>}
       </section> : <section className="infraPanel">
         {drill && <button onClick={()=>{setViewSystem("");setLayer("systems")}}>← К общей карте</button>}
         {layer==='infrastructure' ? <>

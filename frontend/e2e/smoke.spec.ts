@@ -702,3 +702,40 @@ test('topology fits tall groups after loading, resize and catalog collapse',asyn
     throw error
   }
 })
+
+
+test('VM node explains purpose and its owning system, and opens right-side passport',async({page})=>{
+  const name='VM Context '+Date.now()
+  const system=await page.request.post('http://127.0.0.1:8001/api/objects',{data:{name,kind:'system'}})
+  expect(system.status()).toBe(201)
+  const systemId=(await system.json()).id
+  const vm=await page.request.post('http://127.0.0.1:8001/api/infra',{data:{
+    system_id:systemId,kind:'vm',name:'HR-APP-01',description:'Обработка кадровых событий',details:{environment:'PROD'}
+  }})
+  expect(vm.status()).toBe(201)
+  await page.goto('/')
+  await openSystemComponents(page,name)
+  await page.getByRole('group',{name:'Представление компонентов'}).getByRole('button',{name:'Схема',exact:true}).click()
+  const node=page.locator('.miniArchitecture .react-flow__node').filter({hasText:'HR-APP-01'})
+  await expect(node).toContainText(name)
+  await expect(node).toContainText('Обработка кадровых событий')
+  await node.getByRole('button',{name:'Открыть паспорт компонента: HR-APP-01'}).click()
+  const drawer=page.getByRole('dialog',{name:'Карточка компонента HR-APP-01'})
+  await expect(drawer).toBeVisible()
+  await expect(drawer).toContainText('Обработка кадровых событий')
+  await drawer.getByRole('button',{name:'Закрыть ×'}).click()
+  await expect(drawer).toHaveCount(0)
+})
+
+test('incidents edit in a dismissible drawer rather than under the list',async({page})=>{
+  await page.goto('/')
+  await navigateTo(page,'Инциденты')
+  await page.getByRole('button',{name:'+ Инцидент'}).click()
+  const drawer=page.getByRole('dialog',{name:'Редактор инцидента'})
+  await expect(drawer).toBeVisible()
+  await drawer.getByRole('textbox',{name:'Название'}).fill('Черновик инцидента')
+  page.once('dialog',dialog=>void dialog.accept())
+  await drawer.getByRole('button',{name:/Отмена/}).first().click()
+  await expect(drawer).toHaveCount(0)
+  await expect(page.locator('.incidentDetail')).toHaveCount(0)
+})

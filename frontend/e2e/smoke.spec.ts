@@ -393,7 +393,7 @@ test('overview passport and components retain the same system context',async({pa
   await page.goto('/')
   await page.getByRole('textbox',{name:'Поиск на карте'}).fill(system.name)
   const node=page.locator('.homeMapGraph .react-flow__node').filter({hasText:system.name})
-  await node.getByRole('button',{name:'Паспорт ИС',exact:true}).click()
+  await node.getByRole('button',{name:'Открыть паспорт ИС: '+system.name,exact:true}).click()
   const passport=page.getByRole('complementary',{name:'Карточка архитектурного объекта'})
   await expect(passport.getByRole('heading',{name:system.name,exact:true})).toBeVisible()
   await expect(page.locator('.homeMapGraph')).toBeVisible()
@@ -404,6 +404,21 @@ test('overview passport and components retain the same system context',async({pa
   await expect(page.getByRole('combobox',{name:'Система компонентов'})).toHaveValue(system.id)
   await expect(page.locator('[data-active-graph="infrastructure"] .react-flow__node')).toHaveCount(2)
   await expect(passport).toHaveCount(0)
+})
+
+test('passport buttons inside separate map nodes always open the matching system',async({page})=>{
+  const first='Passport A '+Date.now()
+  const second='Passport B '+Date.now()
+  for(const name of [first,second]){
+    const created=await page.request.post('http://127.0.0.1:8001/api/objects',{data:{name,kind:'system'}})
+    expect(created.status()).toBe(201)
+  }
+  await page.goto('/')
+  const inspector=page.getByRole('complementary',{name:'Карточка архитектурного объекта'})
+  for(const name of [first,second,first]){
+    await page.locator('.homeMapGraph').getByRole('button',{name:'Открыть паспорт ИС: '+name,exact:true}).click()
+    await expect(inspector.getByRole('heading',{name,exact:true})).toBeVisible()
+  }
 })
 
 test('component views are exclusive and bulk actions appear with a selection',async({page})=>{

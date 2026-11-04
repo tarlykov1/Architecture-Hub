@@ -241,6 +241,39 @@ test('single component diagram stays compact after auto-fit',async({page})=>{
   })).toBe(true)
 })
 
+test('component whiteboard packs unlinked nodes and saves dragged placement',async({page})=>{
+  const name='Whiteboard '+Date.now()
+  const system=await page.request.post('http://127.0.0.1:8001/api/objects',{data:{name,kind:'system'}})
+  expect(system.status()).toBe(201)
+  const id=(await system.json()).id
+  for(let i=0;i<9;i++){
+    const result=await page.request.post('http://127.0.0.1:8001/api/infra',{data:{system_id:id,name:'Whiteboard VM '+i,kind:'vm'}})
+    expect(result.status()).toBe(201)
+  }
+  await page.goto('/')
+  await openSystemComponents(page,name)
+  const graph=page.locator('.miniArchitecture')
+  await expect(graph.locator('.react-flow__node')).toHaveCount(9)
+  const rows=await graph.locator('.react-flow__node').evaluateAll(nodes=>new Set(nodes.map(n=>Math.round(Number((n as HTMLElement).style.transform.match(/translate\\([^,]+,\\s*([^p]+)px\\)/)?.[1]||0)))).size)
+  expect(rows).toBeGreaterThan(1)
+  await page.getByRole('button',{name:'Редактировать схему'}).click()
+  await expect(page.getByRole('toolbar',{name:'Инструменты схемы компонентов'})).toBeVisible()
+  const node=graph.locator('.react-flow__node').first()
+  const before=await node.getAttribute('style')
+  const rect=await node.boundingBox()
+  expect(rect).not.toBeNull()
+  await page.mouse.move(rect!.x+rect!.width/2,rect!.y+rect!.height/2)
+  await page.mouse.down()
+  await page.mouse.move(rect!.x+rect!.width/2+105,rect!.y+rect!.height/2+50,{steps:8})
+  await page.mouse.up()
+  await expect.poll(async()=>node.getAttribute('style')).not.toBe(before)
+  await expect.poll(async()=>page.evaluate((systemId)=>Boolean(JSON.parse(localStorage.getItem('architecture-hub-component-canvas-v1')||'{}')[systemId]),id)).toBe(true)
+  await page.reload()
+  await openSystemComponents(page,name)
+  const stored=await page.evaluate((systemId)=>JSON.parse(localStorage.getItem('architecture-hub-component-canvas-v1')||'{}')[systemId],id)
+  expect(Object.keys(stored).length).toBeGreaterThan(0)
+})
+
 test('neighboring systems toggle reveals cross-system linked components',async({page})=>{
  const stamp=Date.now()
  const names=['Cross source '+stamp,'Cross neighbor '+stamp]

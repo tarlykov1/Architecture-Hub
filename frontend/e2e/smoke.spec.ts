@@ -236,7 +236,7 @@ test('single component diagram stays compact after auto-fit',async({page})=>{
   await expect(graph.locator('.react-flow__node')).toHaveCount(1)
   await expect.poll(async()=>graph.locator('.react-flow__viewport').evaluate(el=>{
     const transform=(el as HTMLElement).style.transform
-    const scale=Number(transform.match(/scale\\(([^)]+)\\)/)?.[1]||0)
+    const scale=Number(transform.match(/scale\(([^)]+)\)/)?.[1]||0)
     return scale>0&&scale<=0.851
   })).toBe(true)
 })

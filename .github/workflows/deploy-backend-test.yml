@@ -1,0 +1,76 @@
+name: Deploy Architecture Hub backend (test)
+
+# Disabled by default. See docs/backend-deploy.md for one-time server provisioning.
+on:
+  workflow_run:
+    workflows: ["Architecture Hub CI"]
+    types: [completed]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: architecture-hub-test-backend-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Publish verified FastAPI to test server
+    if: >-
+      vars.BACKEND_DEPLOY_ENABLED == 'true' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main'
+    runs-on: ubuntu-24.04
+    environment: test
+    timeout-minutes: 20
+    env:
+      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+      DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+      DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+      DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+      DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+
+    steps:
+      - name: Checkout exact successful CI commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          persist-credentials: false
+
+      - name: Configure pinned SSH identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in DEPLOY_HOST DEPLOY_PORT DEPLOY_USER DEPLOY_SSH_KEY DEPLOY_KNOWN_HOSTS; do
+            if [ -z "${!name}" ]; then echo "::error::Missing secret: $name"; exit 1; fi
+          done
+          install -m 700 -d "$HOME/.ssh"
+          printf '%s\n' "$DEPLOY_SSH_KEY" > "$HOME/.ssh/id_ed25519"
+          chmod 600 "$HOME/.ssh/id_ed25519"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+          chmod 600 "$HOME/.ssh/known_hosts"
+          ssh-keygen -y -f "$HOME/.ssh/id_ed25519" >/dev/null
+
+      - name: Stage verified backend code (without database or secrets)
+        shell: bash
+        run: |
+          set -euo pipefail
+          export RSYNC_RSH="ssh -p $DEPLOY_PORT -o BatchMode=yes -o StrictHostKeyChecking=yes -o IdentitiesOnly=yes"
+          ssh -p "$DEPLOY_PORT" -o BatchMode=yes -o StrictHostKeyChecking=yes -o IdentitiesOnly=yes \
+            "$DEPLOY_USER@$DEPLOY_HOST" 'install -d -m 0700 "$HOME/backend-release"'
+          ssh -p "$DEPLOY_PORT" -o BatchMode=yes -o StrictHostKeyChecking=yes -o IdentitiesOnly=yes \
+            "$DEPLOY_USER@$DEPLOY_HOST" 'install -d -m 0700 "$HOME/backend-release/app" "$HOME/backend-release/alembic"'
+          rsync -r --delete --no-links --omit-dir-times backend/app/ "$DEPLOY_USER@$DEPLOY_HOST:backend-release/app/"
+          rsync -r --delete --no-links --omit-dir-times backend/alembic/ "$DEPLOY_USER@$DEPLOY_HOST:backend-release/alembic/"
+          rsync -r --no-links backend/alembic.ini backend/requirements.txt "$DEPLOY_USER@$DEPLOY_HOST:backend-release/"
+
+      - name: Apply backed-up release using restricted root-owned script
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh -p "$DEPLOY_PORT" -o BatchMode=yes -o StrictHostKeyChecking=yes -o IdentitiesOnly=yes \
+            "$DEPLOY_USER@$DEPLOY_HOST" "sudo -n /usr/local/sbin/architecture-hub-deploy-backend"
+
+      - name: Validate public API
+        run: curl --fail --silent --show-error --retry 3 --retry-delay 2 https://test.web-tie.ru/api/health

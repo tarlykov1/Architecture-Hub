@@ -44,6 +44,7 @@ echo "Database and code backup complete: $snapshot"
 
 restore_code(){
   echo "Restoring previous backend code" >&2
+  rm -rf -- "$APP/app" "$APP/alembic"
   tar -C "$APP" -xzf "$snapshot/code.tar.gz"
   chown -R "$USER_NAME:$USER_NAME" "$APP/app" "$APP/alembic" "$APP/alembic.ini" "$APP/requirements.txt"
 }
@@ -80,8 +81,8 @@ else
   echo "Alembic migrations skipped (require explicit /etc/architecture-hub-enable-migrations)"
 fi
 
-systemctl restart "$SERVICE"
 restarted=1
+systemctl restart "$SERVICE"
 for attempt in $(seq 1 20); do
   if curl --fail --silent --max-time 3 http://127.0.0.1:8001/api/health >/dev/null; then
     trap - ERR
@@ -90,4 +91,5 @@ for attempt in $(seq 1 20); do
   fi
   sleep 2
 done
-fail "API healthcheck failed after restart"
+echo "API healthcheck failed after restart" >&2
+false

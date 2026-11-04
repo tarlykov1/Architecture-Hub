@@ -9,6 +9,7 @@ import {downstreamImpact,impactRoutes} from './dependencyImpact'
 import Incidents from './Incidents'
 import ArchitectureHome from './ArchitectureHome'
 import FlowDataCatalog from './FlowDataCatalog'
+import SystemDataMap from './SystemDataMap'
 import {scopedFlowIds} from './flowScope'
 import {shouldShowSystemsOverview} from './flowDetail'
 import {groupComponents,type ComponentGroupMode} from './componentGroups'
@@ -91,6 +92,7 @@ function App() {
   const [viewMode,setViewMode] = useState<'architecture'|'security'>('architecture')
   const [selectedFlow,setSelectedFlow] = useState('')
   const [flowDataOpen,setFlowDataOpen]=useState(false)
+  const [systemDataId,setSystemDataId]=useState('')
   const [flowFocusOnly,setFlowFocusOnly] = useState(false)
   const [groupFlowEdges,setGroupFlowEdges] = useState(true)
   const [expandedFlowPair,setExpandedFlowPair] = useState('')
@@ -995,6 +997,7 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
         </>}
       </section>}
     </main>
+    {systemDataId&&<SystemDataMap request={request} systems={objects} components={infra} flows={flows} processes={processes} initialSystemId={systemDataId} onClose={()=>setSystemDataId('')} onOpenFlow={id=>{setSelectedFlow(id);setSystemDataId('');setFlowDataOpen(true)}}/>}
     {flowDataOpen&&<FlowDataCatalog request={request} flows={flows} systems={objects} components={infra} processes={processes} initialFlowId={selectedFlow} onClose={()=>setFlowDataOpen(false)}/>}
     {inspectorOpen&&<><aside className={inspectorExpanded ? "details detailsExpanded" : "details"} aria-label="Карточка архитектурного объекта">
       <div className="inspectorToolbar"><div className="sideLabel">КАРТОЧКА ОБЪЕКТА</div><button type="button" aria-label="Закрыть правую панель" onClick={()=>{setInspectorOpen(false);setInspectorExpanded(false)}}>Закрыть ×</button><button type="button" onClick={()=>setInspectorExpanded(v=>!v)} aria-label={inspectorExpanded?"Свернуть карточку":"Развернуть карточку"}>{inspectorExpanded?"Свернуть ↘":"Развернуть ↗"}</button></div>
@@ -1025,7 +1028,7 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
           {layer==='infrastructure'&&viewSystem===detail.id?<div className="currentContext" role="status">Архитектура этой ИС уже открыта</div>:<button className="primary" onClick={()=>{setViewSystem(detail.id);setComponentView('diagram');setLayer('infrastructure');setInspectorOpen(false)}}>{layer==='infrastructure'?'Показать компоненты этой ИС →':'Перейти к архитектуре ИС →'}</button>}</>}
         {panelTab==='components'&&<>{detailItems.map(i=><article className="inspectorItem" key={i.id}><strong>{i.name}</strong><small>{i.kind} · {String(i.details.environment||'—')} · {String(i.details.security_zone||'Зона не указана')}</small></article>)}
           {!detailItems.length&&<p>Компонентов пока нет</p>}</>}
-        {panelTab==='flows'&&<>{flows.filter(f=>detailItems.some(i=>i.id===f.source_id||i.id===f.target_id)).map(f=><article className="inspectorItem" key={f.id}><strong>{f.name}</strong><small>{infra.find(i=>i.id===f.source_id)?.name} → {infra.find(i=>i.id===f.target_id)?.name}</small><small>{f.protocol} / {f.security}</small></article>)}</>}
+        {panelTab==='flows'&&<><button type="button" className="primary" onClick={()=>{setSystemDataId(detail.id);setInspectorOpen(false)}}>Карта потоков и атрибутов ИС</button>{flows.filter(f=>detailItems.some(i=>i.id===f.source_id||i.id===f.target_id)).map(f=><article className="inspectorItem" key={f.id}><strong>{f.name}</strong><small>{infra.find(i=>i.id===f.source_id)?.name} → {infra.find(i=>i.id===f.target_id)?.name}</small><small>{f.protocol} / {f.security}</small></article>)}</>}
       </>:<p className="hint">Выберите систему на карте. Двойной клик откроет её внутреннюю архитектуру.</p>}
       <div className="disclaimer">Architecture Hub · Реестр архитектуры</div>
     </aside></>}

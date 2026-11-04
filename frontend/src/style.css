@@ -529,3 +529,5 @@ button:disabled{cursor:not-allowed;opacity:.55}
 @media(max-width:600px){.architectureDrawerBackdrop .architectureDrawer{width:100vw;max-width:100vw;border-radius:0;padding:17px}.networkPathAdd{grid-template-columns:1fr}.networkPathEndpoints{grid-template-columns:1fr}.networkPathEndpoints>span{transform:rotate(90deg)}}
 
 .networkRegistryActions{display:flex;flex-wrap:wrap;align-items:center;gap:10px}.networkRegistryActions button{white-space:nowrap}
+
+.networkPathUsageLinks{display:flex;flex-wrap:wrap;gap:7px}.networkPathUsageLinks button{font-size:11px;padding:6px 10px;color:#18588b;background:#eef5ff;border:1px solid #cbdbf0;border-radius:7px}.networkPathDrawer .networkPathRegistry>h3{margin:18px 0 5px}

@@ -44,6 +44,8 @@ def classify(path: str) -> str | None:
         return "infrastructure"
     if path.startswith("/api/data-attributes") or path.startswith("/api/flow-data-uses"):
         return "flows"
+    if path.startswith("/api/flows/") and path.endswith("/network-path"):
+        return "networks"
     if path.startswith("/api/flows"):
         return "flows"
     if path.startswith("/api/diagrams"):

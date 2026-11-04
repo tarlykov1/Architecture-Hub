@@ -33,18 +33,20 @@ def upgrade():
             "flow_network_hops",
             sa.Column("id", sa.Uuid(), primary_key=True),
             sa.Column("flow_id", sa.Uuid(), sa.ForeignKey("data_flows.id"), nullable=False),
-            sa.Column("asset_id", sa.Uuid(), sa.ForeignKey("network_assets.id"), nullable=False),
+            sa.Column("asset_id", sa.Uuid(), sa.ForeignKey("network_assets.id"), nullable=True),
+            sa.Column("segment_id", sa.Uuid(), sa.ForeignKey("network_segments.id"), nullable=True),
             sa.Column("position", sa.Integer(), nullable=False),
             sa.Column("notes", sa.String(2000), nullable=False),
             sa.Column("verification", sa.String(30), nullable=False),
         )
-    for column in ("flow_id", "asset_id"):
+    for column in ("flow_id", "asset_id", "segment_id"):
         name = "ix_flow_network_hops_" + column
         if name not in {x["name"] for x in inspect(bind).get_indexes("flow_network_hops")}:
             op.create_index(name, "flow_network_hops", [column])
 
 
 def downgrade():
+    op.drop_index("ix_flow_network_hops_segment_id", table_name="flow_network_hops")
     op.drop_index("ix_flow_network_hops_asset_id", table_name="flow_network_hops")
     op.drop_index("ix_flow_network_hops_flow_id", table_name="flow_network_hops")
     op.drop_table("flow_network_hops")

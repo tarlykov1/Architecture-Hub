@@ -702,3 +702,58 @@ test('topology fits tall groups after loading, resize and catalog collapse',asyn
     throw error
   }
 })
+
+
+test('each main section has its own URL and reload preserves the current section',async({page})=>{
+  await page.goto('/')
+  const nav=page.getByRole('navigation',{name:'Разделы архитектуры'})
+  const sections=[
+    ['Системы','/systems'],
+    ['Компоненты','/components'],
+    ['Потоки','/flows'],
+    ['Обзор','/'],
+  ] as const
+  for(const [title,path] of sections){
+    await nav.getByRole('button',{name:title,exact:true}).click()
+    await expect(page).toHaveURL(new RegExp(path==='/'?'\\/$':'\\'+path+'$'))
+    await page.reload()
+    await expect(nav.getByRole('button',{name:title,exact:true})).toHaveClass(/current/)
+  }
+  await navigateTo(page,'Реестр сетей')
+  await expect(page).toHaveURL(/\/networks$/)
+  await page.reload()
+  await expect(page.getByRole('heading',{name:'Реестр сетей'})).toBeVisible()
+  await navigateTo(page,'Топология сетей')
+  await expect(page).toHaveURL(/\/topology$/)
+  await page.reload()
+  await expect(page.getByRole('button',{name:'Редактировать топологию'})).toBeVisible()
+})
+
+test('direct links preserve system context and browser back-forward navigation',async({page})=>{
+  const name='Deep link '+Date.now()
+  const response=await page.request.post('http://127.0.0.1:8001/api/objects',{data:{name,kind:'system'}})
+  expect(response.status()).toBe(201)
+  const id=(await response.json()).id
+  await page.goto('/components?system='+id)
+  await expect(page.getByRole('combobox',{name:'Система компонентов'})).toHaveValue(id)
+  await page.reload()
+  await expect(page.getByRole('combobox',{name:'Система компонентов'})).toHaveValue(id)
+  await page.getByRole('navigation',{name:'Разделы архитектуры'}).getByRole('button',{name:'Потоки',exact:true}).click()
+  await expect(page).toHaveURL(/\/flows$/)
+  await page.goBack()
+  await expect(page).toHaveURL(new RegExp('/components\\?system='+id+'$'))
+  await expect(page.getByRole('combobox',{name:'Система компонентов'})).toHaveValue(id)
+  await page.goForward()
+  await expect(page).toHaveURL(/\/flows$/)
+  await expect(page.getByRole('navigation',{name:'Разделы архитектуры'}).getByRole('button',{name:'Потоки',exact:true})).toHaveClass(/current/)
+})
+
+test('all secondary workspaces have directly accessible routes',async({page})=>{
+  const paths=['/business','/networks','/topology','/incidents','/knowledge']
+  for(const path of paths){
+    await page.goto(path)
+    await expect(page).toHaveURL(new RegExp(path+'$'))
+    await expect(page.getByRole('navigation',{name:'Разделы архитектуры'})).toBeVisible()
+    await expect(page.locator('main.main')).toBeVisible()
+  }
+})

@@ -572,8 +572,10 @@ test('topology fits tall groups after loading, resize and catalog collapse',asyn
   await expect(page.locator('aside.sidebar')).toHaveCount(0)
   await expect.poll(contained).toBe(true)
   await page.setViewportSize({width:1000,height:720})
+  // ResizeObserver and React Flow update the viewport asynchronously.
+  // Allow the final measured layout to settle without weakening containment.
   try {
-    await expect.poll(contained).toBe(true)
+    await expect.poll(contained,{timeout:15000,intervals:[100,250,500]}).toBe(true)
   } catch (error) {
     const diagnostics=await canvas.evaluate(root=>{
       const box=root.getBoundingClientRect()

@@ -10,16 +10,36 @@ export function AutoFit({layoutKey=''}:{layoutKey?:string}){
  useEffect(()=>{
   const canvas=anchor.current?.closest('.react-flow')
   if(!initialized||!ids||!canvas)return
-  let frame=0,inner=0,width=0,height=0
-  const fit=()=>{cancelAnimationFrame(frame);cancelAnimationFrame(inner);frame=requestAnimationFrame(()=>{inner=requestAnimationFrame(()=>{void fitView({padding:0.14,maxZoom:1,minZoom:0.08,duration:180})})})}
+  let frame=0,inner=0,settle=0,width=0,height=0
+  const fit=()=>{
+   cancelAnimationFrame(frame);cancelAnimationFrame(inner)
+   frame=requestAnimationFrame(()=>{
+    inner=requestAnimationFrame(()=>{void fitView({padding:0.16,maxZoom:1,minZoom:0.02,duration:0})})
+   })
+  }
+  const refit=()=>{
+   fit()
+   // React Flow measures its pane asynchronously after a parent/window resize.
+   // Repeat once when the final dimensions are known rather than keeping the
+   // viewport fitted to stale measurements.
+   window.clearTimeout(settle)
+   settle=window.setTimeout(fit,300)
+  }
   const observer=new ResizeObserver(entries=>{
    const rect=entries[0].contentRect
    if(rect.width<100||rect.height<100)return
-   if(Math.abs(width-rect.width)<4&&Math.abs(height-rect.height)<4)return
-   width=rect.width;height=rect.height;fit()
+   if(Math.abs(width-rect.width)<2&&Math.abs(height-rect.height)<2)return
+   width=rect.width;height=rect.height;refit()
   })
-  observer.observe(canvas);fit()
-  return()=>{observer.disconnect();cancelAnimationFrame(frame);cancelAnimationFrame(inner)}
+  observer.observe(canvas)
+  window.addEventListener('resize',refit)
+  refit()
+  return()=>{
+   observer.disconnect()
+   window.removeEventListener('resize',refit)
+   window.clearTimeout(settle)
+   cancelAnimationFrame(frame);cancelAnimationFrame(inner)
+  }
  },[fitView,initialized,ids,layoutKey])
  return <span ref={anchor} hidden/>
 }

@@ -508,3 +508,5 @@ button:disabled{cursor:not-allowed;opacity:.55}
 .expandedFlowPanel{position:fixed;z-index:210;right:0;top:0;bottom:0;width:min(600px,96vw);max-height:100vh;margin:0;border-radius:12px 0 0 12px;overflow-y:auto;background:#fff;padding:22px;box-shadow:-20px 0 75px rgba(10,20,40,.4)}
 
 body:has(.expandedFlowPanel)::before{content:"";position:fixed;inset:0;background:rgba(14,25,43,.45);z-index:205}
+
+.homeMapSearchMatches{display:grid;gap:7px;padding:12px 14px;margin:9px 0;background:#fff;border:1px solid #dbe3ec;border-radius:8px;max-height:270px;overflow:auto}.homeMapSearchMatch{display:flex;gap:8px;align-items:center;border-top:1px solid #eff2f6;padding:6px 0}.homeMapSearchMatch>span{font-size:13px;min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.homeMapSearchMatch>button{font-size:12px;padding:5px 9px;flex-shrink:0}@media(max-width:650px){.homeMapSearchMatch{flex-wrap:wrap}.homeMapSearchMatch>span{flex-basis:100%}}

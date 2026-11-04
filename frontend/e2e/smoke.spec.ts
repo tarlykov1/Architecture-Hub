@@ -577,9 +577,23 @@ test('topology fits tall groups after loading, resize and catalog collapse',asyn
   await page.setViewportSize({width:1000,height:720})
   // ResizeObserver and React Flow update the viewport asynchronously.
   // Allow the final measured layout to settle without weakening containment.
+  const samples: Array<{t:number;ok:boolean; transform:string|null; bad:string[]}>=[]
+  const since=Date.now()
   try {
-    await expect.poll(contained,{timeout:15000,intervals:[100,250,500]}).toBe(true)
+    await expect.poll(async()=>{
+      const sample=await canvas.evaluate(root=>{
+        const box=root.getBoundingClientRect()
+        const bad=[...root.querySelectorAll('.react-flow__node')].filter(node=>{
+          const r=node.getBoundingClientRect()
+          return r.left<box.left-4||r.right>box.right+4||r.top<box.top-4||r.bottom>box.bottom+4
+        }).map(n=>n.getAttribute('data-id')||'unknown')
+        return {ok:bad.length===0,transform:root.querySelector<HTMLElement>('.react-flow__viewport')?.style.transform||null,bad:bad.slice(0,3)}
+      })
+      if(samples.length<50)samples.push({t:Date.now()-since,...sample})
+      return sample.ok
+    },{timeout:15000,intervals:[100,250,500]}).toBe(true)
   } catch (error) {
+    console.log('TOPOLOGY_RESIZE_SAMPLES',JSON.stringify(samples))
     const diagnostics=await canvas.evaluate(root=>{
       const box=root.getBoundingClientRect()
       const nodes=[...root.querySelectorAll('.react-flow__node')].map(node=>{

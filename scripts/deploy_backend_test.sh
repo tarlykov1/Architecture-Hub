@@ -29,7 +29,11 @@ install -d -m 0700 "$BACKUPS"
 stamp="$(date -u +%Y%m%dT%H%M%SZ)"
 snapshot="$BACKUPS/$stamp"
 install -d -m 0700 "$snapshot"
-tar -C "$APP" -czf "$snapshot/code.tar.gz" app alembic alembic.ini requirements.txt
+backup_paths=(app)
+for path in alembic alembic.ini requirements.txt; do
+  if [ -e "$APP/$path" ]; then backup_paths+=("$path"); fi
+done
+tar -C "$APP" -czf "$snapshot/code.tar.gz" "${backup_paths[@]}"
 # Online SQLite backup, run as the database owner. Backup lives in root-only storage.
 tmp_db_dir="$(mktemp -d /var/lib/architecture-hub/.backup-XXXXXX)"
 chown "$USER_NAME:$USER_NAME" "$tmp_db_dir"
@@ -52,7 +56,9 @@ restore_code(){
   echo "Restoring previous backend code" >&2
   rm -rf -- "$APP/app" "$APP/alembic"
   tar -C "$APP" -xzf "$snapshot/code.tar.gz"
-  chown -R "$USER_NAME:$USER_NAME" "$APP/app" "$APP/alembic" "$APP/alembic.ini" "$APP/requirements.txt"
+  for path in app alembic alembic.ini requirements.txt; do
+    if [ -e "$APP/$path" ]; then chown -R "$USER_NAME:$USER_NAME" "$APP/$path"; fi
+  done
 }
 restarted=0
 rollback(){

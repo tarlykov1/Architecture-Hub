@@ -10,6 +10,7 @@ import Incidents from './Incidents'
 import ArchitectureHome from './ArchitectureHome'
 import FlowDataCatalog from './FlowDataCatalog'
 import SystemDataMap from './SystemDataMap'
+import {parseWorkspaceRoute,workspaceRouteUrl,type Section} from './workspaceRoutes'
 import NetworkPathCatalog from './NetworkPathCatalog'
 import {scopedFlowIds} from './flowScope'
 import {shouldShowSystemsOverview} from './flowDetail'
@@ -375,13 +376,28 @@ function App() {
   const [workspaceKind,setWorkspaceKind] = useState('all')
   const [workspaceVerified,setWorkspaceVerified] = useState('all')
   const [search,setSearch] = useState('')
-  const [viewSystem,setViewSystem] = useState('')
+  const [viewSystem,setViewSystem] = useState(()=>parseWorkspaceRoute(window.location).systemId)
 
   const [showExternalDependencies,setShowExternalDependencies] = useState(false)
   const [zoneMode,setZoneMode] = useState(false)
   const [infra, setInfra] = useState<Infra[]>([])
   const [flows, setFlows] = useState<Flow[]>([])
-  const [layer, setLayer] = useState<'home'|'business'|'systems'|'infrastructure'|'flows'|'topology'|'networks'|'incidents'|'knowledge'>('home')
+  const [layer, setLayer] = useState<Section>(()=>parseWorkspaceRoute(window.location).layer)
+  useEffect(()=>{
+    const onPopState=()=>{
+      const route=parseWorkspaceRoute(window.location)
+      setLayer(route.layer)
+      setViewSystem(route.systemId)
+      setInspectorOpen(false)
+      setInspectorExpanded(false)
+    }
+    window.addEventListener('popstate',onPopState)
+    return ()=>window.removeEventListener('popstate',onPopState)
+  },[])
+  useEffect(()=>{
+    const next=workspaceRouteUrl(layer,viewSystem)
+    if(window.location.pathname+window.location.search!==next)window.history.pushState(null,'',next)
+  },[layer,viewSystem])
   const [infraName,setInfraName] = useState('')
   const [infraKind,setInfraKind] = useState('vm')
   const [infraParent,setInfraParent] = useState('')

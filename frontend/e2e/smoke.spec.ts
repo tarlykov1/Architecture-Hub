@@ -14,6 +14,18 @@ async function navigateTo(page: Page, section: 'Реестр сетей'|'Инц
 
 
 
+async function openSystemInRegistry(page: Page, name: string) {
+  await page.getByRole('navigation',{name:'Разделы архитектуры'}).getByRole('button',{name:'Системы',exact:true}).click()
+  const row=page.locator('.systemsTable tbody tr').filter({has:page.getByRole('button',{name,exact:true})})
+  await row.getByRole('button',{name,exact:true}).click()
+}
+
+async function openSystemComponents(page: Page, name: string) {
+  await page.getByRole('navigation',{name:'Разделы архитектуры'}).getByRole('button',{name:'Системы',exact:true}).click()
+  const row=page.locator('.systemsTable tbody tr').filter({has:page.getByRole('button',{name,exact:true})})
+  await row.getByRole('button',{name:'Компоненты'}).click()
+}
+
 test('Wiki.js entry remains discoverable without configured connector',async({page})=>{
   await page.goto('/')
   const menu=page.getByRole('navigation',{name:'Разделы архитектуры'}).locator('details.secondaryNavigation')
@@ -137,7 +149,7 @@ test('selected system downloads a KIS Excel file', async ({ page }) => {
   const created=await page.request.post('http://127.0.0.1:8001/api/objects',{data:{name,kind:'system',description:'Workbook export test'}})
   expect(created.status()).toBe(201)
   await page.goto('/')
-  await page.getByRole('button',{name:name}).first().click()
+  await openSystemInRegistry(page,name)
   await page.locator('nav.layerTabs .navEnd details.layerActions summary').click()
   const exportButton=page.getByRole('button',{name:'Экспорт КИС в Excel'})
   await expect(exportButton).toBeEnabled()
@@ -177,8 +189,7 @@ test('inspector avoids duplicate architecture action when selected architecture 
   const result=await page.request.post('http://127.0.0.1:8001/api/objects',{data:{name:title,kind:'system'}})
   expect(result.status()).toBe(201)
   await page.goto('/')
-  await page.getByRole('button',{name:title}).first().click()
-  await page.getByRole('navigation',{name:'Разделы архитектуры'}).getByRole('button',{name:'Компоненты',exact:true}).click()
+  await openSystemComponents(page,title)
   const panel=page.getByRole('complementary',{name:'Карточка архитектурного объекта'})
   await expect(panel).toHaveCount(0)
   await expect(page.getByRole('combobox',{name:'Система компонентов'})).toBeVisible()
@@ -192,14 +203,15 @@ test('right inspector opens on demand and can be closed to free diagram space', 
   await page.goto('/')
   const panel=page.getByRole('complementary',{name:'Карточка архитектурного объекта'})
   await expect(panel).toHaveCount(0)
-  await page.getByRole('button',{name}).first().click()
+  await openSystemInRegistry(page,name)
   await expect(panel).toBeVisible()
   await panel.getByRole('button',{name:'Закрыть правую панель'}).click()
   await expect(panel).toHaveCount(0)
 })
 
 test('infrastructure graph permits connecting components',async({page})=>{
- const resp=await page.request.post('http://127.0.0.1:8001/api/objects',{data:{name:'link-test-'+Date.now(),kind:'system'}})
+ const systemName='link-test-'+Date.now()
+ const resp=await page.request.post('http://127.0.0.1:8001/api/objects',{data:{name:systemName,kind:'system'}})
  expect(resp.ok()).toBeTruthy()
  const id=(await resp.json()).id
  for(const name of ['source-node','target-node'])expect((await page.request.post('http://127.0.0.1:8001/api/infra',{data:{system_id:id,name,kind:'service'}})).ok()).toBeTruthy()

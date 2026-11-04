@@ -444,3 +444,21 @@ button:disabled{cursor:not-allowed;opacity:.55}
  .globalHeader .layerTabs{flex:1 1 0;min-width:0;max-width:100%}
  .globalHeader .globalBrand,.globalHeader .topActions,.globalHeader .layerTabs .navEnd{flex-shrink:0}
 }
+
+
+/* Unified full-width workspace: navigation belongs to the top bar, not a duplicate catalog. */
+.shell.shellNoCatalog{grid-template-columns:minmax(0,1fr);grid-template-rows:var(--hub-header-height, 60px) minmax(0,1fr)}
+.shell.shellNoCatalog.shellInspectorOpen{grid-template-columns:minmax(0,1fr) minmax(290px,340px)}
+.shell.shellNoCatalog.shellInspectorOpen .details:not(.detailsExpanded){grid-column:2;grid-row:2}
+.shell.shellNoCatalog .main{grid-column:1;grid-row:2;min-width:0}
+.shell.shellNoCatalog .globalHeader{grid-column:1/-1;grid-row:1}
+@media(min-width:651px) and (max-width:1050px){
+ .shell.shellNoCatalog,.shell.shellNoCatalog.shellInspectorOpen{grid-template-columns:minmax(0,1fr)}
+ .shell.shellNoCatalog.shellInspectorOpen .details:not(.detailsExpanded){grid-column:1;position:fixed;top:var(--hub-header-height,60px);right:0;bottom:0;width:min(390px,90vw);height:auto;z-index:80;box-shadow:-12px 0 40px #15283f25}
+ .shell.shellNoCatalog.shellInspectorOpen .inspectorScrim{display:block}
+}
+@media(max-width:650px){
+ .shell.shellNoCatalog,.shell.shellNoCatalog.shellInspectorOpen{grid-template-columns:minmax(0,1fr)!important}
+ .shell.shellNoCatalog.shellInspectorOpen .details:not(.detailsExpanded){grid-column:1;grid-row:auto;position:fixed;top:0;right:0;bottom:0;width:min(100vw,420px);height:auto;z-index:80}
+ .shell.shellNoCatalog.shellInspectorOpen .inspectorScrim{display:block}
+}

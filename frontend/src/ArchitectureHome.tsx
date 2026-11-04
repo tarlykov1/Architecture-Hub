@@ -51,6 +51,16 @@ export default function ArchitectureHome({systems,components,flows,processes,lin
   <header className="homeMapHead"><div className="homeMapStats"><span>{systems.length} ИС</span><span>{components.length} компонентов</span><span>{flows.length} потоков</span></div></header>
   <div className="homeMapTools"><input aria-label="Поиск на карте" value={query} onChange={e=>setQuery(e.target.value)} placeholder="Найти ИС или компонент…"/><Disclosure label="Фильтры и слои"><select aria-label="Контур карты" value={environment} onChange={e=>setEnvironment(e.target.value)}><option value="all">Все контуры</option>{environments.map(e=><option key={e} value={e}>{e}</option>)}</select><select aria-label="Фокус на ИС" value={focus} onChange={e=>setFocus(e.target.value)}><option value="">Все системы</option>{systems.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select>
   <details className="homeMapLayersDisclosure"><summary>Слои карты <span aria-hidden="true">▾</span></summary><div className="homeMapLayers" aria-label="Слои карты">{([['systems','Информационные системы'],['components','Компоненты'],['flows','Потоки'],['business','Бизнес'],['networks','Сети']] as const).map(([key,label])=><label key={key}><input type="checkbox" checked={layers[key]} onChange={e=>setLayers(old=>({...old,[key]:e.target.checked}))}/>{label}</label>)}</div></details></Disclosure></div>
+  {query.trim()&&<div className="homeMapSearchMatches" role="region" aria-label="Результаты поиска по архитектуре">
+    <strong>Найденные ИС: {filteredSystems.length}</strong>
+    {filteredSystems.length===0&&<span>По этому запросу системы не найдены.</span>}
+    {filteredSystems.slice(0,12).map(system=><div key={system.id} className="homeMapSearchMatch">
+      <span>{system.name}</span>
+      <button type="button" onClick={()=>{setSelectedSystem(system.id);onOpenSystem(system.id)}} aria-label={`Открыть паспорт ИС из поиска: ${system.name}`}>Паспорт</button>
+      <button type="button" onClick={()=>onOpenComponents(system.id)} aria-label={`Открыть компоненты ИС из поиска: ${system.name}`}>Компоненты</button>
+    </div>)}
+    {filteredSystems.length>12&&<small>Показаны первые 12 систем. Уточните запрос, чтобы увидеть остальные.</small>}
+  </div>}
   {layers.systems&&<div className="homeMapGraph"><ReactFlow minZoom={0.08} nodes={highlightedNodes} edges={layers.flows?edges:[]} fitView fitViewOptions={{padding:0.15,minZoom:0.3,maxZoom:1}} nodesDraggable={false} nodesConnectable={false} onNodeClick={(_,node)=>setSelectedSystem(node.id)} onPaneClick={()=>setSelectedSystem('')}><AutoFit/><Background gap={20}/><Controls showInteractive={false}/></ReactFlow></div>}
   {!layers.systems&&<div className="homeMapEmpty">Включите слой «Информационные системы», чтобы показать карту связей.</div>}
   {selectedSystemInfo&&<aside className="homeMapSelection" aria-label="Выбранная информационная система" style={{padding:16,marginTop:12,border:'1px solid #cbd5e1',borderRadius:12,background:'#f8fafc'}}>

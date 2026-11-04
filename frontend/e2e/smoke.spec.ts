@@ -720,7 +720,7 @@ test('architecture board stages VM and flow changes before reviewed commit',asyn
   await editor.getByPlaceholder('Новая ВМ').fill('Added in board')
   await editor.getByRole('button',{name:'Разместить на схеме'}).click()
   await expect(editor).toContainText('1 изменений')
-  await expect.poll(async()=> (await page.request.get('http://127.0.0.1:8001/api/infra')).json()).toHaveLength(1)
+  await expect.poll(async()=> (await (await page.request.get('http://127.0.0.1:8001/api/infra?system_id='+systemId)).json()).length).toBe(1)
   await editor.getByRole('button',{name:'→ Поток'}).click()
   const fields=editor.locator('.boardToolFields').first()
   await fields.getByLabel('Откуда').selectOption((await first.json()).id)

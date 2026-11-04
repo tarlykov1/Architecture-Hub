@@ -586,7 +586,7 @@ test('topology fits tall groups after loading, resize and catalog collapse',asyn
         const bad=[...root.querySelectorAll('.react-flow__node')].filter(node=>{
           const r=node.getBoundingClientRect()
           return r.left<box.left-4||r.right>box.right+4||r.top<box.top-4||r.bottom>box.bottom+4
-        }).map(n=>n.getAttribute('data-id')||'unknown')
+        }).map(n=>{const r=n.getBoundingClientRect();return [n.getAttribute('data-id')||'unknown',r.left-box.left,r.top-box.top,r.right-box.right,r.bottom-box.bottom].map(String).join(':')})
         return {ok:bad.length===0,transform:root.querySelector<HTMLElement>('.react-flow__viewport')?.style.transform||null,bad:bad.slice(0,3)}
       })
       if(samples.length<50)samples.push({t:Date.now()-since,...sample})

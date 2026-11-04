@@ -5,6 +5,7 @@ Revises: 0003_shared_views
 """
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy import inspect
 
 revision = "0004_flow_attributes"
 down_revision = "0003_shared_views"
@@ -14,7 +15,9 @@ depends_on = None
 
 def upgrade():
     # Separate migration keeps existing infrastructure data untouched.
-    op.create_table(
+    connection = op.get_bind()
+    if not inspect(connection).has_table('data_attributes'):
+        op.create_table(
         "data_attributes",
         sa.Column("id", sa.Uuid(), nullable=False),
         sa.Column("code", sa.String(160), nullable=False),
@@ -25,8 +28,10 @@ def upgrade():
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("code"),
     )
-    op.create_index("ix_data_attributes_code", "data_attributes", ["code"])
-    op.create_table(
+    if 'ix_data_attributes_code' not in {idx['name'] for idx in inspect(connection).get_indexes('data_attributes')}:
+        op.create_index("ix_data_attributes_code", "data_attributes", ["code"])
+    if not inspect(connection).has_table('flow_data_uses'):
+        op.create_table(
         "flow_data_uses",
         sa.Column("id", sa.Uuid(), nullable=False),
         sa.Column("flow_id", sa.Uuid(), nullable=False),
@@ -41,8 +46,10 @@ def upgrade():
         sa.ForeignKeyConstraint(["consumer_system_id"], ["objects.id"]),
         sa.PrimaryKeyConstraint("id"),
     )
-    op.create_index("ix_flow_data_uses_flow_id", "flow_data_uses", ["flow_id"])
-    op.create_index("ix_flow_data_uses_attribute_id", "flow_data_uses", ["attribute_id"])
+    if 'ix_flow_data_uses_flow_id' not in {idx['name'] for idx in inspect(connection).get_indexes('flow_data_uses')}:
+        op.create_index("ix_flow_data_uses_flow_id", "flow_data_uses", ["flow_id"])
+    if 'ix_flow_data_uses_attribute_id' not in {idx['name'] for idx in inspect(connection).get_indexes('flow_data_uses')}:
+        op.create_index("ix_flow_data_uses_attribute_id", "flow_data_uses", ["attribute_id"])
 
 
 def downgrade():

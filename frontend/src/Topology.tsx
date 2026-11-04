@@ -1,6 +1,6 @@
-import React, {useMemo, useState} from 'react'
+import React, {useEffect, useMemo, useRef, useState} from 'react'
 import {AutoFit,Disclosure} from './WorkspaceUI'
-import {ReactFlow,Background,Controls,MarkerType,Position,type Node,type Edge} from '@xyflow/react'
+import {ReactFlow,Background,Controls,MarkerType,Position,useReactFlow,type Node,type Edge} from '@xyflow/react'
 
 type Item={id:string;system_id:string;kind:string;name:string;details:Record<string,unknown>}
 type System={id:string;name:string}
@@ -10,6 +10,40 @@ type Flow={id:string;source_id:string;target_id:string;name:string;protocol:stri
 type Props={systems:System[];items:Item[];segments:Segment[];interfaces:Nic[];flows:Flow[];saveInterface:(value:Omit<Nic,"id">,id?:string)=>Promise<void>;saveFlow:(value:Omit<Flow,"id">,id?:string)=>Promise<void>;saveSegment:(value:Omit<Segment,"id">,id?:string)=>Promise<void>}
 const unknown='Не определено'
 const colors={verified:'#15805c',unverified:'#bc8323'}
+/** Fit declared parent group rectangles instead of relying on nested node measurements.
+ * Child node positions are relative to parentId and must not be fitted twice.
+ */
+function TopologyGroupFit({groups}:{groups:Node[]}){
+ const anchor=useRef<HTMLSpanElement>(null)
+ const {setViewport}=useReactFlow()
+ const layoutKey=groups.map(n=>[n.id,n.position.x,n.position.y,n.style?.width,n.style?.height].join(':')).join('|')
+ useEffect(()=>{
+  const canvas=anchor.current?.closest<HTMLElement>('.react-flow')
+  if(!canvas||!groups.length)return
+  let frame=0
+  const fit=()=>{
+   cancelAnimationFrame(frame)
+   frame=requestAnimationFrame(()=>{
+    const width=canvas.clientWidth,height=canvas.clientHeight
+    if(width<100||height<100)return
+    const minX=Math.min(...groups.map(n=>n.position.x))
+    const minY=Math.min(...groups.map(n=>n.position.y))
+    const maxX=Math.max(...groups.map(n=>n.position.x+(Number(n.style?.width)||272)))
+    const maxY=Math.max(...groups.map(n=>n.position.y+(Number(n.style?.height)||160)))
+    const graphWidth=Math.max(1,maxX-minX),graphHeight=Math.max(1,maxY-minY)
+    const margin=28
+    const zoom=Math.max(0.02,Math.min(1,(width-margin*2)/graphWidth,(height-margin*2)/graphHeight))
+    void setViewport({x:(width-graphWidth*zoom)/2-minX*zoom,y:(height-graphHeight*zoom)/2-minY*zoom,zoom},{duration:0})
+   })
+  }
+  const observer=new ResizeObserver(fit)
+  observer.observe(canvas)
+  fit()
+  return()=>{observer.disconnect();cancelAnimationFrame(frame)}
+ },[setViewport,layoutKey])
+ return <span ref={anchor} hidden/>
+}
+
 export default function Topology({systems,items,segments,interfaces,flows,saveInterface,saveFlow,saveSegment}:Props){
  const [showConnections,setShowConnections]=useState(true)
  const [showAllComponents,setShowAllComponents]=useState(true)
@@ -162,7 +196,7 @@ export default function Topology({systems,items,segments,interfaces,flows,saveIn
   </Disclosure>{focusGraph&&<small role='status'>Слева – источники входящих потоков, справа – получатели исходящих. Нажмите на стрелку для просмотра параметров.</small>}
   <small>Найдено компонентов: {matching.length} · Показано объектов: {displayed.length} · VRF/VLAN-групп: {groups.size} · Потоков: {visibleFlows.length} · На схеме: {showConnections?'все потоки':selected||flowId?'выбранные связи':'обзор компонентов'} · Без сетевых интерфейсов: {matching.filter(i=>!(nicsByItem.get(i.id)||[]).length).length}</small>
   <div className="topologyCanvas">
-   {(focusGraph?focusNodes.length:displayed.length)?<ReactFlow minZoom={0.08} key={focusGraph?'focus:'+selected+':'+flowId+':'+flowDirection:'overview:'+system+':'+vrf+':'+vlan+':'+environment+':'+displayed.length} nodes={focusGraph?focusNodes:nodes} edges={focusGraph?focusEdges:edges} nodesDraggable={false} nodesConnectable={editing} onConnect={connection=>{if(!editing)return;const source=focusGraph?connection.source:connection.source?.split(':')[1],target=focusGraph?connection.target:connection.target?.split(':')[1];if(source&&target&&source!==target){editFlowDraft(undefined,source,target)}}} onNodeClick={(_,n)=>{if(focusGraph&&itemById.has(n.id)){setSelected(n.id);setFlowId('');setFocusMode('dependencies')}else if(n.id.startsWith('host:')){const id=String((n.data as {item_id?:string}).item_id||'');const found=id||displayed.find(i=>n.id.startsWith('host:'+i.id+':'))?.id||'';setSelected(found);setFlowId('');setFocusMode('dependencies')}}} onEdgeClick={(_,e)=>{setFlowId(e.id);setSelected('');setShowConnections(false);setFocusMode('dependencies')}} onPaneClick={()=>{setSelected('');setFlowId('')}}><AutoFit groupParentsOnly/><Background/><Controls showInteractive={false}/></ReactFlow>:<p style={{padding:20}}>Нет компонентов для выбранных фильтров. Проверьте систему, контур и сетевые привязки.</p>}
+   {(focusGraph?focusNodes.length:displayed.length)?<ReactFlow minZoom={0.08} key={focusGraph?'focus:'+selected+':'+flowId+':'+flowDirection:'overview:'+system+':'+vrf+':'+vlan+':'+environment+':'+displayed.length} nodes={focusGraph?focusNodes:nodes} edges={focusGraph?focusEdges:edges} nodesDraggable={false} nodesConnectable={editing} onConnect={connection=>{if(!editing)return;const source=focusGraph?connection.source:connection.source?.split(':')[1],target=focusGraph?connection.target:connection.target?.split(':')[1];if(source&&target&&source!==target){editFlowDraft(undefined,source,target)}}} onNodeClick={(_,n)=>{if(focusGraph&&itemById.has(n.id)){setSelected(n.id);setFlowId('');setFocusMode('dependencies')}else if(n.id.startsWith('host:')){const id=String((n.data as {item_id?:string}).item_id||'');const found=id||displayed.find(i=>n.id.startsWith('host:'+i.id+':'))?.id||'';setSelected(found);setFlowId('');setFocusMode('dependencies')}}} onEdgeClick={(_,e)=>{setFlowId(e.id);setSelected('');setShowConnections(false);setFocusMode('dependencies')}} onPaneClick={()=>{setSelected('');setFlowId('')}}>{focusGraph?<AutoFit/>:<TopologyGroupFit groups={nodes.filter(n=>!n.parentId)}/>}<Background/><Controls showInteractive={false}/></ReactFlow>:<p style={{padding:20}}>Нет компонентов для выбранных фильтров. Проверьте систему, контур и сетевые привязки.</p>}
   </div>
   <small>Нажмите на компонент, чтобы увидеть его потоки. Переключатель «Все потоки» показывает общую картину. Зелёная стрелка – подтверждённый поток; оранжевая – не проверен. Отсутствие стрелки не означает отсутствия сетевого доступа. Схема отображает описанные логические связи, не трассировку физического маршрута.</small>
   {(item||flow)&&<aside className="topologyInspector" aria-label="Выбранный объект топологии">

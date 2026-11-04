@@ -881,7 +881,7 @@ app.include_router(views_router)
 # Board edits are applied as a single reviewed transaction. For existing interface
 # assignments the client supplies the expected previous value (optimistic check).
 class BoardChange(BaseModel):
-    action: str = Field(pattern="^(create_vm|create_network|create_flow|move_interface)$")
+    action: str = Field(pattern="^(create_vm|create_network|create_flow|create_interface|move_interface)$")
     id: UUID | None = None
     system_id: UUID | None = None
     name: str = Field(default="", max_length=250)
@@ -896,6 +896,8 @@ class BoardChange(BaseModel):
     schedule: str = Field(default="", max_length=160)
     verification: str = Field(default="draft", max_length=30)
     interface_id: UUID | None = None
+    item_id: UUID | None = None
+    interface_name: str = Field(default="eth0", min_length=1, max_length=100)
     network_id: UUID | None = None
     previous_network_id: UUID | None = None
     network_field: str = Field(default="zone_id", pattern="^(zone_id|vlan_id|vrf_id)$")
@@ -918,7 +920,7 @@ def authorize_board(payload: BoardBatch, request: Request) -> None:
         return
     grants = ROLE_ACCESS[role]
     for change in payload.changes:
-        layer = 'networks' if change.action in ('create_network', 'move_interface') else ('flows' if change.action == 'create_flow' else 'infrastructure')
+        layer = 'networks' if change.action in ('create_network', 'create_interface', 'move_interface') else ('flows' if change.action == 'create_flow' else 'infrastructure')
         if grants.get(layer) != 'write':
             raise HTTPException(403, f'Insufficient permission to modify {layer}')
 
@@ -934,7 +936,7 @@ def apply_board_changes(payload: BoardBatch, db: Session) -> list[dict[str, Any]
     output: list[dict[str, Any]] = []
     ids_seen: set[UUID] = set()
     for change in payload.changes:
-        if change.action in {"create_vm", "create_flow", "create_network"}:
+        if change.action in {"create_vm", "create_flow", "create_network", "create_interface"}:
             if change.id is None:
                 raise HTTPException(422, "New objects require a stable UUID id")
             if change.id in ids_seen:
@@ -976,6 +978,31 @@ def apply_board_changes(payload: BoardBatch, db: Session) -> list[dict[str, Any]
             output.append({"action": "create_flow", "id": str(flow.id), "before": None,
                            "after": {"source_id": str(flow.source_id), "target_id": str(flow.target_id),
                                      "name": flow.name, "protocol": flow.protocol, "port": flow.port, "security": flow.security}})
+        elif change.action == "create_interface":
+            if change.item_id is None or change.network_id is None:
+                raise HTTPException(422, "New interface requires VM and network")
+            db.flush()
+            if db.get(NetworkInterface, change.id):
+                raise HTTPException(409, "Interface already exists")
+            item = db.get(InfrastructureItem, change.item_id)
+            if item is None:
+                raise HTTPException(422, "Interface component not found")
+            network = db.get(NetworkSegment, change.network_id)
+            expected_kind = {"zone_id": "zone", "vlan_id": "vlan", "vrf_id": "vrf"}[change.network_field]
+            if network is None or network.kind != expected_kind:
+                raise HTTPException(422, "Network type mismatch")
+            if db.scalars(select(NetworkInterface).where(
+                NetworkInterface.item_id == change.item_id,
+                NetworkInterface.name == change.interface_name,
+            )).first():
+                raise HTTPException(409, "Interface with that name already exists")
+            nic = NetworkInterface(id=change.id, item_id=change.item_id,
+                                   name=change.interface_name, ip_address="",
+                                   **{change.network_field: change.network_id})
+            db.add(nic)
+            output.append({"action": "create_interface", "id": str(nic.id), "before": None,
+                           "after": {"item_id": str(nic.item_id), "name": nic.name,
+                                     "network_field": change.network_field, "network_id": str(change.network_id)}})
         elif change.action == "move_interface":
             if change.interface_id is None:
                 raise HTTPException(422, "Choose a concrete interface for network membership")

@@ -875,3 +875,132 @@ app.include_router(incident_router)
 
 from .views import router as views_router
 app.include_router(views_router)
+
+
+# Board edits are applied as a single reviewed transaction. For existing interface
+# assignments the client supplies the expected previous value (optimistic check).
+class BoardChange(BaseModel):
+    action: str = Field(pattern="^(create_vm|create_network|create_flow|move_interface)$")
+    id: UUID | None = None
+    system_id: UUID | None = None
+    name: str = Field(default="", max_length=250)
+    kind: str = Field(default="vm", max_length=50)
+    description: str = Field(default="", max_length=2000)
+    source_id: UUID | None = None
+    target_id: UUID | None = None
+    protocol: str = Field(default="", max_length=80)
+    port: str = Field(default="", max_length=80)
+    security: str = Field(default="unknown", max_length=80)
+    data_description: str = Field(default="", max_length=4000)
+    schedule: str = Field(default="", max_length=160)
+    verification: str = Field(default="draft", max_length=30)
+    interface_id: UUID | None = None
+    network_id: UUID | None = None
+    previous_network_id: UUID | None = None
+    network_field: str = Field(default="zone_id", pattern="^(zone_id|vlan_id|vrf_id)$")
+
+class BoardBatch(BaseModel):
+    changes: list[BoardChange] = Field(min_length=1, max_length=100)
+    reason: str = Field(min_length=3, max_length=1000)
+
+class BoardAudit(Base):
+    __tablename__ = "board_audit"
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    reason: Mapped[str] = mapped_column(String(1000))
+    changes: Mapped[list[dict[str, Any]]] = mapped_column(JSON)
+
+def apply_board_changes(payload: BoardBatch, db: Session) -> list[dict[str, Any]]:
+    """Validate and stage all edits in the current SQLAlchemy transaction."""
+    output: list[dict[str, Any]] = []
+    ids_seen: set[UUID] = set()
+    for change in payload.changes:
+        if change.action in {"create_vm", "create_flow", "create_network"}:
+            if change.id is None:
+                raise HTTPException(422, "New objects require a stable UUID id")
+            if change.id in ids_seen:
+                raise HTTPException(422, "Duplicate UUID in batch")
+            ids_seen.add(change.id)
+        if change.action == "create_vm":
+            if change.kind not in {"vm", "server", "host"} or not change.name.strip() or change.system_id is None:
+                raise HTTPException(422, "VM requires system, name and supported kind")
+            if db.get(InfrastructureItem, change.id):
+                raise HTTPException(409, "VM already exists")
+            if not db.get(ArchitectureObject, change.system_id):
+                raise HTTPException(422, "Unknown system")
+            vm = InfrastructureItem(id=change.id, system_id=change.system_id, kind=change.kind,
+                                    name=change.name.strip(), description=change.description, details={})
+            db.add(vm)
+            output.append({"action": "create_vm", "id": str(vm.id), "after": {"name": vm.name, "system_id": str(vm.system_id)}, "before": None})
+        elif change.action == "create_network":
+            if not change.name.strip() or change.kind not in {"zone", "vlan", "vrf"}:
+                raise HTTPException(422, "Network requires name and valid type")
+            if db.get(NetworkSegment, change.id) or db.scalars(select(NetworkSegment).where(NetworkSegment.name == change.name.strip())).first():
+                raise HTTPException(409, "Network already exists")
+            segment = NetworkSegment(id=change.id, name=change.name.strip(), kind=change.kind,
+                                     description=change.description, verification="draft")
+            db.add(segment)
+            output.append({"action": "create_network", "id": str(segment.id), "before": None,
+                           "after": {"name": segment.name, "kind": segment.kind}})
+        elif change.action == "create_flow":
+            if not change.name.strip() or not change.source_id or not change.target_id or change.source_id == change.target_id:
+                raise HTTPException(422, "Flow requires two different components and a name")
+            db.flush()
+            if db.get(DataFlow, change.id):
+                raise HTTPException(409, "Flow already exists")
+            if not db.get(InfrastructureItem, change.source_id) or not db.get(InfrastructureItem, change.target_id):
+                raise HTTPException(422, "Flow endpoints not found")
+            flow = DataFlow(id=change.id, source_id=change.source_id, target_id=change.target_id, name=change.name.strip(),
+                            protocol=change.protocol, port=change.port, security=change.security,
+                            data_description=change.data_description, schedule=change.schedule, verification=change.verification)
+            db.add(flow)
+            output.append({"action": "create_flow", "id": str(flow.id), "before": None,
+                           "after": {"source_id": str(flow.source_id), "target_id": str(flow.target_id),
+                                     "name": flow.name, "protocol": flow.protocol, "port": flow.port, "security": flow.security}})
+        elif change.action == "move_interface":
+            if change.interface_id is None:
+                raise HTTPException(422, "Choose a concrete interface for network membership")
+            db.flush()
+            nic = db.get(NetworkInterface, change.interface_id)
+            if nic is None:
+                raise HTTPException(404, "Interface not found")
+            old = getattr(nic, change.network_field)
+            if old != change.previous_network_id:
+                raise HTTPException(409, "Network assignment changed since preview; refresh and review")
+            expected_kind = {"zone_id": "zone", "vlan_id": "vlan", "vrf_id": "vrf"}[change.network_field]
+            if change.network_id is not None:
+                segment = db.get(NetworkSegment, change.network_id)
+                if not segment or segment.kind != expected_kind:
+                    raise HTTPException(422, "Target network kind does not match interface field")
+            setattr(nic, change.network_field, change.network_id)
+            output.append({"action": "move_interface", "id": str(nic.id), "item_id": str(nic.item_id),
+                           "field": change.network_field, "before": str(old) if old else None,
+                           "after": str(change.network_id) if change.network_id else None})
+    db.flush()
+    return output
+
+@app.post("/api/board/preview")
+def preview_board_batch(payload: BoardBatch, db: Session = Depends(db_session)):
+    try:
+        changes = apply_board_changes(payload, db)
+        return {"changes": changes, "count": len(changes), "review_required": True}
+    finally:
+        db.rollback()
+
+@app.post("/api/board/commit")
+def commit_board_batch(payload: BoardBatch, db: Session = Depends(db_session)):
+    try:
+        changes = apply_board_changes(payload, db)
+        audit = BoardAudit(reason=payload.reason.strip(), changes=changes)
+        db.add(audit)
+        db.commit()
+        return {"audit_id": str(audit.id), "changes": changes, "count": len(changes)}
+    except Exception:
+        db.rollback()
+        raise
+
+@app.get("/api/board/audit")
+def list_board_audit(limit: int = 50, db: Session = Depends(db_session)):
+    rows = db.scalars(select(BoardAudit).order_by(BoardAudit.timestamp.desc()).limit(max(1, min(limit, 200)))).all()
+    return [{"id": str(row.id), "timestamp": row.timestamp.isoformat(),
+             "reason": row.reason, "changes": row.changes} for row in rows]

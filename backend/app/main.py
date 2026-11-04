@@ -138,6 +138,54 @@ class SegmentOutput(SegmentInput):
     id: UUID
 
 
+class NetworkAsset(Base):
+    """Reusable network/security infrastructure object; never a statement of actual reachability."""
+    __tablename__ = "network_assets"
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    name: Mapped[str] = mapped_column(String(250), index=True)
+    kind: Mapped[str] = mapped_column(String(40))
+    description: Mapped[str] = mapped_column(String(2000), default="")
+    address: Mapped[str] = mapped_column(String(120), default="")
+    verification: Mapped[str] = mapped_column(String(30), default="draft")
+
+
+class FlowNetworkHop(Base):
+    """Ordered declared passage via a network object, NOT automatically discovered routing."""
+    __tablename__ = "flow_network_hops"
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    flow_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("data_flows.id"), index=True)
+    asset_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("network_assets.id"), index=True)
+    position: Mapped[int] = mapped_column(default=0)
+    notes: Mapped[str] = mapped_column(String(2000), default="")
+    verification: Mapped[str] = mapped_column(String(30), default="draft")
+
+
+class NetworkAssetInput(BaseModel):
+    name: str = Field(min_length=1, max_length=250)
+    kind: str = Field(pattern="^(subnet|dmz|firewall|waf|ptaf|router|gateway|load_balancer|vpn|other)$")
+    description: str = Field(default="", max_length=2000)
+    address: str = Field(default="", max_length=120)
+    verification: str = Field(default="draft", pattern="^(draft|assumed|verified)$")
+
+
+class NetworkAssetOutput(NetworkAssetInput):
+    model_config = ConfigDict(from_attributes=True)
+    id: UUID
+
+
+class NetworkHopInput(BaseModel):
+    asset_id: UUID
+    position: int = Field(ge=0, le=10000)
+    notes: str = Field(default="", max_length=2000)
+    verification: str = Field(default="draft", pattern="^(draft|assumed|verified)$")
+
+
+class NetworkHopOutput(NetworkHopInput):
+    model_config = ConfigDict(from_attributes=True)
+    id: UUID
+    flow_id: UUID
+
+
 class NICInput(BaseModel):
     item_id: UUID
     name: str = Field(min_length=1, max_length=100)
@@ -518,6 +566,8 @@ def delete_flow(flow_id: UUID, db: Session = Depends(db_session)):
     flow = db.get(DataFlow, flow_id)
     if flow is None:
         raise HTTPException(status_code=404, detail="Flow not found")
+    for hop in db.scalars(select(FlowNetworkHop).where(FlowNetworkHop.flow_id == flow_id)).all():
+        db.delete(hop)
     db.delete(flow)
     db.commit()
 
@@ -660,6 +710,92 @@ def load_enterprise_demo(db: Session = Depends(db_session)):
             "telephone_prod_vm": 3, "telephone_test_vm": 2,
             "bitrix_vm": 3, "naumen_vm": 11,
             "notice": "Все инфраструктурные имена, сети, роли и каналы демонстрационные."}
+
+
+@app.get("/api/network-assets", response_model=list[NetworkAssetOutput])
+def list_network_assets(db: Session = Depends(db_session)):
+    return db.scalars(select(NetworkAsset).order_by(NetworkAsset.kind, NetworkAsset.name)).all()
+
+
+@app.post("/api/network-assets", response_model=NetworkAssetOutput, status_code=201)
+def add_network_asset(payload: NetworkAssetInput, db: Session = Depends(db_session)):
+    if db.scalars(select(NetworkAsset).where(NetworkAsset.name == payload.name, NetworkAsset.kind == payload.kind)).first():
+        raise HTTPException(409, "Network object already exists")
+    asset = NetworkAsset(**payload.model_dump())
+    db.add(asset)
+    db.commit()
+    db.refresh(asset)
+    return asset
+
+
+@app.put("/api/network-assets/{asset_id}", response_model=NetworkAssetOutput)
+def update_network_asset(asset_id: UUID, payload: NetworkAssetInput, db: Session = Depends(db_session)):
+    asset = db.get(NetworkAsset, asset_id)
+    if asset is None:
+        raise HTTPException(404, "Network object not found")
+    if db.scalars(select(NetworkAsset).where(NetworkAsset.name == payload.name, NetworkAsset.kind == payload.kind, NetworkAsset.id != asset_id)).first():
+        raise HTTPException(409, "Network object already exists")
+    for key, value in payload.model_dump().items():
+        setattr(asset, key, value)
+    db.commit()
+    db.refresh(asset)
+    return asset
+
+
+@app.delete("/api/network-assets/{asset_id}", status_code=204)
+def delete_network_asset(asset_id: UUID, db: Session = Depends(db_session)):
+    asset = db.get(NetworkAsset, asset_id)
+    if asset is None:
+        raise HTTPException(404, "Network object not found")
+    if db.scalars(select(FlowNetworkHop).where(FlowNetworkHop.asset_id == asset_id)).first():
+        raise HTTPException(409, "Object is referenced by flow paths")
+    db.delete(asset)
+    db.commit()
+
+
+@app.get("/api/flows/{flow_id}/network-path")
+def flow_network_path(flow_id: UUID, db: Session = Depends(db_session)):
+    flow = db.get(DataFlow, flow_id)
+    if flow is None:
+        raise HTTPException(404, "Flow not found")
+    rows = db.scalars(select(FlowNetworkHop).where(FlowNetworkHop.flow_id == flow_id).order_by(FlowNetworkHop.position, FlowNetworkHop.id)).all()
+    assets = {a.id: a for a in db.scalars(select(NetworkAsset).where(
+        NetworkAsset.id.in_([row.asset_id for row in rows]))).all()} if rows else {}
+    return {
+        "flow_id": flow_id, "source_id": flow.source_id, "target_id": flow.target_id,
+        "declared_only": True, "hops": [
+            {"id": hop.id, "flow_id": hop.flow_id, "asset_id": hop.asset_id,
+             "position": hop.position, "notes": hop.notes, "verification": hop.verification,
+             "name": assets[hop.asset_id].name, "kind": assets[hop.asset_id].kind,
+             "address": assets[hop.asset_id].address}
+            for hop in rows
+        ],
+    }
+
+
+@app.put("/api/flows/{flow_id}/network-path", response_model=list[NetworkHopOutput])
+def replace_flow_network_path(flow_id: UUID, payload: list[NetworkHopInput], db: Session = Depends(db_session)):
+    if db.get(DataFlow, flow_id) is None:
+        raise HTTPException(404, "Flow not found")
+    asset_ids = [row.asset_id for row in payload]
+    if len(asset_ids) != len(set(asset_ids)):
+        raise HTTPException(422, "Each network object can occur once in a flow path")
+    positions = [row.position for row in payload]
+    if sorted(positions) != list(range(len(payload))):
+        raise HTTPException(422, "Positions must be consecutive from zero")
+    for asset_id in asset_ids:
+        if db.get(NetworkAsset, asset_id) is None:
+            raise HTTPException(422, "Unknown network object")
+    # Validate the entire path before mutating anything.
+    for old in db.scalars(select(FlowNetworkHop).where(FlowNetworkHop.flow_id == flow_id)).all():
+        db.delete(old)
+    db.flush()
+    new = [FlowNetworkHop(flow_id=flow_id, **row.model_dump()) for row in sorted(payload, key=lambda row: row.position)]
+    db.add_all(new)
+    db.commit()
+    for row in new:
+        db.refresh(row)
+    return new
 
 
 @app.get("/api/networks", response_model=list[SegmentOutput])

@@ -2,6 +2,7 @@ name: Deploy Architecture Hub frontend (test)
 
 # Deploy only after the CI workflow has passed for a push to main.
 # Explicit repository variable DEPLOY_ENABLED=true is required to arm deployment.
+# Deployment smoke test: verify configured SSH secrets and frontend publishing.
 on:
   workflow_run:
     workflows: ["Architecture Hub CI"]

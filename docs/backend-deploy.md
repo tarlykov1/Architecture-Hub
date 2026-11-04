@@ -18,6 +18,19 @@ curl --fail --silent http://127.0.0.1:8001/api/health
 
 **Не продолжать**, если сервис использует другие каталоги, Python-интерпретатор, UNIX-пользователя или другую БД. В таком случае сперва адаптировать `scripts/deploy_backend_test.sh` под реальные `ExecStart`, `User`, `EnvironmentFile`. **Нельзя включать деплой только потому, что frontend работает.**
 
+## 1.1. Проверить и подготовить права виртуального окружения
+
+Для существующего тестового сервера было подтверждено: `User=archhub`, `ExecStart=/opt/architecture-hub/backend/.venv/bin/python`, Python 3.11.2, `/etc/architecture-hub.env`, SQLite `/var/lib/architecture-hub/architecture_hub.db`; `.venv` пока принадлежит root. Сам backend-каталог оставляем под root, а **только его существующее виртуальное окружение** передаём `archhub`, чтобы обновление `pip` выполнялось без root.
+
+```bash
+test -x /opt/architecture-hub/backend/.venv/bin/python || exit 1
+chown -R archhub:archhub /opt/architecture-hub/backend/.venv
+runuser -u archhub -- test -w /opt/architecture-hub/backend/.venv/lib && echo 'VENV WRITABLE'
+runuser -u archhub -- /opt/architecture-hub/backend/.venv/bin/python -m pip --version
+```
+
+Это осознанный компромисс **только для тестового сервера**: скомпрометированный процесс `archhub` потенциально сможет изменять свои Python-пакеты. Для production используйте отдельного сборочного пользователя и неизменяемый root-owned venv, переключаемый после проверки релиза.
+
 ## 2. Однократно установить контролируемый скрипт
 
 После сопоставления путей с реальной конфигурацией:

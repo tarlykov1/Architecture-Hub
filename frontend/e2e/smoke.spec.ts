@@ -53,17 +53,16 @@ test('system creation has a single action in the create menu',async({page})=>{
   await editor.getByRole('textbox',{name:'Название'}).fill(name)
   await editor.getByRole('button',{name:'+ Добавить'}).click()
   await expect(editor).toBeHidden()
-  await expect(page.getByRole('button',{name})).toBeVisible()
+  await page.getByRole('navigation',{name:'Разделы архитектуры'}).getByRole('button',{name:'Системы',exact:true}).click()
+  await expect(page.locator('.systemsTable').getByRole('button',{name,exact:true})).toBeVisible()
 })
 
-test('compact navigation keeps secondary tools accessible and catalog can be hidden',async({page})=>{
+test('compact navigation exposes secondary tools without duplicate catalog',async({page})=>{
   await page.goto('/')
-  const catalog=page.locator('aside.sidebar')
-  await expect(catalog).toBeVisible()
-  await page.getByRole('button',{name:'Скрыть каталог'}).click()
-  await expect(catalog).toBeHidden()
-  await page.getByRole('button',{name:'Открыть каталог'}).click()
-  await expect(catalog).toBeVisible()
+  await expect(page.locator('aside.sidebar')).toHaveCount(0)
+  await expect(page.locator('.homeMapGraph')).toBeVisible()
+  await page.getByRole('navigation',{name:'Разделы архитектуры'}).getByRole('button',{name:'Системы',exact:true}).click()
+  await expect(page.locator('.systemsTable')).toBeVisible()
   await navigateTo(page,'Реестр сетей')
   await expect(page.getByRole('textbox',{name:'Поиск сети'})).toBeVisible()
   await navigateTo(page,'Топология сетей')
@@ -351,6 +350,9 @@ test('systems are read-only until editing is explicitly enabled and leaving rese
   await page.goto('/')
   await page.getByRole('navigation',{name:'Разделы архитектуры'}).getByRole('button',{name:'Системы',exact:true}).click()
   await page.getByRole('textbox',{name:'Фильтр по названию'}).fill(system.name)
+  await expect(page.locator('.systemsTable')).toBeVisible()
+  await expect(page.locator('.systemsTable').getByRole('button',{name:system.name,exact:true})).toBeVisible()
+  await page.getByRole('button',{name:'Редактор схемы',exact:true}).click()
   const diagram=page.locator('[data-active-graph="systems"]')
   const node=diagram.locator('.react-flow__node').filter({hasText:system.name})
   await expect(node).toBeVisible()
@@ -513,13 +515,7 @@ for(const width of [390,768,1440]) {
       expect(box!.x+box!.width).toBeLessThanOrEqual(width+1)
     }
     await assertNoOverflow()
-    if(width<650){
-      await expect(page.locator('aside.sidebar')).toBeHidden()
-      await page.getByRole('button',{name:'Открыть каталог'}).click()
-      await expect(page.locator('aside.sidebar')).toBeVisible()
-      await assertNoOverflow()
-    }
-    await page.getByRole('button',{name:'Скрыть каталог'}).click()
+    await expect(page.locator('aside.sidebar')).toHaveCount(0)
     await assertNoOverflow()
     for(const name of ['Системы','Компоненты','Потоки']) {
       const nav=page.getByRole('navigation',{name:'Разделы архитектуры'})
@@ -562,7 +558,7 @@ test('topology fits tall groups after loading, resize and catalog collapse',asyn
     })
   })
   await expect.poll(contained).toBe(true)
-  await page.getByRole('button',{name:'Скрыть каталог'}).click()
+  await expect(page.locator('aside.sidebar')).toHaveCount(0)
   await expect.poll(contained).toBe(true)
   await page.setViewportSize({width:1000,height:720})
   await expect.poll(contained).toBe(true)

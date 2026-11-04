@@ -101,8 +101,25 @@ function Editor({systemId,items,networks,interfaces,flows,request,onCommitted}:P
    const width=Math.abs(end.x-drawing.x),height=Math.abs(end.y-drawing.y)
    if(width<180||height<120){setError('Нарисуйте прямоугольник минимум 180 × 120.');setDrawing(null);return}
    const id=makeId()
-   setRectangles(prev=>[...prev,{id,name:name.trim(),kind,x,y,width,height}])
-   addChange({action:'create_network',id,name:name.trim(),kind})
+   const rect:Rect={id,name:name.trim(),kind,x,y,width,height}
+   setRectangles(prev=>[...prev,rect])
+   const networkField=fieldForKind(kind)
+   const enclosed=nodes.filter(node=>rectContains(rect,{x:node.position.x+97,y:node.position.y+30}))
+   const assignments:Change[]=[]
+   let ambiguous=0
+   for(const node of enclosed){
+     const attached=interfaces.filter(n=>n.item_id===node.id)
+     if(attached.length>1){ambiguous++;continue}
+     if(attached.length===1){
+       const nic=attached[0]
+       if(nic[networkField]!==id)assignments.push({action:'move_interface',interface_id:nic.id,previous_network_id:nic[networkField],network_id:id,network_field:networkField})
+     }else{
+       assignments.push({action:'create_interface',id:makeId(),item_id:node.id,interface_name:'eth0',network_id:id,network_field:networkField})
+     }
+   }
+   setChanges(previous=>[...previous,{action:'create_network',id,name:name.trim(),kind},...assignments])
+   setPreview(null)
+   setError(ambiguous?('Сеть нарисована. У '+ambiguous+' ВМ несколько интерфейсов – выберите интерфейс и переместите ВМ в зону вручную.'):'Новая сеть и '+assignments.length+' сетевых привязок подготовлены для подтверждения.')
    setDrawing(null);setName('');setTool('move')
  }
  const handlePaneClick=(event:React.MouseEvent)=>{

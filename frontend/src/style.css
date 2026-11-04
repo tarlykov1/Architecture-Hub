@@ -482,3 +482,11 @@ button:disabled{cursor:not-allowed;opacity:.55}
 .systemRowActions button{padding:7px 11px;font-size:12px}
 .systemsWorkspace>.canvas{flex:1;min-height:430px;border:1px solid #e2e8f0;border-radius:12px}
 @media(max-width:650px){.systemsWorkspace{padding:12px}.systemsTable{min-width:650px}}
+
+/* Compact whiteboard tools appear only when editing a component diagram. */
+.canvasEditTools{display:flex;align-items:center;flex-wrap:wrap;gap:8px;padding:8px 10px;border:1px solid #cbd5e1;border-radius:9px;background:#f8fafc;font-size:12px}
+.canvasEditTools>span{flex:1;min-width:200px;color:#475569}
+.canvasEditTools>small{color:#64748b}
+.canvasEditTools button{border:1px solid #cbd5e1;border-radius:7px;background:white;padding:7px 10px;cursor:pointer}
+.canvasToolSwitch{display:flex;gap:3px;padding:3px;background:#e9eff8;border-radius:8px}
+.canvasToolSwitch button[aria-pressed="true"]{background:#1c67c7;color:white;border-color:#1c67c7}

@@ -563,9 +563,12 @@ test('topology fits tall groups after loading, resize and catalog collapse',asyn
   await expect(canvas.locator('.react-flow__node[data-id^="host:"]')).toHaveCount(25)
   const contained=()=>canvas.evaluate(root=>{
     const box=root.getBoundingClientRect()
+    // Canvas border and fractional CSS scaling can differ by a few device pixels.
+    // A 4 CSS-pixel tolerance still detects any materially clipped graph node.
+    const tolerance=4
     return [...root.querySelectorAll('.react-flow__node')].every(node=>{
       const r=node.getBoundingClientRect()
-      return r.left>=box.left-2&&r.right<=box.right+2&&r.top>=box.top-2&&r.bottom<=box.bottom+2
+      return r.left>=box.left-tolerance&&r.right<=box.right+tolerance&&r.top>=box.top-tolerance&&r.bottom<=box.bottom+tolerance
     })
   })
   await expect.poll(contained).toBe(true)

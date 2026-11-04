@@ -20,6 +20,7 @@ fail(){ echo "Backend deploy: $*" >&2; exit 1; }
 [ -d "$APP" ] || fail "backend directory missing: $APP"
 [ -f "$DB" ] || fail "database missing: $DB; refusing deployment"
 [ -x "$VENV/bin/python" ] || fail "venv missing: $VENV; provision it before enabling CI"
+runuser -u "$USER_NAME" -- test -w "$VENV/lib" || fail "venv is not writable by $USER_NAME; see docs/backend-deploy.md"
 [ -f "$ENV_FILE" ] || fail "EnvironmentFile missing: $ENV_FILE"
 command -v rsync >/dev/null || fail "rsync not installed"
 command -v runuser >/dev/null || fail "runuser not installed"

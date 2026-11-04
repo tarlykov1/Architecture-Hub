@@ -274,6 +274,26 @@ test('component whiteboard packs unlinked nodes and saves dragged placement',asy
   expect(Object.keys(stored).length).toBeGreaterThan(0)
 })
 
+test('whiteboard connect tool opens technical flow editor without creating a bare line',async({page})=>{
+  const name='Connection board '+Date.now()
+  const system=await page.request.post('http://127.0.0.1:8001/api/objects',{data:{name,kind:'system'}})
+  expect(system.status()).toBe(201)
+  const id=(await system.json()).id
+  for(const componentName of ['Connector source','Connector target']){
+    const result=await page.request.post('http://127.0.0.1:8001/api/infra',{data:{system_id:id,name:componentName,kind:'service'}})
+    expect(result.status()).toBe(201)
+  }
+  await page.goto('/')
+  await openSystemComponents(page,name)
+  await page.getByRole('button',{name:'Редактировать схему'}).click()
+  await page.getByRole('group',{name:'Инструмент доски'}).getByRole('button',{name:'Связать'}).click()
+  const nodes=page.locator('.miniArchitecture .react-flow__node')
+  await nodes.filter({hasText:'Connector source'}).click()
+  await nodes.filter({hasText:'Connector target'}).click()
+  await expect(page.getByRole('dialog',{name:'Редактор потока'})).toBeVisible()
+  await expect(page.locator('.miniArchitecture .react-flow__edge')).toHaveCount(0)
+})
+
 test('neighboring systems toggle reveals cross-system linked components',async({page})=>{
  const stamp=Date.now()
  const names=['Cross source '+stamp,'Cross neighbor '+stamp]

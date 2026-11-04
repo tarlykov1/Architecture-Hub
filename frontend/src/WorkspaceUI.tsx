@@ -2,7 +2,7 @@ import React, {useEffect,useRef,type ReactNode} from 'react'
 import {useNodes,useNodesInitialized,useReactFlow} from '@xyflow/react'
 
 /** Refit measured graphs on membership/layout changes and actual canvas resize. */
-export function AutoFit({layoutKey=''}:{layoutKey?:string}){
+export function AutoFit({layoutKey='',maxFitZoom=1}:{layoutKey?:string;maxFitZoom?:number}){
  const anchor=useRef<HTMLSpanElement>(null)
  const {fitView}=useReactFlow()
  const initialized=useNodesInitialized()
@@ -14,7 +14,7 @@ export function AutoFit({layoutKey=''}:{layoutKey?:string}){
   const fit=()=>{
    cancelAnimationFrame(frame);cancelAnimationFrame(inner)
    frame=requestAnimationFrame(()=>{
-    inner=requestAnimationFrame(()=>{void fitView({padding:0.16,maxZoom:1,minZoom:0.02,duration:0})})
+    inner=requestAnimationFrame(()=>{void fitView({padding:0.16,maxZoom:maxFitZoom,minZoom:0.02,duration:0})})
    })
   }
   const refit=()=>{
@@ -40,7 +40,7 @@ export function AutoFit({layoutKey=''}:{layoutKey?:string}){
    window.clearTimeout(settle)
    cancelAnimationFrame(frame);cancelAnimationFrame(inner)
   }
- },[fitView,initialized,ids,layoutKey])
+ },[fitView,initialized,ids,layoutKey,maxFitZoom])
  return <span ref={anchor} hidden/>
 }
 

@@ -490,3 +490,42 @@ button:disabled{cursor:not-allowed;opacity:.55}
 .canvasEditTools button{border:1px solid #cbd5e1;border-radius:7px;background:white;padding:7px 10px;cursor:pointer}
 .canvasToolSwitch{display:flex;gap:3px;padding:3px;background:#e9eff8;border-radius:8px}
 .canvasToolSwitch button[aria-pressed="true"]{background:#1c67c7;color:white;border-color:#1c67c7}
+
+.homeMapSearchMatches{display:grid;gap:7px;padding:12px 14px;margin:9px 0;background:#fff;border:1px solid #dbe3ec;border-radius:8px;max-height:270px;overflow:auto}.homeMapSearchMatch{display:flex;gap:8px;align-items:center;border-top:1px solid #eff2f6;padding:6px 0}.homeMapSearchMatch>span{font-size:13px;min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.homeMapSearchMatch>button{font-size:12px;padding:5px 9px;flex-shrink:0}@media(max-width:650px){.homeMapSearchMatch{flex-wrap:wrap}.homeMapSearchMatch>span{flex-basis:100%}}
+
+/* Attribute dictionary and consumer-specific flow payloads: an independent workbench drawer. */
+.architectureDrawerBackdrop{position:fixed;inset:0;z-index:230;display:flex;justify-content:flex-end;background:rgba(14,25,43,.47)}
+.architectureDrawerBackdrop .architectureDrawer{box-sizing:border-box;width:min(670px,97vw);height:100dvh;max-height:100dvh;overflow:auto;background:#fff;border-radius:15px 0 0 15px;box-shadow:-18px 0 52px #06162a30;padding:24px}
+.flowDataHeading{display:flex;justify-content:space-between;gap:12px;align-items:center;position:sticky;top:-24px;padding:8px 0 13px;background:#fff;z-index:2;border-bottom:1px solid #e2e8f0}
+.flowDataHeading h2{margin:2px 0 0;font-size:22px}.flowDataHeading small{font-size:10px;color:#64748b;font-weight:700;letter-spacing:.12em}
+.flowDataField,.flowDataLinkForm label,.flowDataFilters label{display:grid;gap:6px;font-size:12px;font-weight:600}
+.flowDataField select,.flowDataFilters select,.flowDataLinkForm input,.flowDataLinkForm select,.flowDataLinkForm textarea,.flowDataCatalogToolbar input{width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:7px;padding:9px;background:#fff;color:#142235;font:inherit}
+.flowDataRoute{border:1px solid #e2e8f0;border-radius:10px;padding:13px;margin:14px 0;background:#f8fafc;display:grid;gap:5px}
+.flowDataRoute small{color:#64748b}.flowDataRoute p{margin:3px 0;font-size:12px}
+.flowDataCount{display:flex;align-items:center;gap:12px;margin:12px 0}.flowDataCount strong{font-size:28px}.flowDataCount span{color:#64748b;font-size:12px}
+.flowDataFilters{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:12px 0}
+.flowDataRows{display:grid;gap:8px;margin:14px 0}.flowDataRow{display:grid;gap:6px;border:1px solid #e2e8f0;border-radius:9px;padding:12px;background:#fff}
+.flowDataRow>div{display:flex;flex-wrap:wrap;gap:10px;align-items:baseline}.flowDataRow code{font-size:11px;color:#64748b}
+.flowDataRow small{color:#53657d;font-size:11px}.flowDataRow p{margin:0;font-size:12px}.flowDataRow button{justify-self:end}
+.flowDataLinkForm{display:grid;gap:12px;margin:18px 0;padding:15px;border:1px solid #d7e1ed;border-radius:12px;background:#f8fafc}.flowDataLinkForm h3{margin:0}
+.flowDataCatalogToolbar{display:flex;gap:10px;margin-top:13px}.flowDataCatalogToolbar input{flex:1;min-width:0}
+.flowDataAccess{display:flex;align-items:center;gap:12px;margin:12px 0}.flowDataAccess span{font-size:12px;color:#64748b}
+@media(max-width:600px){.architectureDrawerBackdrop .architectureDrawer{width:100vw;border-radius:0;padding:16px}.flowDataFilters{grid-template-columns:1fr}.flowDataCatalogToolbar{flex-wrap:wrap}}
+
+.flowDataQuickFilters{display:flex;gap:7px;flex-wrap:wrap;margin:14px 0}.flowDataQuickFilters button{font-size:12px;padding:7px 11px;border-radius:20px;background:#f8fafc;border:1px solid #d3deeb}.flowDataQuickFilters button[aria-pressed=true]{background:#e9f2ff;border-color:#4084df;color:#144f9c}
+
+.systemDataDrawer .flowDataField{margin:14px 0}.systemDataStats{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}
+.systemDataStats span{display:flex;align-items:baseline;gap:7px;padding:10px 12px;background:#f3f6fa;border:1px solid #e0e7ef;border-radius:9px;font-size:12px;color:#52647a}
+.systemDataStats strong{font-size:20px;color:#17324f}
+.systemDataLinks{display:grid;gap:10px;margin:17px 0}
+.systemDataConnection{display:grid;gap:8px;padding:12px;background:#fff;border:1px solid #dbe4f0;border-radius:11px}
+.systemDataEndpoints{display:grid;grid-template-columns:minmax(0,1fr) 24px minmax(0,1fr);gap:6px;align-items:center}
+.systemDataEndpoints button{padding:8px 6px;min-width:0;font-size:12px;overflow-wrap:anywhere;background:#f8fafc}
+.systemDataEndpoints>span{text-align:center;color:#64748b}
+.systemDataFlowPick{display:grid;gap:4px;text-align:left;padding:10px 12px;background:#f7faff;border:1px solid #d7e4f3;border-radius:8px}
+.systemDataFlowPick strong{font-size:13px}.systemDataFlowPick small{font-size:11px;color:#64748b}
+.systemDataFlowPick[aria-pressed=true]{background:#eaf2ff;border-color:#357cde}
+.systemDataFlowDetail{border-top:1px solid #dbe4f0;padding-top:14px;margin-top:16px}
+.systemDataFlowHeader{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.systemDataFlowHeader h3{font-size:16px;margin:0}.systemDataFlowDetail>p{font-size:12px;color:#53657d}
+@media(max-width:550px){.systemDataFlowHeader{align-items:flex-start;flex-direction:column}}

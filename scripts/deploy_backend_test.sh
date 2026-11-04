@@ -30,8 +30,10 @@ snapshot="$BACKUPS/$stamp"
 install -d -m 0700 "$snapshot"
 tar -C "$APP" -czf "$snapshot/code.tar.gz" app alembic alembic.ini requirements.txt
 # Online SQLite backup, run as the database owner. Backup lives in root-only storage.
-install -d -o "$USER_NAME" -g "$USER_NAME" -m 0700 "$snapshot/db"
-runuser -u "$USER_NAME" -- /usr/bin/python3 - "$DB" "$snapshot/db/architecture_hub.db" <<'PY'
+tmp_db_dir="$(mktemp -d /var/lib/architecture-hub/.backup-XXXXXX)"
+chown "$USER_NAME:$USER_NAME" "$tmp_db_dir"
+chmod 0700 "$tmp_db_dir"
+runuser -u "$USER_NAME" -- /usr/bin/python3 - "$DB" "$tmp_db_dir/architecture_hub.db" <<'PY'
 import sqlite3, sys
 source, destination = sys.argv[1:]
 with sqlite3.connect(f"file:{source}?mode=ro", uri=True, timeout=30) as src:
@@ -39,7 +41,10 @@ with sqlite3.connect(f"file:{source}?mode=ro", uri=True, timeout=30) as src:
         src.backup(dst, pages=100, sleep=0.1)
         assert dst.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
 PY
-chmod 0700 "$snapshot/db"
+install -d -m 0700 "$snapshot/db"
+mv "$tmp_db_dir/architecture_hub.db" "$snapshot/db/architecture_hub.db"
+chown root:root "$snapshot/db/architecture_hub.db"
+rm -rf -- "$tmp_db_dir"
 echo "Database and code backup complete: $snapshot"
 
 restore_code(){

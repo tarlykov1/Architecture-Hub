@@ -26,6 +26,8 @@ ROLE_ACCESS = {
 }
 
 def classify(path: str) -> str | None:
+    if path.startswith("/api/board/"):
+        return "board"
     if path.startswith("/api/demo/"):
         return "demo"
     if path.startswith("/api/views"):
@@ -53,6 +55,9 @@ def classify(path: str) -> str | None:
     if path.startswith("/api/objects") or path.startswith("/api/relations"):
         return "systems"
     return None
+
+def method_is_read(path: str, method: str) -> bool:
+    return method.upper() in ("GET", "HEAD")
 
 def configured_keys() -> dict[str, str] | None:
     raw = os.getenv("ARCH_HUB_ACCESS_KEYS", "").strip()
@@ -88,7 +93,7 @@ async def access_middleware(request: Request, call_next):
         return JSONResponse({"detail":"Demo seed endpoints are disabled in access-controlled mode"}, status_code=403)
     if layer is None:
         return JSONResponse({"detail":"Unknown API endpoint is not authorized"}, status_code=403)
-    grant = ROLE_ACCESS[role].get(layer)
+    grant = ("write" if role in ("admin", "architect") else "read" if role in ("engineer", "security", "viewer") and method_is_read(path, request.method) else None) if layer == "board" else ROLE_ACCESS[role].get(layer)
     method = request.method.upper()
     if grant not in ("read", "write") or (method not in ("GET", "HEAD", "OPTIONS") and grant != "write"):
         return JSONResponse({"detail":"Insufficient permissions for "+layer}, status_code=403)

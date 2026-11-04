@@ -254,7 +254,7 @@ test('component whiteboard packs unlinked nodes and saves dragged placement',asy
   await openSystemComponents(page,name)
   const graph=page.locator('.miniArchitecture')
   await expect(graph.locator('.react-flow__node')).toHaveCount(9)
-  const rows=await graph.locator('.react-flow__node').evaluateAll(nodes=>new Set(nodes.map(n=>Math.round(Number((n as HTMLElement).style.transform.match(/translate\\([^,]+,\\s*([^p]+)px\\)/)?.[1]||0)))).size)
+  const rows=await graph.locator('.react-flow__node').evaluateAll(nodes=>new Set(nodes.map(n=>Math.round(n.getBoundingClientRect().top/10))).size)
   expect(rows).toBeGreaterThan(1)
   await page.getByRole('button',{name:'Редактировать схему'}).click()
   await expect(page.getByRole('toolbar',{name:'Инструменты схемы компонентов'})).toBeVisible()

@@ -724,7 +724,7 @@ test('architecture board stages VM and flow changes before reviewed commit',asyn
   await editor.getByRole('button',{name:'→ Поток'}).click()
   const fields=editor.locator('.boardToolFields').first()
   await fields.getByLabel('Откуда').selectOption((await first.json()).id)
-  await fields.getByLabel('Куда').selectOption({label:'Added in board'})
+  await fields.getByLabel('Куда',{exact:true}).selectOption({label:'Added in board'})
   await fields.getByLabel('Порт').fill('443')
   await fields.getByRole('button',{name:'Добавить поток'}).click()
   await editor.getByPlaceholder('Например: актуализация схемы ИС после изменения сети').fill('Board review smoke test')

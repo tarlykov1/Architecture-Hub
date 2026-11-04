@@ -702,3 +702,43 @@ test('topology fits tall groups after loading, resize and catalog collapse',asyn
     throw error
   }
 })
+
+
+test('declare a flow path through existing VRF and security appliance',async({page})=>{
+  const suffix=String(Date.now())
+  async function create(path:string,data:Record<string,unknown>){
+    const result=await page.request.post('http://127.0.0.1:8001'+path,{data})
+    expect(result.status(),await result.text()).toBe(201)
+    return (await result.json()).id as string
+  }
+  const system=await create('/api/objects',{kind:'system',name:'Net test '+suffix})
+  const source=await create('/api/infra',{kind:'vm',system_id:system,name:'Source '+suffix})
+  const target=await create('/api/infra',{kind:'vm',system_id:system,name:'Target '+suffix})
+  const flow=await create('/api/flows',{source_id:source,target_id:target,name:'Path '+suffix})
+  const vrf=await create('/api/networks',{kind:'vrf',name:'VRF '+suffix})
+  await page.goto('/')
+  await page.getByRole('navigation',{name:'Разделы архитектуры'}).getByRole('button',{name:'Потоки',exact:true}).click()
+  await page.getByRole('button',{name:'Сетевой маршрут и средства защиты'}).click()
+  const drawer=page.getByRole('dialog',{name:'Технический маршрут потока'})
+  await expect(drawer).toBeVisible()
+  await drawer.getByRole('tab',{name:/Справочник объектов/}).click()
+  await drawer.getByRole('button',{name:'+ Объект'}).click()
+  await drawer.getByRole('textbox',{name:'Название'}).fill('PTAF '+suffix)
+  await drawer.getByRole('combobox',{name:'Тип'}).selectOption('ptaf')
+  await drawer.getByRole('button',{name:'Сохранить объект'}).click()
+  await drawer.getByRole('tab',{name:'Маршрут данных'}).click()
+  await drawer.getByRole('combobox',{name:'Поток для сетевого маршрута'}).selectOption(flow)
+  await drawer.getByRole('combobox',{name:'Добавить объект в маршрут'}).selectOption('segment:'+vrf)
+  await drawer.getByRole('button',{name:'+ Добавить',exact:true}).click()
+  await drawer.getByRole('combobox',{name:'Добавить объект в маршрут'}).selectOption({label:'PTAF · PTAF '+suffix})
+  await drawer.getByRole('button',{name:'+ Добавить',exact:true}).click()
+  await expect(drawer.getByRole('region',{name:'Шаги технического маршрута'})).toContainText('VRF '+suffix)
+  await expect(drawer.getByRole('region',{name:'Шаги технического маршрута'})).toContainText('PTAF '+suffix)
+  await drawer.getByRole('button',{name:'Сохранить маршрут'}).click()
+  await expect(drawer.getByRole('button',{name:'Изменений нет'})).toBeDisabled()
+  await drawer.getByRole('button',{name:'Закрыть маршрут'}).click()
+  await page.getByRole('button',{name:'Сетевой маршрут и средства защиты'}).click()
+  const saved=page.getByRole('dialog',{name:'Технический маршрут потока'})
+  await saved.getByRole('combobox',{name:'Поток для сетевого маршрута'}).selectOption(flow)
+  await expect(saved.getByRole('region',{name:'Шаги технического маршрута'})).toContainText('PTAF '+suffix)
+})

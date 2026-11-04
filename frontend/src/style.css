@@ -531,3 +531,5 @@ button:disabled{cursor:not-allowed;opacity:.55}
 .networkRegistryActions{display:flex;flex-wrap:wrap;align-items:center;gap:10px}.networkRegistryActions button{white-space:nowrap}
 
 .networkPathUsageLinks{display:flex;flex-wrap:wrap;gap:7px}.networkPathUsageLinks button{font-size:11px;padding:6px 10px;color:#18588b;background:#eef5ff;border:1px solid #cbdbf0;border-radius:7px}.networkPathDrawer .networkPathRegistry>h3{margin:18px 0 5px}
+
+.homeMapSearchMatches{display:grid;gap:7px;padding:12px 14px;margin:9px 0;background:#fff;border:1px solid #dbe3ec;border-radius:8px;max-height:270px;overflow:auto}.homeMapSearchMatches>strong{font-size:12px;color:#455a70}.homeMapSearchMatch{display:flex;gap:8px;align-items:center;border-top:1px solid #eff2f6;padding:6px 0}.homeMapSearchMatch>span{font-size:13px;min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.homeMapSearchMatch>button{font-size:12px;padding:5px 9px;flex-shrink:0}@media(max-width:650px){.homeMapSearchMatch{flex-wrap:wrap}.homeMapSearchMatch>span{flex-basis:100%}}

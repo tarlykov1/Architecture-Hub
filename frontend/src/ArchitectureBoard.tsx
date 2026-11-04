@@ -1,4 +1,5 @@
 import React, {useMemo, useState} from 'react'
+import './board.css'
 import {ReactFlow, ReactFlowProvider, Background, Controls, useNodesState, useReactFlow, type Node, type NodeChange} from '@xyflow/react'
 
 type VM = {id:string;system_id:string;kind:string;name:string;details:Record<string,unknown>}
@@ -21,6 +22,8 @@ function Editor({systemId,items,networks,interfaces,flows,request,onCommitted}:P
  const [preview,setPreview]=useState<Preview|null>(null)
  const [error,setError]=useState('')
  const [busy,setBusy]=useState(false)
+ const [history,setHistory]=useState<Array<{id:string;timestamp:string;reason:string;changes:Preview['changes']}>>([])
+ const [showHistory,setShowHistory]=useState(false)
  const [name,setName]=useState('')
  const [kind,setKind]=useState<'zone'|'vlan'|'vrf'>('zone')
  const [from,setFrom]=useState('')
@@ -97,6 +100,10 @@ function Editor({systemId,items,networks,interfaces,flows,request,onCommitted}:P
    if(drawing)addNetwork(point)
    else {setDrawing(point);setError('')}
  }
+ const openHistory=async()=>{
+   setError('')
+   try{setHistory(await request<Array<{id:string;timestamp:string;reason:string;changes:Preview['changes']}>>('/api/board/audit?limit=30'));setShowHistory(true)}catch(e){setError(String(e))}
+ }
  const submitPreview=async()=>{
    if(!changes.length||reason.trim().length<3){setError('Добавьте изменения и укажите причину (минимум 3 символа).');return}
    setBusy(true);setError('')
@@ -110,6 +117,7 @@ function Editor({systemId,items,networks,interfaces,flows,request,onCommitted}:P
    try{
      await request('/api/board/commit',{method:'POST',body:JSON.stringify({changes,reason})})
      await onCommitted()
+     if(showHistory)void openHistory()
      setChanges([]);setPreview(null);setReason('');setDrawing(null);setError('Изменения сохранены. Запись добавлена в журнал действий.')
    }catch(e){setPreview(null);setError('Сохранение отклонено: '+String(e)+'. Обновите предварительный просмотр.')}
    finally{setBusy(false)}
@@ -119,6 +127,7 @@ function Editor({systemId,items,networks,interfaces,flows,request,onCommitted}:P
      {([['move','Перемещать'],['vm','+ ВМ'],['flow','→ Поток'],['network','▭ Сеть']] as const).map(([key,title])=><button key={key} aria-pressed={tool===key} onClick={()=>{setTool(key);setDrawing(null);setError('')}}>{title}</button>)}
      <button disabled={!nodes.length} onClick={()=>void fitView({padding:0.18,duration:250})}>Показать всё</button>
      <strong>{changes.length} изменений</strong>
+     <button type="button" onClick={()=>void openHistory()}>История изменений</button>
    </div>
    {tool==='vm'&&<div className="boardToolFields"><label>Имя ВМ <input value={name} onChange={e=>setName(e.target.value)} placeholder="Новая ВМ"/></label><button onClick={addVM}>Разместить на схеме</button></div>}
    {tool==='network'&&<div className="boardToolFields"><label>Название сети <input value={name} onChange={e=>setName(e.target.value)}/></label><label>Тип <select value={kind} onChange={e=>setKind(e.target.value as typeof kind)}><option value="zone">Зона</option><option value="vlan">VLAN</option><option value="vrf">VRF</option></select></label><span>{drawing?'Нажмите на противоположный угол прямоугольника':'Щёлкните на схеме – первый угол, затем второй угол'}</span></div>}
@@ -127,6 +136,7 @@ function Editor({systemId,items,networks,interfaces,flows,request,onCommitted}:P
    <div className="boardCanvas"><ReactFlow nodes={graphNodes} edges={edges} onNodesChange={(changes:NodeChange[])=>onNodesChange(changes.filter(c=>!c.id.startsWith('network:')))} nodesDraggable={tool==='move'} nodesConnectable={false} onNodeDragStop={(_,node)=>moveNode(node)} onPaneClick={handlePaneClick} minZoom={0.08} fitView fitViewOptions={{padding:0.2,maxZoom:1}}><Background gap={20}/><Controls showInteractive={false}/></ReactFlow></div>
    <div className="boardReview"><label>Причина изменений <input value={reason} onChange={e=>{setReason(e.target.value);setPreview(null)}} placeholder="Например: актуализация схемы ИС после изменения сети"/></label><button disabled={!changes.length||busy} onClick={submitPreview}>Проверить изменения ({changes.length})</button><button disabled={!changes.length||busy} onClick={()=>{setChanges([]);setPreview(null);setError('Черновик операций очищен. Новые нарисованные объекты исчезнут при повторном открытии редактора.')}}>Отменить черновик</button></div>
    {!!error&&<p role="status" className="boardStatus">{error}</p>}
+   {showHistory&&<div className="boardConfirm" role="dialog" aria-modal="true" aria-label="Журнал изменений архитектуры"><div className="boardConfirmInner"><h3>Журнал изменений доски</h3><p>Последние подтверждённые пакеты операций.</p><ol>{history.map(entry=><li key={entry.id}><strong>{entry.timestamp}</strong> – {entry.reason} · {entry.changes.length} операций<details><summary>Посмотреть состав</summary><pre>{JSON.stringify(entry.changes,null,2)}</pre></details></li>)}</ol>{!history.length&&<p>Записей пока нет.</p>}<button type="button" onClick={()=>setShowHistory(false)}>Закрыть</button></div></div>}
    {preview&&<div className="boardConfirm" role="dialog" aria-modal="true" aria-label="Подтверждение изменений архитектуры"><div className="boardConfirmInner"><h3>Подтверждение изменений</h3><p>Причина: {reason}. Будет сохранено {preview.count} операций. Для существующих интерфейсов сверяется прежняя сеть.</p><ol>{preview.changes.map((c,i)=><li key={i}><strong>{c.action}</strong> · {c.id}<pre>{JSON.stringify({before:c.before,after:c.after},null,2)}</pre></li>)}</ol><div><button disabled={busy} onClick={()=>setPreview(null)}>Вернуться к схеме</button><button disabled={busy} className="primary" onClick={commit}>Подтвердить и записать в журнал</button></div></div></div>}
  </section>
 }

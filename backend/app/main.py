@@ -714,6 +714,20 @@ def load_enterprise_demo(db: Session = Depends(db_session)):
             "notice": "Все инфраструктурные имена, сети, роли и каналы демонстрационные."}
 
 
+@app.get("/api/network-paths/usage")
+def network_path_usage(db: Session = Depends(db_session)):
+    """Reverse lookup: which data flows declare passage through each network object."""
+    rows = db.scalars(select(FlowNetworkHop).order_by(FlowNetworkHop.position)).all()
+    flow_ids = [row.flow_id for row in rows]
+    by_id = {f.id: f for f in db.scalars(select(DataFlow).where(DataFlow.id.in_(flow_ids))).all()} if rows else {}
+    return [
+        {"flow_id": hop.flow_id, "flow_name": by_id[hop.flow_id].name,
+         "asset_id": hop.asset_id, "segment_id": hop.segment_id,
+         "position": hop.position, "verification": hop.verification}
+        for hop in rows
+    ]
+
+
 @app.get("/api/network-assets", response_model=list[NetworkAssetOutput])
 def list_network_assets(db: Session = Depends(db_session)):
     return db.scalars(select(NetworkAsset).order_by(NetworkAsset.kind, NetworkAsset.name)).all()

@@ -75,6 +75,56 @@ class DataFlow(Base):
     verification: Mapped[str] = mapped_column(String(30), default="draft")
 
 
+class DataAttribute(Base):
+    """Canonical description of a data element, never the sensitive value itself."""
+    __tablename__ = "data_attributes"
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    code: Mapped[str] = mapped_column(String(160), unique=True, index=True)
+    name: Mapped[str] = mapped_column(String(250))
+    description: Mapped[str] = mapped_column(String(4000), default="")
+    data_type: Mapped[str] = mapped_column(String(80), default="string")
+    sensitivity: Mapped[str] = mapped_column(String(40), default="unclassified")
+
+
+class FlowDataUse(Base):
+    """A flow may expose different attributes to different systems and BPs."""
+    __tablename__ = "flow_data_uses"
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    flow_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("data_flows.id"), index=True)
+    attribute_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("data_attributes.id"), index=True)
+    process_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True), ForeignKey("business_processes.id"), nullable=True)
+    consumer_system_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True), ForeignKey("objects.id"), nullable=True)
+    purpose: Mapped[str] = mapped_column(String(2000), default="")
+    verification: Mapped[str] = mapped_column(String(30), default="draft")
+
+
+class AttributeInput(BaseModel):
+    code: str = Field(min_length=1, max_length=160, pattern=r"^[A-Za-z0-9_.-]+$")
+    name: str = Field(min_length=1, max_length=250)
+    description: str = Field(default="", max_length=4000)
+    data_type: str = Field(default="string", max_length=80)
+    sensitivity: str = Field(default="unclassified", pattern="^(unclassified|internal|personal|restricted)$")
+
+
+class AttributeOutput(AttributeInput):
+    model_config = ConfigDict(from_attributes=True)
+    id: UUID
+
+
+class FlowUseInput(BaseModel):
+    flow_id: UUID
+    attribute_id: UUID
+    process_id: UUID | None = None
+    consumer_system_id: UUID | None = None
+    purpose: str = Field(default="", max_length=2000)
+    verification: str = Field(default="draft", pattern="^(draft|assumed|verified)$")
+
+
+class FlowUseOutput(FlowUseInput):
+    model_config = ConfigDict(from_attributes=True)
+    id: UUID
+
+
 class InfraInput(BaseModel):
     system_id: UUID
     parent_id: UUID | None = None
@@ -481,6 +531,110 @@ def update_infra(item_id: UUID, payload: InfraInput, db: Session = Depends(db_se
     return item
 
 
+@app.get("/api/data-attributes", response_model=list[AttributeOutput])
+def list_data_attributes(db: Session = Depends(db_session)):
+    return db.scalars(select(DataAttribute).order_by(DataAttribute.code)).all()
+
+
+@app.post("/api/data-attributes", response_model=AttributeOutput, status_code=201)
+def create_data_attribute(payload: AttributeInput, db: Session = Depends(db_session)):
+    if db.scalars(select(DataAttribute).where(DataAttribute.code == payload.code)).first():
+        raise HTTPException(409, "Attribute code already exists")
+    item = DataAttribute(**payload.model_dump())
+    db.add(item)
+    db.commit()
+    db.refresh(item)
+    return item
+
+
+@app.put("/api/data-attributes/{attribute_id}", response_model=AttributeOutput)
+def update_data_attribute(attribute_id: UUID, payload: AttributeInput, db: Session = Depends(db_session)):
+    item = db.get(DataAttribute, attribute_id)
+    if item is None:
+        raise HTTPException(404, "Attribute not found")
+    conflict = db.scalars(select(DataAttribute).where(
+        DataAttribute.code == payload.code, DataAttribute.id != attribute_id)).first()
+    if conflict:
+        raise HTTPException(409, "Attribute code already exists")
+    for key, value in payload.model_dump().items():
+        setattr(item, key, value)
+    db.commit()
+    db.refresh(item)
+    return item
+
+
+@app.get("/api/flow-data-uses", response_model=list[FlowUseOutput])
+def list_flow_data_uses(flow_id: UUID | None = None, db: Session = Depends(db_session)):
+    stmt = select(FlowDataUse).order_by(FlowDataUse.id)
+    if flow_id is not None:
+        stmt = stmt.where(FlowDataUse.flow_id == flow_id)
+    return db.scalars(stmt).all()
+
+
+@app.post("/api/flow-data-uses", response_model=FlowUseOutput, status_code=201)
+def create_flow_data_use(payload: FlowUseInput, db: Session = Depends(db_session)):
+    if db.get(DataFlow, payload.flow_id) is None:
+        raise HTTPException(422, "Unknown flow")
+    if db.get(DataAttribute, payload.attribute_id) is None:
+        raise HTTPException(422, "Unknown attribute")
+    if payload.process_id and db.get(BusinessProcess, payload.process_id) is None:
+        raise HTTPException(422, "Unknown business process")
+    if payload.consumer_system_id and db.get(ArchitectureObject, payload.consumer_system_id) is None:
+        raise HTTPException(422, "Unknown consuming system")
+    duplicate = db.scalars(select(FlowDataUse).where(
+        FlowDataUse.flow_id == payload.flow_id,
+        FlowDataUse.attribute_id == payload.attribute_id,
+        FlowDataUse.process_id == payload.process_id,
+        FlowDataUse.consumer_system_id == payload.consumer_system_id,
+    )).first()
+    if duplicate is not None:
+        raise HTTPException(409, "Attribute is already mapped to this flow, process and system")
+    mapping = FlowDataUse(**payload.model_dump())
+    db.add(mapping)
+    db.commit()
+    db.refresh(mapping)
+    return mapping
+
+
+@app.delete("/api/flow-data-uses/{mapping_id}", status_code=204)
+def delete_flow_data_use(mapping_id: UUID, db: Session = Depends(db_session)):
+    mapping = db.get(FlowDataUse, mapping_id)
+    if mapping is None:
+        raise HTTPException(404, "Mapping not found")
+    db.delete(mapping)
+    db.commit()
+
+
+@app.get("/api/flows/{flow_id}/data-map")
+def flow_data_map(flow_id: UUID, db: Session = Depends(db_session)):
+    flow = db.get(DataFlow, flow_id)
+    if flow is None:
+        raise HTTPException(404, "Flow not found")
+    rows = db.scalars(select(FlowDataUse).where(FlowDataUse.flow_id == flow_id)).all()
+    attributes = {a.id: a for a in db.scalars(select(DataAttribute).where(
+        DataAttribute.id.in_([row.attribute_id for row in rows]))).all()} if rows else {}
+    processes = {p.id: p for p in db.scalars(select(BusinessProcess).where(
+        BusinessProcess.id.in_([row.process_id for row in rows if row.process_id]))).all()} if rows else {}
+    systems = {x.id: x for x in db.scalars(select(ArchitectureObject).where(
+        ArchitectureObject.id.in_([row.consumer_system_id for row in rows if row.consumer_system_id]))).all()} if rows else {}
+    return {
+        "flow_id": flow.id, "source_id": flow.source_id, "target_id": flow.target_id,
+        "attributes": [
+            {"id": row.id, "attribute_id": row.attribute_id,
+             "code": attributes[row.attribute_id].code,
+             "name": attributes[row.attribute_id].name,
+             "data_type": attributes[row.attribute_id].data_type,
+             "sensitivity": attributes[row.attribute_id].sensitivity,
+             "process_id": row.process_id,
+             "process_name": processes[row.process_id].name if row.process_id else None,
+             "consumer_system_id": row.consumer_system_id,
+             "consumer_system_name": systems[row.consumer_system_id].name if row.consumer_system_id else None,
+             "purpose": row.purpose, "verification": row.verification}
+            for row in rows
+        ],
+    }
+
+
 @app.get("/api/flows", response_model=list[FlowOutput])
 def list_flows(db: Session = Depends(db_session)):
     return db.scalars(select(DataFlow).order_by(DataFlow.name)).all()
@@ -518,6 +672,8 @@ def delete_flow(flow_id: UUID, db: Session = Depends(db_session)):
     flow = db.get(DataFlow, flow_id)
     if flow is None:
         raise HTTPException(status_code=404, detail="Flow not found")
+    for use in db.scalars(select(FlowDataUse).where(FlowDataUse.flow_id == flow_id)).all():
+        db.delete(use)
     db.delete(flow)
     db.commit()
 

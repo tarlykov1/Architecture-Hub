@@ -48,7 +48,7 @@ def _url(path:str)->str:
 
 @router.get("/status")
 def status():
-    return {"configured":bool(os.getenv("WIKI_API_TOKEN")),"public_url":os.getenv("WIKI_PUBLIC_URL","http://127.0.0.1:3000")}
+    return {"configured":bool(os.getenv("WIKI_API_TOKEN")),"public_url":os.getenv("WIKI_PUBLIC_URL","").strip()}
 
 @router.get("/pages")
 def pages(query:str="",limit:int=30):

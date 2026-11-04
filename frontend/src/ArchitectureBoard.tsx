@@ -6,7 +6,7 @@ type VM = {id:string;system_id:string;kind:string;name:string;details:Record<str
 type Network = {id:string;name:string;kind:string}
 type NIC = {id:string;item_id:string;name:string;zone_id:string|null;vlan_id:string|null;vrf_id:string|null}
 type Flow = {id:string;source_id:string;target_id:string;name:string;protocol:string;port:string}
-type Change = {action:'create_vm'|'create_network'|'create_flow'|'move_interface';id?:string;system_id?:string;name?:string;kind?:string;description?:string;source_id?:string;target_id?:string;protocol?:string;port?:string;security?:string;data_description?:string;interface_id?:string;network_id?:string|null;previous_network_id?:string|null;network_field?:'zone_id'|'vlan_id'|'vrf_id'}
+type Change = {action:'create_vm'|'create_network'|'create_flow'|'create_interface'|'move_interface';id?:string;system_id?:string;name?:string;kind?:string;description?:string;source_id?:string;target_id?:string;protocol?:string;port?:string;security?:string;data_description?:string;interface_id?:string;item_id?:string;interface_name?:string;network_id?:string|null;previous_network_id?:string|null;network_field?:'zone_id'|'vlan_id'|'vrf_id'}
 type Preview = {changes:Array<{action:string;id:string;before:unknown;after:unknown;field?:string}>;count:number}
 type Props = {systemId:string;items:VM[];networks:Network[];interfaces:NIC[];flows:Flow[];request:<T>(url:string,init?:RequestInit)=>Promise<T>;onCommitted:()=>Promise<void>}
 type Tool = 'move'|'vm'|'flow'|'network'
@@ -62,7 +62,18 @@ function Editor({systemId,items,networks,interfaces,flows,request,onCommitted}:P
    const field=fieldForKind(target.kind)
    const attached=interfaces.filter(n=>n.item_id===node.id)
    const nic=attached.find(n=>n.id===interfaceId)|| (attached.length===1?attached[0]:undefined)
-   if(!nic){setError('Для перемещения в сеть выберите интерфейс ВМ (или сначала создайте его в реестре).');return}
+   if(!nic){
+     if(attached.length>1){setError('У ВМ несколько сетевых интерфейсов. Выберите нужный интерфейс перед переносом.');return}
+     // A new NIC is a reviewed infrastructure change, never a silent mutation.
+     const staged=changes.find(c=>c.action==='create_interface'&&c.item_id===node.id)
+     if(staged){
+       setChanges(previous=>previous.map(c=>c===staged?{...c,network_id:target.id,network_field:field}:c))
+     }else{
+       setChanges(previous=>[...previous,{action:'create_interface',id:makeId(),item_id:node.id,interface_name:'eth0',network_id:target.id,network_field:field}])
+     }
+     setPreview(null);setError('Будет создан интерфейс eth0 без IP-адреса. Проверьте изменение перед сохранением.')
+     return
+   }
    const prior=changes.find(c=>c.action==='move_interface'&&c.interface_id===nic.id&&c.network_field===field)
    if((prior?prior.network_id:nic[field])===target.id)return
    const next:Change={action:'move_interface',interface_id:nic.id,network_id:target.id,previous_network_id:nic[field],network_field:field}

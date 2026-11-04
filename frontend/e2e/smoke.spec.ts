@@ -236,7 +236,7 @@ test('single component diagram stays compact after auto-fit',async({page})=>{
   await expect(graph.locator('.react-flow__node')).toHaveCount(1)
   await expect.poll(async()=>graph.locator('.react-flow__viewport').evaluate(el=>{
     const transform=(el as HTMLElement).style.transform
-    const scale=Number(transform.match(/scale\\(([^)]+)\\)/)?.[1]||0)
+    const scale=Number(transform.match(/scale\(([^)]+)\)/)?.[1]||0)
     return scale>0&&scale<=0.851
   })).toBe(true)
 })
@@ -463,13 +463,13 @@ test('overview passport and components retain the same system context',async({pa
   const system=await uxSystem(page)
   await page.goto('/')
   await page.getByRole('textbox',{name:'Поиск на карте'}).fill(system.name)
-  const node=page.locator('.homeMapGraph .react-flow__node').filter({hasText:system.name})
-  await node.getByRole('button',{name:'Открыть паспорт ИС: '+system.name,exact:true}).click()
+  const searchResults=page.getByRole('region',{name:'Результаты поиска по архитектуре'})
+  await searchResults.getByRole('button',{name:'Открыть паспорт ИС из поиска: '+system.name}).click()
   const passport=page.getByRole('complementary',{name:'Карточка архитектурного объекта'})
   await expect(passport.getByRole('heading',{name:system.name,exact:true})).toBeVisible()
   await expect(page.locator('.homeMapGraph')).toBeVisible()
   await passport.getByRole('button',{name:'Закрыть правую панель'}).click()
-  await node.locator('strong').click()
+  await searchResults.getByRole('button',{name:'Выбрать ИС из поиска: '+system.name}).click()
   const selection=page.getByRole('complementary',{name:'Выбранная информационная система'})
   await selection.getByRole('button',{name:'Компоненты',exact:true}).click()
   await expect(page.getByRole('combobox',{name:'Система компонентов'})).toHaveValue(system.id)
@@ -487,7 +487,9 @@ test('passport buttons inside separate map nodes always open the matching system
   await page.goto('/')
   const inspector=page.getByRole('complementary',{name:'Карточка архитектурного объекта'})
   for(const name of [first,second,first]){
-    await page.locator('.homeMapGraph').getByRole('button',{name:'Открыть паспорт ИС: '+name,exact:true}).click()
+    await page.getByRole('textbox',{name:'Поиск на карте'}).fill(name)
+    const searchResults=page.getByRole('region',{name:'Результаты поиска по архитектуре'})
+    await searchResults.getByRole('button',{name:'Открыть паспорт ИС из поиска: '+name}).click()
     await expect(inspector.getByRole('heading',{name,exact:true})).toBeVisible()
   }
 })

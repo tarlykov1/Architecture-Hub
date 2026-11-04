@@ -509,7 +509,7 @@ test('action menus close after choosing an action, outside click and Escape',asy
   await expect(menu).not.toHaveAttribute('open','')
   await expect(trigger).toBeFocused()
   await trigger.click()
-  await page.getByRole('textbox',{name:'Поиск на карте'}).click()
+  await page.getByRole('textbox',{name:'Поиск на карте'}).click({position:{x:12,y:12}})
   await expect(menu).not.toHaveAttribute('open','')
 })
 

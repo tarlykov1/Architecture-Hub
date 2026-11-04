@@ -85,7 +85,7 @@ jobs:
         run: |
           set -euo pipefail
           export RSYNC_RSH="ssh -p $DEPLOY_PORT -o BatchMode=yes -o StrictHostKeyChecking=yes -o IdentitiesOnly=yes"
-          rsync -az --no-perms --no-owner --no-group \
+          rsync -az --omit-dir-times --no-perms --no-owner --no-group \
             --exclude='.well-known/' --exclude='.git/' \
             frontend/dist/ "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_DIR/"
 

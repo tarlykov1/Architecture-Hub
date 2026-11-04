@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import os
+import hashlib
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID, uuid4
 
-from fastapi import Depends, FastAPI, HTTPException
-from .access import access_middleware, configured_keys
+from fastapi import Depends, FastAPI, HTTPException, Request
+from .access import access_middleware, configured_keys, ROLE_ACCESS
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import DateTime, ForeignKey, JSON, String, Uuid, create_engine, select
@@ -908,7 +909,25 @@ class BoardAudit(Base):
     id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
     timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     reason: Mapped[str] = mapped_column(String(1000))
+    actor: Mapped[str] = mapped_column(String(100), default="local-development")
     changes: Mapped[list[dict[str, Any]]] = mapped_column(JSON)
+
+def authorize_board(payload: BoardBatch, request: Request) -> None:
+    role = getattr(request.state, 'role', None)
+    if role is None:  # Existing local development mode; not suitable for shared deployment.
+        return
+    grants = ROLE_ACCESS[role]
+    for change in payload.changes:
+        layer = 'networks' if change.action in ('create_network', 'move_interface') else ('flows' if change.action == 'create_flow' else 'infrastructure')
+        if grants.get(layer) != 'write':
+            raise HTTPException(403, f'Insufficient permission to modify {layer}')
+
+def board_actor(request: Request) -> str:
+    role = getattr(request.state, 'role', None)
+    if role is None:
+        return 'local-development'
+    token = request.headers.get('authorization', '').removeprefix('Bearer ')
+    return role + ':' + hashlib.sha256(token.encode('utf-8')).hexdigest()[:16]
 
 def apply_board_changes(payload: BoardBatch, db: Session) -> list[dict[str, Any]]:
     """Validate and stage all edits in the current SQLAlchemy transaction."""
@@ -980,7 +999,8 @@ def apply_board_changes(payload: BoardBatch, db: Session) -> list[dict[str, Any]
     return output
 
 @app.post("/api/board/preview")
-def preview_board_batch(payload: BoardBatch, db: Session = Depends(db_session)):
+def preview_board_batch(payload: BoardBatch, request: Request, db: Session = Depends(db_session)):
+    authorize_board(payload, request)
     try:
         changes = apply_board_changes(payload, db)
         return {"changes": changes, "count": len(changes), "review_required": True}
@@ -988,10 +1008,11 @@ def preview_board_batch(payload: BoardBatch, db: Session = Depends(db_session)):
         db.rollback()
 
 @app.post("/api/board/commit")
-def commit_board_batch(payload: BoardBatch, db: Session = Depends(db_session)):
+def commit_board_batch(payload: BoardBatch, request: Request, db: Session = Depends(db_session)):
+    authorize_board(payload, request)
     try:
         changes = apply_board_changes(payload, db)
-        audit = BoardAudit(reason=payload.reason.strip(), changes=changes)
+        audit = BoardAudit(reason=payload.reason.strip(), actor=board_actor(request), changes=changes)
         db.add(audit)
         db.commit()
         return {"audit_id": str(audit.id), "changes": changes, "count": len(changes)}
@@ -1003,4 +1024,4 @@ def commit_board_batch(payload: BoardBatch, db: Session = Depends(db_session)):
 def list_board_audit(limit: int = 50, db: Session = Depends(db_session)):
     rows = db.scalars(select(BoardAudit).order_by(BoardAudit.timestamp.desc()).limit(max(1, min(limit, 200)))).all()
     return [{"id": str(row.id), "timestamp": row.timestamp.isoformat(),
-             "reason": row.reason, "changes": row.changes} for row in rows]
+             "reason": row.reason, "actor": row.actor, "changes": row.changes} for row in rows]

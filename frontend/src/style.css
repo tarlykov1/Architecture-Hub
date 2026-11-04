@@ -573,3 +573,26 @@ button:disabled{cursor:not-allowed;opacity:.55}
 .networkPathUsageLinks{display:flex;flex-wrap:wrap;gap:7px}.networkPathUsageLinks button{font-size:11px;padding:6px 10px;color:#18588b;background:#eef5ff;border:1px solid #cbdbf0;border-radius:7px}.networkPathDrawer .networkPathRegistry>h3{margin:18px 0 5px}
 
 .homeMapSearchMatches{display:grid;gap:7px;padding:12px 14px;margin:9px 0;background:#fff;border:1px solid #dbe3ec;border-radius:8px;max-height:270px;overflow:auto}.homeMapSearchMatches>strong{font-size:12px;color:#455a70}.homeMapSearchMatch{display:flex;gap:8px;align-items:center;border-top:1px solid #eff2f6;padding:6px 0}.homeMapSearchMatch>span{font-size:13px;min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.homeMapSearchMatch>button{font-size:12px;padding:5px 9px;flex-shrink:0}@media(max-width:650px){.homeMapSearchMatch{flex-wrap:wrap}.homeMapSearchMatch>span{flex-basis:100%}}
+
+
+/* Side drawers keep the architecture canvas visible but clearly inactive. */
+.editorBackdrop:has(.architectureDrawer){background:rgba(14,25,43,.47);align-items:stretch;justify-content:flex-end;padding:0}
+.editorBackdrop .architectureDrawer,.architectureDrawerBackdrop .architectureDrawer{box-sizing:border-box;position:relative;margin:0 0 0 auto;left:auto;top:auto;transform:none;width:min(640px,96vw);max-width:96vw;height:100dvh;max-height:100dvh;overflow-y:auto;border-radius:16px 0 0 16px;background:#fff;box-shadow:-18px 0 54px #06162a30;padding:24px}
+.editorBackdrop .architectureDrawer .dialogHead{position:sticky;top:-24px;z-index:2;padding:12px 0;background:#fff}
+.architectureDrawerBackdrop{position:fixed;inset:0;background:rgba(14,25,43,.47);z-index:220;display:flex;align-items:stretch;justify-content:flex-end}
+.architectureDrawerBackdrop .architectureDrawer{max-height:100dvh}
+.architectureDrawer .registryHeader{align-items:flex-start}
+.architectureDrawer .incidentForm,.architectureDrawer .detailForm{display:grid;gap:14px}
+.drawerFormActions{display:flex;gap:12px;justify-content:flex-end;position:sticky;bottom:-24px;padding:14px 0;background:#fff;border-top:1px solid #e2e8f0}
+.componentNodeOwner{display:block;margin-top:7px;font-size:11px;font-weight:600;color:#364f6c;overflow-wrap:anywhere}
+.componentNodePurpose{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;margin-top:7px;font-size:11px;line-height:1.4;color:#53657d;overflow-wrap:anywhere}
+.componentNodeOpen{margin-top:9px;padding:5px 9px;font-size:11px;cursor:pointer}
+@media(max-width:640px){.editorBackdrop .architectureDrawer,.architectureDrawerBackdrop .architectureDrawer{width:100vw;max-width:100vw;border-radius:0;padding:18px}}
+
+.expandedFlowPanel{position:fixed;z-index:210;right:0;top:0;bottom:0;width:min(600px,96vw);max-height:100vh;margin:0;border-radius:12px 0 0 12px;overflow-y:auto;background:#fff;padding:22px;box-shadow:-20px 0 75px rgba(10,20,40,.4)}
+
+body:has(.expandedFlowPanel)::before{content:"";position:fixed;inset:0;background:rgba(14,25,43,.45);z-index:205}
+
+.homeMapSearchMatches{display:grid;gap:7px;padding:12px 14px;margin:9px 0;background:#fff;border:1px solid #dbe3ec;border-radius:8px;max-height:270px;overflow:auto}.homeMapSearchMatch{display:flex;gap:8px;align-items:center;border-top:1px solid #eff2f6;padding:6px 0}.homeMapSearchMatch>span{font-size:13px;min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.homeMapSearchMatch>button{font-size:12px;padding:5px 9px;flex-shrink:0}@media(max-width:650px){.homeMapSearchMatch{flex-wrap:wrap}.homeMapSearchMatch>span{flex-basis:100%}}
+
+.topologyNicBackdrop:has(.architectureDrawer){z-index:230;align-items:stretch;justify-content:flex-end;padding:0}.topologyNicBackdrop .architectureDrawer{box-sizing:border-box;width:min(640px,96vw);height:100dvh;max-height:100dvh;margin:0;border-radius:16px 0 0 16px;padding:24px;overflow-y:auto}.topologyVmPurpose{color:#53657d;line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}.topologyInspector.architectureDrawer{max-height:100dvh}@media(max-width:640px){.topologyNicBackdrop .architectureDrawer{width:100vw;border-radius:0;padding:18px}}

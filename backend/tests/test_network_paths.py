@@ -62,6 +62,11 @@ def test_declared_flow_network_path_is_ordered_validated_and_reusable():
         ])
         assert mixed.status_code==200,mixed.text
         assert [x["kind"] for x in client.get(path,headers=ADMIN).json()["hops"]]==["vrf","ptaf"]
+        usage=client.get("/api/network-paths/usage",headers=ADMIN)
+        assert usage.status_code==200
+        assert any(x["flow_id"]==flow and x["segment_id"]==vrf for x in usage.json())
+        assert any(x["flow_id"]==flow and x["asset_id"]==ptaf for x in usage.json())
+        assert client.get("/api/network-paths/usage",headers=VIEWER).status_code==403
         assert client.delete("/api/networks/"+vrf,headers=ADMIN).status_code==409
         assert client.put(path,headers=ADMIN,json=[
             {"asset_id":ptaf,"segment_id":vrf,"position":0},

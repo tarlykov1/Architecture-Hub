@@ -490,3 +490,5 @@ button:disabled{cursor:not-allowed;opacity:.55}
 .canvasEditTools button{border:1px solid #cbd5e1;border-radius:7px;background:white;padding:7px 10px;cursor:pointer}
 .canvasToolSwitch{display:flex;gap:3px;padding:3px;background:#e9eff8;border-radius:8px}
 .canvasToolSwitch button[aria-pressed="true"]{background:#1c67c7;color:white;border-color:#1c67c7}
+
+.homeMapSearchMatches{display:grid;gap:7px;padding:12px 14px;margin:9px 0;background:#fff;border:1px solid #dbe3ec;border-radius:8px;max-height:270px;overflow:auto}.homeMapSearchMatch{display:flex;gap:8px;align-items:center;border-top:1px solid #eff2f6;padding:6px 0}.homeMapSearchMatch>span{font-size:13px;min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.homeMapSearchMatch>button{font-size:12px;padding:5px 9px;flex-shrink:0}@media(max-width:650px){.homeMapSearchMatch{flex-wrap:wrap}.homeMapSearchMatch>span{flex-basis:100%}}

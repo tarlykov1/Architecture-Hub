@@ -2,11 +2,13 @@ import React, {useEffect,useRef,type ReactNode} from 'react'
 import {useNodes,useNodesInitialized,useReactFlow} from '@xyflow/react'
 
 /** Refit measured graphs on membership/layout changes and actual canvas resize. */
-export function AutoFit({layoutKey='',maxFitZoom=1}:{layoutKey?:string;maxFitZoom?:number}){
+export function AutoFit({layoutKey='',maxFitZoom=1,groupParentsOnly=false}:{layoutKey?:string;maxFitZoom?:number;groupParentsOnly?:boolean}){
  const anchor=useRef<HTMLSpanElement>(null)
  const {fitView}=useReactFlow()
  const initialized=useNodesInitialized()
- const ids=useNodes().map(n=>n.id).sort().join('|')
+ const graphNodes=useNodes()
+ const ids=graphNodes.map(n=>n.id).sort().join('|')
+ const topLevelIds=graphNodes.filter(n=>!n.parentId).map(n=>n.id).sort().join('|')
  useEffect(()=>{
   const canvas=anchor.current?.closest('.react-flow')
   if(!initialized||!ids||!canvas)return
@@ -14,7 +16,7 @@ export function AutoFit({layoutKey='',maxFitZoom=1}:{layoutKey?:string;maxFitZoo
   const fit=()=>{
    cancelAnimationFrame(frame);cancelAnimationFrame(inner)
    frame=requestAnimationFrame(()=>{
-    inner=requestAnimationFrame(()=>{void fitView({padding:0.16,maxZoom:maxFitZoom,minZoom:0.02,duration:0})})
+    inner=requestAnimationFrame(()=>{void fitView({padding:0.2,maxZoom:maxFitZoom,minZoom:0.02,duration:0,...(groupParentsOnly?{nodes:topLevelIds.split('|').filter(Boolean).map(id=>({id}))}:{})})})
    })
   }
   const refit=()=>{
@@ -40,7 +42,7 @@ export function AutoFit({layoutKey='',maxFitZoom=1}:{layoutKey?:string;maxFitZoo
    window.clearTimeout(settle)
    cancelAnimationFrame(frame);cancelAnimationFrame(inner)
   }
- },[fitView,initialized,ids,layoutKey,maxFitZoom])
+ },[fitView,initialized,ids,topLevelIds,layoutKey,maxFitZoom,groupParentsOnly])
  return <span ref={anchor} hidden/>
 }
 

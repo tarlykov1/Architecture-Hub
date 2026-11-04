@@ -490,3 +490,40 @@ button:disabled{cursor:not-allowed;opacity:.55}
 .canvasEditTools button{border:1px solid #cbd5e1;border-radius:7px;background:white;padding:7px 10px;cursor:pointer}
 .canvasToolSwitch{display:flex;gap:3px;padding:3px;background:#e9eff8;border-radius:8px}
 .canvasToolSwitch button[aria-pressed="true"]{background:#1c67c7;color:white;border-color:#1c67c7}
+
+/* Declared infrastructure path editor. Keeps the architecture diagram in place. */
+.architectureDrawerBackdrop{position:fixed;inset:0;z-index:240;display:flex;justify-content:flex-end;background:rgba(14,25,43,.5)}
+.architectureDrawerBackdrop .architectureDrawer{box-sizing:border-box;width:min(700px,97vw);max-width:97vw;height:100dvh;max-height:100dvh;overflow-y:auto;padding:24px;background:#fff;border-radius:16px 0 0 16px;box-shadow:-18px 0 56px rgba(6,22,42,.22)}
+.networkPathHead{display:flex;align-items:center;justify-content:space-between;gap:12px;border-bottom:1px solid #e2e8f0;background:#fff;position:sticky;top:-24px;padding:8px 0 14px;z-index:2}
+.networkPathHead small{font-size:10px;color:#64748b;letter-spacing:.1em;font-weight:700}
+.networkPathHead h2{margin:4px 0 0;font-size:22px}
+.networkPathTabs{display:flex;gap:8px;margin:16px 0;border-bottom:1px solid #e2e8f0}
+.networkPathTabs button{border:0;border-bottom:2px solid transparent;border-radius:0;background:transparent}
+.networkPathTabs button.current{border-bottom-color:#2571c1;color:#165ca0}
+.networkPathField,.networkPathAdd label,.networkPathStep label,.networkPathAssetForm label{display:grid;gap:6px;font-size:12px;font-weight:600}
+.networkPathField select,.networkPathAdd select,.networkPathStep input,.networkPathStep select,.networkPathAssetForm input,.networkPathAssetForm select,.networkPathAssetForm textarea,.networkPathCatalogSearch input{width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:8px;padding:9px;font:inherit;background:#fff;color:#172b42}
+.networkPathEndpoints{display:grid;grid-template-columns:minmax(0,1fr) 24px minmax(0,1fr);gap:8px;align-items:center;padding:13px;background:#f5f8fc;border:1px solid #dce5ee;border-radius:10px;margin:14px 0}
+.networkPathEndpoints>span{text-align:center;color:#64748b}
+.networkPathEndpoints>div{display:grid;gap:6px;min-width:0}
+.networkPathEndpoints strong{font-size:12px;overflow-wrap:anywhere}
+.networkPathEndpoints small{font-size:11px;color:#60748b;overflow-wrap:anywhere}
+.networkPathSteps{display:grid;gap:10px;margin:15px 0}
+.networkPathStep{display:grid;gap:11px;padding:14px;background:#fff;border:1px solid #d9e3ee;border-radius:11px}
+.networkPathStepHeader{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px}
+.networkPathStepHeader strong{font-size:13px}
+.networkPathStepHeader>span{color:#64748b;font-size:11px}
+.networkPathStepActions{display:flex;flex-wrap:wrap;gap:7px}
+.networkPathStepActions button{font-size:11px;padding:6px 10px}
+.networkPathAdd{display:grid;grid-template-columns:1fr auto;align-items:end;gap:10px;margin:12px 0}
+.networkPathSave{display:flex;align-items:center;justify-content:space-between;gap:10px;border-top:1px solid #e2e8f0;padding:15px 0;background:#fff;position:sticky;bottom:-24px}
+.networkPathCatalogSearch{display:flex;gap:10px;margin:16px 0}
+.networkPathCatalogSearch input{min-width:0;flex:1}
+.networkPathRegistry{display:grid;gap:9px}
+.networkPathRegistry article{display:grid;gap:8px;padding:13px;border:1px solid #dbe3ef;border-radius:9px}
+.networkPathRegistry article>div{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.networkPathRegistry small,.networkPathRegistry p{color:#60748b;font-size:12px}
+.networkPathRegistry p{margin:0}.networkPathRegistry button{justify-self:end}
+.networkPathAssetForm{display:grid;gap:11px;padding:15px;border:1px solid #dce5ee;background:#f8fafc;border-radius:10px;margin-bottom:15px}
+.networkPathAssetForm h3{margin:0}.networkPathAssetForm>div{display:flex;justify-content:flex-end;gap:10px}
+.networkPathOpenAction{display:flex;align-items:center;gap:12px;margin:12px 0}.networkPathOpenAction span{font-size:12px;color:#64748b}
+@media(max-width:600px){.architectureDrawerBackdrop .architectureDrawer{width:100vw;max-width:100vw;border-radius:0;padding:17px}.networkPathAdd{grid-template-columns:1fr}.networkPathEndpoints{grid-template-columns:1fr}.networkPathEndpoints>span{transform:rotate(90deg)}}

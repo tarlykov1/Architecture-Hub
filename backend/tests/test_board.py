@@ -96,3 +96,25 @@ def test_board_rejects_viewer_changes_and_allows_viewer_audit_read():
         assert client.post("/api/board/preview", headers=VIEWER, json=changes).status_code == 403
         assert client.post("/api/board/commit", headers=VIEWER, json=changes).status_code == 403
         assert client.get("/api/board/audit", headers=VIEWER).status_code == 200
+
+
+def test_drawing_network_and_enclosing_vm_creates_interface_atomically():
+    with TestClient(app) as client:
+        system_id, vm_id = create_system_and_vm(client)
+        network_id, nic_id = str(uuid4()), str(uuid4())
+        batch = {"reason": "New rectangle includes VM", "changes": [
+            {"action": "create_network", "id": network_id,
+             "name": "Drawn " + network_id[:8], "kind": "zone"},
+            {"action": "create_interface", "id": nic_id, "item_id": vm_id,
+             "interface_name": "eth0", "network_id": network_id, "network_field": "zone_id"},
+        ]}
+        preview = client.post("/api/board/preview", headers=ADMIN, json=batch)
+        assert preview.status_code == 200, preview.text
+        assert preview.json()["count"] == 2
+        assert nic_id not in {item["id"] for item in client.get("/api/network-interfaces", headers=ADMIN).json()}
+        commit = client.post("/api/board/commit", headers=ADMIN, json=batch)
+        assert commit.status_code == 200, commit.text
+        created = {item["id"]: item for item in client.get("/api/network-interfaces", headers=ADMIN).json()}
+        assert created[nic_id]["zone_id"] == network_id
+        assert created[nic_id]["item_id"] == vm_id
+        assert created[nic_id]["ip_address"] == ""

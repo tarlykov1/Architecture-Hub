@@ -303,6 +303,33 @@ test('component diagram stages a technical flow without silently creating an API
   expect(apiFlows.some((flow:{source_id:string;target_id:string})=>flow.source_id===ids[0]&&flow.target_id===ids[1])).toBeFalsy()
 })
 
+test('diagram and manual editor share compact orthogonal grouped flow rendering',async({page})=>{
+  const name='Grouped links '+Date.now()
+  const system=await page.request.post('http://127.0.0.1:8001/api/objects',{data:{name,kind:'system'}})
+  expect(system.status()).toBe(201)
+  const systemId=(await system.json()).id
+  const ids:string[]=[]
+  for(const label of ['Web VM','Database VM']){
+    const response=await page.request.post('http://127.0.0.1:8001/api/infra',{data:{system_id:systemId,name:label,kind:'vm'}})
+    expect(response.status()).toBe(201)
+    ids.push((await response.json()).id)
+  }
+  for(const port of ['443','8443','9000']){
+    const flow=await page.request.post('http://127.0.0.1:8001/api/flows',{data:{source_id:ids[0],target_id:ids[1],name:'Web VM to Database VM '+port,protocol:'HTTPS',port,verification:'draft'}})
+    expect(flow.status()).toBe(201)
+  }
+  await page.goto('/')
+  await openSystemComponents(page,name)
+  const diagram=page.locator('.miniArchitecture')
+  await expect(diagram.locator('.react-flow__edge')).toHaveCount(1)
+  await expect(diagram.getByText('3 потоков')).toBeVisible()
+  await page.getByRole('button',{name:'Редактировать схему'}).click()
+  const editor=page.getByRole('region',{name:'Редактор архитектурной схемы'})
+  await expect(editor.locator('.react-flow__edge')).toHaveCount(1)
+  await expect(editor.getByText('3 потока(ов)')).toBeVisible()
+  await expect(editor.locator('.react-flow__edge-path')).toHaveCount(1)
+})
+
 test('neighboring systems toggle reveals cross-system linked components',async({page})=>{
  const stamp=Date.now()
  const names=['Cross source '+stamp,'Cross neighbor '+stamp]

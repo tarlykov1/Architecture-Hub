@@ -33,7 +33,8 @@ function TopologyGroupFit({groups}:{groups:Node[]}){
     const maxY=Math.max(...groups.map(n=>n.position.y+(Number(n.style?.height)||160)))
     const graphWidth=Math.max(1,maxX-minX),graphHeight=Math.max(1,maxY-minY)
     const margin=28
-    const zoom=Math.max(0.02,Math.min(1,(width-margin*2)/graphWidth,(height-margin*2)/graphHeight))
+    // Keep labels legible on large diagrams; the Fit View control still fits all groups.
+    const zoom=Math.max(0.42,Math.min(1,(width-margin*2)/graphWidth,(height-margin*2)/graphHeight))
     void setViewport({x:(width-graphWidth*zoom)/2-minX*zoom,y:(height-graphHeight*zoom)/2-minY*zoom,zoom},{duration:0})
    })
   }
@@ -146,20 +147,21 @@ export default function Topology({systems,items,segments,interfaces,flows,saveIn
    }
  }
  const nodes:Node[]=[],edges:Edge[]=[]
- const columnHeights=[0,0]
- // Variable-height rows avoid overlapping network groups with many hosts.
- const entries=Array.from(groups.entries())
+ const entries=Array.from(groups.entries()).sort((a,b)=>b[1].items.length-a[1].items.length)
+ // Balance group heights across columns instead of building a tall vertical strip.
+ const columnCount=entries.length>=7?3:entries.length>=3?2:1
+ const columnHeights=Array.from({length:columnCount},()=>0)
  for(let groupIndex=0;groupIndex<entries.length;groupIndex++){
    const [key,group]=entries[groupIndex]
    const height=95+Math.ceil(group.items.length/3)*164
    const groupWidth=Math.min(900,24+Math.min(3,group.items.length)*294)
-   const column=entries.length>3?(columnHeights[0]<=columnHeights[1]?0:1):0
+   const column=columnHeights.indexOf(Math.min(...columnHeights))
    const groupId='group:'+key
    const groupNics=group.items.flatMap(i=>(nicsByItem.get(i.id)||[]).filter(n=>key==='external'||(n.vrf_id||'none')+'|'+(n.vlan_id||'none')===key))
    const zoneNames=Array.from(new Set(groupNics.map(n=>name(n.zone_id))))
    const ipCount=groupNics.filter(n=>n.ip_address).length
    const isExternal=key==='external'
-   nodes.push({id:groupId,position:{x:column*950,y:columnHeights[column]},data:{label:<div style={{textAlign:'left'}}><strong>{isExternal?'Внешние зависимости':!group.vrf&&!group.vlan?'Сеть не указана – требуется уточнить VRF/VLAN':'VRF: '+name(group.vrf)+' · VLAN: '+name(group.vlan)}</strong><div style={{fontSize:12,marginTop:5,color:'#60728b'}}>{group.items.length} компонентов · {groupNics.length} интерфейсов · {ipCount} IP{isExternal?' · вне выбранного фильтра':''}{zoneNames.length?' · Зоны: '+zoneNames.join(', '):''}</div></div>},style:{width:groupWidth,height,background:isExternal?'#fff4df':!group.vrf&&!group.vlan?'#f4f6f9':'#eaf1fb',border:'1px solid '+(isExternal?'#d6b67b':'#a8bdd6'),borderRadius:14},draggable:false,selectable:false})
+   nodes.push({id:groupId,position:{x:column*940,y:columnHeights[column]},data:{label:<div style={{textAlign:'left'}}><strong>{isExternal?'Внешние зависимости':!group.vrf&&!group.vlan?'Сеть не указана – требуется уточнить VRF/VLAN':'VRF: '+name(group.vrf)+' · VLAN: '+name(group.vlan)}</strong><div style={{fontSize:12,marginTop:5,color:'#60728b'}}>{group.items.length} компонентов · {groupNics.length} интерфейсов · {ipCount} IP{isExternal?' · вне выбранного фильтра':''}{zoneNames.length?' · Зоны: '+zoneNames.join(', '):''}</div></div>},style:{width:groupWidth,height,background:isExternal?'#fff4df':!group.vrf&&!group.vlan?'#f4f6f9':'#eaf1fb',border:'1px solid '+(isExternal?'#d6b67b':'#a8bdd6'),borderRadius:14},draggable:false,selectable:false})
    group.items.forEach((item,j)=>{
      const duplicate=(memberships.get(item.id)||[]).indexOf(key)
      const visibleNics=(nicsByItem.get(item.id)||[]).filter(n=>key==='external'||(n.vrf_id||'none')+'|'+(n.vlan_id||'none')===key)

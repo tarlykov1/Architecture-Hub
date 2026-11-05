@@ -686,6 +686,85 @@ def flow_data_map(flow_id: UUID, db: Session = Depends(db_session)):
     }
 
 
+@app.get("/api/systems/{system_id}/data-lineage")
+def system_data_lineage(system_id: UUID, db: Session = Depends(db_session)):
+    """Declared data usage involving a system, not inferred network reachability."""
+    system = db.get(ArchitectureObject, system_id)
+    if system is None:
+        raise HTTPException(404, "System not found")
+
+    items = db.scalars(select(InfrastructureItem)).all()
+    item_system = {item.id: item.system_id for item in items}
+    flows = db.scalars(select(DataFlow)).all()
+    relevant = [flow for flow in flows
+                if item_system.get(flow.source_id) == system_id
+                or item_system.get(flow.target_id) == system_id]
+    flow_ids = [flow.id for flow in relevant]
+    uses = db.scalars(select(FlowDataUse).where(
+        FlowDataUse.flow_id.in_(flow_ids))).all() if flow_ids else []
+    # Include flows in which this system is explicitly declared as a downstream consumer.
+    additional_ids = {use.flow_id for use in db.scalars(select(FlowDataUse).where(
+        FlowDataUse.consumer_system_id == system_id)).all()}
+    missing_ids = additional_ids.difference(flow_ids)
+    if missing_ids:
+        relevant.extend(db.scalars(select(DataFlow).where(DataFlow.id.in_(missing_ids))).all())
+        uses.extend(db.scalars(select(FlowDataUse).where(FlowDataUse.flow_id.in_(missing_ids))).all())
+
+    attribute_ids = {use.attribute_id for use in uses}
+    process_ids = {use.process_id for use in uses if use.process_id}
+    consumer_ids = {use.consumer_system_id for use in uses if use.consumer_system_id}
+    related_ids = consumer_ids | {
+        item_system[item_id] for flow in relevant
+        for item_id in (flow.source_id, flow.target_id)
+        if item_id in item_system
+    }
+    attributes = {a.id: a for a in db.scalars(select(DataAttribute).where(
+        DataAttribute.id.in_(attribute_ids))).all()} if attribute_ids else {}
+    processes = {p.id: p for p in db.scalars(select(BusinessProcess).where(
+        BusinessProcess.id.in_(process_ids))).all()} if process_ids else {}
+    systems = {s.id: s for s in db.scalars(select(ArchitectureObject).where(
+        ArchitectureObject.id.in_(related_ids))).all()} if related_ids else {}
+    uses_by_flow = {}
+    for use in uses:
+        uses_by_flow.setdefault(use.flow_id, []).append(use)
+    return {
+        "system_id": system_id,
+        "system_name": system.name,
+        "flows": [
+            {
+                "id": flow.id, "name": flow.name,
+                "source_id": flow.source_id, "target_id": flow.target_id,
+                "source_system_id": item_system.get(flow.source_id),
+                "target_system_id": item_system.get(flow.target_id),
+                "declared_attribute_count": len({
+                    use.attribute_id for use in uses_by_flow.get(flow.id, [])
+                }),
+                "data_uses": [
+                    {
+                        "id": use.id, "attribute_id": use.attribute_id,
+                        "code": attributes[use.attribute_id].code,
+                        "name": attributes[use.attribute_id].name,
+                        "sensitivity": attributes[use.attribute_id].sensitivity,
+                        "process_id": use.process_id,
+                        "process_name": processes[use.process_id].name if use.process_id else None,
+                        "consumer_system_id": use.consumer_system_id,
+                        "consumer_system_name": systems[use.consumer_system_id].name
+                        if use.consumer_system_id else None,
+                        "purpose": use.purpose, "verification": use.verification,
+                    }
+                    for use in uses_by_flow.get(flow.id, [])
+                    if use.attribute_id in attributes
+                ],
+            }
+            for flow in relevant
+        ],
+        "related_systems": [
+            {"id": sid, "name": systems[sid].name}
+            for sid in sorted(related_ids, key=str) if sid in systems and sid != system_id
+        ],
+    }
+
+
 @app.get("/api/flows", response_model=list[FlowOutput])
 def list_flows(db: Session = Depends(db_session)):
     return db.scalars(select(DataFlow).order_by(DataFlow.name)).all()

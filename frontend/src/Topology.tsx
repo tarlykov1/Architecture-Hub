@@ -45,6 +45,19 @@ function TopologyGroupFit({groups}:{groups:Node[]}){
  return <span ref={anchor} hidden/>
 }
 
+function TopologySelectionFocus({selectedId,nodes}:{selectedId:string;nodes:Node[]}){
+ const {setCenter,getZoom}=useReactFlow()
+ useEffect(()=>{
+  if(!selectedId)return
+  const node=nodes.find(n=>n.id===selectedId)
+  if(!node)return
+  const inspectorWidth=Math.min(440,window.innerWidth*.42)
+  const zoom=Math.max(.55,Math.min(1,getZoom()))
+  void setCenter(node.position.x+120+inspectorWidth/(2*zoom),node.position.y+55,{zoom,duration:250})
+ },[selectedId,nodes,setCenter,getZoom])
+ return null
+}
+
 export default function Topology({systems,items,segments,interfaces,flows,saveInterface,saveFlow,saveSegment}:Props){
  const [showConnections,setShowConnections]=useState(true)
  const [showAllComponents,setShowAllComponents]=useState(true)
@@ -197,7 +210,7 @@ export default function Topology({systems,items,segments,interfaces,flows,saveIn
   </Disclosure>{focusGraph&&<small role='status'>Слева – источники входящих потоков, справа – получатели исходящих. Нажмите на стрелку для просмотра параметров.</small>}
   <small>Найдено компонентов: {matching.length} · Показано объектов: {displayed.length} · VRF/VLAN-групп: {groups.size} · Потоков: {visibleFlows.length} · На схеме: {showConnections?'все потоки':selected||flowId?'выбранные связи':'обзор компонентов'} · Без сетевых интерфейсов: {matching.filter(i=>!(nicsByItem.get(i.id)||[]).length).length}</small>
   <div className="topologyCanvas">
-   {(focusGraph?focusNodes.length:displayed.length)?<ReactFlow minZoom={0.08} key={focusGraph?'focus:'+selected+':'+flowId+':'+flowDirection:'overview:'+system+':'+vrf+':'+vlan+':'+environment+':'+displayed.length} nodes={focusGraph?focusNodes:nodes} edges={focusGraph?focusEdges:edges} nodesDraggable={false} nodesConnectable={editing} onConnect={connection=>{if(!editing)return;const source=focusGraph?connection.source:connection.source?.split(':')[1],target=focusGraph?connection.target:connection.target?.split(':')[1];if(source&&target&&source!==target){editFlowDraft(undefined,source,target)}}} onNodeClick={(_,n)=>{if(focusGraph&&itemById.has(n.id)){setSelected(n.id);setFlowId('');setFocusMode('dependencies')}else if(n.id.startsWith('host:')){const id=String((n.data as {item_id?:string}).item_id||'');const found=id||displayed.find(i=>n.id.startsWith('host:'+i.id+':'))?.id||'';setSelected(found);setFlowId('');setFocusMode('dependencies')}}} onEdgeClick={(_,e)=>{setFlowId(e.id);setSelected('');setShowConnections(false);setFocusMode('dependencies')}} onPaneClick={()=>{setSelected('');setFlowId('')}}>{focusGraph?<AutoFit/>:<TopologyGroupFit groups={nodes.filter(n=>!n.parentId)}/>}<Background/><Controls showInteractive={false}/></ReactFlow>:<p style={{padding:20}}>Нет компонентов для выбранных фильтров. Проверьте систему, контур и сетевые привязки.</p>}
+   {(focusGraph?focusNodes.length:displayed.length)?<ReactFlow minZoom={0.08} key={focusGraph?'focus:'+selected+':'+flowId+':'+flowDirection:'overview:'+system+':'+vrf+':'+vlan+':'+environment+':'+displayed.length} nodes={focusGraph?focusNodes:nodes} edges={focusGraph?focusEdges:edges} nodesDraggable={false} nodesConnectable={editing} onConnect={connection=>{if(!editing)return;const source=focusGraph?connection.source:connection.source?.split(':')[1],target=focusGraph?connection.target:connection.target?.split(':')[1];if(source&&target&&source!==target){editFlowDraft(undefined,source,target)}}} onNodeClick={(_,n)=>{if(focusGraph&&itemById.has(n.id)){setSelected(n.id);setFlowId('');setFocusMode('dependencies')}else if(n.id.startsWith('host:')){const id=String((n.data as {item_id?:string}).item_id||'');const found=id||displayed.find(i=>n.id.startsWith('host:'+i.id+':'))?.id||'';setSelected(found);setFlowId('');setFocusMode('dependencies')}}} onEdgeClick={(_,e)=>{setFlowId(e.id);setSelected('');setShowConnections(false);setFocusMode('dependencies')}} onPaneClick={()=>{setSelected('');setFlowId('')}}>{focusGraph?<><AutoFit/><TopologySelectionFocus selectedId={selected} nodes={focusNodes}/></>:<TopologyGroupFit groups={nodes.filter(n=>!n.parentId)}/>}<Background/><Controls showInteractive={false}/></ReactFlow>:<p style={{padding:20}}>Нет компонентов для выбранных фильтров. Проверьте систему, контур и сетевые привязки.</p>}
   </div>
   <small>Нажмите на компонент, чтобы увидеть его потоки. Переключатель «Все потоки» показывает общую картину. Зелёная стрелка – подтверждённый поток; оранжевая – не проверен. Отсутствие стрелки не означает отсутствия сетевого доступа. Схема отображает описанные логические связи, не трассировку физического маршрута.</small>
   {(item||flow)&&<div className="topologyInspectorLayer"><aside className="topologyInspector architectureDrawer" role="complementary" aria-label="Выбранный объект топологии">

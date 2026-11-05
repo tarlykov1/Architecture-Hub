@@ -33,8 +33,8 @@ function TopologyGroupFit({groups}:{groups:Node[]}){
     const maxY=Math.max(...groups.map(n=>n.position.y+(Number(n.style?.height)||160)))
     const graphWidth=Math.max(1,maxX-minX),graphHeight=Math.max(1,maxY-minY)
     const margin=28
-    // Keep labels legible on large diagrams; the Fit View control still fits all groups.
-    const zoom=Math.max(0.42,Math.min(1,(width-margin*2)/graphWidth,(height-margin*2)/graphHeight))
+    // Overview must contain every group; readable zoom is applied in dependency focus.
+    const zoom=Math.max(0.02,Math.min(1,(width-margin*2)/graphWidth,(height-margin*2)/graphHeight))
     void setViewport({x:(width-graphWidth*zoom)/2-minX*zoom,y:(height-graphHeight*zoom)/2-minY*zoom,zoom},{duration:0})
    })
   }

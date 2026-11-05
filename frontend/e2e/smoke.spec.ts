@@ -294,7 +294,7 @@ test('component diagram stages a technical flow without silently creating an API
   await editor.getByRole('button',{name:'→ Поток'}).click()
   const fields=editor.locator('.boardToolFields').first()
   await fields.getByLabel('Откуда').selectOption(ids[0])
-  await fields.getByLabel('Куда').selectOption(ids[1])
+  await fields.getByLabel('Куда',{exact:true}).selectOption(ids[1])
   await fields.getByLabel('Порт').fill('443')
   await expect(editor.locator('.react-flow__edge')).toHaveCount(0)
   await editor.getByRole('button',{name:'Добавить поток'}).click()

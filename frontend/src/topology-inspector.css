@@ -1,0 +1,35 @@
+/* Topology selection is a nonmodal inspector: never obscure or intercept the canvas. */
+.topologyInspectorLayer {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  pointer-events: none;
+}
+.topologyInspectorLayer > .topologyInspector {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(440px, 42vw);
+  max-width: 100%;
+  height: 100%;
+  overflow-y: auto;
+  box-sizing: border-box;
+  background: var(--surface, #fff);
+  box-shadow: -8px 0 28px rgba(20, 36, 58, .14);
+  pointer-events: auto;
+}
+@media (max-width: 700px) {
+  .topologyInspectorLayer > .topologyInspector { width: min(420px, 100vw); }
+}
+
+/* Reserve a real canvas column for the inspector, rather than covering the graph. */
+.topologyWorkspace:has(.topologyInspectorLayer) .topologyCanvas {
+  width: calc(100% - min(440px, 42vw));
+  box-sizing: border-box;
+}
+@media (max-width: 700px) {
+  .topologyWorkspace:has(.topologyInspectorLayer) .topologyCanvas {
+    width: 100%;
+  }
+}

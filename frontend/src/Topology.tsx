@@ -1,5 +1,6 @@
 import React, {useEffect, useMemo, useRef, useState} from 'react'
 import {AutoFit,Disclosure} from './WorkspaceUI'
+import './topology-inspector.css'
 import {ReactFlow,Background,Controls,MarkerType,Position,useReactFlow,type Node,type Edge} from '@xyflow/react'
 
 type Item={id:string;system_id:string;kind:string;name:string;description?:string;parent_id?:string|null;details:Record<string,unknown>}
@@ -32,6 +33,7 @@ function TopologyGroupFit({groups}:{groups:Node[]}){
     const maxY=Math.max(...groups.map(n=>n.position.y+(Number(n.style?.height)||160)))
     const graphWidth=Math.max(1,maxX-minX),graphHeight=Math.max(1,maxY-minY)
     const margin=28
+    // Overview must contain every group; readable zoom is applied in dependency focus.
     const zoom=Math.max(0.02,Math.min(1,(width-margin*2)/graphWidth,(height-margin*2)/graphHeight))
     void setViewport({x:(width-graphWidth*zoom)/2-minX*zoom,y:(height-graphHeight*zoom)/2-minY*zoom,zoom},{duration:0})
    })
@@ -42,6 +44,18 @@ function TopologyGroupFit({groups}:{groups:Node[]}){
   return()=>{observer.disconnect();cancelAnimationFrame(frame)}
  },[setViewport,layoutKey])
  return <span ref={anchor} hidden/>
+}
+
+function TopologySelectionFocus({selectedId,nodes}:{selectedId:string;nodes:Node[]}){
+ const {setCenter,getZoom}=useReactFlow()
+ useEffect(()=>{
+  if(!selectedId)return
+  const node=nodes.find(n=>n.id===selectedId)
+  if(!node)return
+  const zoom=Math.max(.55,Math.min(1,getZoom()))
+  void setCenter(node.position.x+120,node.position.y+55,{zoom,duration:250})
+ },[selectedId,nodes,setCenter,getZoom])
+ return null
 }
 
 export default function Topology({systems,items,segments,interfaces,flows,saveInterface,saveFlow,saveSegment}:Props){
@@ -132,20 +146,21 @@ export default function Topology({systems,items,segments,interfaces,flows,saveIn
    }
  }
  const nodes:Node[]=[],edges:Edge[]=[]
- const columnHeights=[0,0]
- // Variable-height rows avoid overlapping network groups with many hosts.
- const entries=Array.from(groups.entries())
+ const entries=Array.from(groups.entries()).sort((a,b)=>b[1].items.length-a[1].items.length)
+ // Balance group heights across columns instead of building a tall vertical strip.
+ const columnCount=entries.length>=7?3:entries.length>=3?2:1
+ const columnHeights=Array.from({length:columnCount},()=>0)
  for(let groupIndex=0;groupIndex<entries.length;groupIndex++){
    const [key,group]=entries[groupIndex]
    const height=95+Math.ceil(group.items.length/3)*164
    const groupWidth=Math.min(900,24+Math.min(3,group.items.length)*294)
-   const column=entries.length>3?(columnHeights[0]<=columnHeights[1]?0:1):0
+   const column=columnHeights.indexOf(Math.min(...columnHeights))
    const groupId='group:'+key
    const groupNics=group.items.flatMap(i=>(nicsByItem.get(i.id)||[]).filter(n=>key==='external'||(n.vrf_id||'none')+'|'+(n.vlan_id||'none')===key))
    const zoneNames=Array.from(new Set(groupNics.map(n=>name(n.zone_id))))
    const ipCount=groupNics.filter(n=>n.ip_address).length
    const isExternal=key==='external'
-   nodes.push({id:groupId,position:{x:column*950,y:columnHeights[column]},data:{label:<div style={{textAlign:'left'}}><strong>{isExternal?'Внешние зависимости':!group.vrf&&!group.vlan?'Сеть не указана – требуется уточнить VRF/VLAN':'VRF: '+name(group.vrf)+' · VLAN: '+name(group.vlan)}</strong><div style={{fontSize:12,marginTop:5,color:'#60728b'}}>{group.items.length} компонентов · {groupNics.length} интерфейсов · {ipCount} IP{isExternal?' · вне выбранного фильтра':''}{zoneNames.length?' · Зоны: '+zoneNames.join(', '):''}</div></div>},style:{width:groupWidth,height,background:isExternal?'#fff4df':!group.vrf&&!group.vlan?'#f4f6f9':'#eaf1fb',border:'1px solid '+(isExternal?'#d6b67b':'#a8bdd6'),borderRadius:14},draggable:false,selectable:false})
+   nodes.push({id:groupId,position:{x:column*940,y:columnHeights[column]},data:{label:<div style={{textAlign:'left'}}><strong>{isExternal?'Внешние зависимости':!group.vrf&&!group.vlan?'Сеть не указана – требуется уточнить VRF/VLAN':'VRF: '+name(group.vrf)+' · VLAN: '+name(group.vlan)}</strong><div style={{fontSize:12,marginTop:5,color:'#60728b'}}>{group.items.length} компонентов · {groupNics.length} интерфейсов · {ipCount} IP{isExternal?' · вне выбранного фильтра':''}{zoneNames.length?' · Зоны: '+zoneNames.join(', '):''}</div></div>},style:{width:groupWidth,height,background:isExternal?'#fff4df':!group.vrf&&!group.vlan?'#f4f6f9':'#eaf1fb',border:'1px solid '+(isExternal?'#d6b67b':'#a8bdd6'),borderRadius:14},draggable:false,selectable:false})
    group.items.forEach((item,j)=>{
      const duplicate=(memberships.get(item.id)||[]).indexOf(key)
      const visibleNics=(nicsByItem.get(item.id)||[]).filter(n=>key==='external'||(n.vrf_id||'none')+'|'+(n.vlan_id||'none')===key)
@@ -196,11 +211,11 @@ export default function Topology({systems,items,segments,interfaces,flows,saveIn
   </Disclosure>{focusGraph&&<small role='status'>Слева – источники входящих потоков, справа – получатели исходящих. Нажмите на стрелку для просмотра параметров.</small>}
   <small>Найдено компонентов: {matching.length} · Показано объектов: {displayed.length} · VRF/VLAN-групп: {groups.size} · Потоков: {visibleFlows.length} · На схеме: {showConnections?'все потоки':selected||flowId?'выбранные связи':'обзор компонентов'} · Без сетевых интерфейсов: {matching.filter(i=>!(nicsByItem.get(i.id)||[]).length).length}</small>
   <div className="topologyCanvas">
-   {(focusGraph?focusNodes.length:displayed.length)?<ReactFlow minZoom={0.08} key={focusGraph?'focus:'+selected+':'+flowId+':'+flowDirection:'overview:'+system+':'+vrf+':'+vlan+':'+environment+':'+displayed.length} nodes={focusGraph?focusNodes:nodes} edges={focusGraph?focusEdges:edges} nodesDraggable={false} nodesConnectable={editing} onConnect={connection=>{if(!editing)return;const source=focusGraph?connection.source:connection.source?.split(':')[1],target=focusGraph?connection.target:connection.target?.split(':')[1];if(source&&target&&source!==target){editFlowDraft(undefined,source,target)}}} onNodeClick={(_,n)=>{if(focusGraph&&itemById.has(n.id)){setSelected(n.id);setFlowId('');setFocusMode('dependencies')}else if(n.id.startsWith('host:')){const id=String((n.data as {item_id?:string}).item_id||'');const found=id||displayed.find(i=>n.id.startsWith('host:'+i.id+':'))?.id||'';setSelected(found);setFlowId('');setFocusMode('dependencies')}}} onEdgeClick={(_,e)=>{setFlowId(e.id);setSelected('');setShowConnections(false);setFocusMode('dependencies')}} onPaneClick={()=>{setSelected('');setFlowId('')}}>{focusGraph?<AutoFit/>:<TopologyGroupFit groups={nodes.filter(n=>!n.parentId)}/>}<Background/><Controls showInteractive={false}/></ReactFlow>:<p style={{padding:20}}>Нет компонентов для выбранных фильтров. Проверьте систему, контур и сетевые привязки.</p>}
+   {(focusGraph?focusNodes.length:displayed.length)?<ReactFlow minZoom={0.08} key={focusGraph?'focus:'+selected+':'+flowId+':'+flowDirection:'overview:'+system+':'+vrf+':'+vlan+':'+environment+':'+displayed.length} nodes={focusGraph?focusNodes:nodes} edges={focusGraph?focusEdges:edges} nodesDraggable={false} nodesConnectable={editing} onConnect={connection=>{if(!editing)return;const source=focusGraph?connection.source:connection.source?.split(':')[1],target=focusGraph?connection.target:connection.target?.split(':')[1];if(source&&target&&source!==target){editFlowDraft(undefined,source,target)}}} onNodeClick={(_,n)=>{if(focusGraph&&itemById.has(n.id)){setSelected(n.id);setFlowId('');setFocusMode('dependencies')}else if(n.id.startsWith('host:')){const id=String((n.data as {item_id?:string}).item_id||'');const found=id||displayed.find(i=>n.id.startsWith('host:'+i.id+':'))?.id||'';setSelected(found);setFlowId('');setFocusMode('dependencies')}}} onEdgeClick={(_,e)=>{setFlowId(e.id);setSelected('');setShowConnections(false);setFocusMode('dependencies')}} onPaneClick={()=>{setSelected('');setFlowId('');setFocusMode('overview');setShowConnections(true)}}>{focusGraph?<><AutoFit/><TopologySelectionFocus selectedId={selected} nodes={focusNodes}/></>:<TopologyGroupFit groups={nodes.filter(n=>!n.parentId)}/>}<Background/><Controls showInteractive={false}/></ReactFlow>:<p style={{padding:20}}>Нет компонентов для выбранных фильтров. Проверьте систему, контур и сетевые привязки.</p>}
   </div>
   <small>Нажмите на компонент, чтобы увидеть его потоки. Переключатель «Все потоки» показывает общую картину. Зелёная стрелка – подтверждённый поток; оранжевая – не проверен. Отсутствие стрелки не означает отсутствия сетевого доступа. Схема отображает описанные логические связи, не трассировку физического маршрута.</small>
-  {(item||flow)&&<div className="architectureDrawerBackdrop" onClick={()=>{setSelected('');setFlowId('')}}><aside className="topologyInspector architectureDrawer" role="dialog" aria-modal="true" aria-label="Выбранный объект топологии" onClick={e=>e.stopPropagation()}>
-   <button style={{float:'right'}} onClick={()=>{setSelected('');setFlowId('')}} aria-label="Закрыть">×</button>
+  {(item||flow)&&<div className="topologyInspectorLayer"><aside className="topologyInspector architectureDrawer" role="complementary" aria-label="Выбранный объект топологии">
+   <button style={{float:'right'}} onClick={()=>{setSelected('');setFlowId('');setFocusMode('overview');setShowConnections(true)}} aria-label="Закрыть">×</button>
    {item&&<><h3>{item.name}</h3><p>Система: {systemById.get(item.system_id)?.name||unknown}</p><p><strong>Назначение:</strong> {item.description?.trim()||String(item.details.purpose||item.details.role||'Не описано')}</p><p><strong>Родительский компонент:</strong> {items.find(x=>x.id===item.parent_id)?.name||'Не указан'}</p><p>Контур: {String(item.details.environment||unknown)}</p><h4>Сетевые интерфейсы</h4>{editing?<button type="button" onClick={()=>editNic(item)}>+ Добавить интерфейс</button>:<p style={{fontSize:12,color:'#65758a'}}>Для изменения сетевых привязок включите режим «Редактировать топологию».</p>}{(nicsByItem.get(item.id)||[]).map(n=><p key={n.id}>{editing&&<button type="button" onClick={()=>editNic(item,n)} aria-label={"Редактировать "+n.name}>Изменить сеть</button>} <b>{n.name}</b> · IP: {n.ip_address||unknown}<br/>VRF: {name(n.vrf_id)} · VLAN: {name(n.vlan_id)} · Зона: {name(n.zone_id)}</p>)}{!(nicsByItem.get(item.id)||[]).length&&<p>Сетевые интерфейсы не описаны.</p>}<h4>Связи и влияние</h4>
    <p style={{fontSize:12,color:'#65758a'}}>Потоки описывают известные логические зависимости; фактическое влияние отказа требует подтверждения.</p>
    <div className="topologyImpactStats">

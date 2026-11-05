@@ -606,3 +606,10 @@ body:has(.expandedFlowPanel)::before{content:"";position:fixed;inset:0;backgroun
 .homeMapSearchMatch>span{font-size:13px;min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .homeMapSearchMatch>button{font-size:12px;padding:5px 9px;flex-shrink:0}
 @media(max-width:650px){.homeMapSearchMatch{flex-wrap:wrap}.homeMapSearchMatch>span{flex-basis:100%}}
+
+/* Flow canvas stays usable on tall and short screens without a page-length blank map. */
+[data-active-graph="flows"].miniArchitecture {
+ height: clamp(360px, 58vh, 760px);
+ min-height: 360px;
+ scroll-margin-top: 96px;
+}

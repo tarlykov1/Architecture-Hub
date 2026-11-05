@@ -322,11 +322,11 @@ test('diagram and manual editor share compact orthogonal grouped flow rendering'
   await openSystemComponents(page,name)
   const diagram=page.locator('.miniArchitecture')
   await expect(diagram.locator('.react-flow__edge')).toHaveCount(1)
-  await expect(diagram.getByText('3 потоков')).toBeVisible()
+  await expect(diagram.getByText('3 потока')).toBeVisible()
   await page.getByRole('button',{name:'Редактировать схему'}).click()
   const editor=page.getByRole('region',{name:'Редактор архитектурной схемы'})
   await expect(editor.locator('.react-flow__edge')).toHaveCount(1)
-  await expect(editor.getByText('3 потока(ов)')).toBeVisible()
+  await expect(editor.getByText('3 потока')).toBeVisible()
   await expect(editor.locator('.react-flow__edge-path')).toHaveCount(1)
 })
 

@@ -1,3 +1,4 @@
+import './flow-catalog-inspector.css'
 import React, {useCallback,useEffect,useMemo,useState} from 'react'
 
 type Flow={id:string;name:string;source_id:string;target_id:string;data_description:string}
@@ -22,6 +23,7 @@ export default function FlowDataCatalog({request,flows,systems,components,proces
   const [loading,setLoading]=useState(true)
   const [busy,setBusy]=useState(false)
   const [error,setError]=useState('')
+  const [catalogLoaded,setCatalogLoaded]=useState(false)
   const [notice,setNotice]=useState('')
   const [query,setQuery]=useState('')
   const [attrDraft,setAttrDraft]=useState(emptyAttribute)
@@ -39,8 +41,8 @@ export default function FlowDataCatalog({request,flows,systems,components,proces
   const reload=useCallback(async()=>{
     try{
       const [a,u]=await Promise.all([request<Attribute[]>('/api/data-attributes'),request<Use[]>('/api/flow-data-uses')])
-      setAttributes(a);setUses(u);setError('')
-    }catch(e){setError('Не удалось загрузить справочник: '+String(e))}
+      setAttributes(a);setUses(u);setCatalogLoaded(true);setError('')
+    }catch(e){setCatalogLoaded(false);setError('Не удалось загрузить справочник. Проверьте доступность API и версию backend. '+String(e))}
     finally{setLoading(false)}
   },[request])
   useEffect(()=>{void reload()},[reload])
@@ -97,13 +99,13 @@ export default function FlowDataCatalog({request,flows,systems,components,proces
     if(attrFormOpen&&attrDraft.code.trim()&&!window.confirm('Закрыть справочник без сохранения атрибута?'))return
     onClose()
   }
-  return <div className="architectureDrawerBackdrop" onMouseDown={e=>{if(e.target===e.currentTarget)close()}}>
-    <aside className="architectureDrawer flowDataDrawer" role="dialog" aria-modal="true" aria-label="Атрибуты потоков данных">
+  return <div className="flowCatalogInspectorLayer">
+    <aside className="architectureDrawer flowDataDrawer" role="complementary" aria-label="Атрибуты потоков данных">
       <div className="flowDataHeading"><div><small>АРХИТЕКТУРА ДАННЫХ</small><h2>Атрибуты потоков</h2></div><button type="button" onClick={close} aria-label="Закрыть справочник">Закрыть ×</button></div>
       <p className="hint">Справочник хранит определения полей, но не значения персональных данных. Один атрибут может участвовать в разных потоках и бизнес-процессах.</p>
       <div className="componentInspectorTabs" role="tablist" aria-label="Представление данных"><button type="button" role="tab" aria-selected={tab==='map'} className={tab==='map'?'current':''} onClick={()=>setTab('map')}>Данные потока</button><button type="button" role="tab" aria-selected={tab==='catalog'} className={tab==='catalog'?'current':''} onClick={()=>setTab('catalog')}>Справочник ({attributes.length})</button></div>
       {loading&&<p role="status">Загрузка атрибутов…</p>}
-      {error&&<p className="kisError" role="alert">{error}</p>}
+      {error&&<div className="kisError" role="alert"><p>{error}</p><button type="button" onClick={()=>{setLoading(true);void reload()}}>Повторить загрузку</button></div>}
       {notice&&<p className="hint" role="status">{notice}</p>}
       {tab==='map'&&<>
         <label className="flowDataField">Поток данных<select aria-label="Выбрать поток для атрибутов" value={flowId} onChange={e=>{setFlowId(e.target.value);setFilterProcess('');setFilterSystem('')}}><option value="">Выберите поток</option>{flows.map(f=><option key={f.id} value={f.id}>{f.name}</option>)}</select></label>
@@ -117,7 +119,7 @@ export default function FlowDataCatalog({request,flows,systems,components,proces
       </>}
       {tab==='catalog'&&<><div className="flowDataCatalogToolbar"><input type="search" aria-label="Поиск атрибутов" placeholder="Код, название, описание…" value={query} onChange={e=>setQuery(e.target.value)}/><button type="button" onClick={()=>editAttribute()}>+ Атрибут</button></div>
         {attrFormOpen&&<form className="flowDataLinkForm" onSubmit={saveAttribute}><h3>{editId?'Редактировать атрибут':'Новый атрибут'}</h3><label>Уникальный код<input required pattern="[A-Za-z0-9_.-]+" maxLength={160} value={attrDraft.code} onChange={e=>setAttrDraft({...attrDraft,code:e.target.value})} placeholder="employee.department_code"/></label><label>Название<input required maxLength={250} value={attrDraft.name} onChange={e=>setAttrDraft({...attrDraft,name:e.target.value})}/></label><label>Описание<textarea maxLength={4000} value={attrDraft.description} onChange={e=>setAttrDraft({...attrDraft,description:e.target.value})}/></label><label>Тип данных<input maxLength={80} value={attrDraft.data_type} onChange={e=>setAttrDraft({...attrDraft,data_type:e.target.value})}/></label><label>Классификация<select value={attrDraft.sensitivity} onChange={e=>setAttrDraft({...attrDraft,sensitivity:e.target.value})}>{Object.entries(sensitivityNames).map(([key,label])=><option key={key} value={key}>{label}</option>)}</select></label><div className="drawerFormActions"><button type="button" onClick={()=>setAttrFormOpen(false)}>Отмена</button><button className="primary" disabled={busy}>{busy?'Сохранение…':'Сохранить атрибут'}</button></div></form>}
-        <div className="flowDataRows">{catalogRows.map(a=><article key={a.id} className="flowDataRow"><div><strong>{a.name}</strong><code>{a.code}</code></div><p>{a.description||'Описание не заполнено'}</p><small>{a.data_type} · {sensitivityNames[a.sensitivity]||a.sensitivity}</small><button type="button" onClick={()=>editAttribute(a)}>Редактировать</button></article>)}{!catalogRows.length&&<p className="hint">Атрибуты не найдены.</p>}</div>
+        <div className="flowDataRows">{catalogRows.map(a=><article key={a.id} className="flowDataRow"><div><strong>{a.name}</strong><code>{a.code}</code></div><p>{a.description||'Описание не заполнено'}</p><small>{a.data_type} · {sensitivityNames[a.sensitivity]||a.sensitivity}</small><button type="button" onClick={()=>editAttribute(a)}>Редактировать</button></article>)}{catalogLoaded&&!catalogRows.length&&<p className="hint">Атрибуты не найдены.</p>}</div>
       </>}
     </aside>
   </div>

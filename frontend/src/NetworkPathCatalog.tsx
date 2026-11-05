@@ -1,3 +1,4 @@
+import './flow-catalog-inspector.css'
 import React,{useCallback,useEffect,useState} from 'react'
 
 type Request=<T>(url:string,init?:RequestInit)=>Promise<T>
@@ -23,6 +24,7 @@ export default function NetworkPathCatalog({request,flows,components,interfaces,
   const [loading,setLoading]=useState(true)
   const [busy,setBusy]=useState(false)
   const [error,setError]=useState('')
+  const [assetsLoaded,setAssetsLoaded]=useState(false)
   const [notice,setNotice]=useState('')
   const [dirty,setDirty]=useState(false)
   const [assetForm,setAssetForm]=useState(false)
@@ -35,8 +37,8 @@ export default function NetworkPathCatalog({request,flows,components,interfaces,
   const target=components.find(c=>c.id===flow?.target_id)
 
   const loadAssets=useCallback(async()=>{
-    try{const [a,u]=await Promise.all([request<Asset[]>('/api/network-assets'),request<Usage[]>('/api/network-paths/usage')]);setAssets(a);setUsage(u);setError('')}
-    catch(e){setError('Не удалось загрузить сетевой реестр: '+String(e))}
+    try{const [a,u]=await Promise.all([request<Asset[]>('/api/network-assets'),request<Usage[]>('/api/network-paths/usage')]);setAssets(a);setUsage(u);setAssetsLoaded(true);setError('')}
+    catch(e){setAssetsLoaded(false);setError('Не удалось загрузить сетевой реестр. Проверьте API и версию backend. '+String(e))}
   },[request])
   useEffect(()=>{void loadAssets()},[loadAssets])
   useEffect(()=>{
@@ -87,8 +89,8 @@ export default function NetworkPathCatalog({request,flows,components,interfaces,
   }
   function openUsage(flow:string){if(dirty&&!window.confirm('Отменить несохранённые изменения маршрута?'))return;setTab('path');setFlowId(flow);setDirty(false);setNotice('')}
   function hopName(h:Hop){return assets.find(a=>a.id===h.asset_id)?.name||segments.find(s=>s.id===h.segment_id)?.name||h.name||'Неизвестный объект'}
-  return <div className="architectureDrawerBackdrop" onMouseDown={e=>{if(e.target===e.currentTarget)close()}}>
-    <aside className="architectureDrawer networkPathDrawer" role="dialog" aria-modal="true" aria-label="Технический маршрут потока">
+  return <div className="flowCatalogInspectorLayer">
+    <aside className="architectureDrawer networkPathDrawer" role="complementary" aria-label="Технический маршрут потока">
       <div className="networkPathHead"><div><small>СЕТИ · VRF · VLAN · DMZ · ЗАЩИТА</small><h2>Маршрут потока</h2></div><button type="button" onClick={close} aria-label="Закрыть маршрут">Закрыть ×</button></div>
       <p className="hint">Здесь фиксируется заявленная последовательность сетевых объектов. Она не доказывает фактическую доступность и прохождение трафика.</p>
       {error&&<p role="alert" className="kisError">{error}</p>}{notice&&<p role="status" className="hint">{notice}</p>}
@@ -111,7 +113,7 @@ export default function NetworkPathCatalog({request,flows,components,interfaces,
       {tab==='assets'&&<>
         <div className="networkPathCatalogSearch"><input type="search" aria-label="Поиск сетевых объектов" placeholder="Название, вид, назначение…" value={assetQuery} onChange={e=>setAssetQuery(e.target.value)}/><button type="button" onClick={()=>editAsset()}>+ Объект</button></div>
         {assetForm&&<form className="networkPathAssetForm" onSubmit={saveAsset}><h3>{assetEditId?'Редактировать объект':'Новый сетевой объект'}</h3><label>Название<input required maxLength={250} value={assetDraft.name} onChange={e=>setAssetDraft({...assetDraft,name:e.target.value})}/></label><label>Тип<select value={assetDraft.kind} onChange={e=>setAssetDraft({...assetDraft,kind:e.target.value})}>{Object.entries(kinds).map(([kind,label])=><option key={kind} value={kind}>{label}</option>)}</select></label><label>Адрес, CIDR или идентификатор<input maxLength={120} value={assetDraft.address} onChange={e=>setAssetDraft({...assetDraft,address:e.target.value})} placeholder="Только технические метаданные"/></label><label>Назначение / описание<textarea value={assetDraft.description} maxLength={2000} onChange={e=>setAssetDraft({...assetDraft,description:e.target.value})}/></label><label>Достоверность<select value={assetDraft.verification} onChange={e=>setAssetDraft({...assetDraft,verification:e.target.value})}>{Object.entries(status).map(([id,label])=><option key={id} value={id}>{label}</option>)}</select></label><div><button type="button" onClick={()=>setAssetForm(false)}>Отмена</button><button className="primary" disabled={busy}>{busy?'Сохранение…':'Сохранить объект'}</button></div></form>}
-        <div className="networkPathRegistry">{assets.filter(a=>(a.name+' '+a.kind+' '+a.description).toLowerCase().includes(assetQuery.toLowerCase())).map(a=><article key={a.id}><div><strong>{a.name}</strong><small>{kinds[a.kind]||a.kind} · {status[a.verification]||a.verification}</small></div><p>{a.description||'Назначение не описано'}{a.address?' · '+a.address:''}</p><small>Упоминаний в маршрутах: {usage.filter(u=>u.asset_id===a.id).length}</small><div className="networkPathUsageLinks">{usage.filter(u=>u.asset_id===a.id).map(u=><button type="button" key={u.flow_id} onClick={()=>openUsage(u.flow_id)}>{u.flow_name} · шаг {u.position+1}</button>)}</div><button type="button" onClick={()=>editAsset(a)}>Редактировать</button></article>)}{!assets.length&&<p className="hint">В справочнике пока нет объектов. VRF, VLAN и зоны используются из существующего сетевого реестра.</p>}</div>
+        <div className="networkPathRegistry">{assets.filter(a=>(a.name+' '+a.kind+' '+a.description).toLowerCase().includes(assetQuery.toLowerCase())).map(a=><article key={a.id}><div><strong>{a.name}</strong><small>{kinds[a.kind]||a.kind} · {status[a.verification]||a.verification}</small></div><p>{a.description||'Назначение не описано'}{a.address?' · '+a.address:''}</p><small>Упоминаний в маршрутах: {usage.filter(u=>u.asset_id===a.id).length}</small><div className="networkPathUsageLinks">{usage.filter(u=>u.asset_id===a.id).map(u=><button type="button" key={u.flow_id} onClick={()=>openUsage(u.flow_id)}>{u.flow_name} · шаг {u.position+1}</button>)}</div><button type="button" onClick={()=>editAsset(a)}>Редактировать</button></article>)}{assetsLoaded&&!assets.length&&<p className="hint">В справочнике пока нет объектов. VRF, VLAN и зоны используются из существующего сетевого реестра.</p>}</div>
         <h3>Существующие VRF, VLAN и зоны</h3>
         <p className="hint">Редактируются в «Реестре сетей». Здесь видно, в каких маршрутах они зарегистрированы.</p>
         <div className="networkPathRegistry">{segments.filter(seg=>(seg.name+' '+seg.kind).toLowerCase().includes(assetQuery.toLowerCase())).map(seg=><article key={seg.id}><div><strong>{seg.name}</strong><small>{seg.kind.toUpperCase()} · {status[seg.verification]||seg.verification}</small></div><small>Упоминаний в маршрутах: {usage.filter(u=>u.segment_id===seg.id).length}</small><div className="networkPathUsageLinks">{usage.filter(u=>u.segment_id===seg.id).map(u=><button type="button" key={u.flow_id} onClick={()=>openUsage(u.flow_id)}>{u.flow_name} · шаг {u.position+1}</button>)}</div></article>)}</div>

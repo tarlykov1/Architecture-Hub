@@ -613,3 +613,15 @@ body:has(.expandedFlowPanel)::before{content:"";position:fixed;inset:0;backgroun
  min-height: 360px;
  scroll-margin-top: 96px;
 }
+
+/* Direction details are a compact, nonmodal inspector, never a full-screen overlay. */
+.expandedFlowPanel {
+ position:fixed; top:76px; right:12px; left:auto; bottom:auto;
+ z-index:35; width:min(440px,calc(100vw - 24px)); max-height:min(65vh,540px);
+ overflow:auto; box-sizing:border-box; margin:0;
+ background:#fff; box-shadow:0 12px 32px rgba(15,23,42,.14);
+}
+.expandedFlowPanel .expandedFlowHead {align-items:flex-start}
+.expandedFlowPanel .expandedFlowRow {flex-wrap:wrap; justify-content:flex-start}
+.expandedFlowPanel .expandedFlowRow button:first-child {flex-basis:100%}
+.expandedFlowPanel .expandedFlowHead small {display:block;overflow-wrap:anywhere}

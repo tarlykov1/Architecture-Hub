@@ -1,5 +1,6 @@
 import React, {useEffect, useMemo, useRef, useState} from 'react'
 import {AutoFit,Disclosure} from './WorkspaceUI'
+import './topology-inspector.css'
 import {ReactFlow,Background,Controls,MarkerType,Position,useReactFlow,type Node,type Edge} from '@xyflow/react'
 
 type Item={id:string;system_id:string;kind:string;name:string;description?:string;parent_id?:string|null;details:Record<string,unknown>}

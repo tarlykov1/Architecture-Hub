@@ -4,7 +4,7 @@ import { ReactFlow, Background, Controls, applyNodeChanges, type Connection, typ
 import '@xyflow/react/dist/style.css'
 import './style.css'
 import Topology from './Topology'
-import {dependencyLayout,compactComponentLayout} from './graphLayout'
+import {dependencyLayout,compactComponentLayout,flowCountLabel} from './graphLayout'
 import {downstreamImpact,impactRoutes} from './dependencyImpact'
 import Incidents from './Incidents'
 import ArchitectureHome from './ArchitectureHome'
@@ -888,7 +888,7 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
     const highlighted=impactMode?(visibleFocus.has(first.source_id)&&impacted.has(first.target_id)):(first.source_id===focusedComponent||first.target_id===focusedComponent)
     const reciprocal=drillFlowGroups.has(first.target_id+'|'+first.source_id)
     const protocol=[first.protocol,first.port].filter(Boolean).join(':')
-    const caption=pairFlows.length>1?pairFlows.length+' потоков':protocol||'Поток данных'
+    const caption=pairFlows.length>1?flowCountLabel(pairFlows.length):protocol||'Поток данных'
     return {id:'flow-pair:'+pair,source:first.source_id,target:first.target_id,type:reciprocal?'reciprocal':'smoothstep',
       data:{reciprocal,caption,flowIds:pairFlows.map(f=>f.id)},
       label:reciprocal?undefined:caption,

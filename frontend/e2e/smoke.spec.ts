@@ -257,8 +257,10 @@ test('component whiteboard packs unlinked nodes and saves dragged placement',asy
   const rows=await graph.locator('.react-flow__node').evaluateAll(nodes=>new Set(nodes.map(n=>Math.round(n.getBoundingClientRect().top/10))).size)
   expect(rows).toBeGreaterThan(1)
   await page.getByRole('button',{name:'Редактировать схему'}).click()
-  await expect(page.getByRole('toolbar',{name:'Инструменты схемы компонентов'})).toBeVisible()
-  const node=graph.locator('.react-flow__node').first()
+  await expect(page.getByRole('toolbar',{name:'Инструменты архитектуры'})).toBeVisible()
+  const editorGraph=page.locator('.boardCanvas')
+  await expect(editorGraph.locator('.react-flow__node')).toHaveCount(9)
+  const node=editorGraph.locator('.react-flow__node').first()
   const before=await node.getAttribute('style')
   const rect=await node.boundingBox()
   expect(rect).not.toBeNull()
@@ -274,24 +276,31 @@ test('component whiteboard packs unlinked nodes and saves dragged placement',asy
   expect(Object.keys(stored).length).toBeGreaterThan(0)
 })
 
-test('whiteboard connect tool opens technical flow editor without creating a bare line',async({page})=>{
-  const name='Connection board '+Date.now()
+test('component diagram stages a technical flow without silently creating an API record',async({page})=>{
+  const name='Connection diagram '+Date.now()
   const system=await page.request.post('http://127.0.0.1:8001/api/objects',{data:{name,kind:'system'}})
   expect(system.status()).toBe(201)
   const id=(await system.json()).id
+  const ids:string[]=[]
   for(const componentName of ['Connector source','Connector target']){
     const result=await page.request.post('http://127.0.0.1:8001/api/infra',{data:{system_id:id,name:componentName,kind:'service'}})
     expect(result.status()).toBe(201)
+    ids.push((await result.json()).id)
   }
   await page.goto('/')
   await openSystemComponents(page,name)
   await page.getByRole('button',{name:'Редактировать схему'}).click()
-  await page.getByRole('group',{name:'Инструмент доски'}).getByRole('button',{name:'Связать'}).click()
-  const nodes=page.locator('.miniArchitecture .react-flow__node')
-  await nodes.filter({hasText:'Connector source'}).click()
-  await nodes.filter({hasText:'Connector target'}).click()
-  await expect(page.getByRole('dialog',{name:'Редактор потока'})).toBeVisible()
-  await expect(page.locator('.miniArchitecture .react-flow__edge')).toHaveCount(0)
+  const editor=page.getByRole('region',{name:'Редактор архитектурной схемы'})
+  await editor.getByRole('button',{name:'→ Поток'}).click()
+  const fields=editor.locator('.boardToolFields').first()
+  await fields.getByLabel('Откуда').selectOption(ids[0])
+  await fields.getByLabel('Куда').selectOption(ids[1])
+  await fields.getByLabel('Порт').fill('443')
+  await expect(editor.locator('.react-flow__edge')).toHaveCount(0)
+  await editor.getByRole('button',{name:'Добавить поток'}).click()
+  await expect(editor.locator('.react-flow__edge')).toHaveCount(1)
+  const apiFlows=await (await page.request.get('http://127.0.0.1:8001/api/flows')).json()
+  expect(apiFlows.some((flow:{source_id:string;target_id:string})=>flow.source_id===ids[0]&&flow.target_id===ids[1])).toBeFalsy()
 })
 
 test('neighboring systems toggle reveals cross-system linked components',async({page})=>{
@@ -929,8 +938,8 @@ test('architecture board stages VM and flow changes before reviewed commit',asyn
   expect(first.status()).toBe(201)
   await page.goto('/')
   await openSystemComponents(page,name)
-  await page.getByRole('group',{name:'Представление компонентов'}).getByRole('button',{name:'Доска'}).click()
-  const editor=page.getByRole('region',{name:'Редактор архитектурной доски'})
+  await page.getByRole('button',{name:'Редактировать схему'}).click()
+  const editor=page.getByRole('region',{name:'Редактор архитектурной схемы'})
   await expect(editor.getByRole('toolbar',{name:'Инструменты архитектуры'})).toBeVisible()
   await editor.getByRole('button',{name:'+ ВМ'}).click()
   await editor.getByPlaceholder('Новая ВМ').fill('Added in board')

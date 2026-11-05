@@ -52,9 +52,8 @@ function TopologySelectionFocus({selectedId,nodes}:{selectedId:string;nodes:Node
   if(!selectedId)return
   const node=nodes.find(n=>n.id===selectedId)
   if(!node)return
-  const inspectorWidth=Math.min(440,window.innerWidth*.42)
   const zoom=Math.max(.55,Math.min(1,getZoom()))
-  void setCenter(node.position.x+120+inspectorWidth/(2*zoom),node.position.y+55,{zoom,duration:250})
+  void setCenter(node.position.x+120,node.position.y+55,{zoom,duration:250})
  },[selectedId,nodes,setCenter,getZoom])
  return null
 }

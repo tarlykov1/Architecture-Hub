@@ -1048,3 +1048,30 @@ test('obstacle router supports horizontal connections around a blocking card',as
     if(p.x===prev.x&&p.x>90&&p.x<210)expect(Math.max(p.y,prev.y)<=40||Math.min(p.y,prev.y)>=160).toBe(true)
   }
 })
+
+
+test('board VM inspector opens on the right and highlights related dependencies',async({page})=>{
+  const name='Inspector '+Date.now()
+  const system=await page.request.post('http://127.0.0.1:8001/api/objects',{data:{name,kind:'system'}})
+  expect(system.status()).toBe(201)
+  const systemId=(await system.json()).id
+  const first=await page.request.post('http://127.0.0.1:8001/api/infra',{data:{system_id:systemId,name:'Source VM',kind:'vm',description:'Handles requests'}})
+  const second=await page.request.post('http://127.0.0.1:8001/api/infra',{data:{system_id:systemId,name:'Target VM',kind:'vm'}})
+  expect(first.status()).toBe(201)
+  expect(second.status()).toBe(201)
+  const flow=await page.request.post('http://127.0.0.1:8001/api/flows',{data:{source_id:(await first.json()).id,target_id:(await second.json()).id,name:'Request flow'}})
+  expect(flow.status()).toBe(201)
+  await page.goto('/')
+  await openSystemComponents(page,name)
+  await page.getByRole('button',{name:'Редактировать схему'}).click()
+  const editor=page.getByRole('region',{name:'Редактор архитектурной схемы'})
+  await editor.locator('.react-flow__node').filter({hasText:'Source VM'}).click()
+  const inspector=page.getByRole('dialog',{name:'Паспорт компонента Source VM'})
+  await expect(inspector).toBeVisible()
+  await expect(inspector).toContainText('Handles requests')
+  await expect(inspector).toContainText('Request flow')
+  await inspector.getByRole('checkbox',{name:'Выделить зависимости'}).check()
+  await expect(inspector.getByRole('checkbox',{name:'Выделить зависимости'})).toBeChecked()
+  await inspector.getByRole('button',{name:'Закрыть паспорт'}).click()
+  await expect(inspector).toHaveCount(0)
+})

@@ -123,7 +123,9 @@ export function ObstacleAwareEdge({id,source,target,sourceX,sourceY,targetX,targ
      const [fallback,x,y]=getSmoothStepPath({sourceX,sourceY,targetX,targetY,borderRadius:8})
      return {path:fallback,label:{x,y}}
    }
-   const points=simplified([a,sourceExit,start,...routed.slice(1,-1),end,targetExit,b])
+   const sourceBend={x:start.x,y:sourceExit.y}
+   const targetBend={x:end.x,y:targetExit.y}
+   const points=simplified([a,sourceExit,sourceBend,start,...routed.slice(1,-1),end,targetBend,targetExit,b])
    return {path:pathString(points),label:midpoint(points)}
  },[nodes,source,target,sourceX,sourceY,targetX,targetY,sourcePosition,targetPosition,data?.reciprocal])
  const caption=typeof data?.caption==='string'?data.caption:''

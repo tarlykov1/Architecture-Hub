@@ -118,3 +118,33 @@ def test_drawing_network_and_enclosing_vm_creates_interface_atomically():
         assert created[nic_id]["zone_id"] == network_id
         assert created[nic_id]["item_id"] == vm_id
         assert created[nic_id]["ip_address"] == ""
+
+
+def test_reviewed_vm_passport_update_is_audited_and_rejects_stale_values():
+    with TestClient(app) as client:
+        system_id, vm_id = create_system_and_vm(client)
+        before = next(x for x in client.get("/api/infra", headers=ADMIN).json() if x["id"] == vm_id)
+        batch = {"reason": "Review VM passport", "changes": [{
+            "action": "update_vm", "id": vm_id, "system_id": system_id,
+            "name": "Reviewed VM", "description": "New description",
+            "previous_name": before["name"], "previous_description": before["description"],
+            "details_patch": {"purpose": "Application server", "environment": "test"},
+            "previous_details": {"purpose": before["details"].get("purpose"), "environment": before["details"].get("environment")},
+        }]}
+        audit_before = len(client.get("/api/board/audit", headers=ADMIN).json())
+        preview = client.post("/api/board/preview", headers=ADMIN, json=batch)
+        assert preview.status_code == 200, preview.text
+        assert preview.json()["changes"][0]["before"]["name"] == before["name"]
+        unchanged = next(x for x in client.get("/api/infra", headers=ADMIN).json() if x["id"] == vm_id)
+        assert unchanged["name"] == before["name"]
+        assert len(client.get("/api/board/audit", headers=ADMIN).json()) == audit_before
+        commit = client.post("/api/board/commit", headers=ADMIN, json=batch)
+        assert commit.status_code == 200, commit.text
+        updated = next(x for x in client.get("/api/infra", headers=ADMIN).json() if x["id"] == vm_id)
+        assert updated["name"] == "Reviewed VM"
+        assert updated["description"] == "New description"
+        assert updated["details"]["purpose"] == "Application server"
+        assert updated["details"]["environment"] == "test"
+        assert any(x["id"] == commit.json()["audit_id"] for x in client.get("/api/board/audit", headers=ADMIN).json())
+        assert client.post("/api/board/commit", headers=ADMIN, json=batch).status_code == 409
+        assert client.post("/api/board/preview", headers=VIEWER, json=batch).status_code == 403

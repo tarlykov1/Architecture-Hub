@@ -56,7 +56,7 @@ function Editor({systemId,ownerName='',items,networks,interfaces,flows,savedPosi
  },[items,flows,interfaces,ownerName]) // Keep dragged coordinates in React Flow during the editing session.
  const [nodes,setNodes,onNodesChange]=useNodesState(initialNodes)
  const {screenToFlowPosition,fitView}=useReactFlow()
- const allVMs=useMemo(()=>[...items,...changes.filter(c=>c.action==='create_vm').map(c=>({id:c.id!,name:c.name!,system_id:systemId,kind:'vm',details:{}}))],[items,changes,systemId])
+ const allVMs=useMemo<VM[]>(()=>[...items,...changes.filter(c=>c.action==='create_vm').map(c=>({id:c.id!,name:c.name!,system_id:systemId,kind:'vm',description:'',details:{} as Record<string,unknown>}))],[items,changes,systemId])
  const allNetworks=[...networks,...changes.filter(c=>c.action==='create_network').map(c=>({id:c.id!,name:c.name!,kind:c.kind!}))]
  const visibleRects=rectangles.filter(r=>allNetworks.some(n=>n.id===r.id))
  const backgroundNodes:Node[]=visibleRects.map(r=>({id:'network:'+r.id,type:'default',position:{x:r.x,y:r.y},draggable:false,selectable:false,connectable:false,data:{label:r.name+' · '+r.kind.toUpperCase()},style:{width:r.width,height:r.height,background:'#e7f0fc55',border:'2px solid #7aa6d5',borderRadius:9,zIndex:-1,pointerEvents:'none',textAlign:'left',padding:12,fontSize:13,color:'#285787'}}))

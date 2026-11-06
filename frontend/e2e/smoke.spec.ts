@@ -1013,3 +1013,38 @@ test('architecture board stages VM and flow changes before reviewed commit',asyn
   const flowList=await (await page.request.get('http://127.0.0.1:8001/api/flows')).json()
   expect(flowList.some((x:{port:string;name:string})=>x.port==='443'&&x.name.includes('Added in board'))).toBeTruthy()
 })
+
+
+test('edge exits follow all four actual handle directions',async({page})=>{
+  await page.goto('/')
+  const result=await page.evaluate(async()=>{
+    const {portExit}=await import('/src/ObstacleAwareEdge.tsx')
+    const point={x:100,y:200}
+    return {
+      left:portExit(point,'left' as never),right:portExit(point,'right' as never),
+      top:portExit(point,'top' as never),bottom:portExit(point,'bottom' as never)
+    }
+  })
+  expect(result).toEqual({left:{x:78,y:200},right:{x:122,y:200},top:{x:100,y:178},bottom:{x:100,y:222}})
+})
+
+test('obstacle router supports horizontal connections around a blocking card',async({page})=>{
+  await page.goto('/')
+  const result=await page.evaluate(async()=>{
+    const {portExit,routeAroundNodes}=await import('/src/ObstacleAwareEdge.tsx')
+    const start=portExit({x:0,y:100},'right' as never)
+    const end=portExit({x:300,y:100},'left' as never)
+    const blocker={left:90,top:40,right:210,bottom:160}
+    const points=routeAroundNodes(start,end,[blocker])
+    return {start,end,points}
+  })
+  expect(result.start).toEqual({x:22,y:100})
+  expect(result.end).toEqual({x:278,y:100})
+  expect(result.points.length).toBeGreaterThan(2)
+  for(const [i,p] of result.points.entries())if(i){
+    const prev=result.points[i-1]
+    expect(p.x===prev.x||p.y===prev.y).toBe(true)
+    if(p.y===prev.y&&p.y>40&&p.y<160)expect(Math.max(p.x,prev.x)<=90||Math.min(p.x,prev.x)>=210).toBe(true)
+    if(p.x===prev.x&&p.x>90&&p.x<210)expect(Math.max(p.y,prev.y)<=40||Math.min(p.y,prev.y)>=160).toBe(true)
+  }
+})

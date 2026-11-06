@@ -61,6 +61,8 @@ visudo -cf /etc/sudoers.d/architecture-hub-deploy
 
 ## 4. Включить и проверить
 
+После включения переменной используйте отдельный успешный push в `main` для первой проверки: изменение самой переменной не запускает `workflow_run` задним числом. В журнале backend-деплоя убедитесь, что выполнены подготовка релиза, ограниченный серверный скрипт и публичная проверка `/api/health`; один лишь статус `skipped` не подтверждает развёртывание.
+
 Создать **Repository variable** `BACKEND_DEPLOY_ENABLED=true` только после полного bootstrap. Новый push в `main` -> успешный CI -> доставка backend в `/home/archdeploy/backend-release` -> ограниченный sudo-скрипт -> публичная проверка `/api/health`.
 
 При первом запуске контролировать шаги в GitHub Actions. Для аварийного отключения установить `BACKEND_DEPLOY_ENABLED=false` – новые backend деплои не запускаются.

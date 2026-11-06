@@ -1,5 +1,5 @@
 import React, {useMemo} from 'react'
-import {BaseEdge,EdgeLabelRenderer,getSmoothStepPath,useNodes,type EdgeProps} from '@xyflow/react'
+import {BaseEdge,EdgeLabelRenderer,getSmoothStepPath,useNodes,Position,type EdgeProps} from '@xyflow/react'
 
 type Point={x:number;y:number}
 type Rect={left:number;top:number;right:number;bottom:number}
@@ -18,6 +18,8 @@ function clear(a:Point,b:Point,rects:Rect[]){
 function simplified(points:Point[]){
  const out:Point[]=[]
  for(const p of points){
+   const previous=out[out.length-1]
+   if(previous&&previous.x===p.x&&previous.y===p.y)continue
    const a=out[out.length-2],b=out[out.length-1]
    if(a&&b&&((a.x===b.x&&b.x===p.x)||(a.y===b.y&&b.y===p.y)))out.pop()
    out.push(p)
@@ -74,6 +76,15 @@ export function routeAroundNodes(start:Point,end:Point,rects:Rect[]):Point[]{
  while(cursor){const state=best.get(cursor);if(!state)break;path.push(points[state.id]);cursor=state.prev}
  return simplified(path.reverse())
 }
+/** Extend the edge from its actual React Flow handle, not always bottom-to-top. */
+export function portExit(point:Point,position:Position,distance=GAP):Point{
+ switch(position){
+   case Position.Left:return {x:point.x-distance,y:point.y}
+   case Position.Right:return {x:point.x+distance,y:point.y}
+   case Position.Top:return {x:point.x,y:point.y-distance}
+   default:return {x:point.x,y:point.y+distance}
+ }
+}
 function pathString(points:Point[]){
  return points.map((p,i)=>(i?'L ':'M ')+p.x+' '+p.y).join(' ')
 }
@@ -90,7 +101,7 @@ function midpoint(points:Point[]):Point{
  }
  return points[Math.floor(points.length/2)]||{x:0,y:0}
 }
-export function ObstacleAwareEdge({id,source,target,sourceX,sourceY,targetX,targetY,markerEnd,style,data}:EdgeProps){
+export function ObstacleAwareEdge({id,source,target,sourceX,sourceY,targetX,targetY,sourcePosition,targetPosition,markerEnd,style,data}:EdgeProps){
  const nodes=useNodes()
  const {path,label}=useMemo(()=>{
    const a={x:sourceX,y:sourceY},b={x:targetX,y:targetY}
@@ -102,15 +113,19 @@ export function ObstacleAwareEdge({id,source,target,sourceX,sourceY,targetX,targ
    const reciprocal=Boolean(data?.reciprocal)
    // Reciprocal directions receive separate lanes without losing the arrow direction.
    const lane=reciprocal?16:0
-   const start={x:a.x+lane,y:a.y+GAP},end={x:b.x+lane,y:b.y-GAP}
+   const sourcePort=sourcePosition||Position.Bottom,targetPort=targetPosition||Position.Top
+   const sourceExit=portExit(a,sourcePort),targetExit=portExit(b,targetPort)
+   // Offset only the route's free corridor, never the handle attachment itself.
+   const start={x:sourceExit.x+(sourcePort===Position.Top||sourcePort===Position.Bottom?lane:0),y:sourceExit.y+(sourcePort===Position.Left||sourcePort===Position.Right?lane:0)}
+   const end={x:targetExit.x+(targetPort===Position.Top||targetPort===Position.Bottom?lane:0),y:targetExit.y+(targetPort===Position.Left||targetPort===Position.Right?lane:0)}
    const routed=routeAroundNodes(start,end,obstacles)
    if(!routed.length){
      const [fallback,x,y]=getSmoothStepPath({sourceX,sourceY,targetX,targetY,borderRadius:8})
      return {path:fallback,label:{x,y}}
    }
-   const points=simplified([a,{x:start.x,y:a.y},start,...routed.slice(1,-1),end,{x:end.x,y:b.y},b])
+   const points=simplified([a,sourceExit,start,...routed.slice(1,-1),end,targetExit,b])
    return {path:pathString(points),label:midpoint(points)}
- },[nodes,source,target,sourceX,sourceY,targetX,targetY,data?.reciprocal])
+ },[nodes,source,target,sourceX,sourceY,targetX,targetY,sourcePosition,targetPosition,data?.reciprocal])
  const caption=typeof data?.caption==='string'?data.caption:''
  return <>
    <BaseEdge id={id} path={path} markerEnd={markerEnd} style={style} interactionWidth={18}/>

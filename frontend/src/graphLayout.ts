@@ -60,3 +60,10 @@ export function compactComponentLayout(ids:string[],edges:LayoutEdge[],xGap=280,
  loose.forEach((id,i)=>{result[id]={x:maxX+xGap+(i%columns)*xGap,y:Math.floor(i/columns)*yGap}})
  return result
 }
+
+/** Correct Russian flow count for compact link labels. */
+export function flowCountLabel(count:number){
+ const last=count%10, lastTwo=count%100
+ const noun=last===1&&lastTwo!==11?'поток':last>=2&&last<=4&&(lastTwo<12||lastTwo>14)?'потока':'потоков'
+ return `${count} ${noun}`
+}

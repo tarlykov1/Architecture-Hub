@@ -46,6 +46,26 @@ export function AutoFit({layoutKey='',maxFitZoom=1,groupParentsOnly=false}:{layo
  return <span ref={anchor} hidden/>
 }
 
+/** Focus a selected node and its visible first-hop neighbors after React Flow measures them. */
+export function FocusNeighborhood({selectedId,edgePairs}:{selectedId:string;edgePairs:Array<{source:string;target:string}>}){
+ const {fitView}=useReactFlow()
+ const nodes=useNodes()
+ const initialized=useNodesInitialized()
+ const ids=nodes.map(n=>n.id).sort().join('|')
+ const neighborIds=selectedId?[selectedId,...edgePairs.flatMap(e=>e.source===selectedId?[e.target]:e.target===selectedId?[e.source]:[])]:[]
+ const selection=Array.from(new Set(neighborIds)).filter(id=>nodes.some(n=>n.id===id))
+ const selectionKey=selection.slice().sort().join('|')
+ useEffect(()=>{
+  if(!selectedId||!initialized||!selectionKey)return
+  const frame=requestAnimationFrame(()=>{
+   void fitView({nodes:selection.map(id=>({id})),padding:0.28,minZoom:0.2,maxZoom:1,duration:220})
+  })
+  return()=>cancelAnimationFrame(frame)
+ // Depend on stable selection membership rather than the transient node object identities.
+ },[fitView,initialized,selectedId,selectionKey,ids])
+ return null
+}
+
 export function Disclosure({label,children}:{label:string;children:ReactNode}){
  return <details className="workspaceDisclosure"><summary>{label}</summary><div className="disclosureContent">{children}</div></details>
 }

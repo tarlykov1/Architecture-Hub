@@ -304,6 +304,27 @@ test('component diagram stages a technical flow without silently creating an API
   expect(apiFlows.some((flow:{source_id:string;target_id:string})=>flow.source_id===ids[0]&&flow.target_id===ids[1])).toBeFalsy()
 })
 
+test('orthogonal router avoids occupied VM cards and returns stable paths',async({page})=>{
+  await page.goto('/')
+  const result=await page.evaluate(async()=>{
+    const {routeAroundNodes}=await import('/src/ObstacleAwareEdge.tsx')
+    const obstacle={left:90,top:40,right:210,bottom:160}
+    const start={x:0,y:100},end={x:300,y:100}
+    const points=routeAroundNodes(start,end,[obstacle])
+    const clear=points.slice(1).every((point,index)=>{
+      const prev=points[index]
+      if(prev.x!==point.x&&prev.y!==point.y)return false
+      if(prev.x===point.x)return prev.x<=obstacle.left||prev.x>=obstacle.right||Math.max(prev.y,point.y)<=obstacle.top||Math.min(prev.y,point.y)>=obstacle.bottom
+      return prev.y<=obstacle.top||prev.y>=obstacle.bottom||Math.max(prev.x,point.x)<=obstacle.left||Math.min(prev.x,point.x)>=obstacle.right
+    })
+    return {points,clear}
+  })
+  expect(result.points.length).toBeGreaterThan(2)
+  expect(result.clear).toBe(true)
+  expect(result.points[0]).toEqual({x:0,y:100})
+  expect(result.points.at(-1)).toEqual({x:300,y:100})
+})
+
 test('diagram and manual editor share compact orthogonal grouped flow rendering',async({page})=>{
   const name='Grouped links '+Date.now()
   const system=await page.request.post('http://127.0.0.1:8001/api/objects',{data:{name,kind:'system'}})

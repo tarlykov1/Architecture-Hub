@@ -1199,7 +1199,7 @@ app.include_router(views_router)
 # Board edits are applied as a single reviewed transaction. For existing interface
 # assignments the client supplies the expected previous value (optimistic check).
 class BoardChange(BaseModel):
-    action: str = Field(pattern="^(create_vm|create_network|create_flow|create_interface|move_interface)$")
+    action: str = Field(pattern="^(create_vm|create_network|create_flow|create_interface|move_interface|update_vm)$")
     id: UUID | None = None
     system_id: UUID | None = None
     name: str = Field(default="", max_length=250)
@@ -1218,6 +1218,10 @@ class BoardChange(BaseModel):
     interface_name: str = Field(default="eth0", min_length=1, max_length=100)
     network_id: UUID | None = None
     previous_network_id: UUID | None = None
+    previous_name: str | None = None
+    previous_description: str | None = None
+    details_patch: dict[str, str] = Field(default_factory=dict)
+    previous_details: dict[str, Any] = Field(default_factory=dict)
     network_field: str = Field(default="zone_id", pattern="^(zone_id|vlan_id|vrf_id)$")
 
 class BoardBatch(BaseModel):
@@ -1271,6 +1275,37 @@ def apply_board_changes(payload: BoardBatch, db: Session) -> list[dict[str, Any]
                                     name=change.name.strip(), description=change.description, details={})
             db.add(vm)
             output.append({"action": "create_vm", "id": str(vm.id), "after": {"name": vm.name, "system_id": str(vm.system_id)}, "before": None})
+        elif change.action == "update_vm":
+            if change.id is None:
+                raise HTTPException(422, "Component id is required")
+            vm = db.get(InfrastructureItem, change.id)
+            if vm is None or vm.kind not in {"vm", "server", "host"}:
+                raise HTTPException(404, "Component not found")
+            if change.system_id is not None and vm.system_id != change.system_id:
+                raise HTTPException(409, "Component has moved to another system")
+            if change.previous_name is None or change.previous_description is None:
+                raise HTTPException(422, "Expected previous values are required")
+            if vm.name != change.previous_name or vm.description != change.previous_description:
+                raise HTTPException(409, "Component changed since it was opened; refresh and review")
+            if not change.name.strip():
+                raise HTTPException(422, "Component name is required")
+            if set(change.details_patch) - {"purpose", "environment"}:
+                raise HTTPException(422, "Unsupported component detail field")
+            if set(change.previous_details) != set(change.details_patch):
+                raise HTTPException(422, "Expected previous detail fields are required")
+            current_details = dict(vm.details or {})
+            for key, expected in change.previous_details.items():
+                if current_details.get(key) != expected:
+                    raise HTTPException(409, "Component details changed since preview; refresh and review")
+            before = {"name": vm.name, "description": vm.description,
+                      "details": {key: current_details.get(key) for key in change.details_patch}}
+            vm.name = change.name.strip()
+            vm.description = change.description
+            current_details.update(change.details_patch)
+            vm.details = current_details
+            output.append({"action": "update_vm", "id": str(vm.id), "before": before,
+                           "after": {"name": vm.name, "description": vm.description,
+                                     "details": {key: current_details[key] for key in change.details_patch}}})
         elif change.action == "create_network":
             if not change.name.strip() or change.kind not in {"zone", "vlan", "vrf"}:
                 raise HTTPException(422, "Network requires name and valid type")

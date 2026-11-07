@@ -63,7 +63,7 @@ jobs:
           Add a regression test when feasible. If evidence is insufficient, make no changes.
           Run relevant local tests if possible.
           EOF
-          codex exec --full-auto "$(cat /tmp/qa-instructions.txt)"
+          codex exec --sandbox workspace-write "$(cat /tmp/qa-instructions.txt)"
       - name: Open draft pull request for human review
         shell: bash
         env:

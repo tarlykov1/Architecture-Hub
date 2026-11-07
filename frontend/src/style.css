@@ -635,3 +635,10 @@ button:disabled{cursor:not-allowed;opacity:.55}
 .topologyInspectorShell{position:fixed;right:0;top:76px;bottom:0;z-index:180;width:min(440px,42vw);pointer-events:none}
 .topologyInspectorShell .topologyInspector{pointer-events:auto;box-sizing:border-box;position:relative;width:100%;height:100%;max-height:none;margin:0;overflow-y:auto;border-radius:12px 0 0 0;background:#fff;box-shadow:-12px 0 30px #0f172a20;padding:22px}
 @media(max-width:700px){.topologyInspectorShell{width:min(380px,90vw);top:56px}}
+
+/* Keep the topology canvas immediately below its controls even when an inspector opens.
+   The inspector is fixed-position and must not trigger the old three-row grid layout. */
+.topologyWorkspace:has(.topologyInspector){display:flex;flex-direction:column;grid-template-columns:none;grid-template-rows:none}
+.topologyWorkspace:has(.topologyInspector)>.topologyCanvas{flex:1 1 auto;min-height:420px;min-width:0}
+.topologyWorkspace:has(.topologyInspector)>.topologyInspectorShell{position:fixed;right:0;top:76px;bottom:0;z-index:180;width:min(440px,42vw);pointer-events:none}
+@media(max-width:700px){.topologyWorkspace:has(.topologyInspector)>.topologyInspectorShell{top:56px;width:min(380px,90vw)}}

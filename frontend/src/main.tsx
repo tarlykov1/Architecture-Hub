@@ -272,6 +272,29 @@ function App() {
   const [inspectorOpen,setInspectorOpen] = useState(false)
   const [viewsMenuOpen,setViewsMenuOpen] = useState(false)
   const [inspectorExpanded,setInspectorExpanded] = useState(false)
+  // The object inspector is a non-modal drawer: clicking the workspace or
+  // pressing Escape dismisses it, while interactions inside keep it open.
+  useEffect(()=>{
+    if(!inspectorOpen)return
+    const onPointerDown=(event:PointerEvent)=>{
+      const target=event.target
+      if(!(target instanceof Element)||target.closest('.details'))return
+      setInspectorOpen(false)
+      setInspectorExpanded(false)
+    }
+    const onKeyDown=(event:KeyboardEvent)=>{
+      if(event.key!=='Escape')return
+      setInspectorOpen(false)
+      setInspectorExpanded(false)
+    }
+    document.addEventListener('pointerdown',onPointerDown,true)
+    document.addEventListener('keydown',onKeyDown)
+    return()=>{
+      document.removeEventListener('pointerdown',onPointerDown,true)
+      document.removeEventListener('keydown',onKeyDown)
+    }
+  },[inspectorOpen])
+
   const [editorOpen,setEditorOpen] = useState(false)
   const [registryOpen,setRegistryOpen] = useState<'network'|'flow'|null>(null)
   const [networkFilter,setNetworkFilter] = useState('')

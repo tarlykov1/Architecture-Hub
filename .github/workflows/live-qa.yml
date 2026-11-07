@@ -1,12 +1,16 @@
 name: Live QA – test.web-tie.ru
 on:
   workflow_dispatch:
+  workflow_run:
+    workflows: ['Deploy Architecture Hub frontend (test)']
+    types: [completed]
   schedule:
     - cron: '20 6 * * *'
 permissions:
   contents: read
 jobs:
   live-browser:
+    if: github.event_name != 'workflow_run' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main')
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:

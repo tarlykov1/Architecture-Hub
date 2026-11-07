@@ -1,4 +1,4 @@
-import React, {useMemo, useState} from 'react'
+import React, {useEffect, useMemo, useState} from 'react'
 import './board.css'
 import {ReactFlow, ReactFlowProvider, Background, Controls, useNodesState, useReactFlow, MarkerType, Position, type Node, type NodeChange} from '@xyflow/react'
 import {compactComponentLayout,flowCountLabel} from './graphLayout'
@@ -67,6 +67,18 @@ function Editor({systemId,ownerName='',items,networks,interfaces,flows,savedPosi
    })
  },[items,flows,interfaces,ownerName]) // Keep dragged coordinates in React Flow during the editing session.
  const [nodes,setNodes,onNodesChange]=useNodesState(initialNodes)
+ // Keep the editor in sync when the selected system or inventory changes,
+ // without resetting coordinates that the user has already dragged.
+ useEffect(()=>{
+   const currentIds=new Set(initialNodes.map(node=>node.id))
+   setNodes(previous=>{
+     const retained=previous.filter(node=>currentIds.has(node.id))
+     const retainedIds=new Set(retained.map(node=>node.id))
+     const added=initialNodes.filter(node=>!retainedIds.has(node.id))
+     if(!added.length&&retained.length===previous.length)return previous
+     return [...retained,...added]
+   })
+ },[initialNodes,setNodes])
  const {screenToFlowPosition,fitView}=useReactFlow()
  const allVMs=useMemo<VM[]>(()=>[...items,...changes.filter(c=>c.action==='create_vm').map(c=>({id:c.id!,name:c.name!,system_id:systemId,kind:'vm',description:'',details:{} as Record<string,unknown>}))],[items,changes,systemId])
  const allNetworks=[...networks,...changes.filter(c=>c.action==='create_network').map(c=>({id:c.id!,name:c.name!,kind:c.kind!}))]

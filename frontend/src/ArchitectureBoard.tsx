@@ -43,11 +43,15 @@ function Editor({systemId,ownerName='',items,networks,interfaces,flows,savedPosi
  const [drawing,setDrawing]=useState<{x:number;y:number}|null>(null)
  const [rectangles,setRectangles]=useState<Rect[]>(()=>{
    const relevant = networks.filter(n=>interfaces.some(nic=>nic[fieldForKind(n.kind)]===n.id&&items.some(item=>item.id===nic.item_id)))
-   return relevant.map((n,i)=>{
+   const heights=relevant.map(n=>{
      const members=items.filter(item=>interfaces.some(nic=>nic.item_id===item.id&&nic[fieldForKind(n.kind)]===n.id)).length
-     const rows=Math.ceil(members/2)
-     const height=Math.max(340,90+rows*175)
-     return {id:n.id,name:n.name,kind:n.kind,x:60+(i%2)*600,y:60+Math.floor(i/2)*Math.max(430,height+50),width:540,height}
+     return Math.max(340,90+Math.ceil(members/2)*175)
+   })
+   return relevant.map((n,i)=>{
+     const row=Math.floor(i/2)
+     let y=60
+     for(let previous=0;previous<row;previous++)y+=Math.max(heights[previous*2]||0,heights[previous*2+1]||0)+50
+     return {id:n.id,name:n.name,kind:n.kind,x:60+(i%2)*600,y,width:540,height:heights[i]}
    })
  })
  const initialNodes=useMemo<Node[]>(()=>{

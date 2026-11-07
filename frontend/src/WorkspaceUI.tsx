@@ -66,6 +66,24 @@ export function FocusNeighborhood({selectedId,edgePairs}:{selectedId:string;edge
  return null
 }
 
+/** Bring both endpoints of the selected flow into view without changing graph layout. */
+export function FocusSelectedFlow({flow}:{flow?:{id:string;source_id:string;target_id:string}}){
+ const {fitView}=useReactFlow()
+ const nodes=useNodes()
+ const initialized=useNodesInitialized()
+ const source=flow?.source_id||''
+ const target=flow?.target_id||''
+ const hasEndpoints=nodes.some(n=>n.id===source)&&nodes.some(n=>n.id===target)
+ useEffect(()=>{
+  if(!initialized||!source||!target||!hasEndpoints)return
+  const frame=requestAnimationFrame(()=>{
+   void fitView({nodes:[{id:source},{id:target}],padding:0.35,minZoom:0.08,maxZoom:1.25,duration:350})
+  })
+  return()=>cancelAnimationFrame(frame)
+ },[fitView,initialized,source,target,hasEndpoints,flow?.id])
+ return null
+}
+
 export function Disclosure({label,children}:{label:string;children:ReactNode}){
  return <details className="workspaceDisclosure"><summary>{label}</summary><div className="disclosureContent">{children}</div></details>
 }

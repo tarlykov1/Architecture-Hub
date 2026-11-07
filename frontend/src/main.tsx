@@ -278,7 +278,7 @@ function App() {
     if(!inspectorOpen)return
     const onPointerDown=(event:PointerEvent)=>{
       const target=event.target
-      if(!(target instanceof Element)||target.closest('.details'))return
+      if(!(target instanceof Element)||target.closest('.details, .homeMapSearchMatches button, .react-flow__node, .systemNameLink, .knowledgeWorkspaceList button'))return
       setInspectorOpen(false)
       setInspectorExpanded(false)
     }

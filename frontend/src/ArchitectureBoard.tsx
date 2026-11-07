@@ -43,7 +43,12 @@ function Editor({systemId,ownerName='',items,networks,interfaces,flows,savedPosi
  const [drawing,setDrawing]=useState<{x:number;y:number}|null>(null)
  const [rectangles,setRectangles]=useState<Rect[]>(()=>{
    const relevant = networks.filter(n=>interfaces.some(nic=>nic[fieldForKind(n.kind)]===n.id&&items.some(item=>item.id===nic.item_id)))
-   return relevant.map((n,i)=>({id:n.id,name:n.name,kind:n.kind,x:60+(i%2)*600,y:60+Math.floor(i/2)*430,width:500,height:340}))
+   return relevant.map((n,i)=>{
+     const members=items.filter(item=>interfaces.some(nic=>nic.item_id===item.id&&nic[fieldForKind(n.kind)]===n.id)).length
+     const rows=Math.ceil(members/2)
+     const height=Math.max(340,90+rows*175)
+     return {id:n.id,name:n.name,kind:n.kind,x:60+(i%2)*600,y:60+Math.floor(i/2)*Math.max(430,height+50),width:540,height}
+   })
  })
  const initialNodes=useMemo<Node[]>(()=>{
    const positions=compactComponentLayout(items.map(i=>i.id),flows.filter(f=>items.some(i=>i.id===f.source_id)&&items.some(i=>i.id===f.target_id)).map(f=>({source:f.source_id,target:f.target_id})),280,175)
@@ -52,7 +57,7 @@ function Editor({systemId,ownerName='',items,networks,interfaces,flows,savedPosi
      const group=rectangles.find(r=>membership?.[fieldForKind(r.kind)]===r.id)
      const members=group?items.filter(v=>interfaces.some(n=>n.item_id===v.id&&n[fieldForKind(group.kind)]===group.id)):[]
      const index=group?members.findIndex(v=>v.id===item.id):i
-     const position=savedPositions[item.id]|| (group?{x:group.x+25+(index%2)*255,y:group.y+65+Math.floor(index/2)*175}:positions[item.id]||{x:70+(i%4)*280,y:80+Math.floor(i/4)*175})
+     const position=savedPositions[item.id]|| (group?{x:group.x+25+(index%2)*265,y:group.y+65+Math.floor(index/2)*175}:positions[item.id]||{x:70+(i%4)*280,y:80+Math.floor(i/4)*175})
      return {id:item.id,position,sourcePosition:Position.Bottom,targetPosition:Position.Top,data:{label:<div className="systemNode"><strong>{item.name}</strong><span className="componentNodeOwner">{ownerName}</span><span className="componentNodePurpose">{item.description?.trim()||String(item.details.purpose||item.details.role||'Назначение не описано')}</span><small>{item.kind} · {String(item.details.environment||'Среда не задана')}</small></div>},style:{width:220,padding:12,background:'#fff',border:'1px solid #bac8d8',borderRadius:12}}
    })
  },[items,flows,interfaces,ownerName]) // Keep dragged coordinates in React Flow during the editing session.

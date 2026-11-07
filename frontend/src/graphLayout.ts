@@ -53,11 +53,28 @@ export function compactComponentLayout(ids:string[],edges:LayoutEdge[],xGap=280,
  const linked=new Set(links.flatMap(e=>[e.source,e.target]))
  const connected=order.filter(id=>linked.has(id))
  const loose=order.filter(id=>!linked.has(id))
- const maxX=Math.max(0,...connected.map(id=>initial[id].x))
  const columns=Math.max(1,Math.ceil(Math.sqrt(loose.length*1.5)))
  const result:Record<string,LayoutPoint>={}
- for(const id of connected)result[id]=initial[id]
- loose.forEach((id,i)=>{result[id]={x:maxX+xGap+(i%columns)*xGap,y:Math.floor(i/columns)*yGap}})
+ // Preserve dependency columns, but wrap tall columns into nearby lanes.
+ // This avoids a single enormous vertical strip for star-shaped integrations.
+ const maxRows=Math.max(2,Math.ceil(Math.sqrt(connected.length*1.5)))
+ const byColumn=new Map<number,string[]>()
+ for(const id of connected){
+  const depth=Math.round(initial[id].x/xGap)
+  byColumn.set(depth,[...(byColumn.get(depth)||[]),id])
+ }
+ let xOffset=0
+ for(const depth of [...byColumn.keys()].sort((a,b)=>a-b)){
+  const group=byColumn.get(depth)!
+  const lanes=Math.max(1,Math.ceil(group.length/maxRows))
+  group.forEach((id,index)=>{
+   const lane=Math.floor(index/maxRows)
+   const row=index%maxRows
+   result[id]={x:xOffset+lane*xGap,y:row*yGap}
+  })
+  xOffset+=lanes*xGap
+ }
+ loose.forEach((id,i)=>{result[id]={x:xOffset+(i%columns)*xGap,y:Math.floor(i/columns)*yGap}})
  return result
 }
 

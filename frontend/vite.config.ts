@@ -2,7 +2,7 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { execFileSync } from 'node:child_process'
 
-const revision = (process.env.GITHUB_SHA || (() => {
+const revision = (process.env.BUILD_REVISION || (() => {
   try { return execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim() }
   catch { return 'unknown' }
 })()).trim()

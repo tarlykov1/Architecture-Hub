@@ -544,6 +544,23 @@ test('overview passport and components retain the same system context',async({pa
   await expect(passport).toHaveCount(0)
 })
 
+test('right inspector dismisses on outside click and Escape',async({page})=>{
+  const system=await uxSystem(page)
+  await page.goto('/')
+  await page.getByRole('textbox',{name:'Поиск на карте'}).fill(system.name)
+  const searchResults=page.getByRole('region',{name:'Результаты поиска по архитектуре'})
+  const open=searchResults.getByRole('button',{name:'Открыть паспорт ИС из поиска: '+system.name})
+  const inspector=page.getByRole('complementary',{name:'Карточка архитектурного объекта'})
+  await open.click()
+  await expect(inspector).toBeVisible()
+  await page.getByRole('textbox',{name:'Поиск на карте'}).click()
+  await expect(inspector).toHaveCount(0)
+  await open.click()
+  await expect(inspector).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(inspector).toHaveCount(0)
+})
+
 test('passport buttons inside separate map nodes always open the matching system',async({page})=>{
   const first='Passport A '+Date.now()
   const second='Passport B '+Date.now()

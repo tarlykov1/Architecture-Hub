@@ -10,8 +10,15 @@ test('test server: public demo navigation, viewport and build revision', async (
 
   const sections = ['Системы', 'Компоненты', 'Потоки', 'Обзор']
   for (const section of sections) {
-    await page.getByRole('navigation', { name: 'Разделы архитектуры' })
-      .getByRole('button', { name: section, exact: true }).click()
+    const navigation = page.getByRole('navigation', { name: 'Разделы архитектуры' })
+    const mobileSelector = navigation.getByLabel('Выбрать раздел')
+    if (await mobileSelector.isVisible()) {
+      await mobileSelector.click()
+      await navigation.locator('.mobileSectionOptions')
+        .getByRole('button', { name: section, exact: true }).click()
+    } else {
+      await navigation.getByRole('button', { name: section, exact: true }).click()
+    }
     await expect(page.getByLabel('Версия сборки')).toBeVisible()
     await page.screenshot({ path: testInfo.outputPath('section-' + section + '.png'), fullPage: true })
   }

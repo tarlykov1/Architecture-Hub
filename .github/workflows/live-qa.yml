@@ -8,6 +8,7 @@ on:
     - cron: '20 6 * * *'
 permissions:
   contents: read
+  issues: write
 jobs:
   live-browser:
     if: github.event_name != 'workflow_run' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main')
@@ -26,8 +27,45 @@ jobs:
           npm ci --no-audit --no-fund
           npx playwright install --with-deps chromium
       - name: Test deployed website
+        id: live_test
         working-directory: frontend
         run: npx playwright test --config=playwright.live.config.ts
+      - name: Record QA result and create or update a single tracking issue
+        if: always() && steps.live_test.outcome != 'skipped'
+        uses: actions/github-script@v7
+        env:
+          QA_OUTCOME: ${{ steps.live_test.outcome }}
+          QA_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const title = '[Live QA] Test server browser regression'
+            const { owner, repo } = context.repo
+            const state = process.env.QA_OUTCOME
+            const runUrl = process.env.QA_RUN_URL
+            const issues = await github.paginate(github.rest.issues.listForRepo, { owner, repo, state: 'open', per_page: 100 })
+            const existing = issues.find(issue => !issue.pull_request && issue.title === title)
+            if (state === 'failure') {
+              const body = [
+                'Automated Playwright verification failed on the deployed test server.',
+                '',
+                '- Workflow run: ' + runUrl,
+                '- Trigger: ' + context.eventName,
+                '- Ref: ' + context.sha,
+                '- Desktop/mobile screenshots, traces and HTML report: download artifact `live-qa-browser-report` from the workflow run.',
+                '',
+                'Review the failing test logs and attached screenshots before making changes.',
+                'This issue is reused for subsequent failures to prevent duplicates.',
+              ].join('\\n')
+              if (existing) {
+                await github.rest.issues.createComment({ owner, repo, issue_number: existing.number, body })
+              } else {
+                await github.rest.issues.create({ owner, repo, title, body })
+              }
+            } else if (state === 'success' && existing) {
+              await github.rest.issues.createComment({ owner, repo, issue_number: existing.number, body: 'Live QA passed: ' + runUrl + '. Closing the tracking issue.' })
+              await github.rest.issues.update({ owner, repo, issue_number: existing.number, state: 'closed' })
+            }
       - name: Save screenshots, traces and HTML report
         if: always()
         uses: actions/upload-artifact@v4

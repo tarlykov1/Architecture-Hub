@@ -398,7 +398,7 @@ test('infrastructure diagram defaults to view mode and editing is explicit',asyn
  await openSystemComponents(page,name)
  const edit=page.getByRole('button',{name:'Редактировать схему'})
  await expect(edit).toHaveAttribute('aria-pressed','false')
- await expect(page.getByText(/схема защищена от случайных соединений/)).toBeVisible()
+ await expect(page.getByText(/схема защищена от случайных соединений/)).toHaveCount(0)
  await edit.click()
  const finish=page.getByRole('button',{name:'Завершить редактирование'})
  await expect(finish).toHaveAttribute('aria-pressed','true')

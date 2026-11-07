@@ -1147,3 +1147,17 @@ test('anonymous demo displays only synthetic architecture and never requests pro
  expect(protectedRequests).toEqual([])
  await expect(page.getByRole('button',{name:'Войти для редактирования'})).toBeVisible()
 })
+
+test('frontend exposes its visible build revision and public build metadata',async({page})=>{
+ await page.goto('/')
+ const badge=page.getByLabel('Версия сборки')
+ await expect(badge).toBeVisible()
+ await expect(badge).toContainText('Сборка')
+ const response=await page.request.get('/build-info.json')
+ expect(response.ok()).toBeTruthy()
+ const metadata=await response.json() as {revision:string;builtAt:string;application:string}
+ expect(metadata.application).toBe('Architecture Hub frontend')
+ expect(metadata.revision).toMatch(/^[a-f0-9]{40}$|^unknown$/)
+ expect(metadata.builtAt).toMatch(/^\\d{4}-/)
+ expect(await badge.getAttribute('title')).toContain(metadata.revision)
+})

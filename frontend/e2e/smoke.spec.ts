@@ -1108,3 +1108,20 @@ test('board VM passport edits require preview and explicit audited commit',async
   await expect.poll(async()=> (await fetchVM()).name).toBe('Updated VM')
   expect((await fetchVM()).details.purpose).toBe('Application server')
 })
+
+
+test('compact layout wraps tall dependency columns without overlap',async({page})=>{
+ await page.goto('/')
+ const result=await page.evaluate(async()=>{
+  const {compactComponentLayout}=await import('/src/graphLayout.ts')
+  const ids=['root',...Array.from({length:18},(_,i)=>'target-'+i)]
+  const edges=ids.slice(1).map(id=>({source:'root',target:id}))
+  const points=compactComponentLayout(ids,edges)
+  return {points,count:Object.keys(points).length}
+ })
+ expect(result.count).toBe(19)
+ const positions=Object.values(result.points) as {x:number;y:number}[]
+ expect(new Set(positions.map(p=>p.x+':'+p.y)).size).toBe(19)
+ expect(Math.max(...positions.map(p=>p.y))).toBeLessThan(18*175)
+ expect(new Set(positions.map(p=>p.x)).size).toBeGreaterThan(2)
+})

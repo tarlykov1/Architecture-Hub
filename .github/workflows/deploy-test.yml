@@ -52,6 +52,7 @@ jobs:
         working-directory: frontend
         env:
           VITE_WIKI_URL: ${{ vars.VITE_WIKI_URL }}
+          BUILD_REVISION: ${{ github.event.workflow_run.head_sha }}
         run: |
           npm ci --no-audit --no-fund
           npm run build
@@ -94,3 +95,16 @@ jobs:
         run: |
           set -euo pipefail
           curl --fail --show-error --silent --retry 3 --retry-delay 2 --head https://test.web-tie.ru/
+
+      - name: Verify deployed frontend revision matches the tested commit
+        shell: bash
+        env:
+          EXPECTED_REVISION: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          actual="$(curl --fail --show-error --silent --retry 5 --retry-delay 3 \
+            -H 'Cache-Control: no-cache' \
+            "https://test.web-tie.ru/build-info.json?verify=${EXPECTED_REVISION}" | jq -r '.revision')"
+          echo "Expected: ${EXPECTED_REVISION}"
+          echo "Published: ${actual}"
+          test "${actual}" = "${EXPECTED_REVISION}"

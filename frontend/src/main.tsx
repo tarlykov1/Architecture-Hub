@@ -1,3 +1,6 @@
+declare const __BUILD_REVISION__: string
+declare const __BUILD_TIME__: string
+
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { ReactFlow, Background, Controls, applyNodeChanges, type Connection, type Edge, type Node, type NodeChange, MarkerType, Position } from '@xyflow/react'
@@ -1221,4 +1224,12 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
   </div>
 }
 
-createRoot(document.getElementById('root')!).render(<React.StrictMode><App /></React.StrictMode>)
+function BuildVersion() {
+ const revision=__BUILD_REVISION__
+ const short=revision==='unknown'?'local':revision.slice(0,8)
+ return <div className="buildVersion" aria-label="Версия сборки" title={`Frontend: ${revision} · Собрано: ${__BUILD_TIME__}`}>
+  Сборка <code>{short}</code>
+ </div>
+}
+
+createRoot(document.getElementById('root')!).render(<React.StrictMode><App /><BuildVersion /></React.StrictMode>)

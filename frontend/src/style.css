@@ -625,3 +625,8 @@ body:has(.expandedFlowPanel)::before{content:"";position:fixed;inset:0;backgroun
 .expandedFlowPanel .expandedFlowRow {flex-wrap:wrap; justify-content:flex-start}
 .expandedFlowPanel .expandedFlowRow button:first-child {flex-basis:100%}
 .expandedFlowPanel .expandedFlowHead small {display:block;overflow-wrap:anywhere}
+
+/* Visible frontend revision; does not cover or intercept diagram interactions. */
+.buildVersion{position:fixed;right:10px;bottom:8px;z-index:15;pointer-events:none;font:11px/1.3 system-ui,sans-serif;color:#64748b;background:rgba(255,255,255,.88);border:1px solid #dce3ed;border-radius:6px;padding:3px 7px;box-shadow:0 1px 3px #0f172a12}
+.buildVersion code{font:inherit;font-weight:650;color:#334155}
+@media(max-width:640px){.buildVersion{right:5px;bottom:5px;font-size:10px}}

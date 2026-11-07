@@ -143,7 +143,15 @@ function Editor({systemId,ownerName='',items,networks,interfaces,flows,savedPosi
    if(!name.trim())return setError('Введите имя новой ВМ.')
    const id=makeId()
    addChange({action:'create_vm',id,system_id:systemId,name:name.trim(),kind:'vm'})
-   setNodes(previous=>[...previous,{id,position:{x:90+(previous.length%4)*280,y:100+Math.floor(previous.length/4)*175},sourcePosition:Position.Bottom,targetPosition:Position.Top,data:{label:<div className="systemNode"><strong>{name.trim()}</strong><span className="componentNodeOwner">{ownerName}</span><small>vm · Черновик</small></div>},style:{width:220,padding:12,background:'#fff',border:'1px dashed #2674bf',borderRadius:12}}])
+   setNodes(previous=>{
+     // Avoid overlapping manually positioned or previously saved components.
+     const occupied=(x:number,y:number)=>previous.some(node=>
+       x<node.position.x+240&&x+240>node.position.x&&
+       y<node.position.y+150&&y+150>node.position.y)
+     let index=0
+     while(occupied(90+(index%4)*280,100+Math.floor(index/4)*175))index++
+     return [...previous,{id,position:{x:90+(index%4)*280,y:100+Math.floor(index/4)*175},sourcePosition:Position.Bottom,targetPosition:Position.Top,data:{label:<div className="systemNode"><strong>{name.trim()}</strong><span className="componentNodeOwner">{ownerName}</span><small>vm · Черновик</small></div>},style:{width:220,padding:12,background:'#fff',border:'1px dashed #2674bf',borderRadius:12}}]
+   })
    setName('');setTool('move')
  }
  const addFlow=()=>{

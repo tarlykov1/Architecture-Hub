@@ -582,6 +582,70 @@ def update_infra(item_id: UUID, payload: InfraInput, db: Session = Depends(db_se
     return item
 
 
+@app.post("/api/demo/attributes")
+def seed_demo_attributes(db: Session = Depends(db_session)):
+    """Add synthetic metadata for existing enterprise-demo flows; safe to repeat."""
+    specs = [
+        ("employee_id", "Идентификатор сотрудника", "string", "internal", "Стабильный ключ записи сотрудника"),
+        ("full_name", "ФИО сотрудника", "string", "personal", "Отображаемое имя в справочнике"),
+        ("department", "Подразделение", "string", "internal", "Организационная принадлежность"),
+        ("position", "Должность", "string", "internal", "Должность в организационной структуре"),
+        ("work_email", "Рабочая почта", "string", "personal", "Контактный адрес"),
+        ("work_phone", "Рабочий телефон", "string", "personal", "Контактный номер"),
+        ("employment_status", "Статус занятости", "enum", "internal", "Состояние трудовых отношений"),
+        ("account_id", "Идентификатор учётной записи", "string", "internal", "Технический идентификатор пользователя"),
+        ("login", "Логин", "string", "internal", "Имя учётной записи"),
+        ("group_code", "Код группы доступа", "string", "restricted", "Идентификатор группы авторизации"),
+        ("oidc_subject", "OIDC subject", "string", "internal", "Субъект токена идентификации, не сам токен"),
+    ]
+    existing = {a.code: a for a in db.scalars(select(DataAttribute)).all()}
+    added_attributes = 0
+    for code, name, dtype, sensitivity, description in specs:
+        if code not in existing:
+            row = DataAttribute(code=code, name=name, data_type=dtype,
+                                sensitivity=sensitivity, description="ДЕМО: " + description)
+            db.add(row)
+            db.flush()
+            existing[code] = row
+            added_attributes += 1
+    flows = {f.name: f for f in db.scalars(select(DataFlow)).all()
+             if f.data_description.startswith("ДЕМО: ")}
+    systems = {o.name: o for o in db.scalars(select(ArchitectureObject)).all()}
+    mapping_specs = [
+        ("Кадровые события", "DATAREON", ["employee_id", "full_name", "department", "position", "work_email", "work_phone", "employment_status"]),
+        ("Обновление справочника", "Телефонный справочник", ["employee_id", "full_name", "department", "position", "work_email", "work_phone"]),
+        ("Запись в API", "Телефонный справочник", ["employee_id", "full_name", "department", "position"]),
+        ("Справочные данные в Naumen", "Naumen", ["employee_id", "full_name", "department", "work_email"]),
+        ("Идентификаторы для процессов", "ЕИБД", ["employee_id", "account_id", "login"]),
+        ("Сопоставление пользователей", "ЕИБД", ["employee_id", "account_id"]),
+        ("Получение идентификаторов", "ЕИБД", ["employee_id", "account_id"]),
+        ("Вход пользователей Bitrix24", "Keycloak", ["account_id", "login", "oidc_subject"]),
+        ("Вход пользователей Naumen", "Keycloak", ["account_id", "login", "oidc_subject"]),
+        ("Вход пользователей справочника", "Keycloak", ["account_id", "login", "oidc_subject"]),
+        ("Федерация идентичностей", "Active Directory", ["account_id", "login", "group_code"]),
+    ]
+    existing_uses = {(u.flow_id, u.attribute_id, u.consumer_system_id)
+                     for u in db.scalars(select(FlowDataUse)).all() if u.process_id is None}
+    added_mappings = 0
+    for flow_name, consumer, codes in mapping_specs:
+        flow, system = flows.get(flow_name), systems.get(consumer)
+        if flow is None or system is None:
+            continue
+        for code in codes:
+            key = (flow.id, existing[code].id, system.id)
+            if key in existing_uses:
+                continue
+            db.add(FlowDataUse(flow_id=flow.id, attribute_id=existing[code].id,
+                               consumer_system_id=system.id, process_id=None,
+                               purpose="ДЕМО: используется системой «" + consumer + "» в потоке «" + flow_name + "»",
+                               verification="assumed"))
+            existing_uses.add(key)
+            added_mappings += 1
+    db.commit()
+    return {"added_attributes": added_attributes, "added_mappings": added_mappings,
+            "total_demo_attributes": len(specs)}
+
+
 @app.get("/api/data-attributes", response_model=list[AttributeOutput])
 def list_data_attributes(db: Session = Depends(db_session)):
     return db.scalars(select(DataAttribute).order_by(DataAttribute.code)).all()

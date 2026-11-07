@@ -13,6 +13,13 @@ export default defineConfig({
     react(),
     {
       name: 'architecture-build-info',
+      configureServer(server) {
+        server.middlewares.use('/build-info.json', (_req, res) => {
+          res.setHeader('Content-Type', 'application/json; charset=utf-8')
+          res.setHeader('Cache-Control', 'no-store')
+          res.end(JSON.stringify({ revision, builtAt, application: 'Architecture Hub frontend' }))
+        })
+      },
       generateBundle() {
         this.emitFile({
           type: 'asset',

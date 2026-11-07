@@ -1,5 +1,14 @@
 import { expect, test, type Page } from '@playwright/test'
 
+// Existing editor smoke tests exercise the authenticated API against the CI backend.
+// Public anonymous mode is tested separately below.
+test.beforeEach(async({page},info)=>{
+ if(info.title.includes('access dialog')||info.title.includes('anonymous demo'))return
+ await page.addInitScript(()=>{
+  sessionStorage.setItem('architecture-hub:access-token:session','browser-ci-development-token')
+ })
+})
+
 async function navigateTo(page: Page, section: 'Реестр сетей'|'Инциденты'|'Топология сетей') {
   const mobile=page.locator('nav.layerTabs details.mobileSectionMenu')
   if(page.viewportSize()!.width<650){
@@ -604,7 +613,7 @@ test('component view choice survives a reload',async({page})=>{
 
 test('access dialog masks the key, contains focus and returns focus on Escape',async({page})=>{
   await page.goto('/')
-  const trigger=page.getByRole('button',{name:'Ключ доступа',exact:true})
+  const trigger=page.getByRole('button',{name:'Войти для редактирования',exact:true})
   await trigger.click()
   const dialog=page.getByRole('dialog',{name:'Вход в Architecture Hub'})
   const key=dialog.getByLabel('Ключ',{exact:true})
@@ -1124,4 +1133,17 @@ test('compact layout wraps tall dependency columns without overlap',async({page}
  expect(new Set(positions.map(p=>p.x+':'+p.y)).size).toBe(19)
  expect(Math.max(...positions.map(p=>p.y))).toBeLessThan(18*175)
  expect(new Set(positions.map(p=>p.x)).size).toBeGreaterThan(2)
+})
+
+test('anonymous demo displays only synthetic architecture and never requests protected API',async({page})=>{
+ const protectedRequests:string[]=[]
+ page.on('request',request=>{
+  if(new URL(request.url()).pathname.startsWith('/api/') && !new URL(request.url()).pathname.endsWith('/health'))protectedRequests.push(request.url())
+ })
+ await page.goto('/')
+ await expect(page.getByRole('status').filter({hasText:'Демонстрационный режим'})).toBeVisible()
+ await page.getByRole('navigation',{name:'Разделы архитектуры'}).getByRole('button',{name:'Системы',exact:true}).click()
+ await expect(page.getByRole('button',{name:'Демо: портал сотрудников',exact:true})).toBeVisible()
+ expect(protectedRequests).toEqual([])
+ await expect(page.getByRole('button',{name:'Войти для редактирования'})).toBeVisible()
 })

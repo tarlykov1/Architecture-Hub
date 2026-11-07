@@ -9,6 +9,7 @@ import {downstreamImpact,impactRoutes} from './dependencyImpact'
 import Incidents from './Incidents'
 import ArchitectureHome from './ArchitectureHome'
 import ArchitectureBoard from './ArchitectureBoard'
+import {publicDemoResponse} from './publicDemo'
 import FlowDataCatalog from './FlowDataCatalog'
 import SystemDataMap from './SystemDataMap'
 import {parseWorkspaceRoute,workspaceRouteUrl,type Section} from './workspaceRoutes'
@@ -58,10 +59,14 @@ function saveAccessToken(value: string): void {
   } catch { /* Private browsing can disable session storage. */ }
 }
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
+  if (!accessToken) {
+    if ((init?.method || 'GET').toUpperCase() !== 'GET') throw new Error('Демонстрационный режим: изменения запрещены. Для редактирования введите ключ доступа.')
+    return publicDemoResponse(url) as T
+  }
   const response = await fetch(url, { ...init, headers: { 'Content-Type': 'application/json', ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}), ...init?.headers } })
   if (!response.ok) {
     const detail = await response.text()
-    if(response.status===401)throw new Error('Для загрузки данных введите ключ доступа. Пустая карта не означает отсутствие объектов.')
+    if(response.status===401)throw new Error('Ключ доступа недействителен или срок его действия истёк.')
     if(response.status===403)throw new Error('Недостаточно прав для этого действия.')
     throw new Error(detail || 'Ошибка обращения к API')
   }
@@ -943,7 +948,7 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
         </details></div>
       </nav>
       <div className="topActions">
-        {tokenReady ? <button type="button" title="Завершить сеанс и удалить ключ доступа из вкладки" onClick={()=>{saveAccessToken('');setTokenReady(false);setObjects([]);setRelations([]);setDiagrams([]);setInfra([]);setFlows([]);setSegments([]);setNics([]);setCategories([]);setProcesses([]);setBusinessLinks([]);setSelected('');setSelectedFlow('');setError('');setNotice('Сеанс завершён')}}>Выйти</button> : <button type="button" onClick={()=>setAuthOpen(true)}>Ключ доступа</button>}
+        {tokenReady ? <button type="button" title="Завершить сеанс и удалить ключ доступа из вкладки" onClick={()=>{saveAccessToken('');setTokenReady(false);setObjects([]);setRelations([]);setDiagrams([]);setInfra([]);setFlows([]);setSegments([]);setNics([]);setCategories([]);setProcesses([]);setBusinessLinks([]);setSelected('');setSelectedFlow('');setError('');setNotice('Демонстрационный режим – только вымышленные данные.');void refresh()}}>Выйти</button> : <button type="button" onClick={()=>setAuthOpen(true)}>Войти для редактирования</button>}
         {layer==='systems'&&<><select aria-label="Схема" value={diagramId} onChange={e => selectDiagram(e.target.value)}>
           {!diagrams.length && <option value="">Основная карта</option>}
           {diagrams.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
@@ -953,6 +958,7 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
       </div>
 <div className="globalHeaderActions"><span className="globalHeaderSection">РАБОЧЕЕ ПРОСТРАНСТВО</span>{import.meta.env.VITE_WIKI_URL&&<a href={import.meta.env.VITE_WIKI_URL} target="_blank" rel="noopener noreferrer">Wiki.js <span aria-hidden="true">↗</span></a>}</div>
     </header>
+    {!tokenReady&&<div role="status" style={{padding:"10px 16px",background:"#fff4d9",color:"#714600",fontWeight:600}}>Демонстрационный режим – только вымышленные данные. Для просмотра реальной архитектуры и редактирования войдите по ключу.</div>}
     {authOpen&&<div className="editorBackdrop"><section className="editorDialog" role="dialog" aria-modal="true" aria-label="Вход в Architecture Hub"><div className="dialogHead"><h2>Ключ доступа</h2><button aria-label="Закрыть вход" onClick={()=>{setAuthOpen(false);setAuthDraft('')}}>×</button></div><p>Ключ хранится только в текущей вкладке до завершения сеанса.</p><form className="detailForm" onSubmit={async e=>{e.preventDefault();setAuthBusy(true);saveAccessToken(authDraft);try{await refresh();setTokenReady(true);setAuthOpen(false);setAuthDraft('');setError('')}catch(err){saveAccessToken('');setTokenReady(false);setError((err as Error).message)}finally{setAuthBusy(false)}}}><label>Ключ<input type="password" autoComplete="off" required value={authDraft} onChange={e=>setAuthDraft(e.target.value)}/></label><button className="primary" disabled={authBusy}>{authBusy?'Проверка…':'Войти'}</button></form></section></div>}
     <main className="main">
       {notice && <div className="notice" role="status">{notice}<button onClick={()=>setNotice('')}>×</button></div>}

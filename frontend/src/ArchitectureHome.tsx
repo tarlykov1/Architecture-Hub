@@ -56,18 +56,14 @@ export default function ArchitectureHome({systems,components,flows,processes,lin
     {!filteredSystems.length&&<span>Системы не найдены.</span>}
     {filteredSystems.slice(0,12).map(system=><div key={system.id} className="homeMapSearchMatch">
       <span>{system.name}</span>
-      <button type="button" onClick={()=>setSelectedSystem(system.id)} aria-label={`Выбрать ИС из поиска: ${system.name}`}>Выбрать</button>
+      <button type="button" onClick={()=>{setSelectedSystem(system.id);onOpenSystem(system.id)}} aria-label={`Выбрать ИС из поиска: ${system.name}`}>Выбрать</button>
       <button type="button" onClick={()=>{setSelectedSystem(system.id);onOpenSystem(system.id)}} aria-label={`Открыть паспорт ИС из поиска: ${system.name}`}>Паспорт</button>
       <button type="button" onClick={()=>onOpenComponents(system.id)} aria-label={`Открыть компоненты ИС из поиска: ${system.name}`}>Компоненты</button>
     </div>)}
     {filteredSystems.length>12&&<small>Показаны первые 12 систем. Уточните запрос.</small>}
   </div>}
-  {layers.systems&&<div className="homeMapGraph"><ReactFlow minZoom={0.08} nodes={highlightedNodes} edges={layers.flows?edges:[]} fitView fitViewOptions={{padding:0.15,minZoom:0.3,maxZoom:1}} nodesDraggable={false} nodesConnectable={false} onNodeClick={(_,node)=>setSelectedSystem(node.id)} onPaneClick={()=>setSelectedSystem('')}><AutoFit/><Background gap={20}/><Controls showInteractive={false}/></ReactFlow></div>}
+  {layers.systems&&<div className="homeMapGraph"><ReactFlow minZoom={0.08} nodes={highlightedNodes} edges={layers.flows?edges:[]} fitView fitViewOptions={{padding:0.15,minZoom:0.3,maxZoom:1}} nodesDraggable={false} nodesConnectable={false} onNodeClick={(_,node)=>{setSelectedSystem(node.id);onOpenSystem(node.id)}} onPaneClick={()=>setSelectedSystem('')}><AutoFit/><Background gap={20}/><Controls showInteractive={false}/></ReactFlow></div>}
   {!layers.systems&&<div className="homeMapEmpty">Включите слой «Информационные системы», чтобы показать карту связей.</div>}
-  {selectedSystemInfo&&<aside className="homeMapSelection" aria-label="Выбранная информационная система" style={{padding:16,marginTop:12,border:'1px solid #cbd5e1',borderRadius:12,background:'#f8fafc'}}>
-   <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:12,flexWrap:'wrap'}}><div><strong>{selectedSystemInfo.name}</strong><p style={{margin:'6px 0 0'}}>{selectedComponents.length} компонентов · {selectedFlowCount} межсистемных потоков · {Math.max(0,selectedNeighbors.size-1)} связанных ИС</p></div><div style={{display:'flex',gap:8}}><button type="button" onClick={()=>onOpenSystem(selectedSystemInfo.id)}>Открыть паспорт ИС</button><button type="button" onClick={()=>onOpenComponents(selectedSystemInfo.id)}>Компоненты</button><button type="button" onClick={()=>setSelectedSystem('')} aria-label="Снять выделение">Сбросить выбор</button></div></div>
-   {selectedComponents.length>0&&<div style={{display:'flex',gap:8,flexWrap:'wrap',marginTop:12}}>{selectedComponents.slice(0,12).map(c=><button type="button" key={c.id} onClick={()=>onOpenComponent(c.id)}>{architectureIcon(c.kind)} {c.name}</button>)}</div>}
-  </aside>}
   <div className="homeMapDetails">
    {layers.business&&<article><h3>Бизнес-процессы</h3><p>{processes.length} процессов · {links.length} связей с ИС</p><div>{processes.slice(0,12).map(p=><span className="homeMapChip" key={p.id}>{p.name}</span>)}</div></article>}
    {layers.components&&<article><h3>Компоненты</h3><div className="homeMapComponentList">{components.filter(c=>visibleIds.has(c.system_id)).slice(0,60).map(c=><button key={c.id} onClick={()=>onOpenComponent(c.id)}><span aria-hidden="true">{architectureIcon(c.kind)}</span> {c.name} <small>{c.kind}</small></button>)}</div></article>}

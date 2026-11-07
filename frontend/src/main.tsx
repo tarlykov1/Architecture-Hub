@@ -9,6 +9,7 @@ import {downstreamImpact,impactRoutes} from './dependencyImpact'
 import Incidents from './Incidents'
 import ArchitectureHome from './ArchitectureHome'
 import ArchitectureBoard from './ArchitectureBoard'
+import {publicDemoResponse} from './publicDemo'
 import FlowDataCatalog from './FlowDataCatalog'
 import SystemDataMap from './SystemDataMap'
 import {parseWorkspaceRoute,workspaceRouteUrl,type Section} from './workspaceRoutes'
@@ -58,10 +59,14 @@ function saveAccessToken(value: string): void {
   } catch { /* Private browsing can disable session storage. */ }
 }
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
+  if (!accessToken) {
+    if ((init?.method || 'GET').toUpperCase() !== 'GET') throw new Error('Демонстрационный режим: изменения запрещены. Для редактирования введите ключ доступа.')
+    return publicDemoResponse(url) as T
+  }
   const response = await fetch(url, { ...init, headers: { 'Content-Type': 'application/json', ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}), ...init?.headers } })
   if (!response.ok) {
     const detail = await response.text()
-    if(response.status===401)throw new Error('Для загрузки данных введите ключ доступа. Пустая карта не означает отсутствие объектов.')
+    if(response.status===401)throw new Error('Ключ доступа недействителен или срок его действия истёк.')
     if(response.status===403)throw new Error('Недостаточно прав для этого действия.')
     throw new Error(detail || 'Ошибка обращения к API')
   }
@@ -943,7 +948,7 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
         </details></div>
       </nav>
       <div className="topActions">
-        {tokenReady ? <button type="button" title="Завершить сеанс и удалить ключ доступа из вкладки" onClick={()=>{saveAccessToken('');setTokenReady(false);setObjects([]);setRelations([]);setDiagrams([]);setInfra([]);setFlows([]);setSegments([]);setNics([]);setCategories([]);setProcesses([]);setBusinessLinks([]);setSelected('');setSelectedFlow('');setError('');setNotice('Сеанс завершён')}}>Выйти</button> : <button type="button" onClick={()=>setAuthOpen(true)}>Ключ доступа</button>}
+        {tokenReady ? <button type="button" title="Завершить сеанс и удалить ключ доступа из вкладки" onClick={()=>{saveAccessToken('');setTokenReady(false);setObjects([]);setRelations([]);setDiagrams([]);setInfra([]);setFlows([]);setSegments([]);setNics([]);setCategories([]);setProcesses([]);setBusinessLinks([]);setSelected('');setSelectedFlow('');setError('');setNotice('Демонстрационный режим – только вымышленные данные.');void refresh()}}>Выйти</button> : <button type="button" onClick={()=>setAuthOpen(true)}>Войти для редактирования</button>}
         {layer==='systems'&&<><select aria-label="Схема" value={diagramId} onChange={e => selectDiagram(e.target.value)}>
           {!diagrams.length && <option value="">Основная карта</option>}
           {diagrams.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}

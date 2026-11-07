@@ -22,11 +22,12 @@ export function architectureIcon(kind:string):string{
  return '▦'
 }
 
-export default function ArchitectureHome({systems,components,flows,processes,links,networks,interfaces,onOpenSystem,onOpenComponents,onOpenComponent,onOpenFlows,onOpenNetworks}:{systems:System[];components:Component[];flows:Flow[];processes:Process[];links:Link[];networks:Network[];interfaces:Interface[];onOpenSystem:(id:string)=>void;onOpenComponents:(id:string)=>void;onOpenComponent:(id:string)=>void;onOpenFlows:()=>void;onOpenNetworks:()=>void}){
+export default function ArchitectureHome({systems,components,flows,processes,links,networks,interfaces,onOpenSystem,onCloseSystem,inspectorOpen,onOpenComponents,onOpenComponent,onOpenFlows,onOpenNetworks}:{systems:System[];components:Component[];flows:Flow[];processes:Process[];links:Link[];networks:Network[];interfaces:Interface[];onOpenSystem:(id:string)=>void;onCloseSystem:()=>void;inspectorOpen:boolean;onOpenComponents:(id:string)=>void;onOpenComponent:(id:string)=>void;onOpenFlows:()=>void;onOpenNetworks:()=>void}){
  const [layers,setLayers]=useState({systems:true,components:false,flows:true,business:false,networks:false})
  const [query,setQuery]=useState('')
  const [focus,setFocus]=useState('')
  const [selectedSystem,setSelectedSystem]=useState('')
+ useEffect(()=>{if(!inspectorOpen)setSelectedSystem('')},[inspectorOpen])
  const [environment,setEnvironment]=useState('all')
  const systemByComponent=useMemo(()=>new Map(components.map(c=>[c.id,c.system_id])),[components])
  const filteredSystems=systems.filter(s=>(!query||s.name.toLowerCase().includes(query.toLowerCase())||components.some(c=>c.system_id===s.id&&c.name.toLowerCase().includes(query.toLowerCase())))&&(!focus||focus===s.id)&& (environment==='all'||components.some(c=>c.system_id===s.id&&String(c.details.environment||'').toLowerCase()===environment)))
@@ -62,7 +63,7 @@ export default function ArchitectureHome({systems,components,flows,processes,lin
     </div>)}
     {filteredSystems.length>12&&<small>Показаны первые 12 систем. Уточните запрос.</small>}
   </div>}
-  {layers.systems&&<div className="homeMapGraph"><ReactFlow minZoom={0.08} nodes={highlightedNodes} edges={layers.flows?edges:[]} fitView fitViewOptions={{padding:0.15,minZoom:0.3,maxZoom:1}} nodesDraggable={false} nodesConnectable={false} onNodeClick={(_,node)=>{setSelectedSystem(node.id);onOpenSystem(node.id)}} onPaneClick={()=>setSelectedSystem('')}><AutoFit/><Background gap={20}/><Controls showInteractive={false}/></ReactFlow></div>}
+  {layers.systems&&<div className="homeMapGraph"><ReactFlow minZoom={0.08} nodes={highlightedNodes} edges={layers.flows?edges:[]} fitView fitViewOptions={{padding:0.15,minZoom:0.3,maxZoom:1}} nodesDraggable={false} nodesConnectable={false} onNodeClick={(_,node)=>{setSelectedSystem(node.id);onOpenSystem(node.id)}} onPaneClick={()=>{setSelectedSystem('');onCloseSystem()}}><AutoFit layoutKey={inspectorOpen?'inspector-open':'inspector-closed'}/><Background gap={20}/><Controls showInteractive={false}/></ReactFlow></div>}
   {!layers.systems&&<div className="homeMapEmpty">Включите слой «Информационные системы», чтобы показать карту связей.</div>}
   <div className="homeMapDetails">
    {layers.business&&<article><h3>Бизнес-процессы</h3><p>{processes.length} процессов · {links.length} связей с ИС</p><div>{processes.slice(0,12).map(p=><span className="homeMapChip" key={p.id}>{p.name}</span>)}</div></article>}

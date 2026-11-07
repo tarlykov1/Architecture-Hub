@@ -1147,3 +1147,18 @@ test('anonymous demo displays only synthetic architecture and never requests pro
  expect(protectedRequests).toEqual([])
  await expect(page.getByRole('button',{name:'Войти для редактирования'})).toBeVisible()
 })
+
+test('flow selection panel does not block the rest of the page',async({page})=>{
+ await page.goto('/')
+ await page.getByRole('navigation',{name:'Разделы архитектуры'}).getByRole('button',{name:'Потоки',exact:true}).click()
+ const edges=page.locator('[data-active-graph="flows"] .react-flow__edge')
+ await expect(edges.first()).toBeVisible()
+ await edges.first().click({force:true})
+ const panel=page.getByRole('region',{name:'Потоки выбранной группы'})
+ await expect(panel).toBeVisible()
+ const backdrop=await page.evaluate(()=>getComputedStyle(document.body,'::before'))
+ expect(backdrop.content).toBe('none')
+ await expect(page.getByRole('navigation',{name:'Разделы архитектуры'}).getByRole('button',{name:'Потоки',exact:true})).toBeVisible()
+ await panel.getByRole('button',{name:'Свернуть ×'}).click()
+ await expect(panel).toHaveCount(0)
+})

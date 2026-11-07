@@ -1158,6 +1158,6 @@ test('frontend exposes its visible build revision and public build metadata',asy
  const metadata=await response.json() as {revision:string;builtAt:string;application:string}
  expect(metadata.application).toBe('Architecture Hub frontend')
  expect(metadata.revision).toMatch(/^[a-f0-9]{40}$|^unknown$/)
- expect(metadata.builtAt).toMatch(/^\\d{4}-/)
+ expect(metadata.builtAt).toMatch(/^[0-9]{4}-/)
  expect(await badge.getAttribute('title')).toContain(metadata.revision)
 })

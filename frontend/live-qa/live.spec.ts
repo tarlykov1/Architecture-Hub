@@ -35,3 +35,62 @@ test('test server: deployed revision is available without authentication', async
   expect(info.revision).toMatch(/^[a-f0-9]{40}$/)
   expect(info.builtAt).toMatch(/^[0-9]{4}-/)
 })
+
+async function switchSection(page: import('@playwright/test').Page, section: string) {
+  const nav = page.getByRole('navigation', { name: 'Разделы архитектуры' })
+  const mobile = nav.getByLabel('Выбрать раздел')
+  if (await mobile.isVisible()) {
+    await mobile.click()
+    await nav.locator('.mobileSectionOptions').getByRole('button', { name: section, exact: true }).click()
+  } else {
+    await nav.getByRole('button', { name: section, exact: true }).click()
+  }
+}
+
+test('test server: system passport and navigation remain clickable', async ({ page }, testInfo) => {
+  await page.goto('/')
+  await switchSection(page, 'Системы')
+  const registry = page.getByRole('region', { name: 'Реестр информационных систем' })
+  await expect(registry).toBeVisible()
+  const row = registry.locator('tr').filter({ hasText: 'Демо: портал сотрудников' })
+  await expect(row).toBeVisible()
+  await row.getByRole('button', { name: 'Паспорт', exact: true }).click()
+  await expect(page.getByText('Демо: портал сотрудников').first()).toBeVisible()
+  await page.screenshot({ path: testInfo.outputPath('system-passport.png'), fullPage: true })
+  // Regression: opening an inspector must not block the top navigation.
+  await switchSection(page, 'Компоненты')
+  await expect(page.getByLabel('Версия сборки')).toBeVisible()
+})
+
+test('test server: component registry exposes a passport action', async ({ page }, testInfo) => {
+  await page.goto('/')
+  await switchSection(page, 'Компоненты')
+  await page.getByRole('group', { name: 'Представление компонентов' })
+    .getByRole('button', { name: 'Реестр', exact: true }).click()
+  const registry = page.getByRole('region', { name: 'Архитектурный реестр' })
+  await expect(registry).toBeVisible()
+  const row = registry.locator('tr').filter({ hasText: 'DEMO-WEB-01' })
+  await expect(row).toBeVisible()
+  await row.getByRole('button', { name: 'Открыть' }).click()
+  await expect(page.getByText('DEMO-WEB-01').first()).toBeVisible()
+  await page.screenshot({ path: testInfo.outputPath('component-passport.png'), fullPage: true })
+})
+
+test('test server: overview diagram zoom controls work without blocking overlay', async ({ page }, testInfo) => {
+  await page.goto('/')
+  await expect(page.locator('.react-flow__viewport').first()).toBeVisible()
+  const controls = page.locator('.react-flow__controls').first()
+  await expect(controls).toBeVisible()
+  await controls.locator('.react-flow__controls-zoomin').click()
+  await controls.locator('.react-flow__controls-zoomout').click()
+  await page.screenshot({ path: testInfo.outputPath('overview-after-zoom.png'), fullPage: true })
+  await switchSection(page, 'Потоки')
+  // Viewing flows must not create a full-page pseudo-element that steals pointer events.
+  const overlay = await page.evaluate(() => {
+    const style = getComputedStyle(document.body, '::before')
+    return { content: style.content, pointerEvents: style.pointerEvents }
+  })
+  expect(overlay.content === 'none' || overlay.pointerEvents === 'none').toBeTruthy()
+  await switchSection(page, 'Обзор')
+  await expect(page.getByLabel('Версия сборки')).toBeVisible()
+})

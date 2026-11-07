@@ -20,6 +20,8 @@ test('test server: public demo navigation, viewport and build revision', async (
       await navigation.getByRole('button', { name: section, exact: true }).click()
     }
     await expect(page.getByLabel('Версия сборки')).toBeVisible()
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 2)
+    expect(overflow, `Horizontal overflow in ${section} at ${testInfo.project.name}`).toBe(false)
     await page.screenshot({ path: testInfo.outputPath('section-' + section + '.png'), fullPage: true })
   }
 
@@ -81,8 +83,19 @@ test('test server: overview diagram zoom controls work without blocking overlay'
   await expect(page.locator('.react-flow__viewport').first()).toBeVisible()
   const controls = page.locator('.react-flow__controls').first()
   await expect(controls).toBeVisible()
+  const viewport = page.locator('.react-flow__viewport').first()
+  const getScale = async () => viewport.evaluate(element => {
+    const transform = getComputedStyle(element).transform
+    if (transform === 'none') return 1
+    const matrix = new DOMMatrixReadOnly(transform)
+    return Math.hypot(matrix.a, matrix.b)
+  })
+  const initialScale = await getScale()
   await controls.locator('.react-flow__controls-zoomin').click()
+  await expect.poll(getScale, { message: 'Zoom in must increase the actual canvas scale' }).toBeGreaterThan(initialScale + 0.01)
+  const zoomedScale = await getScale()
   await controls.locator('.react-flow__controls-zoomout').click()
+  await expect.poll(getScale, { message: 'Zoom out must decrease the actual canvas scale' }).toBeLessThan(zoomedScale - 0.01)
   await page.screenshot({ path: testInfo.outputPath('overview-after-zoom.png'), fullPage: true })
   await switchSection(page, 'Потоки')
   // Viewing flows must not create a full-page pseudo-element that steals pointer events.

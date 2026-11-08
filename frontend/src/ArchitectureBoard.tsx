@@ -1,7 +1,8 @@
-import React, {useEffect, useMemo, useState} from 'react'
+import React, {useEffect, useMemo, useRef, useState} from 'react'
 import './board.css'
 import {DiagramNodeLabel,diagramCardStyle} from './DiagramVisual'
 import {AutoFit} from './WorkspaceUI'
+import {MousePointer2, Monitor, GitBranch, SquareDashed, Maximize2, Save, History, ClipboardCheck} from 'lucide-react'
 import {ReactFlow, ReactFlowProvider, Background, Controls, useNodesState, useReactFlow, MarkerType, Position, type Node, type NodeChange} from '@xyflow/react'
 import {compactComponentLayout,flowCountLabel} from './graphLayout'
 import {ReciprocalEdge} from './ReciprocalEdge'
@@ -27,6 +28,9 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
  const [editingPassport,setEditingPassport]=useState(false)
  const [passportDraft,setPassportDraft]=useState({name:'',description:'',purpose:'',environment:''})
  const [changes,setChanges]=useState<Change[]>([])
+ const [layoutDirty,setLayoutDirty]=useState(false)
+ const [layoutBusy,setLayoutBusy]=useState(false)
+ const [layoutMessage,setLayoutMessage]=useState('')
  const [reason,setReason]=useState('')
  const [preview,setPreview]=useState<Preview|null>(null)
  const [error,setError]=useState('')
@@ -44,6 +48,10 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
  const [interfaceId,setInterfaceId]=useState('')
  const [snapToGrid,setSnapToGrid]=useState(false)
  const [drawing,setDrawing]=useState<{x:number;y:number}|null>(null)
+ const networkStart=useRef<{x:number;y:number}|null>(null)
+ const networkStartPixel=useRef<{x:number;y:number}|null>(null)
+ const [networkPreview,setNetworkPreview]=useState<{x:number;y:number;width:number;height:number}|null>(null)
+ const [reviewOpen,setReviewOpen]=useState(false)
  const [rectangles,setRectangles]=useState<Rect[]>(()=>{
    const relevant = networks.filter(n=>interfaces.some(nic=>nic[fieldForKind(n.kind)]===n.id&&items.some(item=>item.id===nic.item_id)))
    const heights=relevant.map(n=>{
@@ -65,14 +73,14 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
      const members=group?items.filter(v=>interfaces.some(n=>n.item_id===v.id&&n[fieldForKind(group.kind)]===group.id)):[]
      const index=group?members.findIndex(v=>v.id===item.id):i
      const position=savedPositions[item.id]|| (group?{x:group.x+25+(index%2)*265,y:group.y+65+Math.floor(index/2)*175}:positions[item.id]||{x:70+(i%4)*280,y:80+Math.floor(i/4)*175})
-     return {id:item.id,position,sourcePosition:Position.Bottom,targetPosition:Position.Top,data:{label:<DiagramNodeLabel name={item.name} kind={item.kind} subtitle={ownerBySystemId[item.system_id]||ownerName} detail={item.kind+' · '+String(item.details.environment||'Среда не задана')}><small className="componentNodePurpose">{item.description?.trim()||String(item.details.purpose||item.details.role||'Назначение не описано')}</small></DiagramNodeLabel>},style:diagramCardStyle()}
+     return {id:item.id,position,sourcePosition:Position.Bottom,targetPosition:Position.Top,data:{label:<DiagramNodeLabel name={item.name} kind={item.kind} subtitle={ownerBySystemId[item.system_id]||ownerName} detail={item.kind+' · '+String(item.details.environment||'Среда не задана')}><small className="componentNodePurpose">{item.description?.trim()||String(item.details.purpose||item.details.role||'Назначение не описано')}</small></DiagramNodeLabel>},style:diagramCardStyle({zIndex:2})}
    })
  },[items,flows,interfaces,ownerName,ownerBySystemId]) // Keep dragged coordinates in React Flow during the editing session.
  const [nodes,setNodes,onNodesChange]=useNodesState(initialNodes)
  // Keep the editor in sync when the selected system or inventory changes,
  // without resetting coordinates that the user has already dragged.
  useEffect(()=>{
-   const currentIds=new Set(initialNodes.map(node=>node.id))
+   const currentIds=new Set([...initialNodes.map(node=>node.id),...changes.filter(c=>c.action==='create_vm').map(c=>c.id!).filter(Boolean)])
    setNodes(previous=>{
      const retained=previous.filter(node=>currentIds.has(node.id))
      const retainedIds=new Set(retained.map(node=>node.id))
@@ -80,12 +88,12 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
      if(!added.length&&retained.length===previous.length)return previous
      return [...retained,...added]
    })
- },[initialNodes,setNodes])
+ },[initialNodes,changes,setNodes])
  const {screenToFlowPosition,fitView}=useReactFlow()
  const allVMs=useMemo<VM[]>(()=>[...items,...changes.filter(c=>c.action==='create_vm').map(c=>({id:c.id!,name:c.name!,system_id:systemId,kind:'vm',description:'',details:{} as Record<string,unknown>}))],[items,changes,systemId])
  const allNetworks=[...networks,...changes.filter(c=>c.action==='create_network').map(c=>({id:c.id!,name:c.name!,kind:c.kind!}))]
  const visibleRects=rectangles.filter(r=>allNetworks.some(n=>n.id===r.id))
- const backgroundNodes:Node[]=visibleRects.map(r=>({id:'network:'+r.id,type:'default',position:{x:r.x,y:r.y},draggable:false,selectable:false,connectable:false,data:{label:r.name+' · '+r.kind.toUpperCase()},style:{width:r.width,height:r.height,background:'#e7f0fc55',border:'2px solid #7aa6d5',borderRadius:9,zIndex:-1,pointerEvents:'none',textAlign:'left',padding:12,fontSize:13,color:'#285787'}}))
+ const backgroundNodes:Node[]=visibleRects.map(r=>({id:'network:'+r.id,type:'default',position:{x:r.x,y:r.y},width:r.width,height:r.height,measured:{width:r.width,height:r.height},draggable:false,selectable:false,connectable:false,data:{label:r.name+' · '+r.kind.toUpperCase()},style:{width:r.width,height:r.height,background:'#dbeafe77',border:'2px dashed #2563eb',borderRadius:9,zIndex:0,pointerEvents:'none',textAlign:'left',padding:12,fontSize:13,color:'#1e40af'}}))
  const graphNodes=[...backgroundNodes,...nodes]
  // A pair of machines has one readable connection; its technical flows stay separate records.
  const pendingFlows=changes.filter(c=>c.action==='create_flow').map(c=>({id:c.id!,source_id:c.source_id!,target_id:c.target_id!,protocol:c.protocol||'',port:c.port||'',name:c.name||''}))
@@ -103,7 +111,7 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
   }}))
  const inspectedVM=allVMs.find(v=>v.id===inspectedId)
  const openPassport=(id:string)=>{const vm=allVMs.find(v=>v.id===id);if(!vm)return;setInspectedId(id);setEditingPassport(false);setPassportDraft({name:vm.name,description:vm.description||'',purpose:String(vm.details?.purpose||''),environment:String(vm.details?.environment||'')})}
- const stagePassport=()=>{if(!inspectedVM||!passportDraft.name.trim())return;const details_patch:Record<string,string>={purpose:passportDraft.purpose,environment:passportDraft.environment};const previous_details:Record<string,unknown>={purpose:inspectedVM.details?.purpose??null,environment:inspectedVM.details?.environment??null};addChange({action:'update_vm',id:inspectedVM.id,system_id:systemId,name:passportDraft.name.trim(),description:passportDraft.description,previous_name:inspectedVM.name,previous_description:inspectedVM.description||'',details_patch,previous_details});setEditingPassport(false);setInspectedId(null);setFocusDependencies(false)}
+ const stagePassport=()=>{if(!inspectedVM||!passportDraft.name.trim())return;const details_patch:Record<string,string>={purpose:passportDraft.purpose,environment:passportDraft.environment};const previous_details:Record<string,unknown>={purpose:inspectedVM.details?.purpose??null,environment:inspectedVM.details?.environment??null};addChange({action:'update_vm',id:inspectedVM.id,system_id:systemId,name:passportDraft.name.trim(),description:passportDraft.description,previous_name:inspectedVM.name,previous_description:inspectedVM.description||'',details_patch,previous_details});setEditingPassport(false);setInspectedId(null);setFocusDependencies(false);setReviewOpen(true)}
 
  const inspectedFlows=[...flows,...pendingFlows].filter(f=>f.source_id===inspectedId||f.target_id===inspectedId)
  const edges=Array.from(flowGroups.entries()).map(([pair,list])=>{
@@ -120,6 +128,7 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
  const addChange=(c:Change)=>{setChanges(previous=>[...previous,c]);setPreview(null);setError('')}
  const moveNode=(node:Node)=>{
    onPositionChange?.(node)
+   setLayoutDirty(true);setLayoutMessage('')
    const center={x:node.position.x+97,y:node.position.y+30}
    // A zone move affects exactly one chosen NIC; never replace all NIC memberships.
    const target=visibleRects.slice().reverse().find(r=>rectContains(r,center))
@@ -152,7 +161,8 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
    addChange({action:'create_vm',id,system_id:systemId,name:name.trim(),kind:'vm'})
    setNodes(previous=>[...previous,node])
    onPositionChange?.(node)
-   setName('');setTool('move')
+   setLayoutDirty(true);setLayoutMessage('')
+   setName('');setTool('move');setReviewOpen(true)
  }
  const addFlow=()=>{
    if(!from||!to||from===to)return setError('Выберите разные исходный и целевой компоненты.')
@@ -162,11 +172,11 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
    if(direction==='both')addChange({action:'create_flow',id:makeId(),source_id:target,target_id:source,name:allVMs.find(v=>v.id===target)?.name+' → '+allVMs.find(v=>v.id===source)?.name,protocol,port,security})
    setTool('move')
  }
- const addNetwork=(end:{x:number;y:number})=>{
-   if(!drawing||!name.trim()){setError('Сначала задайте имя сети и две точки прямоугольника.');return}
-   const x=Math.min(drawing.x,end.x),y=Math.min(drawing.y,end.y)
-   const width=Math.abs(end.x-drawing.x),height=Math.abs(end.y-drawing.y)
-   if(width<180||height<120){setError('Нарисуйте прямоугольник минимум 180 × 120.');setDrawing(null);return}
+ const addNetwork=(start:{x:number;y:number},end:{x:number;y:number})=>{
+   if(!name.trim()){setError('Укажите название сети справа, затем нарисуйте контейнер.');return}
+   const x=Math.min(start.x,end.x),y=Math.min(start.y,end.y)
+   const width=Math.abs(end.x-start.x),height=Math.abs(end.y-start.y)
+   if(width<140||height<90){setError('Контейнер слишком мал. Протяните прямоугольник не менее 140 × 90.');return}
    const id=makeId()
    const rect:Rect={id,name:name.trim(),kind,x,y,width,height}
    setRectangles(prev=>[...prev,rect])
@@ -187,17 +197,79 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
    setChanges(previous=>[...previous,{action:'create_network',id,name:name.trim(),kind},...assignments])
    setPreview(null)
    setError(ambiguous?('Сеть нарисована. У '+ambiguous+' ВМ несколько интерфейсов – выберите интерфейс и переместите ВМ в зону вручную.'):'Новая сеть и '+assignments.length+' сетевых привязок подготовлены для подтверждения.')
-   setDrawing(null);setName('');setTool('move')
+   setDrawing(null);setName('');setTool('move');setReviewOpen(true)
  }
  const handlePaneClick=(event:React.MouseEvent)=>{
    if(tool==='vm'){
      addVM(screenToFlowPosition({x:event.clientX,y:event.clientY}))
      return
    }
-   if(tool!=='network')return
-   const point=screenToFlowPosition({x:event.clientX,y:event.clientY})
-   if(drawing)addNetwork(point)
-   else {setDrawing(point);setError('')}
+ }
+ const beginNetworkDrag=(event:React.PointerEvent<HTMLDivElement>)=>{
+   if(event.button!==0)return
+   if(!name.trim()){setError('Сначала укажите название сети справа.');return}
+   const rect=event.currentTarget.getBoundingClientRect()
+   networkStartPixel.current={x:event.clientX-rect.left,y:event.clientY-rect.top}
+   networkStart.current=screenToFlowPosition({x:event.clientX,y:event.clientY})
+   setDrawing(networkStart.current)
+   setNetworkPreview({x:event.clientX-rect.left,y:event.clientY-rect.top,width:0,height:0})
+   event.currentTarget.setPointerCapture(event.pointerId)
+   setError('')
+ }
+ const moveNetworkDrag=(event:React.PointerEvent<HTMLDivElement>)=>{
+   if(!networkStart.current||!networkPreview)return
+   const rect=event.currentTarget.getBoundingClientRect()
+   const x=event.clientX-rect.left,y=event.clientY-rect.top
+   // Keep the first corner fixed while drawing, including when moving up and left.
+   const origin=networkStartPixel.current
+   if(origin)setNetworkPreview({x:Math.min(origin.x,x),y:Math.min(origin.y,y),width:Math.abs(x-origin.x),height:Math.abs(y-origin.y)})
+ }
+ const finishNetworkDrag=(event:React.PointerEvent<HTMLDivElement>)=>{
+   const start=networkStart.current
+   networkStart.current=null;networkStartPixel.current=null
+   setNetworkPreview(null);setDrawing(null)
+   if(!start)return
+   addNetwork(start,screenToFlowPosition({x:event.clientX,y:event.clientY}))
+ }
+ const cancelNetworkDrag=()=>{networkStart.current=null;networkStartPixel.current=null;setNetworkPreview(null);setDrawing(null)}
+ // The visual layout is saved independently from technical changes.
+ useEffect(()=>{
+   let active=true
+   setLayoutDirty(false);setLayoutMessage('')
+   void request<{positions:Record<string,{x:number;y:number}>}>('/api/board/layout/'+systemId)
+     .then(result=>{
+       if(!active||!result.positions)return
+       setNodes(previous=>previous.map(node=>{
+         const position=result.positions[node.id]||savedPositions[node.id]
+         return position?{...node,position}:node
+       }))
+     }).catch(()=>{/* Browser positions remain the fallback. */})
+   return ()=>{active=false}
+ },[systemId,request,setNodes])
+
+ const saveLayout=async()=>{
+   if(layoutBusy)return
+   setLayoutBusy(true);setLayoutMessage('');setError('')
+   try{
+     const validIds=new Set(items.map(item=>item.id))
+     const positions=Object.fromEntries(nodes.filter(node=>validIds.has(node.id))
+       .map(node=>[node.id,{x:node.position.x,y:node.position.y}]))
+     await request('/api/board/layout/'+systemId,{method:'PUT',body:JSON.stringify({positions})})
+     const hasStagedVM=changes.some(c=>c.action==='create_vm')
+     setLayoutDirty(hasStagedVM)
+     setLayoutMessage(hasStagedVM
+       ?'Расположение существующих ВМ сохранено. Новые ВМ подтвердите в черновике, затем сохраните их расположение.'
+       :'Расположение схемы сохранено.')
+   }catch(e){setError('Не удалось сохранить расположение: '+String(e))}
+   finally{setLayoutBusy(false)}
+ }
+ const discardDraft=()=>{
+   const stagedVMs=new Set(changes.filter(c=>c.action==='create_vm').map(c=>c.id))
+   const stagedNetworks=new Set(changes.filter(c=>c.action==='create_network').map(c=>c.id))
+   setNodes(previous=>previous.filter(node=>!stagedVMs.has(node.id)))
+   setRectangles(previous=>previous.filter(rect=>!stagedNetworks.has(rect.id)))
+   setChanges([]);setPreview(null);setError('');setReviewOpen(false)
+   setLayoutMessage('Черновик изменений отменён.')
  }
  const openHistory=async()=>{
    setError('')
@@ -217,35 +289,51 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
      await request('/api/board/commit',{method:'POST',body:JSON.stringify({changes,reason})})
      await onCommitted()
      if(showHistory)void openHistory()
-     setChanges([]);setPreview(null);setReason('');setDrawing(null);setError('Изменения сохранены. Запись добавлена в журнал действий.')
+     setChanges([]);setPreview(null);setReason('');setDrawing(null);setReviewOpen(false);setError('Изменения сохранены. Запись добавлена в журнал действий.')
    }catch(e){setPreview(null);setError('Сохранение отклонено: '+String(e)+'. Обновите предварительный просмотр.')}
    finally{setBusy(false)}
  }
  return <section className="boardWorkspace" aria-label="Редактор архитектурной схемы">
    <div className="boardEditorStage">
-        <div className="boardCanvas" data-active-graph="infrastructure-editor"><ReactFlow nodes={displayedNodes} edges={edges} edgeTypes={{reciprocal:ReciprocalEdge,'obstacle-aware':ObstacleAwareEdge}} onNodesChange={(updates:NodeChange[])=>onNodesChange(updates.filter(c=>!('id' in c)||!c.id.startsWith('network:')))} nodesDraggable={tool==='move'} snapToGrid={snapToGrid} snapGrid={[20,20]} nodesConnectable={tool==='flow'} onConnect={connection=>{if(connection.source&&connection.target&&connection.source!==connection.target){setFrom(connection.source);setTo(connection.target);setInspectedId(null);setTool('flow');setError('Заполните параметры нового потока справа и добавьте его в черновик.')}}} onEdgeClick={(_,edge)=>{setInspectedId(null);setFocusDependencies(false);setFrom(edge.source);setTo(edge.target);setTool('flow')}} onNodeClick={(_,node)=>{
+        <div className="boardCanvas" data-active-graph="infrastructure-editor"><ReactFlow nodes={displayedNodes} edges={edges} edgeTypes={{reciprocal:ReciprocalEdge,'obstacle-aware':ObstacleAwareEdge}} onNodesChange={(updates:NodeChange[])=>onNodesChange(updates.filter(c=>!('id' in c)||!c.id.startsWith('network:')||c.type==='dimensions'||c.type==='select'))} nodesDraggable={tool==='move'} snapToGrid={snapToGrid} snapGrid={[20,20]} nodesConnectable={tool==='flow'} onConnect={connection=>{if(connection.source&&connection.target&&connection.source!==connection.target){setFrom(connection.source);setTo(connection.target);setInspectedId(null);setTool('flow');setError('Заполните параметры нового потока справа и добавьте его в черновик.')}}} onEdgeClick={(_,edge)=>{setInspectedId(null);setFocusDependencies(false);setFrom(edge.source);setTo(edge.target);setTool('flow')}} onNodeClick={(_,node)=>{
  if(node.id.startsWith('network:'))return
  if(tool==='flow'){
    setInspectedId(null);setFocusDependencies(false)
    if(!from||to||from===node.id){setFrom(node.id);setTo('')}
    else setTo(node.id)
  }else if(tool==='move'){openPassport(node.id);setFocusDependencies(false)}
-}} onNodeDragStop={(_,node)=>moveNode(node)} onPaneClick={handlePaneClick} minZoom={0.08} fitView fitViewOptions={{padding:0.2,maxZoom:0.9}}><AutoFit layoutKey={tool+':'+Boolean(inspectedVM)+':'+items.length+':'+flows.length+':'+nodes.length} maxFitZoom={0.9}/><Background gap={20}/><Controls showInteractive={false}/></ReactFlow></div>
+}} onNodeDragStop={(_,node)=>moveNode(node)} onPaneClick={handlePaneClick} minZoom={0.08} fitView fitViewOptions={{padding:0.2,maxZoom:0.9}}><AutoFit layoutKey={systemId+':'+items.length+':'+flows.length} maxFitZoom={0.9}/><Background gap={20}/><Controls showInteractive={false}/></ReactFlow>
+     {tool==='network'&&<div className="boardNetworkDrawLayer" role="region" aria-label="Поле рисования контейнера"
+       onPointerDown={beginNetworkDrag} onPointerMove={moveNetworkDrag} onPointerUp={finishNetworkDrag}
+       onPointerCancel={cancelNetworkDrag} onContextMenu={event=>event.preventDefault()}>
+       {networkPreview&&<div className="boardNetworkPreview" style={{left:networkPreview.x,top:networkPreview.y,width:networkPreview.width,height:networkPreview.height}} aria-hidden="true"/>}
+     </div>}
+   </div>
 
         <div className="boardTools" role="toolbar" aria-label="Инструменты архитектуры">
-     {([['move','Курсор / перемещение','↖'],['vm','+ ВМ','▣'],['flow','→ Поток','→'],['network','▭ Сеть / контейнер','▢']] as const).map(([key,title,symbol])=>
-        <button type="button" key={key} title={title} aria-label={title} data-tool={key} aria-pressed={tool===key}
-          onClick={()=>{setTool(key);setInspectedId(null);setFocusDependencies(false);setDrawing(null);setError('')}}><span aria-hidden="true">{symbol}</span></button>)}
+     {([
+       {key:'move',title:'Курсор / перемещение',caption:'Выбрать',icon:MousePointer2,help:'Перетаскивайте блоки и открывайте их паспорта'},
+       {key:'vm',title:'+ ВМ',caption:'Добавить ВМ',icon:Monitor,help:'Укажите имя справа и нажмите на схему'},
+       {key:'flow',title:'→ Поток',caption:'Поток',icon:GitBranch,help:'Выберите источник и получателя'},
+       {key:'network',title:'▭ Сеть / контейнер',caption:'Контейнер',icon:SquareDashed,help:'Введите название справа и протяните прямоугольник'},
+     ] as const).map(({key,title,caption,icon:Icon,help})=>
+        <button type="button" key={key} title={caption+' – '+help} aria-label={title} data-tool={key} aria-pressed={tool===key}
+          onClick={()=>{setTool(key);setInspectedId(null);setFocusDependencies(false);setDrawing(null);setError('');setLayoutMessage('');setReviewOpen(false);cancelNetworkDrag()}}>
+          <Icon size={19} strokeWidth={1.8} aria-hidden="true"/><span className="boardToolCaption" aria-hidden="true">{caption}</span>
+        </button>)}
      <span className="boardToolsSeparator" aria-hidden="true"/>
-     <button type="button" title="Показать всё" aria-label="Показать всё" disabled={!nodes.length} onClick={()=>void fitView({padding:0.25,duration:250,maxZoom:0.9})}><span aria-hidden="true">⛶</span></button>
-     <button type="button" title="История изменений" aria-label="История изменений" onClick={()=>void openHistory()}><span aria-hidden="true">◷</span></button>
-     <span className="boardChangeCount" aria-label={'Черновик: '+changes.length+' изменений'}>{changes.length}<span className="boardCountLabel"> изменений</span></span>
+     <button type="button" title="Вписать всю схему в экран" aria-label="Показать всё" disabled={!nodes.length} onClick={()=>void fitView({padding:0.25,duration:250,maxZoom:0.9})}><Maximize2 size={19} aria-hidden="true"/><span className="boardToolCaption" aria-hidden="true">Вписать</span></button>
+     <button type="button" title={layoutDirty?'Сохранить расположение блоков в хабе':'Расположение сохранено'} aria-label="Сохранить расположение" disabled={!layoutDirty||layoutBusy} onClick={()=>void saveLayout()}><Save size={19} aria-hidden="true"/><span className="boardToolCaption" aria-hidden="true">Сохранить</span>{layoutDirty&&<span className="boardUnsavedDot" aria-hidden="true"/>}</button>
+     <button type="button" title="История изменений" aria-label="История изменений" onClick={()=>void openHistory()}><History size={19} aria-hidden="true"/><span className="boardToolCaption" aria-hidden="true">История</span></button>
+     <button type="button" className="boardChangeCount" title="Проверить и сохранить изменения в реестре" aria-label={'Черновик: '+changes.length+' изменений'} disabled={!changes.length} onClick={()=>{setReviewOpen(true);setTool('move');setInspectedId(null)}}>
+       <ClipboardCheck size={18} aria-hidden="true"/><span className="boardToolCaption" aria-hidden="true">Черновик ({changes.length})</span><span className="boardCountLabel"> изменений</span>
+     </button>
    </div>
-     {(tool!=='move'||inspectedVM||changes.length>0||Boolean(error))&&<aside className="boardDock" role="complementary" aria-label="Свойства и изменения схемы">
-       {tool!=='move'&&<div className="boardPropertiesHeader"><div><small>ИНСТРУМЕНТ</small><h3>{tool==='vm'?'Виртуальная машина':tool==='flow'?'Поток данных':'Сеть / контейнер'}</h3></div><button type="button" aria-label="Закрыть настройки инструмента" onClick={()=>{setTool('move');setDrawing(null)}}>✕</button></div>}
+     {(tool!=='move'||inspectedVM||reviewOpen)&&<aside className="boardDock" role="complementary" aria-label="Свойства и изменения схемы">
+       {tool!=='move'&&<div className="boardPropertiesHeader"><div><small>ИНСТРУМЕНТ</small><h3>{tool==='vm'?'Виртуальная машина':tool==='flow'?'Поток данных':'Сеть / контейнер'}</h3></div><button type="button" aria-label="Закрыть настройки инструмента" onClick={()=>{setTool('move');setDrawing(null);setError('');setLayoutMessage('');setReviewOpen(false);cancelNetworkDrag()}}>✕</button></div>}
           {tool==='vm'&&<div className="boardToolFields"><p>Введите название и нажмите на холст для размещения ВМ.</p><label>Имя ВМ <input value={name} onChange={e=>setName(e.target.value)} placeholder="Новая ВМ"/></label><button onClick={()=>addVM()}>Разместить на схеме</button></div>}
-   {tool==='network'&&<div className="boardToolFields"><label>Название сети <input value={name} onChange={e=>setName(e.target.value)}/></label><label>Тип <select value={kind} onChange={e=>setKind(e.target.value as typeof kind)}><option value="zone">Зона</option><option value="vlan">VLAN</option><option value="vrf">VRF</option></select></label><span>{drawing?'Нажмите на противоположный угол прямоугольника':'Щёлкните на схеме – первый угол, затем второй угол'}</span></div>}
-   {tool==='flow'&&<div className="boardToolFields"><p>Протяните связь между ВМ или выберите по очереди источник и получателя на холсте.</p><label>Откуда <select aria-label="Откуда" value={from} onChange={e=>setFrom(e.target.value)}><option value="">Выберите</option>{allVMs.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}</select></label><label>Куда <select aria-label="Куда" value={to} onChange={e=>setTo(e.target.value)}><option value="">Выберите</option>{allVMs.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}</select></label><label>Направление <select value={direction} onChange={e=>setDirection(e.target.value as typeof direction)}><option value="forward">→</option><option value="reverse">←</option><option value="both">↔ (два потока)</option></select></label><label>Протокол <input value={protocol} onChange={e=>setProtocol(e.target.value)}/></label><label>Порт <input value={port} onChange={e=>setPort(e.target.value)}/></label><label>Защита <input value={security} onChange={e=>setSecurity(e.target.value)}/></label><button onClick={addFlow}>Добавить поток</button></div>}
+   {tool==='network'&&<div className="boardToolFields"><label>Название сети <input value={name} onChange={e=>setName(e.target.value)}/></label><label>Тип <select value={kind} onChange={e=>setKind(e.target.value as typeof kind)}><option value="zone">Зона</option><option value="vlan">VLAN</option><option value="vrf">VRF</option></select></label><p role="status">{drawing?'Продолжайте тянуть – контур контейнера виден на схеме':'Нажмите мышью на свободном месте схемы и протяните прямоугольник нужного размера. Отпустите кнопку – контейнер появится в черновике.'}</p></div>}
+   {tool==='flow'&&<div className="boardToolFields"><p>Протяните связь между ВМ или выберите по очереди источник и получателя на холсте.</p><label>Откуда <select aria-label="Откуда" value={from} onChange={e=>setFrom(e.target.value)}><option value="">Выберите</option>{allVMs.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}</select></label><label>Куда <select aria-label="Куда" value={to} onChange={e=>setTo(e.target.value)}><option value="">Выберите</option>{allVMs.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}</select></label><label>Направление <select value={direction} onChange={e=>setDirection(e.target.value as typeof direction)}><option value="forward">→</option><option value="reverse">←</option><option value="both">↔ (два потока)</option></select></label><label>Протокол <input value={protocol} onChange={e=>setProtocol(e.target.value)}/></label><label>Порт <input value={port} onChange={e=>setPort(e.target.value)}/></label><label>Защита <input value={security} onChange={e=>setSecurity(e.target.value)}/></label><button onClick={()=>{addFlow();setReviewOpen(true)}}>Добавить поток</button></div>}
    {(tool==='network'||(tool==='move'&&inspectedVM))&&<div className="boardToolFields"><label>Интерфейс для перемещения в сеть <select value={interfaceId} onChange={e=>setInterfaceId(e.target.value)}><option value="">Автоматически, если один</option>{interfaces.filter(n=>items.some(i=>i.id===n.item_id)).map(n=><option key={n.id} value={n.id}>{items.find(i=>i.id===n.item_id)?.name} · {n.name}</option>)}</select></label><span>Перетащите ВМ в прямоугольник сети – привязка попадёт в черновик. Перемещение на поле сохраняется только как расположение схемы.</span></div>}
 
        {tool==='move'&&inspectedVM&&<aside className="boardInspector" role="dialog" aria-modal="false" aria-label={'Паспорт компонента '+inspectedVM.name}>
@@ -262,9 +350,9 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
      </div>
      <div className="boardInspectorActions"><button type="button" onClick={()=>setEditingPassport(v=>!v)}>{editingPassport?"Скрыть редактирование":"Редактировать паспорт"}</button><label><input type="checkbox" checked={focusDependencies} onChange={e=>setFocusDependencies(e.target.checked)}/> Выделить зависимости</label><button type="button" onClick={()=>{setFrom(inspectedVM.id);setTo('');setTool('flow');setInspectedId(null);setFocusDependencies(false)}}>Добавить поток</button><button type="button" onClick={()=>{setInspectedId(null);setFocusDependencies(false)}}>Закрыть</button></div>
    </aside>}
-       {changes.length>0&&<div className="boardReview"><label>Причина изменений <input value={reason} onChange={e=>{setReason(e.target.value);setPreview(null)}} placeholder="Например: актуализация схемы ИС после изменения сети"/></label><button disabled={!changes.length||busy} onClick={submitPreview}>Проверить изменения ({changes.length})</button><button disabled={!changes.length||busy} onClick={()=>{setChanges([]);setPreview(null);setError('Черновик операций очищен. Новые нарисованные объекты исчезнут при повторном открытии редактора.')}}>Отменить черновик</button></div>}
-       {!!error&&<p role="status" className="boardStatus">{error}</p>}
+       {reviewOpen&&changes.length>0&&<div className="boardReview"><div className="boardReviewHeader"><strong>Черновик: {changes.length} изменений</strong><button type="button" onClick={()=>setReviewOpen(false)} aria-label="Закрыть черновик">✕</button></div><label>Причина изменений <input value={reason} onChange={e=>{setReason(e.target.value);setPreview(null)}} placeholder="Например: актуализация схемы ИС после изменения сети"/></label><button disabled={!changes.length||busy} onClick={submitPreview}>Проверить изменения ({changes.length})</button><button disabled={!changes.length||busy} onClick={discardDraft}>Отменить черновик</button></div>}
      </aside>}
+     {(Boolean(error)||Boolean(layoutMessage))&&<div className="boardCanvasToast" role="status">{error||layoutMessage}<button type="button" aria-label="Закрыть сообщение" onClick={()=>{setError('');setLayoutMessage('')}}>✕</button></div>}
    </div>
    {showHistory&&<div className="boardConfirm" role="dialog" aria-modal="true" aria-label="Журнал изменений архитектуры"><div className="boardConfirmInner"><h3>Журнал изменений схемы</h3><p>Последние подтверждённые пакеты операций.</p><ol>{history.map(entry=><li key={entry.id}><strong>{entry.timestamp}</strong> – {entry.reason} · {entry.changes.length} операций<details><summary>Посмотреть состав</summary><pre>{JSON.stringify(entry.changes,null,2)}</pre></details></li>)}</ol>{!history.length&&<p>Записей пока нет.</p>}<button type="button" onClick={()=>setShowHistory(false)}>Закрыть</button></div></div>}
    {preview&&<div className="boardConfirm" role="dialog" aria-modal="true" aria-label="Подтверждение изменений архитектуры"><div className="boardConfirmInner"><h3>Подтверждение изменений</h3><p>Причина: {reason}. Будет сохранено {preview.count} операций. Для существующих интерфейсов сверяется прежняя сеть.</p><ol>{preview.changes.map((c,i)=><li key={i}><strong>{c.action}</strong> · {c.id}<pre>{JSON.stringify({before:c.before,after:c.after},null,2)}</pre></li>)}</ol><div><button disabled={busy} onClick={()=>setPreview(null)}>Вернуться к схеме</button><button disabled={busy} className="primary" onClick={commit}>Подтвердить и записать в журнал</button></div></div></div>}

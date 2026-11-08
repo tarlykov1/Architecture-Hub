@@ -280,13 +280,15 @@ function App() {
   useEffect(()=>{
     if(!inspectorOpen)return
     const onPointerDown=(event:PointerEvent)=>{
+      // Modal passport editing must not dismiss the underlying IS drawer.
+      if(passportEditId)return
       const target=event.target
-      if(!(target instanceof Element)||target.closest('.details, .homeMapSearchMatches button, .react-flow__node, .systemNameLink, .knowledgeWorkspaceList button'))return
+      if(!(target instanceof Element)||target.closest('.details, .editorBackdrop, .homeMapSearchMatches button, .react-flow__node, .systemNameLink, .knowledgeWorkspaceList button'))return
       setInspectorOpen(false)
       setInspectorExpanded(false)
     }
     const onKeyDown=(event:KeyboardEvent)=>{
-      if(event.key!=='Escape')return
+      if(event.key!=='Escape'||passportEditId)return
       setInspectorOpen(false)
       setInspectorExpanded(false)
     }
@@ -296,7 +298,7 @@ function App() {
       document.removeEventListener('pointerdown',onPointerDown,true)
       document.removeEventListener('keydown',onKeyDown)
     }
-  },[inspectorOpen])
+  },[inspectorOpen,passportEditId])
 
   const [editorOpen,setEditorOpen] = useState(false)
   const [registryOpen,setRegistryOpen] = useState<'network'|'flow'|null>(null)
@@ -961,7 +963,8 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
     setViewsMenuOpen(false)
     document.querySelectorAll<HTMLDetailsElement>('details.layerActions[open], details.mobileSectionMenu[open], details.registryColumnPicker[open]').forEach(menu=>{menu.open=false})
   },[modalOpen,authOpen,kisOpen,passportEditId,componentInspectId,createObjectOpen,registryOpen])
-  return <div className={`shell shellNoCatalog${inspectorOpen&&!inspectorExpanded?" shellInspectorOpen":""}`}>
+  const diagramEditing=(layer==='infrastructure'&&componentView==='diagram'&&diagramEditMode)||(layer==='flows'&&flowView==='diagram'&&flowEditMode)
+  return <div className={`shell shellNoCatalog${inspectorOpen&&!inspectorExpanded?" shellInspectorOpen":""}${diagramEditing?" shellDiagramEditing":""}`}>
     <header className="globalHeader" aria-label="Главная панель Architecture Hub">
       <div className="globalBrand"><span className="globalBrandMark">◆</span><strong>Architecture Hub</strong></div>
       <nav className="layerTabs" aria-label="Разделы архитектуры">
@@ -1010,7 +1013,7 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
       {notice && <div className="notice" role="status">{notice}<button onClick={()=>setNotice('')}>×</button></div>}
       {error && <div className="error" role="alert">{error}<button onClick={() => setError('')}>×</button></div>}
 
-      {['business','systems','infrastructure','flows'].includes(layer)&&workspaceFilters}
+      {['business','systems','infrastructure','flows'].includes(layer)&&!diagramEditing&&workspaceFilters}
       {layer==='knowledge'?<section className="knowledgeWorkspace" aria-label="База знаний Wiki.js">
         <div className="knowledgeWorkspaceHead"><div><h2>База знаний · Wiki.js</h2><p>Документация информационных систем и связи со статьями</p></div>{wikiPublicUrl&&<a href={wikiPublicUrl} target="_blank" rel="noopener noreferrer" className="knowledgeOpenLink">Открыть Wiki.js ↗</a>}</div>
         {wikiStatus==='connected'?<div className="knowledgeWorkspaceStatus" role="status"><strong>Интеграция подключена</strong><p>Выберите информационную систему, чтобы искать статьи и привязывать документацию к её паспорту.</p></div>:<div className="knowledgeWorkspaceStatus" role="status"><strong>{wikiStatus==='checking'?'Проверяем подключение…':wikiStatus==='unconfigured'?'Wiki.js ещё не подключена к Architecture Hub':'Подключение Wiki.js не удалось проверить'}</strong><p>{wikiStatus==='unconfigured'?'Для поиска и привязки статей настройте WIKI_API_TOKEN и WIKI_PUBLIC_URL в окружении backend. Для прямой ссылки также можно задать VITE_WIKI_URL при сборке frontend.':wikiStatus==='unavailable'?'Проверьте авторизацию и доступность /api/knowledge/status.':'Настройка и состояние Wiki.js проверяются через backend.'}</p></div>}

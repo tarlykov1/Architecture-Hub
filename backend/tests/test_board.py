@@ -148,3 +148,43 @@ def test_reviewed_vm_passport_update_is_audited_and_rejects_stale_values():
         assert any(x["id"] == commit.json()["audit_id"] for x in client.get("/api/board/audit", headers=ADMIN).json())
         assert client.post("/api/board/commit", headers=ADMIN, json=batch).status_code == 409
         assert client.post("/api/board/preview", headers=VIEWER, json=batch).status_code == 403
+
+
+def test_board_layout_save_roundtrip_and_validation():
+    with TestClient(app) as client:
+        system_id, vm_id = create_system_and_vm(client)
+        before = client.get("/api/board/layout/" + system_id, headers=ADMIN)
+        assert before.status_code == 200, before.text
+        assert before.json()["positions"] == {}
+
+        payload = {"positions": {vm_id: {"x": 450.5, "y": -120}}}
+        updated = client.put("/api/board/layout/" + system_id, headers=ADMIN, json=payload)
+        assert updated.status_code == 200, updated.text
+        after = client.get("/api/board/layout/" + system_id, headers=ADMIN)
+        assert after.status_code == 200
+        assert after.json()["positions"] == payload["positions"]
+        # Layout is presentation only: the inventory remains unchanged.
+        listed = client.get("/api/infra", headers=ADMIN).json()
+        assert any(item["id"] == vm_id for item in listed)
+
+        bad = client.put("/api/board/layout/" + system_id, headers=ADMIN,
+                         json={"positions": {str(uuid4()): {"x": 5, "y": 15}}})
+        assert bad.status_code == 422
+        assert client.get("/api/board/layout/" + system_id, headers=ADMIN).json()["positions"] == payload["positions"]
+
+        invalid = client.put("/api/board/layout/" + system_id, headers=ADMIN,
+                             json={"positions": {vm_id: {"x": "NaN", "y": 0}}})
+        assert invalid.status_code == 422
+        viewer = client.put("/api/board/layout/" + system_id, headers=VIEWER, json=payload)
+        assert viewer.status_code == 403
+
+
+def test_board_layout_can_store_connected_external_components():
+    with TestClient(app) as client:
+        system_id, vm_id = create_system_and_vm(client)
+        _, other_vm = create_system_and_vm(client)
+        locations = {vm_id: {"x": 10, "y": 20}, other_vm: {"x": 280, "y": 20}}
+        response = client.put("/api/board/layout/" + system_id, headers=ADMIN,
+                              json={"positions": locations})
+        assert response.status_code == 200, response.text
+        assert response.json()["positions"] == locations

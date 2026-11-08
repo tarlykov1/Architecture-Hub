@@ -1,5 +1,15 @@
 import { test, expect } from '@playwright/test'
 
+// Authenticate live tests in session storage before the app's first script runs.
+// The token is read from GitHub Actions secrets and must never be logged or committed.
+test.beforeEach(async ({ page }) => {
+  const token = process.env.E2E_AUTH_TOKEN?.trim()
+  if (!token) return // Public demo smoke tests still work without configured secrets.
+  await page.addInitScript((value: string) => {
+    window.sessionStorage.setItem('architecture-hub:access-token:session', value)
+  }, token)
+})
+
 test('test server: public demo navigation, viewport and build revision', async ({ page }, testInfo) => {
   const errors: string[] = []
   page.on('pageerror', error => errors.push(error.message))

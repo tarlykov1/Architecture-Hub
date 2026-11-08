@@ -7,7 +7,7 @@ export default defineConfig({
   reporter: [['list'], ['html', { outputFolder: 'live-qa-report', open: 'never' }]],
   outputDir: 'live-qa-results',
   use: {
-    baseURL: 'https://test.web-tie.ru',
+    baseURL: process.env.E2E_BASE_URL || 'https://test.web-tie.ru',
     browserName: 'chromium',
     headless: true,
     trace: 'retain-on-failure',

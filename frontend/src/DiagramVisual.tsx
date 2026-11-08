@@ -21,7 +21,6 @@ export const diagramCardStyle = (overrides:CSSProperties={}):CSSProperties=>({
   background:'#fff',
   border:'1px solid #94a3b8',
   borderRadius:12,
-  boxShadow:'0 5px 16px #152b4312',
   textAlign:'left',
   ...overrides,
 })

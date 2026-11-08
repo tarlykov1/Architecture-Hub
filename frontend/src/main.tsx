@@ -280,13 +280,15 @@ function App() {
   useEffect(()=>{
     if(!inspectorOpen)return
     const onPointerDown=(event:PointerEvent)=>{
+      // Modal passport editing must not dismiss the underlying IS drawer.
+      if(passportEditId)return
       const target=event.target
-      if(!(target instanceof Element)||target.closest('.details, .homeMapSearchMatches button, .react-flow__node, .systemNameLink, .knowledgeWorkspaceList button'))return
+      if(!(target instanceof Element)||target.closest('.details, .editorBackdrop, .homeMapSearchMatches button, .react-flow__node, .systemNameLink, .knowledgeWorkspaceList button'))return
       setInspectorOpen(false)
       setInspectorExpanded(false)
     }
     const onKeyDown=(event:KeyboardEvent)=>{
-      if(event.key!=='Escape')return
+      if(event.key!=='Escape'||passportEditId)return
       setInspectorOpen(false)
       setInspectorExpanded(false)
     }
@@ -296,7 +298,7 @@ function App() {
       document.removeEventListener('pointerdown',onPointerDown,true)
       document.removeEventListener('keydown',onKeyDown)
     }
-  },[inspectorOpen])
+  },[inspectorOpen,passportEditId])
 
   const [editorOpen,setEditorOpen] = useState(false)
   const [registryOpen,setRegistryOpen] = useState<'network'|'flow'|null>(null)

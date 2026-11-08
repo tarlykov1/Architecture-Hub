@@ -93,7 +93,7 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
  const allVMs=useMemo<VM[]>(()=>[...items,...changes.filter(c=>c.action==='create_vm').map(c=>({id:c.id!,name:c.name!,system_id:systemId,kind:'vm',description:'',details:{} as Record<string,unknown>}))],[items,changes,systemId])
  const allNetworks=[...networks,...changes.filter(c=>c.action==='create_network').map(c=>({id:c.id!,name:c.name!,kind:c.kind!}))]
  const visibleRects=rectangles.filter(r=>allNetworks.some(n=>n.id===r.id))
- const backgroundNodes:Node[]=visibleRects.map(r=>({id:'network:'+r.id,type:'default',position:{x:r.x,y:r.y},draggable:false,selectable:false,connectable:false,data:{label:r.name+' · '+r.kind.toUpperCase()},style:{width:r.width,height:r.height,background:'#dbeafe77',border:'2px dashed #2563eb',borderRadius:9,zIndex:0,pointerEvents:'none',textAlign:'left',padding:12,fontSize:13,color:'#1e40af'}}))
+ const backgroundNodes:Node[]=visibleRects.map(r=>({id:'network:'+r.id,type:'default',position:{x:r.x,y:r.y},width:r.width,height:r.height,measured:{width:r.width,height:r.height},draggable:false,selectable:false,connectable:false,data:{label:r.name+' · '+r.kind.toUpperCase()},style:{width:r.width,height:r.height,background:'#dbeafe77',border:'2px dashed #2563eb',borderRadius:9,zIndex:0,pointerEvents:'none',textAlign:'left',padding:12,fontSize:13,color:'#1e40af'}}))
  const graphNodes=[...backgroundNodes,...nodes]
  // A pair of machines has one readable connection; its technical flows stay separate records.
  const pendingFlows=changes.filter(c=>c.action==='create_flow').map(c=>({id:c.id!,source_id:c.source_id!,target_id:c.target_id!,protocol:c.protocol||'',port:c.port||'',name:c.name||''}))

@@ -64,7 +64,7 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
      const members=group?items.filter(v=>interfaces.some(n=>n.item_id===v.id&&n[fieldForKind(group.kind)]===group.id)):[]
      const index=group?members.findIndex(v=>v.id===item.id):i
      const position=savedPositions[item.id]|| (group?{x:group.x+25+(index%2)*265,y:group.y+65+Math.floor(index/2)*175}:positions[item.id]||{x:70+(i%4)*280,y:80+Math.floor(i/4)*175})
-     return {id:item.id,position,sourcePosition:Position.Bottom,targetPosition:Position.Top,data:{label:<DiagramNodeLabel name={item.name} kind={item.kind} subtitle={ownerBySystemId[item.system_id]||ownerName} detail={item.kind+' · '+String(item.details.environment||'Среда не задана')}/>},style:diagramCardStyle()}
+     return {id:item.id,position,sourcePosition:Position.Bottom,targetPosition:Position.Top,data:{label:<DiagramNodeLabel name={item.name} kind={item.kind} subtitle={ownerBySystemId[item.system_id]||ownerName} detail={item.kind+' · '+String(item.details.environment||'Среда не задана')}><small className="componentNodePurpose">{item.description?.trim()||String(item.details.purpose||item.details.role||'Назначение не описано')}</small></DiagramNodeLabel>},style:diagramCardStyle()}
    })
  },[items,flows,interfaces,ownerName,ownerBySystemId]) // Keep dragged coordinates in React Flow during the editing session.
  const [nodes,setNodes,onNodesChange]=useNodesState(initialNodes)
@@ -212,7 +212,7 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
  }
  return <section className="boardWorkspace" aria-label="Редактор архитектурной схемы">
    <div className="boardTools" role="toolbar" aria-label="Инструменты архитектуры"><span className="boardToolsTitle">Инструменты схемы</span>
-     {([['move','Курсор / перемещение'],['vm','+ ВМ'],['flow','→ Связь / поток'],['network','▭ Сеть / контейнер']] as const).map(([key,title])=><button key={key} aria-pressed={tool===key} onClick={()=>{setTool(key);setDrawing(null);setError('')}}>{title}</button>)}
+     {([['move','Курсор / перемещение'],['vm','+ ВМ'],['flow','→ Поток'],['network','▭ Сеть / контейнер']] as const).map(([key,title])=><button key={key} aria-pressed={tool===key} onClick={()=>{setTool(key);setDrawing(null);setError('')}}>{title}</button>)}
      <button disabled={!nodes.length} onClick={()=>void fitView({padding:0.18,duration:250,maxZoom:0.9})}>Показать всё</button>
      <strong>{changes.length} изменений</strong>
      <button type="button" onClick={()=>void openHistory()}>История изменений</button>

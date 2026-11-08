@@ -16,26 +16,46 @@ def sanitize(value):
     value = re.sub(r"https?://[^\s)]+", "[URL]", value)
     return value[:1000]
 
-def failures_from(suite):
-    found = []
+def iter_failed_results(suite):
+    """Support the real Playwright JSON reporter structure: suites -> specs -> tests -> results."""
+    for spec in suite.get("specs", []):
+        for test in spec.get("tests", []):
+            for result in test.get("results", []):
+                if result.get("status") in ("failed", "timedOut", "interrupted"):
+                    yield spec.get("title", ""), test.get("projectName", ""), result
+    # Retain support for older synthetic fixtures.
     for test in suite.get("tests", []):
         for result in test.get("results", []):
             if result.get("status") in ("failed", "timedOut", "interrupted"):
-                found.append({"test": sanitize(suite.get("title", "")),
-                              "error": sanitize((result.get("error") or {}).get("message", "Failed"))})
+                yield suite.get("title", ""), test.get("projectName", ""), result
     for child in suite.get("suites", []):
-        found.extend(failures_from(child))
-    return found
+        yield from iter_failed_results(child)
 
 
-def failed_results(suite):
-    for case in suite.get("tests", []):
-        for result in case.get("results", []):
-            if result.get("status") in ("failed", "timedOut", "interrupted"):
-                yield result
-    for child in suite.get("suites", []):
-        yield from failed_results(child)
+def classify_failure(result):
+    """Use only allowlisted failure categories; never send page content or raw errors to AI."""
+    message = str((result.get("error") or {}).get("message") or "").lower()
+    if "strict mode violation" in message:
+        return "ambiguous locator"
+    if "intercepts pointer events" in message or "subtree intercepts" in message:
+        return "pointer events intercepted"
+    if "net::err_" in message or "connection refused" in message:
+        return "network error"
+    if "browser has been closed" in message:
+        return "browser unexpectedly closed"
+    if result.get("status") == "timedOut" or "timeout" in message or "timed out" in message:
+        return "timeout"
+    if "expect(" in message or "assertionerror" in message or "expected:" in message:
+        return "assertion"
+    return "unclassified test failure"
 
+
+def failures_from(suite):
+    return [
+        {"test": sanitize(title)[:160], "project": sanitize(project)[:40],
+         "category": classify_failure(result)}
+        for title, project, result in iter_failed_results(suite)
+    ]
 
 def visual_evidence(report, root, allow_images=False):
     """Inspect bounded local metadata only. Raw traces and network data stay in CI."""
@@ -44,7 +64,7 @@ def visual_evidence(report, root, allow_images=False):
     screenshots = []
     trace_summary = []
     for suite in report.get("suites", []):
-        for result in failed_results(suite):
+        for _title, _project, result in iter_failed_results(suite):
             for attachment in result.get("attachments", []):
                 rel = attachment.get("path", "")
                 if not rel:

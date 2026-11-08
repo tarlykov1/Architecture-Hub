@@ -33,7 +33,6 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
  const [busy,setBusy]=useState(false)
  const [history,setHistory]=useState<Array<{id:string;timestamp:string;reason:string;changes:Preview['changes']}>>([])
  const [showHistory,setShowHistory]=useState(false)
- const [showReview,setShowReview]=useState(false)
  const [name,setName]=useState('')
  const [kind,setKind]=useState<'zone'|'vlan'|'vrf'>('zone')
  const [from,setFrom]=useState('')
@@ -98,8 +97,8 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
  }
  const relatedIds=new Set(inspectedId?[inspectedId,...[...flows,...pendingFlows].filter(f=>f.source_id===inspectedId||f.target_id===inspectedId).flatMap(f=>[f.source_id,f.target_id])]:[])
  const displayedNodes=graphNodes.map(n=>({...n,style:{...n.style,
-    border:tool==='flow'&&(n.id===from||n.id===to)?'2px solid #2563eb':n.style?.border,
-    background:tool==='flow'&&(n.id===from||n.id===to)?'#eff6ff':n.style?.background,
+    border:((tool==='flow'&&(n.id===from||n.id===to))||(tool==='move'&&n.id===inspectedId))?'2px solid #2563eb':n.style?.border,
+    background:((tool==='flow'&&(n.id===from||n.id===to))||(tool==='move'&&n.id===inspectedId))?'#eff6ff':n.style?.background,
     opacity:focusDependencies&&inspectedId&&!n.id.startsWith('network:')&&!relatedIds.has(n.id)?0.22:1
   }}))
  const inspectedVM=allVMs.find(v=>v.id===inspectedId)
@@ -242,14 +241,14 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
      <button type="button" title="История изменений" aria-label="История изменений" onClick={()=>void openHistory()}><span aria-hidden="true">◷</span></button>
      <span className="boardChangeCount" aria-label={'Черновик: '+changes.length+' изменений'}>{changes.length}</span>
    </div>
-     {(tool!=='move'||inspectedVM||changes.length>0||showReview)&&<aside className="boardDock" role="complementary" aria-label="Свойства и изменения схемы">
+     {(tool!=='move'||inspectedVM||changes.length>0||Boolean(error))&&<aside className="boardDock" role="complementary" aria-label="Свойства и изменения схемы">
        {tool!=='move'&&<div className="boardPropertiesHeader"><div><small>ИНСТРУМЕНТ</small><h3>{tool==='vm'?'Виртуальная машина':tool==='flow'?'Поток данных':'Сеть / контейнер'}</h3></div><button type="button" aria-label="Закрыть настройки инструмента" onClick={()=>{setTool('move');setDrawing(null)}}>✕</button></div>}
           {tool==='vm'&&<div className="boardToolFields"><p>Введите название и нажмите на холст для размещения ВМ.</p><label>Имя ВМ <input value={name} onChange={e=>setName(e.target.value)} placeholder="Новая ВМ"/></label><button onClick={()=>addVM()}>Разместить на схеме</button></div>}
    {tool==='network'&&<div className="boardToolFields"><label>Название сети <input value={name} onChange={e=>setName(e.target.value)}/></label><label>Тип <select value={kind} onChange={e=>setKind(e.target.value as typeof kind)}><option value="zone">Зона</option><option value="vlan">VLAN</option><option value="vrf">VRF</option></select></label><span>{drawing?'Нажмите на противоположный угол прямоугольника':'Щёлкните на схеме – первый угол, затем второй угол'}</span></div>}
    {tool==='flow'&&<div className="boardToolFields"><p>Протяните связь между ВМ или выберите по очереди источник и получателя на холсте.</p><label>Откуда <select value={from} onChange={e=>setFrom(e.target.value)}><option value="">Выберите</option>{allVMs.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}</select></label><label>Куда <select value={to} onChange={e=>setTo(e.target.value)}><option value="">Выберите</option>{allVMs.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}</select></label><label>Направление <select value={direction} onChange={e=>setDirection(e.target.value as typeof direction)}><option value="forward">→</option><option value="reverse">←</option><option value="both">↔ (два потока)</option></select></label><label>Протокол <input value={protocol} onChange={e=>setProtocol(e.target.value)}/></label><label>Порт <input value={port} onChange={e=>setPort(e.target.value)}/></label><label>Защита <input value={security} onChange={e=>setSecurity(e.target.value)}/></label><button onClick={addFlow}>Добавить поток</button></div>}
    {(tool==='network'||(tool==='move'&&inspectedVM))&&<div className="boardToolFields"><label>Интерфейс для перемещения в сеть <select value={interfaceId} onChange={e=>setInterfaceId(e.target.value)}><option value="">Автоматически, если один</option>{interfaces.filter(n=>items.some(i=>i.id===n.item_id)).map(n=><option key={n.id} value={n.id}>{items.find(i=>i.id===n.item_id)?.name} · {n.name}</option>)}</select></label><span>Перетащите ВМ в прямоугольник сети – привязка попадёт в черновик. Перемещение на поле сохраняется только как расположение схемы.</span></div>}
 
-       {tool==='move'&&{inspectedVM&&<aside className="boardInspector" role="dialog" aria-modal="false" aria-label={'Паспорт компонента '+inspectedVM.name}>
+       {tool==='move'&&inspectedVM&&<aside className="boardInspector" role="dialog" aria-modal="false" aria-label={'Паспорт компонента '+inspectedVM.name}>
      <div className="boardInspectorHeader"><div><small>Паспорт компонента</small><h3>{inspectedVM.name}</h3></div><button type="button" aria-label="Закрыть паспорт" onClick={()=>{setInspectedId(null);setFocusDependencies(false)}}>✕</button></div>
      <div className="boardInspectorBody">
        {editingPassport&&<div className="boardPassportEdit"><label>Название<input aria-label="Название компонента" value={passportDraft.name} onChange={e=>setPassportDraft(p=>({...p,name:e.target.value}))}/></label><label>Описание<textarea aria-label="Описание компонента" value={passportDraft.description} onChange={e=>setPassportDraft(p=>({...p,description:e.target.value}))}/></label><label>Назначение<input aria-label="Назначение компонента" value={passportDraft.purpose} onChange={e=>setPassportDraft(p=>({...p,purpose:e.target.value}))}/></label><label>Среда<input aria-label="Среда компонента" value={passportDraft.environment} onChange={e=>setPassportDraft(p=>({...p,environment:e.target.value}))}/></label><div><button type="button" disabled={!passportDraft.name.trim()} onClick={stagePassport}>Добавить в черновик</button><button type="button" onClick={()=>setEditingPassport(false)}>Отмена</button></div></div>}
@@ -262,8 +261,8 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
        {!inspectedFlows.length&&<p>Связанных потоков нет.</p>}
      </div>
      <div className="boardInspectorActions"><button type="button" onClick={()=>setEditingPassport(v=>!v)}>{editingPassport?"Скрыть редактирование":"Редактировать паспорт"}</button><label><input type="checkbox" checked={focusDependencies} onChange={e=>setFocusDependencies(e.target.checked)}/> Выделить зависимости</label><button type="button" onClick={()=>{setFrom(inspectedVM.id);setTo('');setTool('flow');setInspectedId(null);setFocusDependencies(false)}}>Добавить поток</button><button type="button" onClick={()=>{setInspectedId(null);setFocusDependencies(false)}}>Закрыть</button></div>
-   </aside>}}
-       {(changes.length>0||showReview)&&<div className="boardReview"><label>Причина изменений <input value={reason} onChange={e=>{setReason(e.target.value);setPreview(null)}} placeholder="Например: актуализация схемы ИС после изменения сети"/></label><button disabled={!changes.length||busy} onClick={submitPreview}>Проверить изменения ({changes.length})</button><button disabled={!changes.length||busy} onClick={()=>{setChanges([]);setPreview(null);setError('Черновик операций очищен. Новые нарисованные объекты исчезнут при повторном открытии редактора.')}}>Отменить черновик</button></div>}
+   </aside>}
+       {changes.length>0&&<div className="boardReview"><label>Причина изменений <input value={reason} onChange={e=>{setReason(e.target.value);setPreview(null)}} placeholder="Например: актуализация схемы ИС после изменения сети"/></label><button disabled={!changes.length||busy} onClick={submitPreview}>Проверить изменения ({changes.length})</button><button disabled={!changes.length||busy} onClick={()=>{setChanges([]);setPreview(null);setError('Черновик операций очищен. Новые нарисованные объекты исчезнут при повторном открытии редактора.')}}>Отменить черновик</button></div>}
        {!!error&&<p role="status" className="boardStatus">{error}</p>}
      </aside>}
    </div>

@@ -1,7 +1,8 @@
-import React, {useEffect, useMemo, useState} from 'react'
+import React, {useEffect, useMemo, useRef, useState} from 'react'
 import './board.css'
 import {DiagramNodeLabel,diagramCardStyle} from './DiagramVisual'
 import {AutoFit} from './WorkspaceUI'
+import {MousePointer2, Monitor, GitBranch, SquareDashed, Maximize2, Save, History, ClipboardCheck} from 'lucide-react'
 import {ReactFlow, ReactFlowProvider, Background, Controls, useNodesState, useReactFlow, MarkerType, Position, type Node, type NodeChange} from '@xyflow/react'
 import {compactComponentLayout,flowCountLabel} from './graphLayout'
 import {ReciprocalEdge} from './ReciprocalEdge'
@@ -47,6 +48,10 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
  const [interfaceId,setInterfaceId]=useState('')
  const [snapToGrid,setSnapToGrid]=useState(false)
  const [drawing,setDrawing]=useState<{x:number;y:number}|null>(null)
+ const networkStart=useRef<{x:number;y:number}|null>(null)
+ const networkStartPixel=useRef<{x:number;y:number}|null>(null)
+ const [networkPreview,setNetworkPreview]=useState<{x:number;y:number;width:number;height:number}|null>(null)
+ const [reviewOpen,setReviewOpen]=useState(false)
  const [rectangles,setRectangles]=useState<Rect[]>(()=>{
    const relevant = networks.filter(n=>interfaces.some(nic=>nic[fieldForKind(n.kind)]===n.id&&items.some(item=>item.id===nic.item_id)))
    const heights=relevant.map(n=>{
@@ -68,7 +73,7 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
      const members=group?items.filter(v=>interfaces.some(n=>n.item_id===v.id&&n[fieldForKind(group.kind)]===group.id)):[]
      const index=group?members.findIndex(v=>v.id===item.id):i
      const position=savedPositions[item.id]|| (group?{x:group.x+25+(index%2)*265,y:group.y+65+Math.floor(index/2)*175}:positions[item.id]||{x:70+(i%4)*280,y:80+Math.floor(i/4)*175})
-     return {id:item.id,position,sourcePosition:Position.Bottom,targetPosition:Position.Top,data:{label:<DiagramNodeLabel name={item.name} kind={item.kind} subtitle={ownerBySystemId[item.system_id]||ownerName} detail={item.kind+' · '+String(item.details.environment||'Среда не задана')}><small className="componentNodePurpose">{item.description?.trim()||String(item.details.purpose||item.details.role||'Назначение не описано')}</small></DiagramNodeLabel>},style:diagramCardStyle()}
+     return {id:item.id,position,sourcePosition:Position.Bottom,targetPosition:Position.Top,data:{label:<DiagramNodeLabel name={item.name} kind={item.kind} subtitle={ownerBySystemId[item.system_id]||ownerName} detail={item.kind+' · '+String(item.details.environment||'Среда не задана')}><small className="componentNodePurpose">{item.description?.trim()||String(item.details.purpose||item.details.role||'Назначение не описано')}</small></DiagramNodeLabel>},style:diagramCardStyle({zIndex:2})}
    })
  },[items,flows,interfaces,ownerName,ownerBySystemId]) // Keep dragged coordinates in React Flow during the editing session.
  const [nodes,setNodes,onNodesChange]=useNodesState(initialNodes)
@@ -88,7 +93,7 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
  const allVMs=useMemo<VM[]>(()=>[...items,...changes.filter(c=>c.action==='create_vm').map(c=>({id:c.id!,name:c.name!,system_id:systemId,kind:'vm',description:'',details:{} as Record<string,unknown>}))],[items,changes,systemId])
  const allNetworks=[...networks,...changes.filter(c=>c.action==='create_network').map(c=>({id:c.id!,name:c.name!,kind:c.kind!}))]
  const visibleRects=rectangles.filter(r=>allNetworks.some(n=>n.id===r.id))
- const backgroundNodes:Node[]=visibleRects.map(r=>({id:'network:'+r.id,type:'default',position:{x:r.x,y:r.y},draggable:false,selectable:false,connectable:false,data:{label:r.name+' · '+r.kind.toUpperCase()},style:{width:r.width,height:r.height,background:'#e7f0fc55',border:'2px solid #7aa6d5',borderRadius:9,zIndex:-1,pointerEvents:'none',textAlign:'left',padding:12,fontSize:13,color:'#285787'}}))
+ const backgroundNodes:Node[]=visibleRects.map(r=>({id:'network:'+r.id,type:'default',position:{x:r.x,y:r.y},draggable:false,selectable:false,connectable:false,data:{label:r.name+' · '+r.kind.toUpperCase()},style:{width:r.width,height:r.height,background:'#dbeafe77',border:'2px dashed #2563eb',borderRadius:9,zIndex:0,pointerEvents:'none',textAlign:'left',padding:12,fontSize:13,color:'#1e40af'}}))
  const graphNodes=[...backgroundNodes,...nodes]
  // A pair of machines has one readable connection; its technical flows stay separate records.
  const pendingFlows=changes.filter(c=>c.action==='create_flow').map(c=>({id:c.id!,source_id:c.source_id!,target_id:c.target_id!,protocol:c.protocol||'',port:c.port||'',name:c.name||''}))
@@ -157,7 +162,7 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
    setNodes(previous=>[...previous,node])
    onPositionChange?.(node)
    setLayoutDirty(true);setLayoutMessage('')
-   setName('');setTool('move')
+   setName('');setTool('move');setReviewOpen(true)
  }
  const addFlow=()=>{
    if(!from||!to||from===to)return setError('Выберите разные исходный и целевой компоненты.')
@@ -167,11 +172,11 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
    if(direction==='both')addChange({action:'create_flow',id:makeId(),source_id:target,target_id:source,name:allVMs.find(v=>v.id===target)?.name+' → '+allVMs.find(v=>v.id===source)?.name,protocol,port,security})
    setTool('move')
  }
- const addNetwork=(end:{x:number;y:number})=>{
-   if(!drawing||!name.trim()){setError('Сначала задайте имя сети и две точки прямоугольника.');return}
-   const x=Math.min(drawing.x,end.x),y=Math.min(drawing.y,end.y)
-   const width=Math.abs(end.x-drawing.x),height=Math.abs(end.y-drawing.y)
-   if(width<180||height<120){setError('Нарисуйте прямоугольник минимум 180 × 120.');setDrawing(null);return}
+ const addNetwork=(start:{x:number;y:number},end:{x:number;y:number})=>{
+   if(!name.trim()){setError('Укажите название сети справа, затем нарисуйте контейнер.');return}
+   const x=Math.min(start.x,end.x),y=Math.min(start.y,end.y)
+   const width=Math.abs(end.x-start.x),height=Math.abs(end.y-start.y)
+   if(width<140||height<90){setError('Контейнер слишком мал. Протяните прямоугольник не менее 140 × 90.');return}
    const id=makeId()
    const rect:Rect={id,name:name.trim(),kind,x,y,width,height}
    setRectangles(prev=>[...prev,rect])
@@ -192,18 +197,41 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
    setChanges(previous=>[...previous,{action:'create_network',id,name:name.trim(),kind},...assignments])
    setPreview(null)
    setError(ambiguous?('Сеть нарисована. У '+ambiguous+' ВМ несколько интерфейсов – выберите интерфейс и переместите ВМ в зону вручную.'):'Новая сеть и '+assignments.length+' сетевых привязок подготовлены для подтверждения.')
-   setDrawing(null);setName('');setTool('move')
+   setDrawing(null);setName('');setTool('move');setReviewOpen(true)
  }
  const handlePaneClick=(event:React.MouseEvent)=>{
    if(tool==='vm'){
      addVM(screenToFlowPosition({x:event.clientX,y:event.clientY}))
      return
    }
-   if(tool!=='network')return
-   const point=screenToFlowPosition({x:event.clientX,y:event.clientY})
-   if(drawing)addNetwork(point)
-   else {setDrawing(point);setError('')}
  }
+ const beginNetworkDrag=(event:React.PointerEvent<HTMLDivElement>)=>{
+   if(event.button!==0)return
+   if(!name.trim()){setError('Сначала укажите название сети справа.');return}
+   const rect=event.currentTarget.getBoundingClientRect()
+   networkStartPixel.current={x:event.clientX-rect.left,y:event.clientY-rect.top}
+   networkStart.current=screenToFlowPosition({x:event.clientX,y:event.clientY})
+   setDrawing(networkStart.current)
+   setNetworkPreview({x:event.clientX-rect.left,y:event.clientY-rect.top,width:0,height:0})
+   event.currentTarget.setPointerCapture(event.pointerId)
+   setError('')
+ }
+ const moveNetworkDrag=(event:React.PointerEvent<HTMLDivElement>)=>{
+   if(!networkStart.current||!networkPreview)return
+   const rect=event.currentTarget.getBoundingClientRect()
+   const x=event.clientX-rect.left,y=event.clientY-rect.top
+   // Keep the first corner fixed while drawing, including when moving up and left.
+   const origin=networkStartPixel.current
+   if(origin)setNetworkPreview({x:Math.min(origin.x,x),y:Math.min(origin.y,y),width:Math.abs(x-origin.x),height:Math.abs(y-origin.y)})
+ }
+ const finishNetworkDrag=(event:React.PointerEvent<HTMLDivElement>)=>{
+   const start=networkStart.current
+   networkStart.current=null;networkStartPixel.current=null
+   setNetworkPreview(null);setDrawing(null)
+   if(!start)return
+   addNetwork(start,screenToFlowPosition({x:event.clientX,y:event.clientY}))
+ }
+ const cancelNetworkDrag=()=>{networkStart.current=null;networkStartPixel.current=null;setNetworkPreview(null);setDrawing(null)}
  // The visual layout is saved independently from technical changes.
  useEffect(()=>{
    let active=true

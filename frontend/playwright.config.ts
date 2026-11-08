@@ -4,5 +4,5 @@ export default defineConfig({
   timeout: 30000,
   retries: 1,
   use: { baseURL: 'http://127.0.0.1:5174', browserName: 'chromium', headless: true, trace: 'retain-on-failure', screenshot: 'only-on-failure' },
-  reporter: 'list',
+  reporter: [['list'], ['json', { outputFile: 'test-results/playwright-results.json' }]],
 })

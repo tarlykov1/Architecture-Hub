@@ -51,6 +51,14 @@ class Diagram(Base):
 
 
 
+class BoardLayout(Base):
+    """Saved component coordinates for one IS, independent of technical connections."""
+    __tablename__ = "board_layouts"
+    system_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("objects.id", ondelete="CASCADE"), primary_key=True)
+    positions: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
 class InfrastructureItem(Base):
     __tablename__ = "infrastructure_items"
     id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
@@ -1287,6 +1295,45 @@ class BoardChange(BaseModel):
     details_patch: dict[str, str] = Field(default_factory=dict)
     previous_details: dict[str, Any] = Field(default_factory=dict)
     network_field: str = Field(default="zone_id", pattern="^(zone_id|vlan_id|vrf_id)$")
+
+class BoardPoint(BaseModel):
+    x: float = Field(ge=-100000, le=100000, allow_inf_nan=False)
+    y: float = Field(ge=-100000, le=100000, allow_inf_nan=False)
+
+
+class BoardLayoutInput(BaseModel):
+    positions: dict[UUID, BoardPoint] = Field(default_factory=dict, max_length=1000)
+
+
+@app.get("/api/board/layout/{system_id}")
+def read_board_layout(system_id: UUID, db: Session = Depends(db_session)):
+    if db.get(ArchitectureObject, system_id) is None:
+        raise HTTPException(404, "System not found")
+    stored = db.get(BoardLayout, system_id)
+    return {"system_id": str(system_id), "positions": stored.positions if stored else {}}
+
+
+@app.put("/api/board/layout/{system_id}")
+def save_board_layout(system_id: UUID, payload: BoardLayoutInput, db: Session = Depends(db_session)):
+    """Positions are presentation data and cannot create or modify any infrastructure item."""
+    if db.get(ArchitectureObject, system_id) is None:
+        raise HTTPException(404, "System not found")
+    ids = list(payload.positions)
+    if ids:
+        known = set(db.scalars(select(InfrastructureItem.id).where(InfrastructureItem.id.in_(ids))).all())
+        if len(known) != len(ids):
+            raise HTTPException(422, "Unknown component in layout")
+    positions = {str(key): point.model_dump() for key, point in payload.positions.items()}
+    stored = db.get(BoardLayout, system_id)
+    if stored is None:
+        stored = BoardLayout(system_id=system_id, positions=positions)
+        db.add(stored)
+    else:
+        stored.positions = positions
+        stored.updated_at = datetime.now(timezone.utc)
+    db.commit()
+    return {"system_id": str(system_id), "positions": positions}
+
 
 class BoardBatch(BaseModel):
     changes: list[BoardChange] = Field(min_length=1, max_length=100)

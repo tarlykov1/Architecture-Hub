@@ -40,7 +40,7 @@ test('components expose the real palette even when no system is selected or grou
   await expect(tools.getByRole('button',{name:'→ Поток'})).toBeVisible()
   await expect(tools.getByRole('button',{name:'▭ Сеть / контейнер'})).toBeVisible()
   await expect(editor.locator('.react-flow__node .homeNode')).toHaveCount(2)
-  await tools.getByRole('button',{name:'→ Связь / поток'}).click()
+  await tools.getByRole('button',{name:'→ Поток'}).click()
   await expect(editor.getByRole('button',{name:'Добавить поток'})).toBeVisible()
   await page.getByRole('button',{name:'Завершить редактирование'}).click()
   await expect(editor).toHaveCount(0)

@@ -1469,3 +1469,11 @@ def list_board_audit(limit: int = 50, db: Session = Depends(db_session)):
     rows = db.scalars(select(BoardAudit).order_by(BoardAudit.timestamp.desc()).limit(max(1, min(limit, 200)))).all()
     return [{"id": str(row.id), "timestamp": row.timestamp.isoformat(),
              "reason": row.reason, "actor": row.actor, "changes": row.changes} for row in rows]
+
+
+# Opt-in, read-only system analysis. API key remains server-side.
+from .ai_analysis import AnalysisRequest, analyze_system
+
+@app.post("/api/ai/analyze-system")
+def ai_analyze_system(payload: AnalysisRequest, db: Session = Depends(db_session)):
+    return analyze_system(db, ArchitectureObject, Relation, payload)

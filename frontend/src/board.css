@@ -135,3 +135,47 @@
 .boardCanvasToast button{flex:0 0 auto;margin-left:auto;border:0;background:transparent;
   color:#64748b;cursor:pointer;font-size:14px;padding:0 3px}
 .boardEditorStage .boardTools>button:disabled{opacity:.35;cursor:not-allowed}
+
+/* Compact, readable canvas tools: each icon has a persistent verb/noun. */
+.boardEditorStage>.boardTools{
+  width:91px;left:12px;top:12px;padding:7px 6px;gap:3px;
+}
+.boardEditorStage>.boardTools>button,
+.boardEditorStage>.boardTools>.boardChangeCount{
+  position:relative;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:4px;
+  width:78px;min-width:78px;height:55px;min-height:55px;padding:5px 4px;
+  font-size:12px;line-height:1.2;text-align:center;border-radius:8px;
+}
+.boardEditorStage>.boardTools>button svg{flex:0 0 auto}
+.boardEditorStage>.boardTools .boardToolCaption{
+  display:block;font-size:10px;line-height:1.15;font-weight:550;max-width:100%;white-space:normal;
+}
+.boardEditorStage>.boardTools>button[aria-pressed=true] .boardToolCaption{color:#fff}
+.boardEditorStage>.boardTools>button.boardChangeCount{font-weight:500;background:transparent;color:#475569}
+.boardEditorStage>.boardTools>button.boardChangeCount:enabled{background:#dbeafe;color:#1e40af}
+.boardEditorStage>.boardTools>button.boardChangeCount:enabled:hover{background:#bfdbfe}
+.boardToolsSeparator{width:65px}
+.boardUnsavedDot{position:absolute;right:8px;top:7px;width:7px;height:7px;border-radius:50%;background:#f59e0b}
+.boardCanvas{position:relative}
+.boardNetworkDrawLayer{
+  position:absolute;inset:0;z-index:4;touch-action:none;cursor:crosshair;
+  background:transparent;
+}
+.boardNetworkPreview{
+  position:absolute;pointer-events:none;box-sizing:border-box;
+  border:2px dashed #2563eb;border-radius:8px;background:rgba(96,165,250,.16);
+  box-shadow:0 0 0 1px #bfdbfe inset;
+}
+.boardEditorStage .boardReviewHeader{
+  display:flex;align-items:center;justify-content:space-between;gap:8px;
+}
+.boardEditorStage .boardReviewHeader button{
+  width:auto;padding:4px 8px;background:transparent;border:0;color:#64748b;
+}
+@media(max-width:700px){
+  .boardEditorStage>.boardTools{left:8px;top:8px;width:75px;padding:5px 3px}
+  .boardEditorStage>.boardTools>button,.boardEditorStage>.boardTools>.boardChangeCount{
+    width:67px;min-width:67px;height:51px;min-height:51px
+  }
+  .boardEditorStage>.boardTools .boardToolCaption{font-size:9px}
+}

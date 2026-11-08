@@ -72,7 +72,7 @@ def visual_evidence(report, root, allow_images=False):
                         pass
                 if (allow_images and len(screenshots) < 2 and path.suffix.lower() == ".png"
                         and path.stat().st_size < 1_000_000):
-                    screenshots.append(base64.b64encode(path.read_bytes()).decode("ascii")
+                    screenshots.append(base64.b64encode(path.read_bytes()).decode("ascii"))
     return trace_summary[:4], screenshots
 
 def triage(report, api_key, opener=urlopen, root=None, allow_images=False):

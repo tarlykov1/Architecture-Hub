@@ -12,6 +12,7 @@ type Network={id:string;name:string;kind:string}
 type Interface={item_id:string;zone_id:string|null;vlan_id:string|null;vrf_id:string|null}
 
 import {AutoFit,Disclosure} from './WorkspaceUI'
+import {overviewGridPositions} from './graphLayout'
 
 export default function ArchitectureHome({systems,components,flows,processes,links,networks,interfaces,onOpenSystem,onCloseSystem,inspectorOpen,onOpenComponents,onOpenComponent,onOpenFlows,onOpenNetworks}:{systems:System[];components:Component[];flows:Flow[];processes:Process[];links:Link[];networks:Network[];interfaces:Interface[];onOpenSystem:(id:string)=>void;onCloseSystem:()=>void;inspectorOpen:boolean;onOpenComponents:(id:string)=>void;onOpenComponent:(id:string)=>void;onOpenFlows:()=>void;onOpenNetworks:()=>void}){
  const [layers,setLayers]=useState({systems:true,components:false,flows:true,business:false,networks:false})
@@ -27,9 +28,7 @@ export default function ArchitectureHome({systems,components,flows,processes,lin
  const counts=new Map<string,number>()
  for(const f of crossFlows){const key=f.source+'|'+f.target;counts.set(key,(counts.get(key)||0)+1)}
  // A three-column overview avoids microscopic nodes in long dependency chains.
- const columns=filteredSystems.length<=4?2:3
- const positions:Record<string,{x:number;y:number}>={}
- filteredSystems.forEach((s,i)=>{positions[s.id]={x:(i%columns)*310,y:Math.floor(i/columns)*170}})
+ const positions=overviewGridPositions(filteredSystems.map(s=>s.id))
  const nodes=filteredSystems.map((s,i)=>({id:s.id,position:positions[s.id]||{x:(i%4)*320,y:Math.floor(i/4)*190},data:{label:<DiagramNodeLabel name={s.name} kind={s.kind} subtitle={components.filter(c=>c.system_id===s.id).length+' компонентов · '+links.filter(l=>l.system_id===s.id).length+' бизнес-связей'}/>},style:diagramCardStyle()}))
  const selectedSystemInfo=filteredSystems.find(s=>s.id===selectedSystem)
  const selectedNeighbors=new Set<string>([selectedSystem])

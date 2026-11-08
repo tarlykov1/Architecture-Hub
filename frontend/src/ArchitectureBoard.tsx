@@ -1,6 +1,7 @@
 import React, {useEffect, useMemo, useState} from 'react'
 import './board.css'
 import {DiagramNodeLabel,diagramCardStyle} from './DiagramVisual'
+import {AutoFit} from './WorkspaceUI'
 import {ReactFlow, ReactFlowProvider, Background, Controls, useNodesState, useReactFlow, MarkerType, Position, type Node, type NodeChange} from '@xyflow/react'
 import {compactComponentLayout,flowCountLabel} from './graphLayout'
 import {ReciprocalEdge} from './ReciprocalEdge'
@@ -32,6 +33,7 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
  const [busy,setBusy]=useState(false)
  const [history,setHistory]=useState<Array<{id:string;timestamp:string;reason:string;changes:Preview['changes']}>>([])
  const [showHistory,setShowHistory]=useState(false)
+ const [showReview,setShowReview]=useState(false)
  const [name,setName]=useState('')
  const [kind,setKind]=useState<'zone'|'vlan'|'vrf'>('zone')
  const [from,setFrom]=useState('')
@@ -95,7 +97,11 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
    flowGroups.set(key,[...(flowGroups.get(key)||[]),flow])
  }
  const relatedIds=new Set(inspectedId?[inspectedId,...[...flows,...pendingFlows].filter(f=>f.source_id===inspectedId||f.target_id===inspectedId).flatMap(f=>[f.source_id,f.target_id])]:[])
- const displayedNodes=graphNodes.map(n=>({...n,style:{...n.style,opacity:focusDependencies&&inspectedId&&!n.id.startsWith('network:')&&!relatedIds.has(n.id)?0.22:1}}))
+ const displayedNodes=graphNodes.map(n=>({...n,style:{...n.style,
+    border:tool==='flow'&&(n.id===from||n.id===to)?'2px solid #2563eb':n.style?.border,
+    background:tool==='flow'&&(n.id===from||n.id===to)?'#eff6ff':n.style?.background,
+    opacity:focusDependencies&&inspectedId&&!n.id.startsWith('network:')&&!relatedIds.has(n.id)?0.22:1
+  }}))
  const inspectedVM=allVMs.find(v=>v.id===inspectedId)
  const openPassport=(id:string)=>{const vm=allVMs.find(v=>v.id===id);if(!vm)return;setInspectedId(id);setEditingPassport(false);setPassportDraft({name:vm.name,description:vm.description||'',purpose:String(vm.details?.purpose||''),environment:String(vm.details?.environment||'')})}
  const stagePassport=()=>{if(!inspectedVM||!passportDraft.name.trim())return;const details_patch:Record<string,string>={purpose:passportDraft.purpose,environment:passportDraft.environment};const previous_details:Record<string,unknown>={purpose:inspectedVM.details?.purpose??null,environment:inspectedVM.details?.environment??null};addChange({action:'update_vm',id:inspectedVM.id,system_id:systemId,name:passportDraft.name.trim(),description:passportDraft.description,previous_name:inspectedVM.name,previous_description:inspectedVM.description||'',details_patch,previous_details});setEditingPassport(false);setInspectedId(null);setFocusDependencies(false)}
@@ -140,11 +146,13 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
    setChanges(previous=>[...previous.filter(c=>!(c.action==='move_interface'&&c.interface_id===nic.id&&c.network_field===field)),next])
    setPreview(null);setError('')
  }
- const addVM=()=>{
+ const addVM=(point?:{x:number;y:number})=>{
    if(!name.trim())return setError('Введите имя новой ВМ.')
    const id=makeId()
+   const node:Node={id,position:point||{x:90+(nodes.length%4)*280,y:100+Math.floor(nodes.length/4)*175},sourcePosition:Position.Bottom,targetPosition:Position.Top,data:{label:<DiagramNodeLabel name={name.trim()} kind="vm" subtitle={ownerName} detail="ВМ · Черновик"/>},style:diagramCardStyle({border:'1px dashed #2674bf'})}
    addChange({action:'create_vm',id,system_id:systemId,name:name.trim(),kind:'vm'})
-   setNodes(previous=>[...previous,{id,position:{x:90+(previous.length%4)*280,y:100+Math.floor(previous.length/4)*175},sourcePosition:Position.Bottom,targetPosition:Position.Top,data:{label:<DiagramNodeLabel name={name.trim()} kind="vm" subtitle={ownerName} detail="ВМ · Черновик"/>},style:diagramCardStyle({border:'1px dashed #2674bf'})}])
+   setNodes(previous=>[...previous,node])
+   onPositionChange?.(node)
    setName('');setTool('move')
  }
  const addFlow=()=>{
@@ -183,6 +191,10 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
    setDrawing(null);setName('');setTool('move')
  }
  const handlePaneClick=(event:React.MouseEvent)=>{
+   if(tool==='vm'){
+     addVM(screenToFlowPosition({x:event.clientX,y:event.clientY}))
+     return
+   }
    if(tool!=='network')return
    const point=screenToFlowPosition({x:event.clientX,y:event.clientY})
    if(drawing)addNetwork(point)

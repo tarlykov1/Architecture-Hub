@@ -762,7 +762,8 @@ function App() {
     if (d) { setDiagramId(id); setPositions(d.positions || {}); setDirty(false) }
   }
 
-  useEffect(()=>{setDiagramEditMode(false);setViewsMenuOpen(false)},[layer,viewSystem])
+  useEffect(()=>{setDiagramEditMode(false);setViewsMenuOpen(false)},[layer])
+  useEffect(()=>{setViewsMenuOpen(false)},[viewSystem])
 
   const detail = objects.find(o => o.id === selected)
   const drill = objects.find(o=>o.id===viewSystem)
@@ -912,7 +913,7 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
   const impacted=impactMode&&focusActive?downstreamImpact(focusedComponent,scopedFlows,scopedIds):new Set<string>()
   const visibleFocus=impactMode?new Set([focusedComponent,...impacted]):adjacent
   const impactPaths=impactMode&&focusActive?impactRoutes(focusedComponent,scopedFlows,scopedIds):[]
-  const drillNodes:Node[] = scopedItems.map((i,n)=>({id:i.id,position:(draggedComponentPositions[i.id]||componentCanvasPositions[viewSystem]?.[i.id]||drillPositions[i.id]||{x:(n%4)*260,y:Math.floor(n/4)*155}),data:{label:<DiagramNodeLabel name={i.name} kind={i.kind} subtitle={objects.find(o=>o.id===i.system_id)?.name||'ИС не указана'} detail={i.kind+' · '+String(i.details.environment||'Среда не задана')}><button type="button" className="componentNodeOpen nodrag nopan" onClick={e=>{e.preventDefault();e.stopPropagation();setComponentEditing(false);setComponentInspectId(i.id);setComponentInspectTab('passport')}} aria-label={'Открыть паспорт компонента: '+i.name}>Подробнее</button></DiagramNodeLabel>},style:{width:245,padding:12,background:i.details.environment==='TEST'?'#fff5e7':viewMode==='security'?'#eaf5f2':'#ffffff',border:i.id===focusedComponent?'2px solid #1377d5':externalIds.has(i.id)?'2px dashed #c48a4d':'1px solid #bac8d8',borderRadius:12,opacity:focusActive&&!visibleFocus.has(i.id)?0.28:1}}))
+  const drillNodes:Node[] = scopedItems.map((i,n)=>({id:i.id,position:(draggedComponentPositions[i.id]||componentCanvasPositions[viewSystem]?.[i.id]||drillPositions[i.id]||{x:(n%4)*260,y:Math.floor(n/4)*155}),data:{label:<DiagramNodeLabel name={i.name} kind={i.kind} subtitle={objects.find(o=>o.id===i.system_id)?.name||'ИС не указана'} detail={i.kind+' · '+String(i.details.environment||'Среда не задана')}><small className="componentNodePurpose">{i.description?.trim()||String(i.details.purpose||i.details.role||'Назначение не описано')}</small>{externalIds.has(i.id)&&<small>ВНЕШНЯЯ ИС</small>}<button type="button" className="componentNodeOpen nodrag nopan" onClick={e=>{e.preventDefault();e.stopPropagation();setComponentEditing(false);setComponentInspectId(i.id);setComponentInspectTab('passport')}} aria-label={'Открыть паспорт компонента: '+i.name}>Подробнее</button></DiagramNodeLabel>},style:{width:245,padding:12,background:i.details.environment==='TEST'?'#fff5e7':viewMode==='security'?'#eaf5f2':'#ffffff',border:i.id===focusedComponent?'2px solid #1377d5':externalIds.has(i.id)?'2px dashed #c48a4d':'1px solid #bac8d8',borderRadius:12,opacity:focusActive&&!visibleFocus.has(i.id)?0.28:1}}))
   // Multiple technical flows between the same components share one visual lane.
   // Individual flow records remain available in the component flow inspector.
   const drillFlowGroups=new Map<string,Flow[]>()

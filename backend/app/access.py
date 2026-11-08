@@ -26,6 +26,8 @@ ROLE_ACCESS = {
 }
 
 def classify(path: str) -> str | None:
+    if path.startswith("/api/ai/"):
+        return "systems"
     if path.startswith("/api/board/"):
         return "board"
     if path.startswith("/api/demo/"):
@@ -95,7 +97,8 @@ async def access_middleware(request: Request, call_next):
         return JSONResponse({"detail":"Unknown API endpoint is not authorized"}, status_code=403)
     grant = ("write" if role in ("admin", "architect") else "read" if role in ("engineer", "security", "viewer") and method_is_read(path, request.method) else None) if layer == "board" else ROLE_ACCESS[role].get(layer)
     method = request.method.upper()
-    if grant not in ("read", "write") or (method not in ("GET", "HEAD", "OPTIONS") and grant != "write"):
+    ai_read = path.startswith("/api/ai/") and method == "POST" and grant in ("read", "write")
+    if grant not in ("read", "write") or (method not in ("GET", "HEAD", "OPTIONS") and grant != "write" and not ai_read):
         return JSONResponse({"detail":"Insufficient permissions for "+layer}, status_code=403)
     request.state.role = role
     return await call_next(request)

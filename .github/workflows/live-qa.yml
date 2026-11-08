@@ -33,6 +33,12 @@ jobs:
           E2E_BASE_URL: ${{ vars.E2E_BASE_URL || secrets.E2E_BASE_URL || 'https://test.web-tie.ru' }}
           E2E_AUTH_TOKEN: ${{ secrets.E2E_AUTH_TOKEN }}
         run: npx playwright test --config=playwright.live.config.ts
+      - name: AI triage of failed Live QA Playwright tests
+        if: failure() && steps.live_test.outcome == 'failure'
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          PLAYWRIGHT_AI_SEND_SCREENSHOTS: '0'
+        run: python scripts/playwright_ai_triage.py frontend/live-qa-results/playwright-results.json playwright-live-ai-triage.md
       - name: Record QA result and create or update a single tracking issue
         if: always() && steps.live_test.outcome != 'skipped'
         uses: actions/github-script@v7
@@ -55,7 +61,7 @@ jobs:
                 '- Workflow run: ' + runUrl,
                 '- Trigger: ' + context.eventName,
                 '- Ref: ' + context.sha,
-                '- Desktop/mobile screenshots, traces and HTML report: download artifact `live-qa-browser-report` from the workflow run.',
+                '- Desktop/mobile screenshots, traces, HTML report and sanitized AI triage (when available): download artifact `live-qa-browser-report` from the workflow run.',
                 '',
                 'Review the failing test logs and attached screenshots before making changes.',
                 'This issue is reused for subsequent failures to prevent duplicates.',
@@ -77,5 +83,6 @@ jobs:
           path: |
             frontend/live-qa-results/
             frontend/live-qa-report/
+            playwright-live-ai-triage.md
           retention-days: 14
           if-no-files-found: warn

@@ -26,6 +26,8 @@ ROLE_ACCESS = {
 }
 
 def classify(path: str) -> str | None:
+    if path.startswith("/api/cmdb/"):
+        return "systems"  # Same read permissions as the underlying system register.
     if path.startswith("/api/board/"):
         return "board"
     if path.startswith("/api/demo/"):

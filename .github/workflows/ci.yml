@@ -99,6 +99,7 @@ jobs:
         if: failure() && github.event_name != 'pull_request'
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          PLAYWRIGHT_AI_SEND_SCREENSHOTS: '0'
         run: python scripts/playwright_ai_triage.py frontend/test-results/playwright-results.json playwright-ai-triage.md
       - name: Upload browser diagnostics
         if: failure()

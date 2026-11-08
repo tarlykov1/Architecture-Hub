@@ -658,3 +658,19 @@ button:disabled{cursor:not-allowed;opacity:.55}
 .topologyInspectorEntry{border:1px solid #e2e8f0;border-radius:8px;padding:12px;margin:10px 0}
 .topologyInspectorEntry .topologyDependency{width:100%;text-align:left}
 .topologyInspectorFlowLink{display:block;margin-top:8px;text-align:left;max-width:100%;overflow-wrap:anywhere}
+
+/* Live QA regression: keep the mobile section selector above the object inspector.
+   The inspector remains a scrollable drawer below the 53px global header. */
+@media(max-width:650px){
+ .shell.shellNoCatalog.shellInspectorOpen .details:not(.detailsExpanded),
+ .shell.shellInspectorOpen .details,
+ .shell.shellInspectorOpen .details.detailsExpanded{
+  top:53px;
+  bottom:0;
+  height:calc(100dvh - 53px);
+  max-height:calc(100dvh - 53px);
+  box-sizing:border-box;
+ }
+ .globalHeader{position:relative;z-index:121}
+ .mobileSectionOptions{z-index:122}
+}

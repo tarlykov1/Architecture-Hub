@@ -95,6 +95,11 @@ jobs:
       - name: Run browser tests
         working-directory: frontend
         run: npx playwright test
+      - name: Optional OpenAI triage of failed Playwright tests
+        if: failure() && github.event_name != 'pull_request'
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: python scripts/playwright_ai_triage.py frontend/test-results/playwright-results.json playwright-ai-triage.md
       - name: Upload browser diagnostics
         if: failure()
         uses: actions/upload-artifact@v4
@@ -102,6 +107,7 @@ jobs:
           name: browser-test-artifacts
           path: |
             frontend/test-results/
+            playwright-ai-triage.md
             /tmp/arch-api.log
             /tmp/arch-vite.log
           if-no-files-found: ignore

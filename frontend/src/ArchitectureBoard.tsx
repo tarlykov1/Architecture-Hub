@@ -264,8 +264,10 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
    finally{setLayoutBusy(false)}
  }
  const discardDraft=()=>{
-   const staged=new Set(changes.filter(c=>c.action==='create_vm').map(c=>c.id))
-   setNodes(previous=>previous.filter(node=>!staged.has(node.id)))
+   const stagedVMs=new Set(changes.filter(c=>c.action==='create_vm').map(c=>c.id))
+   const stagedNetworks=new Set(changes.filter(c=>c.action==='create_network').map(c=>c.id))
+   setNodes(previous=>previous.filter(node=>!stagedVMs.has(node.id)))
+   setRectangles(previous=>previous.filter(rect=>!stagedNetworks.has(rect.id)))
    setChanges([]);setPreview(null);setError('');setReviewOpen(false)
    setLayoutMessage('Черновик изменений отменён.')
  }

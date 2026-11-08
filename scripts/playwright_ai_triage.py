@@ -11,11 +11,10 @@ from urllib.error import HTTPError, URLError
 
 
 def sanitize(value):
-    value = re.sub(r"(?i)bearer\\s+[^\\s]+", "Bearer [REDACTED]", str(value))
-    value = re.sub(r"(?i)(token|password|secret|api[_-]?key)\\s*[:=]\\s*[^\\s,;]+", r"\\1=[REDACTED]", value)
-    value = re.sub(r"https?://[^\\s)]+", "[URL]", value)
+    value = re.sub(r"(?i)\bbearer\s+\S+", "Bearer [REDACTED]", str(value))
+    value = re.sub(r"(?i)\b(token|password|secret|api[_-]?key)\b\s*[:=]\s*[^\s,;]+", r"\1=[REDACTED]", value)
+    value = re.sub(r"https?://[^\s)]+", "[URL]", value)
     return value[:1000]
-
 
 def failures_from(suite):
     found = []
@@ -29,37 +28,52 @@ def failures_from(suite):
     return found
 
 
+def failed_results(suite):
+    for case in suite.get("tests", []):
+        for result in case.get("results", []):
+            if result.get("status") in ("failed", "timedOut", "interrupted"):
+                yield result
+    for child in suite.get("suites", []):
+        yield from failed_results(child)
+
+
 def visual_evidence(report, root, allow_images=False):
-    """Only bounded, locally inspected artifacts. Never upload raw trace archives."""
+    """Inspect bounded local metadata only. Raw traces and network data stay in CI."""
+    root = Path(root).resolve()
+    workspace = root.parent
     screenshots = []
     trace_summary = []
     for suite in report.get("suites", []):
-        for test in suite.get("suites", []) + [suite]:
-            for case in test.get("tests", []):
-                for result in case.get("results", []):
-                    if result.get("status") not in ("failed", "timedOut", "interrupted"):
-                        continue
-                    for attachment in result.get("attachments", []):
-                        rel = attachment.get("path", "")
-                        if not rel:
-                            continue
-                        path = (root / rel).resolve() if not Path(rel).is_absolute() else Path(rel).resolve()
-                        if not path.is_relative_to(root.resolve()) or not path.is_file():
-                            continue
-                        if path.suffix == ".zip" and path.stat().st_size < 30_000_000:
-                            try:
-                                with zipfile.ZipFile(path) as z:
-                                    # Only archive entry names are inspected, not page content, headers or network bodies.
-                                    entries = z.namelist()[:300]
-                                    trace_summary.append({"trace_present": True, "events_file": any(x.endswith(".trace") for x in entries),
-                                                          "network_file": any(x.endswith(".network") for x in entries),
-                                                          "screenshots_in_trace": sum(x.endswith((".png", ".jpg")) for x in entries)})
-                            except (zipfile.BadZipFile, OSError):
-                                pass
-                        if allow_images and len(screenshots) < 2 and path.suffix.lower() == ".png" and path.stat().st_size < 1_000_000:
-                            screenshots.append(base64.b64encode(path.read_bytes()).decode("ascii"))
+        for result in failed_results(suite):
+            for attachment in result.get("attachments", []):
+                rel = attachment.get("path", "")
+                if not rel:
+                    continue
+                relative_path = Path(rel)
+                candidates = ([relative_path] if relative_path.is_absolute()
+                              else [root / relative_path, workspace / relative_path])
+                # Playwright paths can be relative to frontend/, not the JSON report directory.
+                path = next((resolved for candidate in candidates
+                             if (resolved := candidate.resolve()).is_file()
+                             and resolved.is_relative_to(workspace)), None)
+                if path is None:
+                    continue
+                if path.suffix.lower() == ".zip" and path.stat().st_size < 30_000_000:
+                    try:
+                        with zipfile.ZipFile(path) as archive:
+                            entries = archive.namelist()[:300]
+                            trace_summary.append({
+                                "trace_present": True,
+                                "events_file": any(x.endswith(".trace") for x in entries),
+                                "network_file": any(x.endswith(".network") for x in entries),
+                                "screenshots_in_trace": sum(x.endswith((".png", ".jpg")) for x in entries),
+                            })
+                    except (zipfile.BadZipFile, OSError):
+                        pass
+                if (allow_images and len(screenshots) < 2 and path.suffix.lower() == ".png"
+                        and path.stat().st_size < 1_000_000):
+                    screenshots.append(base64.b64encode(path.read_bytes()).decode("ascii")
     return trace_summary[:4], screenshots
-
 
 def triage(report, api_key, opener=urlopen, root=None, allow_images=False):
     failures = []

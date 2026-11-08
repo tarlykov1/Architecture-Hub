@@ -29,6 +29,9 @@ jobs:
       - name: Test deployed website
         id: live_test
         working-directory: frontend
+        env:
+          E2E_BASE_URL: ${{ vars.E2E_BASE_URL || secrets.E2E_BASE_URL || 'https://test.web-tie.ru' }}
+          E2E_AUTH_TOKEN: ${{ secrets.E2E_AUTH_TOKEN }}
         run: npx playwright test --config=playwright.live.config.ts
       - name: Record QA result and create or update a single tracking issue
         if: always() && steps.live_test.outcome != 'skipped'

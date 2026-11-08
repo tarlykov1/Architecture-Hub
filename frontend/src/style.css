@@ -642,3 +642,19 @@ button:disabled{cursor:not-allowed;opacity:.55}
 .topologyWorkspace:has(.topologyInspector)>.topologyCanvas{flex:1 1 auto;min-height:420px;min-width:0}
 .topologyWorkspace:has(.topologyInspector)>.topologyInspectorShell{position:fixed;right:0;top:76px;bottom:0;z-index:180;width:min(440px,42vw);pointer-events:none}
 @media(max-width:700px){.topologyWorkspace:has(.topologyInspector)>.topologyInspectorShell{top:56px;width:min(380px,90vw)}}
+
+/* Topology inspector: separate summary, network settings and dependencies. */
+.topologyInspectorTitle{padding-bottom:12px;border-bottom:1px solid #e2e8f0}
+.topologyInspectorTitle h3{margin:0 0 6px;font-size:20px}
+.topologyInspectorTitle small{color:#64748b}
+.topologyInspectorTabs{display:flex;gap:4px;position:sticky;top:0;z-index:2;background:#fff;border-bottom:1px solid #e2e8f0;padding:10px 0;margin-bottom:12px}
+.topologyInspectorTabs button{border:0;border-radius:6px;background:transparent;padding:9px 12px;font-weight:600;color:#475569;cursor:pointer}
+.topologyInspectorTabs button.active{background:#e8f1ff;color:#1d4ed8}
+.topologyInspectorFacts{display:grid;grid-template-columns:minmax(92px,35%) minmax(0,1fr);gap:10px 12px;margin:10px 0;font-size:14px}
+.topologyInspectorFacts dt{color:#64748b}
+.topologyInspectorFacts dd{margin:0;overflow-wrap:anywhere}
+.topologyInspectorSectionHeader{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.topologyInspectorSectionHeader h4{margin:8px 0}
+.topologyInspectorEntry{border:1px solid #e2e8f0;border-radius:8px;padding:12px;margin:10px 0}
+.topologyInspectorEntry .topologyDependency{width:100%;text-align:left}
+.topologyInspectorFlowLink{display:block;margin-top:8px;text-align:left;max-width:100%;overflow-wrap:anywhere}

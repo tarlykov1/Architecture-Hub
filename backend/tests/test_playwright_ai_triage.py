@@ -66,3 +66,73 @@ def test_outside_workspace_attachment_is_ignored(tmp_path):
     assert metadata == []
     assert images == []
 
+
+
+def test_real_playwright_json_report(tmp_path):
+    from scripts.playwright_ai_triage import failures_from
+
+    trace = tmp_path / "trace.zip"
+    with zipfile.ZipFile(trace, "w") as archive:
+        archive.writestr("0-trace.trace", "CONFIDENTIAL ARCHITECTURE INFORMATION")
+        archive.writestr("0-trace.network", "NETWORK SECRET")
+    report = {"suites": [{"title": "live.spec.ts", "suites": [{
+        "specs": [{"title": "test server: system passport and navigation remain clickable",
+                   "tests": [{"projectName": "mobile", "results": [{
+                       "status": "failed",
+                       "error": {"message": "TimeoutError: locator.click: Bearer TOKEN_VALUE  https://internal.example/secret"},
+                       "attachments": [{"name": "trace", "path": str(trace)}]
+                   }]}]}]
+    }]}]}
+    summary = []
+    for suite in report["suites"]:
+        summary.extend(failures_from(suite))
+    assert len(summary) == 1
+    assert summary[0]["test"] == "test server: system passport and navigation remain clickable"
+    assert summary[0]["project"] == "mobile"
+    assert summary[0]["category"] == "timeout"
+    metadata, images = visual_evidence(report, tmp_path)
+    assert metadata[0]["trace_present"] is True
+    assert metadata[0]["network_file"] is True
+    assert images == []
+
+
+def test_ai_receives_only_safe_failure_categories(tmp_path):
+    from scripts.playwright_ai_triage import triage
+
+    seen = []
+    class FakeResponse:
+        def __enter__(self):
+            return self
+        def __exit__(self, exc_type, exc_value, traceback):
+            return False
+        def read(self, *_args):
+            return json.dumps({"output": [{"content": [{"type": "output_text",
+                "text": "Possible timeout in Playwright."}]}]}).encode()
+
+    def fake_opener(request, timeout):
+        seen.append(json.loads(request.data.decode("utf-8")))
+        assert timeout == 30
+        return FakeResponse()
+
+    report = {
+        "suites": [
+            {"specs": [
+                {"title": "test server: public navigation",
+                 "tests": [
+                     {"projectName": "desktop",
+                      "results": [
+                          {"status": "failed",
+                           "error": {"message": "AssertionError: Expected employee=PERSONAL_DATA password=TOP_SECRET"}}
+                      ]}
+                 ]}
+            ]}
+        ]
+    }
+    result = triage(report, "mock-key", opener=fake_opener, root=tmp_path)
+    assert "Possible timeout" in result
+    serialized = json.dumps(seen, ensure_ascii=False)
+    assert "PERSONAL_DATA" not in serialized
+    assert "TOP_SECRET" not in serialized
+    assert "test server: public navigation" in serialized
+    assert "assertion" in serialized
+    assert "input_image" not in serialized

@@ -9,6 +9,13 @@ test.beforeEach(async({page},info)=>{
  })
 })
 
+async function openFlowActionsMenu(page: Page) {
+  const menu=page.locator('details.flowActionsMenu')
+  if(!(await menu.evaluate(element=>element.hasAttribute('open')))){
+    await menu.locator('summary').click()
+  }
+}
+
 async function navigateTo(page: Page, section: 'Реестр сетей'|'Инциденты'|'Топология сетей') {
   const mobile=page.locator('nav.layerTabs details.mobileSectionMenu')
   if(page.viewportSize()!.width<650){
@@ -809,7 +816,8 @@ test('flow attribute drawer reuses dictionary fields for distinct business consu
   const servicing=await create('/api/business/processes',{category_id:category,name:'Servicing '+suffix})
   await page.goto('/')
   await page.getByRole('navigation',{name:'Разделы архитектуры'}).getByRole('button',{name:'Потоки',exact:true}).click()
-  await page.getByRole('button',{name:'Справочник атрибутов и состав данных'}).click()
+  await openFlowActionsMenu(page)
+   await page.locator('details.flowActionsMenu').getByRole('button',{name:'Справочник атрибутов и состав данных'}).click()
   const drawer=page.getByRole('dialog',{name:'Атрибуты потоков данных'})
   await expect(drawer).toBeVisible()
   await drawer.getByRole('tab',{name:/Справочник/}).click()
@@ -889,7 +897,8 @@ test('declare a flow path through existing VRF and security appliance',async({pa
   const vrf=await create('/api/networks',{kind:'vrf',name:'VRF '+suffix})
   await page.goto('/')
   await page.getByRole('navigation',{name:'Разделы архитектуры'}).getByRole('button',{name:'Потоки',exact:true}).click()
-  await page.getByRole('button',{name:'Сетевой маршрут и средства защиты'}).click()
+  await openFlowActionsMenu(page)
+   await page.locator('details.flowActionsMenu').getByRole('button',{name:'Сетевой маршрут и средства защиты'}).click()
   const drawer=page.getByRole('dialog',{name:'Технический маршрут потока'})
   await expect(drawer).toBeVisible()
   await drawer.getByRole('tab',{name:/Справочник объектов/}).click()
@@ -908,7 +917,8 @@ test('declare a flow path through existing VRF and security appliance',async({pa
   await drawer.getByRole('button',{name:'Сохранить маршрут'}).click()
   await expect(drawer.getByRole('button',{name:'Изменений нет'})).toBeDisabled()
   await drawer.getByRole('button',{name:'Закрыть маршрут'}).click()
-  await page.getByRole('button',{name:'Сетевой маршрут и средства защиты'}).click()
+  await openFlowActionsMenu(page)
+   await page.locator('details.flowActionsMenu').getByRole('button',{name:'Сетевой маршрут и средства защиты'}).click()
   const saved=page.getByRole('dialog',{name:'Технический маршрут потока'})
   await saved.getByRole('combobox',{name:'Поток для сетевого маршрута'}).selectOption(flow)
   await expect(saved.getByRole('region',{name:'Шаги технического маршрута'})).toContainText('PTAF '+suffix)

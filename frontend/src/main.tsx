@@ -1101,13 +1101,103 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
           {flowComponentFocus&&<label className="flowDepthSelect">Глубина связей <select aria-label="Глубина связей" value={flowDepth} onChange={e=>setFlowDepth(Number(e.target.value))}><option value={1}>1 уровень</option><option value={2}>2 уровня</option><option value={3}>3 уровня</option></select></label>}
           <div className="flowDataAccess"><button type="button" onClick={()=>setFlowDataOpen(true)}>Справочник атрибутов и состав данных</button>{selectedFlow&&<span>Выбран поток: {flows.find(f=>f.id===selectedFlow)?.name||'–'}</span>}</div>
           <div className="networkPathOpenAction"><button type="button" onClick={()=>setNetworkPathOpen(true)}>Сетевой маршрут и средства защиты</button>{selectedFlow&&<span>Выбран: {flows.find(f=>f.id===selectedFlow)?.name||'Поток'}</span>}</div>
-          {flowView==='diagram'&&!flowEditMode&&<div className="miniArchitecture" data-active-graph="flows">{effectiveFlowOverview?<ReactFlow minZoom={0.08} maxZoom={1} fitViewOptions={{padding:0.15,minZoom:0.3,maxZoom:1}} nodes={flowSystemIds.map((id,index)=>({id,position:flowOverviewPositions[id]||{x:(index%4)*320,y:Math.floor(index/4)*180},data:{label:<DiagramNodeLabel name={objects.find(o=>o.id===id)?.name||'ИС'} kind={objects.find(o=>o.id===id)?.kind||'system'} subtitle={infra.filter(i=>i.system_id===id).length+' компонентов · '+visibleFlows.filter(f=>infra.some(i=>i.id===f.source_id&&i.system_id===id)||infra.some(i=>i.id===f.target_id&&i.system_id===id)).length+' потоков'}/>},style:diagramCardStyle()}))} edges={overviewPairs.map(pair=>{const [source,target]=pair.split('|');const count=flowSystemEdges.filter(x=>x.source===source&&x.target===target).length;return {id:pair,source,target,type:'smoothstep',label:count+' потоков',style:{stroke:'#64748b',strokeWidth:1.5},markerEnd:{type:MarkerType.ArrowClosed,width:12,height:12,color:'#64748b'}}})} onNodeClick={(_,node)=>{setViewSystem(node.id);setFlowDetailPreference('components');setFlowSystemOverview(false);setFlowComponentFocus('');setSelectedFlow('')}} onEdgeClick={(_,edge)=>{const item=flowSystemEdges.find(x=>x.source+'|'+x.target===edge.id);if(item){setFlowDetailPreference('components');setFlowSystemOverview(false);setViewSystem('');setSelectedFlow(item.flow.id);setExpandedFlowPair(item.flow.source_id+'|'+item.flow.target_id)}}} fitView nodesDraggable={false} nodesConnectable={false}><AutoFit maxFitZoom={1} layoutKey={flowLayoutOrientation+flowLayoutDensity+flowComponentFocus+':'+flowDepth+':'+flowDirection+':'+visibleFlows.map(f=>f.source_id+f.target_id).join('|')}/>
-            <FocusNeighborhood selectedId={flowComponentFocus} edgePairs={visibleFlows.map(f=>({source:f.source_id,target:f.target_id}))}/><FocusSelectedFlow flow={flows.find(f=>f.id===selectedFlow)} /><Background gap={20}/><Controls showInteractive={false}/></ReactFlow>:<ReactFlow
-            edgeTypes={{reciprocal:ReciprocalEdge,'obstacle-aware':ObstacleAwareEdge}} nodes={infra.filter(i=>visibleFlows.some(f=>f.source_id===i.id||f.target_id===i.id)).map((i,idx)=>({id:i.id,sourcePosition:flowLayoutOrientation==='horizontal'?Position.Right:Position.Bottom,targetPosition:flowLayoutOrientation==='horizontal'?Position.Left:Position.Top,position:flowPositions[i.id]||{x:(idx%5)*230,y:Math.floor(idx/5)*120},data:{label:<DiagramNodeLabel name={i.name} kind={i.kind} subtitle={objects.find(o=>o.id===i.system_id)?.name||'ИС не указана'} detail={i.kind+' · '+String(i.details.security_zone||'зона не задана')}/>},style:diagramCardStyle({border:selectedFlow&&flows.some(f=>f.id===selectedFlow&&(f.source_id===i.id||f.target_id===i.id))?'3px solid #2563eb':'1px solid #94a3b8',opacity:selectedFlow&&!flows.some(f=>f.id===selectedFlow&&(f.source_id===i.id||f.target_id===i.id))?0.28:1})})).filter(n=>!flowFocusOnly||!selectedFlow||flows.some(f=>f.id===selectedFlow&&(f.source_id===n.id||f.target_id===n.id)))}
-            edges={visibleFlows.filter(f=>!flowFocusOnly||!selectedFlow||f.id===selectedFlow).filter((f,idx,all)=>!groupFlowEdges||!all.slice(0,idx).some(previous=>previous.source_id===f.source_id&&previous.target_id===f.target_id)).map(f=>({id:f.id,source:f.source_id,target:f.target_id,type:visibleFlows.some(x=>x.source_id===f.target_id&&x.target_id===f.source_id)?'reciprocal':'smoothstep',data:{caption:groupFlowEdges?String(visibleFlows.filter(x=>x.source_id===f.source_id&&x.target_id===f.target_id).length)+' потоков':f.name},pathOptions:{borderRadius:12,offset:24},label:groupFlowEdges&&visibleFlows.filter(x=>x.source_id===f.source_id&&x.target_id===f.target_id).length>1?String(visibleFlows.filter(x=>x.source_id===f.source_id&&x.target_id===f.target_id).length)+' '+(visibleFlows.filter(x=>x.source_id===f.source_id&&x.target_id===f.target_id).length%10===1&&visibleFlows.filter(x=>x.source_id===f.source_id&&x.target_id===f.target_id).length%100!==11?'поток':visibleFlows.filter(x=>x.source_id===f.source_id&&x.target_id===f.target_id).length%10>=2&&visibleFlows.filter(x=>x.source_id===f.source_id&&x.target_id===f.target_id).length%10<=4&&!([12,13,14].includes(visibleFlows.filter(x=>x.source_id===f.source_id&&x.target_id===f.target_id).length%100))?'потока':'потоков'):'',labelStyle:{fontSize:11,fill:'#475569'},labelBgStyle:{fill:'#fff',fillOpacity:0.92},style:{stroke:visibleFlows.some(x=>x.id===selectedFlow&&x.source_id===f.source_id&&x.target_id===f.target_id)?'#2563eb':'#94a3b8',strokeWidth:visibleFlows.some(x=>x.id===selectedFlow&&x.source_id===f.source_id&&x.target_id===f.target_id)?1.8:1.15,opacity:selectedFlow&&!visibleFlows.some(x=>x.id===selectedFlow&&x.source_id===f.source_id&&x.target_id===f.target_id)?0.16:1},markerEnd:{type:MarkerType.ArrowClosed,width:12,height:12,color:visibleFlows.some(x=>x.id===selectedFlow&&x.source_id===f.source_id&&x.target_id===f.target_id)?'#2563eb':'#94a3b8'},zIndex:visibleFlows.some(x=>x.id===selectedFlow&&x.source_id===f.source_id&&x.target_id===f.target_id)?100:0}))}
-            onEdgeClick={(_,edge)=>{const flow=flows.find(f=>f.id===edge.id);if(flow){setSelectedFlow(flow.id);const pair=flow.source_id+'|'+flow.target_id;setExpandedFlowPair(current=>current===pair?'':pair)}}} onNodeClick={(_,node)=>{setFlowComponentFocus(node.id);setFlowDepth(1);setSelectedFlow('');setExpandedFlowPair('')}} fitView nodesDraggable={false} nodesConnectable={false} elementsSelectable={true}>            <AutoFit layoutKey={flowLayoutOrientation+flowLayoutDensity+flowComponentFocus+':'+flowDepth+':'+flowDirection+':'+visibleFlows.map(f=>f.source_id+f.target_id).join('|')}/>
-            <Background gap={20}/><Controls showInteractive={false}/>
-          </ReactFlow>}</div>}
+          {flowView==='diagram'&&!flowEditMode&&<div className="miniArchitecture" data-active-graph="flows" role="region" aria-label="Схема потоков">
+            {effectiveFlowOverview?
+              <ReactFlow
+                nodes={flowSystemIds.map((id,index)=>({
+                  id,
+                  position:flowOverviewPositions[id]||{x:(index%3)*310,y:Math.floor(index/3)*170},
+                  data:{label:<DiagramNodeLabel name={objects.find(o=>o.id===id)?.name||'ИС'} kind={objects.find(o=>o.id===id)?.kind||'system'} subtitle={infra.filter(i=>i.system_id===id).length+' компонентов · '+visibleFlows.filter(f=>infra.some(i=>i.id===f.source_id&&i.system_id===id)||infra.some(i=>i.id===f.target_id&&i.system_id===id)).length+' потоков'}/>},
+                  style:diagramCardStyle()
+                }))}
+                edges={overviewPairs.map(pair=>{
+                  const [source,target]=pair.split('|')
+                  const count=flowSystemEdges.filter(x=>x.source===source&&x.target===target).length
+                  return {id:pair,source,target,type:'smoothstep',label:flowCountLabel(count),style:{stroke:'#64748b',strokeWidth:1.5},markerEnd:{type:MarkerType.ArrowClosed,width:12,height:12,color:'#64748b'}}
+                })}
+                minZoom={0.08} maxZoom={1} fitView
+                fitViewOptions={{padding:0.2,maxZoom:1}}
+                nodesDraggable={false} nodesConnectable={false}
+                onNodeClick={(_,node)=>{
+                  setViewSystem(node.id);setFlowDetailPreference('components');setFlowSystemOverview(false)
+                  setFlowComponentFocus('');setHighlightedFlowComponent('');setSelectedFlow('')
+                }}
+                onEdgeClick={(_,edge)=>{
+                  const item=flowSystemEdges.find(x=>x.source+'|'+x.target===edge.id)
+                  if(item){
+                    setFlowDetailPreference('components');setFlowSystemOverview(false)
+                    setViewSystem('');setSelectedFlow(item.flow.id)
+                    setHighlightedFlowComponent('')
+                    setExpandedFlowPair(item.flow.source_id+'|'+item.flow.target_id)
+                  }
+                }}>
+                <AutoFit maxFitZoom={1} layoutKey={'systems:'+flowSystemIds.join('|')+':'+flowLayoutOrientation}/>
+                <Background gap={20}/><Controls showInteractive={false}/>
+              </ReactFlow>:
+              <ReactFlow
+                edgeTypes={{reciprocal:ReciprocalEdge,'obstacle-aware':ObstacleAwareEdge}}
+                nodes={infra.filter(i=>renderedFlowComponentIds.has(i.id)).map((i,idx)=>{
+                  const selectedNode=nodeFocusId===i.id
+                  const flowEndpoint=Boolean(activeSelectedFlow&&(activeSelectedFlow.source_id===i.id||activeSelectedFlow.target_id===i.id))
+                  const emphasize=Boolean(selectedNode||flowEndpoint)
+                  const subdued=Boolean((activeSelectedFlow||nodeFocusId)&&!highlightedFlowNodes.has(i.id))
+                  return {
+                    id:i.id,
+                    sourcePosition:flowLayoutOrientation==='horizontal'?Position.Right:Position.Bottom,
+                    targetPosition:flowLayoutOrientation==='horizontal'?Position.Left:Position.Top,
+                    position:flowPositions[i.id]||{x:(idx%3)*310,y:Math.floor(idx/3)*170},
+                    data:{label:<DiagramNodeLabel name={i.name} kind={i.kind} subtitle={objects.find(o=>o.id===i.system_id)?.name||'ИС не указана'} detail={i.kind+' · '+String(i.details.security_zone||'зона не задана')}/>},
+                    style:diagramCardStyle({
+                      border:emphasize?'2px solid #2563eb':'1px solid #94a3b8',
+                      background:emphasize?'#eff6ff':'#fff',
+                      opacity:subdued?0.36:1
+                    })
+                  }
+                })}
+                edges={renderedFlows.filter((flow,index,all)=>!groupFlowEdges||!all.slice(0,index).some(previous=>previous.source_id===flow.source_id&&previous.target_id===flow.target_id)).map(flow=>{
+                  const samePair=renderedFlows.filter(item=>item.source_id===flow.source_id&&item.target_id===flow.target_id)
+                  const selectedPair=Boolean(activeSelectedFlow&&activeSelectedFlow.source_id===flow.source_id&&activeSelectedFlow.target_id===flow.target_id)
+                  const highlighted=selectedPair||(!activeSelectedFlow&&Boolean(nodeFocusId&&(flow.source_id===nodeFocusId||flow.target_id===nodeFocusId)))
+                  const dimmed=Boolean((activeSelectedFlow||nodeFocusId)&&!highlighted)
+                  return {
+                    id:flow.id,source:flow.source_id,target:flow.target_id,
+                    type:renderedFlows.some(item=>item.source_id===flow.target_id&&item.target_id===flow.source_id)?'reciprocal':'smoothstep',
+                    data:{caption:groupFlowEdges?flowCountLabel(samePair.length):flow.name},
+                    pathOptions:{borderRadius:12,offset:24},
+                    label:groupFlowEdges&&samePair.length>1?flowCountLabel(samePair.length):'',
+                    labelStyle:{fontSize:11,fill:'#475569'},
+                    labelBgStyle:{fill:'#fff',fillOpacity:0.92},
+                    style:{stroke:highlighted?'#2563eb':'#94a3b8',strokeWidth:highlighted?2.5:1.3,opacity:dimmed?0.2:1},
+                    markerEnd:{type:MarkerType.ArrowClosed,width:12,height:12,color:highlighted?'#2563eb':'#94a3b8'},
+                    zIndex:highlighted?100:0
+                  }
+                })}
+                fitView minZoom={0.08} maxZoom={1.1}
+                nodesDraggable={false} nodesConnectable={false} elementsSelectable={true}
+                onEdgeClick={(_,edge)=>{
+                  const flow=renderedFlows.find(item=>item.id===edge.id)
+                  if(flow){
+                    setSelectedFlow(flow.id);setHighlightedFlowComponent('')
+                    setExpandedFlowPair(flow.source_id+'|'+flow.target_id)
+                  }
+                }}
+                onNodeClick={(_,node)=>{
+                  setHighlightedFlowComponent(node.id)
+                  setSelectedFlow('');setExpandedFlowPair('')
+                  setComponentInspectId(node.id);setComponentInspectTab('passport')
+                }}
+                onPaneClick={()=>{setHighlightedFlowComponent('');setSelectedFlow('');setExpandedFlowPair('')}}>
+                <AutoFit
+                  maxFitZoom={renderedFlowComponentIds.size<=2?0.9:1}
+                  focusIds={flowViewportFocusIds}
+                  layoutKey={flowLayoutOrientation+':'+flowLayoutDensity+':'+renderedFlows.map(f=>f.id+f.source_id+f.target_id).join('|')}
+                />
+                <Background gap={20}/><Controls showInteractive={false}/>
+              </ReactFlow>
+            }
+            {!effectiveFlowOverview&&!renderedFlowComponentIds.size&&
+              <div className="diagramEmptyState" role="status">Нет потоков для выбранных фильтров. Сбросьте фокус или фильтр достоверности.</div>}
+          </div>}
           {flowView==='diagram'&&flowEditMode&&(!viewSystem?<section className="diagramEditorEntry" role="region" aria-label="Выбор информационной системы для редактора потоков">
             <h3>Редактор потоков</h3><p>Выберите ИС – на холсте появятся её компоненты и непосредственно связанные компоненты смежных ИС. Изменения сохраняются только после проверки и подтверждения.</p>
             <label>Информационная система <select aria-label="Выбрать ИС для редактора потоков" value={viewSystem} onChange={e=>setViewSystem(e.target.value)}><option value="">Выберите ИС</option>{objects.map(o=><option key={o.id} value={o.id}>{o.name}</option>)}</select></label>

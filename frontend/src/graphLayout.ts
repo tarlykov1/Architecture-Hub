@@ -35,6 +35,12 @@ export function dependencyLayout(ids:string[],edges:LayoutEdge[],xGap=270,yGap=1
   return result
 }
 
+/** Balanced grid shared with the Overview; do not render long dependency strips. */
+export function overviewGridPositions(ids:string[],xGap=310,yGap=170):Record<string,LayoutPoint>{
+ const columns=ids.length<=4?2:3
+ return Object.fromEntries(ids.map((id,index)=>[id,{x:(index%columns)*xGap,y:Math.floor(index/columns)*yGap}]))
+}
+
 /** Balanced default canvas for architecture components: compact for unlinked
  * machines, while preserving dependency columns when real flows exist.
  */

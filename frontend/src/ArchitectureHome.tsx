@@ -1,4 +1,6 @@
 import React, {useEffect,useMemo,useState} from 'react'
+import {architectureIcon,DiagramNodeLabel,diagramCardStyle} from './DiagramVisual'
+export {architectureIcon} from './DiagramVisual'
 import {ReactFlow,Background,Controls,MarkerType,useNodesInitialized,useReactFlow} from '@xyflow/react'
 
 type System={id:string;name:string;kind:string}
@@ -10,17 +12,6 @@ type Network={id:string;name:string;kind:string}
 type Interface={item_id:string;zone_id:string|null;vlan_id:string|null;vrf_id:string|null}
 
 import {AutoFit,Disclosure} from './WorkspaceUI'
-
-export function architectureIcon(kind:string):string{
- const k=kind.toLowerCase()
- if(/database|postgres|mysql|db|бд/.test(k))return '▤'
- if(/vm|server|host|сервер/.test(k))return '▣'
- if(/network|vlan|vrf|zone|сеть/.test(k))return '◇'
- if(/gateway|proxy|firewall|security|шлюз/.test(k))return '⬡'
- if(/container|docker|kubernetes/.test(k))return '▥'
- if(/service|api|integration|сервис/.test(k))return '⟷'
- return '▦'
-}
 
 export default function ArchitectureHome({systems,components,flows,processes,links,networks,interfaces,onOpenSystem,onCloseSystem,inspectorOpen,onOpenComponents,onOpenComponent,onOpenFlows,onOpenNetworks}:{systems:System[];components:Component[];flows:Flow[];processes:Process[];links:Link[];networks:Network[];interfaces:Interface[];onOpenSystem:(id:string)=>void;onCloseSystem:()=>void;inspectorOpen:boolean;onOpenComponents:(id:string)=>void;onOpenComponent:(id:string)=>void;onOpenFlows:()=>void;onOpenNetworks:()=>void}){
  const [layers,setLayers]=useState({systems:true,components:false,flows:true,business:false,networks:false})
@@ -39,7 +30,7 @@ export default function ArchitectureHome({systems,components,flows,processes,lin
  const columns=filteredSystems.length<=4?2:3
  const positions:Record<string,{x:number;y:number}>={}
  filteredSystems.forEach((s,i)=>{positions[s.id]={x:(i%columns)*310,y:Math.floor(i/columns)*170}})
- const nodes=filteredSystems.map((s,i)=>({id:s.id,position:positions[s.id]||{x:(i%4)*320,y:Math.floor(i/4)*190},data:{label:<div className="homeNode"><strong><span aria-hidden="true">{architectureIcon(s.kind)}</span> {s.name}</strong><small>{components.filter(c=>c.system_id===s.id).length} компонентов · {links.filter(l=>l.system_id===s.id).length} бизнес-связей</small></div>},style:{width:245,border:'1px solid #94a3b8',borderRadius:12,background:'#fff',padding:12}}))
+ const nodes=filteredSystems.map((s,i)=>({id:s.id,position:positions[s.id]||{x:(i%4)*320,y:Math.floor(i/4)*190},data:{label:<DiagramNodeLabel name={s.name} kind={s.kind} subtitle={components.filter(c=>c.system_id===s.id).length+' компонентов · '+links.filter(l=>l.system_id===s.id).length+' бизнес-связей'}/>},style:diagramCardStyle()}))
  const selectedSystemInfo=filteredSystems.find(s=>s.id===selectedSystem)
  const selectedNeighbors=new Set<string>([selectedSystem])
  for(const f of crossFlows)if(f.source===selectedSystem||f.target===selectedSystem){selectedNeighbors.add(f.source);selectedNeighbors.add(f.target)}

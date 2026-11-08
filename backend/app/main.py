@@ -7,8 +7,9 @@ from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID, uuid4
 
-from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from .access import access_middleware, configured_keys, ROLE_ACCESS
+from .cmdb import ci_graph, potential_impact
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import DateTime, ForeignKey, JSON, String, Uuid, create_engine, select
@@ -363,6 +364,37 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "DELETE"],
     allow_headers=["Content-Type", "Authorization"],
 )
+
+
+
+# The CMDB projection reads existing normalized records. This is intentionally
+# separate from diagram coordinates and does not create duplicate inventory CIs.
+def _cmdb_data(db: Session) -> dict:
+    return ci_graph(
+        list(db.scalars(select(ArchitectureObject)).all()),
+        list(db.scalars(select(InfrastructureItem)).all()),
+        list(db.scalars(select(Relation)).all()),
+        list(db.scalars(select(DataFlow)).all()),
+        list(db.scalars(select(BusinessProcess)).all()),
+        list(db.scalars(select(ProcessSystem)).all()),
+    )
+
+
+@app.get("/api/cmdb/graph")
+def cmdb_graph(db: Session = Depends(db_session)):
+    """Typed read-only configuration items and relationship semantics."""
+    return _cmdb_data(db)
+
+
+@app.get("/api/cmdb/impact")
+def cmdb_impact(ci_id: str = Query(min_length=1, max_length=120),
+                depth: int = Query(default=3, ge=1, le=5),
+                db: Session = Depends(db_session)):
+    """A conservative impact candidate map; never claims a live outage."""
+    try:
+        return potential_impact(_cmdb_data(db), ci_id, depth)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Configuration item not found")
 
 
 @app.get("/api/health")

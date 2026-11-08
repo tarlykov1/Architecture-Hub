@@ -1,5 +1,5 @@
 import {expect,test} from '@playwright/test'
-import {dependencyLayout} from '../src/graphLayout'
+import {dependencyLayout,overviewGridPositions} from '../src/graphLayout'
 
 test('dependency graph places consumers to the right of providers',()=>{
   const positions=dependencyLayout(['db','api','web'],[{source:'web',target:'api'},{source:'api',target:'db'}])
@@ -15,4 +15,14 @@ test('layout is stable under differing API ordering and handles a cycle',()=>{
 test('duplicate and unknown links do not shift position',()=>{
   const base=dependencyLayout(['a','b'],[{source:'a',target:'b'}])
   expect(dependencyLayout(['b','a'],[{source:'a',target:'b'},{source:'a',target:'b'},{source:'outside',target:'b'}])).toEqual(base)
+})
+
+test('high-level diagram uses the same readable grid as Overview',()=>{
+  const ids=['one','two','three','four','five','six','seven']
+  const positions=overviewGridPositions(ids)
+  expect(positions.one).toEqual({x:0,y:0})
+  expect(positions.three).toEqual({x:620,y:0})
+  expect(positions.four).toEqual({x:0,y:170})
+  expect(positions.seven).toEqual({x:0,y:340})
+  expect(overviewGridPositions(['only']).only).toEqual({x:0,y:0})
 })

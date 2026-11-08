@@ -674,3 +674,36 @@ button:disabled{cursor:not-allowed;opacity:.55}
  .globalHeader{position:relative;z-index:121}
  .mobileSectionOptions{z-index:122}
 }
+
+
+/* Consistent graph experience: overview is the reference for components and flows. */
+.miniArchitecture,
+[data-active-graph="flows"].miniArchitecture,
+.boardCanvas {
+  height:min(65vh,650px);
+  min-height:350px;
+  border:1px solid #cbd5e1;
+  border-radius:12px;
+  background:#f8fafc;
+  overflow:hidden;
+}
+.miniArchitecture .react-flow__node,
+.boardCanvas .react-flow__node {
+  font-family:inherit;
+}
+.architectureGraphNode {min-width:0;text-align:left;gap:7px}
+.architectureGraphNode strong {font-size:14px;line-height:1.35;overflow-wrap:anywhere}
+.architectureGraphNode small {font-size:11px;line-height:1.45;color:#64748b;overflow-wrap:anywhere}
+.architectureGraphIcon {display:inline;color:inherit}
+.architectureGraphDetail{color:#64748b}
+.diagramEditorEntry {display:grid;align-content:center;justify-items:start;gap:12px;
+  min-height:250px;padding:26px;background:#f8fafc;border:1px solid #cbd5e1;border-radius:12px}
+.diagramEditorEntry h3 {margin:0;font-size:19px;color:#1e293b}
+.diagramEditorEntry p {margin:0;max-width:670px;color:#475569;line-height:1.6}
+.diagramEditorEntry label {display:grid;gap:7px;font-size:13px;color:#334155;font-weight:600}
+.diagramEditorEntry select {width:min(420px,calc(100vw - 90px));max-width:100%;
+  border:1px solid #94a3b8;border-radius:9px;background:#fff;padding:10px;color:#1e293b}
+@media(max-width:650px) {
+  .miniArchitecture,[data-active-graph="flows"].miniArchitecture,.boardCanvas {height:clamp(350px,55vh,560px)}
+  .diagramEditorEntry{padding:16px}
+}

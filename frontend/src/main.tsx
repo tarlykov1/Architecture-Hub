@@ -24,7 +24,7 @@ import {groupComponents,type ComponentGroupMode} from './componentGroups'
 import {ReciprocalEdge} from './ReciprocalEdge'
 import {ObstacleAwareEdge} from './ObstacleAwareEdge'
 
-import {AutoFit, FocusNeighborhood, FocusSelectedFlow, Disclosure, useWorkspaceKeyboard} from './WorkspaceUI'
+import {AutoFit, Disclosure, useWorkspaceKeyboard} from './WorkspaceUI'
 
 type Obj = { id: string; kind: string; name: string; description: string; status: string; attributes: Record<string, unknown> }
 type Rel = { id: string; source_id: string; target_id: string; kind: string; description: string }

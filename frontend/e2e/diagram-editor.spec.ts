@@ -37,7 +37,7 @@ test('components expose the real palette even when no system is selected or grou
   const tools=editor.getByRole('toolbar',{name:'Инструменты архитектуры'})
   await expect(tools.getByRole('button',{name:'Курсор / перемещение'})).toBeVisible()
   await expect(tools.getByRole('button',{name:'+ ВМ'})).toBeVisible()
-  await expect(tools.getByRole('button',{name:'→ Связь / поток'})).toBeVisible()
+  await expect(tools.getByRole('button',{name:'→ Поток'})).toBeVisible()
   await expect(tools.getByRole('button',{name:'▭ Сеть / контейнер'})).toBeVisible()
   await expect(editor.locator('.react-flow__node .homeNode')).toHaveCount(2)
   await tools.getByRole('button',{name:'→ Связь / поток'}).click()

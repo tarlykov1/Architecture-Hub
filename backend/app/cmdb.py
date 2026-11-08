@@ -111,10 +111,10 @@ def potential_impact(graph: dict, ci_id: str, depth: int = 3) -> dict:
         group.sort(key=lambda edge: (edge["target"], edge["id"]))
 
     visited = {ci_id}
-    queue = deque([(ci_id, 0, [ci_id], [])])
+    queue = deque([(ci_id, 0, [ci_id], [], True)])
     affected = []
     while queue:
-        current, distance, path, relations = queue.popleft()
+        current, distance, path, relations, fully_verified = queue.popleft()
         if distance >= depth:
             continue
         for edge in adjacency[current]:
@@ -127,9 +127,9 @@ def potential_impact(graph: dict, ci_id: str, depth: int = 3) -> dict:
             affected.append({
                 "node": node_by_id[target], "depth": distance + 1,
                 "path": route, "relations": via,
-                "confidence": "requires_verification" if not edge["verified"] else "known_relation",
+                "confidence": "known_relation" if fully_verified and edge["verified"] else "requires_verification",
             })
-            queue.append((target, distance + 1, route, via))
+            queue.append((target, distance + 1, route, via, fully_verified and edge["verified"]))
     return {
         "root": node_by_id[ci_id], "depth": depth,
         "affected": affected, "count": len(affected),

@@ -15,3 +15,16 @@
 @media(max-width:700px){.boardInspector{width:100vw}.boardInspectorHeader{padding:16px}.boardInspectorBody{padding:16px}}
 
 .boardPassportEdit{display:grid;gap:10px;margin:12px 0;padding:12px;border:1px solid var(--border,#cbd5e1);border-radius:8px}.boardPassportEdit label{display:grid;gap:4px;font-size:13px}.boardPassportEdit input,.boardPassportEdit textarea{width:100%;box-sizing:border-box;min-height:34px;padding:7px;border:1px solid #94a3b8;border-radius:6px;background:var(--surface,#fff);color:inherit}.boardPassportEdit textarea{min-height:80px;resize:vertical}.boardPassportEdit>div{display:flex;gap:8px;flex-wrap:wrap}
+
+/* The editor toolbar is part of the canvas workspace, not hidden below the diagram. */
+.boardTools{border-radius:12px;background:#f8fafc;border-color:#cbd5e1;gap:7px}
+.boardToolsTitle{font-weight:700;font-size:13px;color:#334155;padding:0 8px 0 2px}
+.boardTools button{border-radius:8px;min-height:35px}
+.boardToolFields{border-radius:10px}
+.boardCanvas .architectureGraphNode{pointer-events:none;user-select:none}
+.boardCanvas .react-flow__node .react-flow__handle{pointer-events:auto}
+@media(max-width:700px){
+  .boardTools{gap:6px;padding:9px}
+  .boardToolsTitle{flex-basis:100%}
+  .boardTools strong{margin-left:0}
+}

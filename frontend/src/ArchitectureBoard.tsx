@@ -27,6 +27,9 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
  const [editingPassport,setEditingPassport]=useState(false)
  const [passportDraft,setPassportDraft]=useState({name:'',description:'',purpose:'',environment:''})
  const [changes,setChanges]=useState<Change[]>([])
+ const [layoutDirty,setLayoutDirty]=useState(false)
+ const [layoutBusy,setLayoutBusy]=useState(false)
+ const [layoutMessage,setLayoutMessage]=useState('')
  const [reason,setReason]=useState('')
  const [preview,setPreview]=useState<Preview|null>(null)
  const [error,setError]=useState('')
@@ -72,7 +75,7 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
  // Keep the editor in sync when the selected system or inventory changes,
  // without resetting coordinates that the user has already dragged.
  useEffect(()=>{
-   const currentIds=new Set(initialNodes.map(node=>node.id))
+   const currentIds=new Set([...initialNodes.map(node=>node.id),...changes.filter(c=>c.action==='create_vm').map(c=>c.id!).filter(Boolean)])
    setNodes(previous=>{
      const retained=previous.filter(node=>currentIds.has(node.id))
      const retainedIds=new Set(retained.map(node=>node.id))
@@ -80,7 +83,7 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
      if(!added.length&&retained.length===previous.length)return previous
      return [...retained,...added]
    })
- },[initialNodes,setNodes])
+ },[initialNodes,changes,setNodes])
  const {screenToFlowPosition,fitView}=useReactFlow()
  const allVMs=useMemo<VM[]>(()=>[...items,...changes.filter(c=>c.action==='create_vm').map(c=>({id:c.id!,name:c.name!,system_id:systemId,kind:'vm',description:'',details:{} as Record<string,unknown>}))],[items,changes,systemId])
  const allNetworks=[...networks,...changes.filter(c=>c.action==='create_network').map(c=>({id:c.id!,name:c.name!,kind:c.kind!}))]
@@ -120,6 +123,7 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
  const addChange=(c:Change)=>{setChanges(previous=>[...previous,c]);setPreview(null);setError('')}
  const moveNode=(node:Node)=>{
    onPositionChange?.(node)
+   setLayoutDirty(true);setLayoutMessage('')
    const center={x:node.position.x+97,y:node.position.y+30}
    // A zone move affects exactly one chosen NIC; never replace all NIC memberships.
    const target=visibleRects.slice().reverse().find(r=>rectContains(r,center))
@@ -152,6 +156,7 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
    addChange({action:'create_vm',id,system_id:systemId,name:name.trim(),kind:'vm'})
    setNodes(previous=>[...previous,node])
    onPositionChange?.(node)
+   setLayoutDirty(true);setLayoutMessage('')
    setName('');setTool('move')
  }
  const addFlow=()=>{
@@ -199,6 +204,43 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
    if(drawing)addNetwork(point)
    else {setDrawing(point);setError('')}
  }
+ // The visual layout is saved independently from technical changes.
+ useEffect(()=>{
+   let active=true
+   setLayoutDirty(false);setLayoutMessage('')
+   void request<{positions:Record<string,{x:number;y:number}>}>('/api/board/layout/'+systemId)
+     .then(result=>{
+       if(!active||!result.positions)return
+       setNodes(previous=>previous.map(node=>{
+         const position=result.positions[node.id]||savedPositions[node.id]
+         return position?{...node,position}:node
+       }))
+     }).catch(()=>{/* Browser positions remain the fallback. */})
+   return ()=>{active=false}
+ },[systemId,request,setNodes])
+
+ const saveLayout=async()=>{
+   if(layoutBusy)return
+   setLayoutBusy(true);setLayoutMessage('');setError('')
+   try{
+     const validIds=new Set(items.map(item=>item.id))
+     const positions=Object.fromEntries(nodes.filter(node=>validIds.has(node.id))
+       .map(node=>[node.id,{x:node.position.x,y:node.position.y}]))
+     await request('/api/board/layout/'+systemId,{method:'PUT',body:JSON.stringify({positions})})
+     const hasStagedVM=changes.some(c=>c.action==='create_vm')
+     setLayoutDirty(hasStagedVM)
+     setLayoutMessage(hasStagedVM
+       ?'Расположение существующих ВМ сохранено. Новые ВМ подтвердите в черновике, затем сохраните их расположение.'
+       :'Расположение схемы сохранено.')
+   }catch(e){setError('Не удалось сохранить расположение: '+String(e))}
+   finally{setLayoutBusy(false)}
+ }
+ const discardDraft=()=>{
+   const staged=new Set(changes.filter(c=>c.action==='create_vm').map(c=>c.id))
+   setNodes(previous=>previous.filter(node=>!staged.has(node.id)))
+   setChanges([]);setPreview(null);setError('')
+   setLayoutMessage('Черновик изменений отменён.')
+ }
  const openHistory=async()=>{
    setError('')
    try{setHistory(await request<Array<{id:string;timestamp:string;reason:string;changes:Preview['changes']}>>('/api/board/audit?limit=30'));setShowHistory(true)}catch(e){setError(String(e))}
@@ -230,7 +272,7 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
    if(!from||to||from===node.id){setFrom(node.id);setTo('')}
    else setTo(node.id)
  }else if(tool==='move'){openPassport(node.id);setFocusDependencies(false)}
-}} onNodeDragStop={(_,node)=>moveNode(node)} onPaneClick={handlePaneClick} minZoom={0.08} fitView fitViewOptions={{padding:0.2,maxZoom:0.9}}><AutoFit layoutKey={tool+':'+Boolean(inspectedVM)+':'+items.length+':'+flows.length+':'+nodes.length} maxFitZoom={0.9}/><Background gap={20}/><Controls showInteractive={false}/></ReactFlow></div>
+}} onNodeDragStop={(_,node)=>moveNode(node)} onPaneClick={handlePaneClick} minZoom={0.08} fitView fitViewOptions={{padding:0.2,maxZoom:0.9}}><AutoFit layoutKey={systemId+':'+items.length+':'+flows.length} maxFitZoom={0.9}/><Background gap={20}/><Controls showInteractive={false}/></ReactFlow></div>
 
         <div className="boardTools" role="toolbar" aria-label="Инструменты архитектуры">
      {([['move','Курсор / перемещение','↖'],['vm','+ ВМ','▣'],['flow','→ Поток','→'],['network','▭ Сеть / контейнер','▢']] as const).map(([key,title,symbol])=>

@@ -2,13 +2,14 @@ import React, {useEffect,useRef,type ReactNode} from 'react'
 import {useNodes,useNodesInitialized,useReactFlow} from '@xyflow/react'
 
 /** Refit measured graphs on membership/layout changes and actual canvas resize. */
-export function AutoFit({layoutKey='',maxFitZoom=1,groupParentsOnly=false}:{layoutKey?:string;maxFitZoom?:number;groupParentsOnly?:boolean}){
+export function AutoFit({layoutKey='',maxFitZoom=1,groupParentsOnly=false,focusIds=[]}:{layoutKey?:string;maxFitZoom?:number;groupParentsOnly?:boolean;focusIds?:string[]}){
  const anchor=useRef<HTMLSpanElement>(null)
  const {fitView}=useReactFlow()
  const initialized=useNodesInitialized()
  const graphNodes=useNodes()
  const ids=graphNodes.map(n=>n.id).sort().join('|')
  const topLevelIds=graphNodes.filter(n=>!n.parentId).map(n=>n.id).sort().join('|')
+ const visibleFocusIds=focusIds.filter(id=>graphNodes.some(node=>node.id===id)).sort().join('|')
  useEffect(()=>{
   const canvas=anchor.current?.closest('.react-flow')
   if(!initialized||!ids||!canvas)return
@@ -16,7 +17,7 @@ export function AutoFit({layoutKey='',maxFitZoom=1,groupParentsOnly=false}:{layo
   const fit=()=>{
    cancelAnimationFrame(frame);cancelAnimationFrame(inner)
    frame=requestAnimationFrame(()=>{
-    inner=requestAnimationFrame(()=>{void fitView({padding:0.2,maxZoom:maxFitZoom,minZoom:0.02,duration:0,...(groupParentsOnly?{nodes:topLevelIds.split('|').filter(Boolean).map(id=>({id}))}:{})})})
+    inner=requestAnimationFrame(()=>{void fitView({padding:visibleFocusIds?0.32:0.2,maxZoom:maxFitZoom,minZoom:0.02,duration:0,...(visibleFocusIds?{nodes:visibleFocusIds.split('|').filter(Boolean).map(id=>({id}))}:groupParentsOnly?{nodes:topLevelIds.split('|').filter(Boolean).map(id=>({id}))}:{})})})
    })
   }
   const refit=()=>{
@@ -42,7 +43,7 @@ export function AutoFit({layoutKey='',maxFitZoom=1,groupParentsOnly=false}:{layo
    window.clearTimeout(settle)
    cancelAnimationFrame(frame);cancelAnimationFrame(inner)
   }
- },[fitView,initialized,ids,topLevelIds,layoutKey,maxFitZoom,groupParentsOnly])
+ },[fitView,initialized,ids,topLevelIds,visibleFocusIds,layoutKey,maxFitZoom,groupParentsOnly])
  return <span ref={anchor} hidden/>
 }
 

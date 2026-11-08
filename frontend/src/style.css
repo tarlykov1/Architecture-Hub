@@ -665,10 +665,10 @@ button:disabled{cursor:not-allowed;opacity:.55}
  .shell.shellNoCatalog.shellInspectorOpen .details:not(.detailsExpanded),
  .shell.shellInspectorOpen .details,
  .shell.shellInspectorOpen .details.detailsExpanded{
-  top:53px;
+  top:56px;
   bottom:0;
-  height:calc(100dvh - 53px);
-  max-height:calc(100dvh - 53px);
+  height:calc(100dvh - 56px);
+  max-height:calc(100dvh - 56px);
   box-sizing:border-box;
  }
  .globalHeader{position:relative;z-index:121}

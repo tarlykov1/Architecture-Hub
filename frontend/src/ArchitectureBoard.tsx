@@ -239,7 +239,7 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
      <span className="boardToolsSeparator" aria-hidden="true"/>
      <button type="button" title="Показать всё" aria-label="Показать всё" disabled={!nodes.length} onClick={()=>void fitView({padding:0.25,duration:250,maxZoom:0.9})}><span aria-hidden="true">⛶</span></button>
      <button type="button" title="История изменений" aria-label="История изменений" onClick={()=>void openHistory()}><span aria-hidden="true">◷</span></button>
-     <span className="boardChangeCount" aria-label={'Черновик: '+changes.length+' изменений'}>{changes.length}</span>
+     <span className="boardChangeCount" aria-label={'Черновик: '+changes.length+' изменений'}>{changes.length}<span className="boardCountLabel"> изменений</span></span>
    </div>
      {(tool!=='move'||inspectedVM||changes.length>0||Boolean(error))&&<aside className="boardDock" role="complementary" aria-label="Свойства и изменения схемы">
        {tool!=='move'&&<div className="boardPropertiesHeader"><div><small>ИНСТРУМЕНТ</small><h3>{tool==='vm'?'Виртуальная машина':tool==='flow'?'Поток данных':'Сеть / контейнер'}</h3></div><button type="button" aria-label="Закрыть настройки инструмента" onClick={()=>{setTool('move');setDrawing(null)}}>✕</button></div>}

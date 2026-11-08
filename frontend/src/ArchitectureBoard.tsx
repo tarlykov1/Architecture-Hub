@@ -1,6 +1,7 @@
 import React, {useEffect, useMemo, useState} from 'react'
 import './board.css'
 import {DiagramNodeLabel,diagramCardStyle} from './DiagramVisual'
+import {AutoFit} from './WorkspaceUI'
 import {ReactFlow, ReactFlowProvider, Background, Controls, useNodesState, useReactFlow, MarkerType, Position, type Node, type NodeChange} from '@xyflow/react'
 import {compactComponentLayout,flowCountLabel} from './graphLayout'
 import {ReciprocalEdge} from './ReciprocalEdge'
@@ -95,7 +96,11 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
    flowGroups.set(key,[...(flowGroups.get(key)||[]),flow])
  }
  const relatedIds=new Set(inspectedId?[inspectedId,...[...flows,...pendingFlows].filter(f=>f.source_id===inspectedId||f.target_id===inspectedId).flatMap(f=>[f.source_id,f.target_id])]:[])
- const displayedNodes=graphNodes.map(n=>({...n,style:{...n.style,opacity:focusDependencies&&inspectedId&&!n.id.startsWith('network:')&&!relatedIds.has(n.id)?0.22:1}}))
+ const displayedNodes=graphNodes.map(n=>({...n,style:{...n.style,
+    border:((tool==='flow'&&(n.id===from||n.id===to))||(tool==='move'&&n.id===inspectedId))?'2px solid #2563eb':n.style?.border,
+    background:((tool==='flow'&&(n.id===from||n.id===to))||(tool==='move'&&n.id===inspectedId))?'#eff6ff':n.style?.background,
+    opacity:focusDependencies&&inspectedId&&!n.id.startsWith('network:')&&!relatedIds.has(n.id)?0.22:1
+  }}))
  const inspectedVM=allVMs.find(v=>v.id===inspectedId)
  const openPassport=(id:string)=>{const vm=allVMs.find(v=>v.id===id);if(!vm)return;setInspectedId(id);setEditingPassport(false);setPassportDraft({name:vm.name,description:vm.description||'',purpose:String(vm.details?.purpose||''),environment:String(vm.details?.environment||'')})}
  const stagePassport=()=>{if(!inspectedVM||!passportDraft.name.trim())return;const details_patch:Record<string,string>={purpose:passportDraft.purpose,environment:passportDraft.environment};const previous_details:Record<string,unknown>={purpose:inspectedVM.details?.purpose??null,environment:inspectedVM.details?.environment??null};addChange({action:'update_vm',id:inspectedVM.id,system_id:systemId,name:passportDraft.name.trim(),description:passportDraft.description,previous_name:inspectedVM.name,previous_description:inspectedVM.description||'',details_patch,previous_details});setEditingPassport(false);setInspectedId(null);setFocusDependencies(false)}
@@ -140,11 +145,13 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
    setChanges(previous=>[...previous.filter(c=>!(c.action==='move_interface'&&c.interface_id===nic.id&&c.network_field===field)),next])
    setPreview(null);setError('')
  }
- const addVM=()=>{
+ const addVM=(point?:{x:number;y:number})=>{
    if(!name.trim())return setError('Введите имя новой ВМ.')
    const id=makeId()
+   const node:Node={id,position:point||{x:90+(nodes.length%4)*280,y:100+Math.floor(nodes.length/4)*175},sourcePosition:Position.Bottom,targetPosition:Position.Top,data:{label:<DiagramNodeLabel name={name.trim()} kind="vm" subtitle={ownerName} detail="ВМ · Черновик"/>},style:diagramCardStyle({border:'1px dashed #2674bf'})}
    addChange({action:'create_vm',id,system_id:systemId,name:name.trim(),kind:'vm'})
-   setNodes(previous=>[...previous,{id,position:{x:90+(previous.length%4)*280,y:100+Math.floor(previous.length/4)*175},sourcePosition:Position.Bottom,targetPosition:Position.Top,data:{label:<DiagramNodeLabel name={name.trim()} kind="vm" subtitle={ownerName} detail="ВМ · Черновик"/>},style:diagramCardStyle({border:'1px dashed #2674bf'})}])
+   setNodes(previous=>[...previous,node])
+   onPositionChange?.(node)
    setName('');setTool('move')
  }
  const addFlow=()=>{
@@ -183,6 +190,10 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
    setDrawing(null);setName('');setTool('move')
  }
  const handlePaneClick=(event:React.MouseEvent)=>{
+   if(tool==='vm'){
+     addVM(screenToFlowPosition({x:event.clientX,y:event.clientY}))
+     return
+   }
    if(tool!=='network')return
    const point=screenToFlowPosition({x:event.clientX,y:event.clientY})
    if(drawing)addNetwork(point)
@@ -211,19 +222,33 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
    finally{setBusy(false)}
  }
  return <section className="boardWorkspace" aria-label="Редактор архитектурной схемы">
-   <div className="boardTools" role="toolbar" aria-label="Инструменты архитектуры"><span className="boardToolsTitle">Инструменты схемы</span>
-     {([['move','Курсор / перемещение'],['vm','+ ВМ'],['flow','→ Поток'],['network','▭ Сеть / контейнер']] as const).map(([key,title])=><button key={key} aria-pressed={tool===key} onClick={()=>{setTool(key);setDrawing(null);setError('')}}>{title}</button>)}
-     <button disabled={!nodes.length} onClick={()=>void fitView({padding:0.18,duration:250,maxZoom:0.9})}>Показать всё</button>
-     <strong>{changes.length} изменений</strong>
-     <button type="button" onClick={()=>void openHistory()}>История изменений</button>
+   <div className="boardEditorStage">
+        <div className="boardCanvas" data-active-graph="infrastructure-editor"><ReactFlow nodes={displayedNodes} edges={edges} edgeTypes={{reciprocal:ReciprocalEdge,'obstacle-aware':ObstacleAwareEdge}} onNodesChange={(updates:NodeChange[])=>onNodesChange(updates.filter(c=>!('id' in c)||!c.id.startsWith('network:')))} nodesDraggable={tool==='move'} snapToGrid={snapToGrid} snapGrid={[20,20]} nodesConnectable={tool==='flow'} onConnect={connection=>{if(connection.source&&connection.target&&connection.source!==connection.target){setFrom(connection.source);setTo(connection.target);setInspectedId(null);setTool('flow');setError('Заполните параметры нового потока справа и добавьте его в черновик.')}}} onEdgeClick={(_,edge)=>{setInspectedId(null);setFocusDependencies(false);setFrom(edge.source);setTo(edge.target);setTool('flow')}} onNodeClick={(_,node)=>{
+ if(node.id.startsWith('network:'))return
+ if(tool==='flow'){
+   setInspectedId(null);setFocusDependencies(false)
+   if(!from||to||from===node.id){setFrom(node.id);setTo('')}
+   else setTo(node.id)
+ }else if(tool==='move'){openPassport(node.id);setFocusDependencies(false)}
+}} onNodeDragStop={(_,node)=>moveNode(node)} onPaneClick={handlePaneClick} minZoom={0.08} fitView fitViewOptions={{padding:0.2,maxZoom:0.9}}><AutoFit layoutKey={tool+':'+Boolean(inspectedVM)+':'+items.length+':'+flows.length+':'+nodes.length} maxFitZoom={0.9}/><Background gap={20}/><Controls showInteractive={false}/></ReactFlow></div>
+
+        <div className="boardTools" role="toolbar" aria-label="Инструменты архитектуры">
+     {([['move','Курсор / перемещение','↖'],['vm','+ ВМ','▣'],['flow','→ Поток','→'],['network','▭ Сеть / контейнер','▢']] as const).map(([key,title,symbol])=>
+        <button type="button" key={key} title={title} aria-label={title} data-tool={key} aria-pressed={tool===key}
+          onClick={()=>{setTool(key);setInspectedId(null);setFocusDependencies(false);setDrawing(null);setError('')}}><span aria-hidden="true">{symbol}</span></button>)}
+     <span className="boardToolsSeparator" aria-hidden="true"/>
+     <button type="button" title="Показать всё" aria-label="Показать всё" disabled={!nodes.length} onClick={()=>void fitView({padding:0.25,duration:250,maxZoom:0.9})}><span aria-hidden="true">⛶</span></button>
+     <button type="button" title="История изменений" aria-label="История изменений" onClick={()=>void openHistory()}><span aria-hidden="true">◷</span></button>
+     <span className="boardChangeCount" aria-label={'Черновик: '+changes.length+' изменений'}>{changes.length}<span className="boardCountLabel"> изменений</span></span>
    </div>
-   {tool==='vm'&&<div className="boardToolFields"><label>Имя ВМ <input value={name} onChange={e=>setName(e.target.value)} placeholder="Новая ВМ"/></label><button onClick={addVM}>Разместить на схеме</button></div>}
+     {(tool!=='move'||inspectedVM||changes.length>0||Boolean(error))&&<aside className="boardDock" role="complementary" aria-label="Свойства и изменения схемы">
+       {tool!=='move'&&<div className="boardPropertiesHeader"><div><small>ИНСТРУМЕНТ</small><h3>{tool==='vm'?'Виртуальная машина':tool==='flow'?'Поток данных':'Сеть / контейнер'}</h3></div><button type="button" aria-label="Закрыть настройки инструмента" onClick={()=>{setTool('move');setDrawing(null)}}>✕</button></div>}
+          {tool==='vm'&&<div className="boardToolFields"><p>Введите название и нажмите на холст для размещения ВМ.</p><label>Имя ВМ <input value={name} onChange={e=>setName(e.target.value)} placeholder="Новая ВМ"/></label><button onClick={()=>addVM()}>Разместить на схеме</button></div>}
    {tool==='network'&&<div className="boardToolFields"><label>Название сети <input value={name} onChange={e=>setName(e.target.value)}/></label><label>Тип <select value={kind} onChange={e=>setKind(e.target.value as typeof kind)}><option value="zone">Зона</option><option value="vlan">VLAN</option><option value="vrf">VRF</option></select></label><span>{drawing?'Нажмите на противоположный угол прямоугольника':'Щёлкните на схеме – первый угол, затем второй угол'}</span></div>}
-   {tool==='flow'&&<div className="boardToolFields"><label>Откуда <select value={from} onChange={e=>setFrom(e.target.value)}><option value="">Выберите</option>{allVMs.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}</select></label><label>Куда <select value={to} onChange={e=>setTo(e.target.value)}><option value="">Выберите</option>{allVMs.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}</select></label><label>Направление <select value={direction} onChange={e=>setDirection(e.target.value as typeof direction)}><option value="forward">→</option><option value="reverse">←</option><option value="both">↔ (два потока)</option></select></label><label>Протокол <input value={protocol} onChange={e=>setProtocol(e.target.value)}/></label><label>Порт <input value={port} onChange={e=>setPort(e.target.value)}/></label><label>Защита <input value={security} onChange={e=>setSecurity(e.target.value)}/></label><button onClick={addFlow}>Добавить поток</button></div>}
-   <div className="boardToolFields"><label>Интерфейс для перемещения в сеть <select value={interfaceId} onChange={e=>setInterfaceId(e.target.value)}><option value="">Автоматически, если один</option>{interfaces.filter(n=>items.some(i=>i.id===n.item_id)).map(n=><option key={n.id} value={n.id}>{items.find(i=>i.id===n.item_id)?.name} · {n.name}</option>)}</select></label><span>Перетащите ВМ в прямоугольник сети – привязка попадёт в черновик. Перемещение на поле сохраняется только как расположение схемы.</span></div>
-   <div className="boardCanvas" data-active-graph="infrastructure-editor"><ReactFlow nodes={displayedNodes} edges={edges} edgeTypes={{reciprocal:ReciprocalEdge,'obstacle-aware':ObstacleAwareEdge}} onNodesChange={(updates:NodeChange[])=>onNodesChange(updates.filter(c=>!('id' in c)||!c.id.startsWith('network:')))} nodesDraggable={tool==='move'} snapToGrid={snapToGrid} snapGrid={[20,20]} nodesConnectable={tool==='flow'} onConnect={connection=>{if(connection.source&&connection.target&&connection.source!==connection.target){setFrom(connection.source);setTo(connection.target);setError('Укажите параметры потока и нажмите «Добавить поток». Пока запись не подтверждена, линия не сохраняется.')}}} onEdgeClick={(_,edge)=>{openPassport(edge.source);setFocusDependencies(true);setFrom(edge.source);setTo(edge.target);setTool('flow')}} onNodeClick={(_,node)=>{if(!node.id.startsWith('network:')){openPassport(node.id);setFocusDependencies(false)}}} onNodeDragStop={(_,node)=>moveNode(node)} onPaneClick={handlePaneClick} minZoom={0.08} fitView fitViewOptions={{padding:0.2,maxZoom:0.9}}><Background gap={20}/><Controls showInteractive={false}/></ReactFlow></div>
-   {inspectedVM&&<div className="boardInspectorBackdrop" onClick={()=>{setInspectedId(null);setFocusDependencies(false)}} aria-hidden="true"/>}
-   {inspectedVM&&<aside className="boardInspector" role="dialog" aria-modal="false" aria-label={'Паспорт компонента '+inspectedVM.name}>
+   {tool==='flow'&&<div className="boardToolFields"><p>Протяните связь между ВМ или выберите по очереди источник и получателя на холсте.</p><label>Откуда <select aria-label="Откуда" value={from} onChange={e=>setFrom(e.target.value)}><option value="">Выберите</option>{allVMs.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}</select></label><label>Куда <select aria-label="Куда" value={to} onChange={e=>setTo(e.target.value)}><option value="">Выберите</option>{allVMs.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}</select></label><label>Направление <select value={direction} onChange={e=>setDirection(e.target.value as typeof direction)}><option value="forward">→</option><option value="reverse">←</option><option value="both">↔ (два потока)</option></select></label><label>Протокол <input value={protocol} onChange={e=>setProtocol(e.target.value)}/></label><label>Порт <input value={port} onChange={e=>setPort(e.target.value)}/></label><label>Защита <input value={security} onChange={e=>setSecurity(e.target.value)}/></label><button onClick={addFlow}>Добавить поток</button></div>}
+   {(tool==='network'||(tool==='move'&&inspectedVM))&&<div className="boardToolFields"><label>Интерфейс для перемещения в сеть <select value={interfaceId} onChange={e=>setInterfaceId(e.target.value)}><option value="">Автоматически, если один</option>{interfaces.filter(n=>items.some(i=>i.id===n.item_id)).map(n=><option key={n.id} value={n.id}>{items.find(i=>i.id===n.item_id)?.name} · {n.name}</option>)}</select></label><span>Перетащите ВМ в прямоугольник сети – привязка попадёт в черновик. Перемещение на поле сохраняется только как расположение схемы.</span></div>}
+
+       {tool==='move'&&inspectedVM&&<aside className="boardInspector" role="dialog" aria-modal="false" aria-label={'Паспорт компонента '+inspectedVM.name}>
      <div className="boardInspectorHeader"><div><small>Паспорт компонента</small><h3>{inspectedVM.name}</h3></div><button type="button" aria-label="Закрыть паспорт" onClick={()=>{setInspectedId(null);setFocusDependencies(false)}}>✕</button></div>
      <div className="boardInspectorBody">
        {editingPassport&&<div className="boardPassportEdit"><label>Название<input aria-label="Название компонента" value={passportDraft.name} onChange={e=>setPassportDraft(p=>({...p,name:e.target.value}))}/></label><label>Описание<textarea aria-label="Описание компонента" value={passportDraft.description} onChange={e=>setPassportDraft(p=>({...p,description:e.target.value}))}/></label><label>Назначение<input aria-label="Назначение компонента" value={passportDraft.purpose} onChange={e=>setPassportDraft(p=>({...p,purpose:e.target.value}))}/></label><label>Среда<input aria-label="Среда компонента" value={passportDraft.environment} onChange={e=>setPassportDraft(p=>({...p,environment:e.target.value}))}/></label><div><button type="button" disabled={!passportDraft.name.trim()} onClick={stagePassport}>Добавить в черновик</button><button type="button" onClick={()=>setEditingPassport(false)}>Отмена</button></div></div>}
@@ -237,8 +262,10 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
      </div>
      <div className="boardInspectorActions"><button type="button" onClick={()=>setEditingPassport(v=>!v)}>{editingPassport?"Скрыть редактирование":"Редактировать паспорт"}</button><label><input type="checkbox" checked={focusDependencies} onChange={e=>setFocusDependencies(e.target.checked)}/> Выделить зависимости</label><button type="button" onClick={()=>{setFrom(inspectedVM.id);setTo('');setTool('flow');setInspectedId(null);setFocusDependencies(false)}}>Добавить поток</button><button type="button" onClick={()=>{setInspectedId(null);setFocusDependencies(false)}}>Закрыть</button></div>
    </aside>}
-   <div className="boardReview"><label>Причина изменений <input value={reason} onChange={e=>{setReason(e.target.value);setPreview(null)}} placeholder="Например: актуализация схемы ИС после изменения сети"/></label><button disabled={!changes.length||busy} onClick={submitPreview}>Проверить изменения ({changes.length})</button><button disabled={!changes.length||busy} onClick={()=>{setChanges([]);setPreview(null);setError('Черновик операций очищен. Новые нарисованные объекты исчезнут при повторном открытии редактора.')}}>Отменить черновик</button></div>
-   {!!error&&<p role="status" className="boardStatus">{error}</p>}
+       {changes.length>0&&<div className="boardReview"><label>Причина изменений <input value={reason} onChange={e=>{setReason(e.target.value);setPreview(null)}} placeholder="Например: актуализация схемы ИС после изменения сети"/></label><button disabled={!changes.length||busy} onClick={submitPreview}>Проверить изменения ({changes.length})</button><button disabled={!changes.length||busy} onClick={()=>{setChanges([]);setPreview(null);setError('Черновик операций очищен. Новые нарисованные объекты исчезнут при повторном открытии редактора.')}}>Отменить черновик</button></div>}
+       {!!error&&<p role="status" className="boardStatus">{error}</p>}
+     </aside>}
+   </div>
    {showHistory&&<div className="boardConfirm" role="dialog" aria-modal="true" aria-label="Журнал изменений архитектуры"><div className="boardConfirmInner"><h3>Журнал изменений схемы</h3><p>Последние подтверждённые пакеты операций.</p><ol>{history.map(entry=><li key={entry.id}><strong>{entry.timestamp}</strong> – {entry.reason} · {entry.changes.length} операций<details><summary>Посмотреть состав</summary><pre>{JSON.stringify(entry.changes,null,2)}</pre></details></li>)}</ol>{!history.length&&<p>Записей пока нет.</p>}<button type="button" onClick={()=>setShowHistory(false)}>Закрыть</button></div></div>}
    {preview&&<div className="boardConfirm" role="dialog" aria-modal="true" aria-label="Подтверждение изменений архитектуры"><div className="boardConfirmInner"><h3>Подтверждение изменений</h3><p>Причина: {reason}. Будет сохранено {preview.count} операций. Для существующих интерфейсов сверяется прежняя сеть.</p><ol>{preview.changes.map((c,i)=><li key={i}><strong>{c.action}</strong> · {c.id}<pre>{JSON.stringify({before:c.before,after:c.after},null,2)}</pre></li>)}</ol><div><button disabled={busy} onClick={()=>setPreview(null)}>Вернуться к схеме</button><button disabled={busy} className="primary" onClick={commit}>Подтвердить и записать в журнал</button></div></div></div>}
  </section>

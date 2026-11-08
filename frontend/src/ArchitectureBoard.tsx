@@ -1,5 +1,6 @@
 import React, {useEffect, useMemo, useState} from 'react'
 import './board.css'
+import {DiagramNodeLabel,diagramCardStyle} from './DiagramVisual'
 import {ReactFlow, ReactFlowProvider, Background, Controls, useNodesState, useReactFlow, MarkerType, Position, type Node, type NodeChange} from '@xyflow/react'
 import {compactComponentLayout,flowCountLabel} from './graphLayout'
 import {ReciprocalEdge} from './ReciprocalEdge'
@@ -11,14 +12,14 @@ type NIC = {id:string;item_id:string;name:string;zone_id:string|null;vlan_id:str
 type Flow = {id:string;source_id:string;target_id:string;name:string;protocol:string;port:string}
 type Change = {action:'create_vm'|'create_network'|'create_flow'|'create_interface'|'move_interface'|'update_vm';id?:string;system_id?:string;name?:string;kind?:string;description?:string;source_id?:string;target_id?:string;protocol?:string;port?:string;security?:string;data_description?:string;interface_id?:string;item_id?:string;interface_name?:string;network_id?:string|null;previous_network_id?:string|null;previous_name?:string;previous_description?:string;details_patch?:Record<string,string>;previous_details?:Record<string,unknown>;network_field?:'zone_id'|'vlan_id'|'vrf_id'}
 type Preview = {changes:Array<{action:string;id:string;before:unknown;after:unknown;field?:string}>;count:number}
-type Props = {systemId:string;ownerName?:string;items:VM[];networks:Network[];interfaces:NIC[];flows:Flow[];savedPositions?:Record<string,{x:number;y:number}>;onPositionChange?:(node:Node)=>void;request:<T>(url:string,init?:RequestInit)=>Promise<T>;onCommitted:()=>Promise<void>}
+type Props = {systemId:string;ownerName?:string;ownerBySystemId?:Record<string,string>;items:VM[];networks:Network[];interfaces:NIC[];flows:Flow[];savedPositions?:Record<string,{x:number;y:number}>;onPositionChange?:(node:Node)=>void;request:<T>(url:string,init?:RequestInit)=>Promise<T>;onCommitted:()=>Promise<void>}
 type Tool = 'move'|'vm'|'flow'|'network'
 type Rect = {id:string;name:string;kind:string;x:number;y:number;width:number;height:number}
 const makeId=()=>crypto.randomUUID()
 const rectContains=(r:Rect,p:{x:number;y:number})=>p.x>=r.x&&p.x<=r.x+r.width&&p.y>=r.y&&p.y<=r.y+r.height
 const fieldForKind=(kind:string):'zone_id'|'vlan_id'|'vrf_id'=>kind==='vlan'?'vlan_id':kind==='vrf'?'vrf_id':'zone_id'
 
-function Editor({systemId,ownerName='',items,networks,interfaces,flows,savedPositions={},onPositionChange,request,onCommitted}:Props){
+function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfaces,flows,savedPositions={},onPositionChange,request,onCommitted}:Props){
  const [tool,setTool]=useState<Tool>('move')
  const [inspectedId,setInspectedId]=useState<string|null>(null)
  const [focusDependencies,setFocusDependencies]=useState(false)
@@ -63,9 +64,9 @@ function Editor({systemId,ownerName='',items,networks,interfaces,flows,savedPosi
      const members=group?items.filter(v=>interfaces.some(n=>n.item_id===v.id&&n[fieldForKind(group.kind)]===group.id)):[]
      const index=group?members.findIndex(v=>v.id===item.id):i
      const position=savedPositions[item.id]|| (group?{x:group.x+25+(index%2)*265,y:group.y+65+Math.floor(index/2)*175}:positions[item.id]||{x:70+(i%4)*280,y:80+Math.floor(i/4)*175})
-     return {id:item.id,position,sourcePosition:Position.Bottom,targetPosition:Position.Top,data:{label:<div className="systemNode"><strong>{item.name}</strong><span className="componentNodeOwner">{ownerName}</span><span className="componentNodePurpose">{item.description?.trim()||String(item.details.purpose||item.details.role||'Назначение не описано')}</span><small>{item.kind} · {String(item.details.environment||'Среда не задана')}</small></div>},style:{width:220,padding:12,background:'#fff',border:'1px solid #bac8d8',borderRadius:12}}
+     return {id:item.id,position,sourcePosition:Position.Bottom,targetPosition:Position.Top,data:{label:<DiagramNodeLabel name={item.name} kind={item.kind} subtitle={ownerBySystemId[item.system_id]||ownerName} detail={item.kind+' · '+String(item.details.environment||'Среда не задана')}/>},style:diagramCardStyle()}
    })
- },[items,flows,interfaces,ownerName]) // Keep dragged coordinates in React Flow during the editing session.
+ },[items,flows,interfaces,ownerName,ownerBySystemId]) // Keep dragged coordinates in React Flow during the editing session.
  const [nodes,setNodes,onNodesChange]=useNodesState(initialNodes)
  // Keep the editor in sync when the selected system or inventory changes,
  // without resetting coordinates that the user has already dragged.
@@ -143,7 +144,7 @@ function Editor({systemId,ownerName='',items,networks,interfaces,flows,savedPosi
    if(!name.trim())return setError('Введите имя новой ВМ.')
    const id=makeId()
    addChange({action:'create_vm',id,system_id:systemId,name:name.trim(),kind:'vm'})
-   setNodes(previous=>[...previous,{id,position:{x:90+(previous.length%4)*280,y:100+Math.floor(previous.length/4)*175},sourcePosition:Position.Bottom,targetPosition:Position.Top,data:{label:<div className="systemNode"><strong>{name.trim()}</strong><span className="componentNodeOwner">{ownerName}</span><small>vm · Черновик</small></div>},style:{width:220,padding:12,background:'#fff',border:'1px dashed #2674bf',borderRadius:12}}])
+   setNodes(previous=>[...previous,{id,position:{x:90+(previous.length%4)*280,y:100+Math.floor(previous.length/4)*175},sourcePosition:Position.Bottom,targetPosition:Position.Top,data:{label:<DiagramNodeLabel name={name.trim()} kind="vm" subtitle={ownerName} detail="ВМ · Черновик"/>},style:diagramCardStyle({border:'1px dashed #2674bf'})}])
    setName('');setTool('move')
  }
  const addFlow=()=>{
@@ -210,8 +211,8 @@ function Editor({systemId,ownerName='',items,networks,interfaces,flows,savedPosi
    finally{setBusy(false)}
  }
  return <section className="boardWorkspace" aria-label="Редактор архитектурной схемы">
-   <div className="boardTools" role="toolbar" aria-label="Инструменты архитектуры">
-     {([['move','Перемещать'],['vm','+ ВМ'],['flow','→ Поток'],['network','▭ Сеть']] as const).map(([key,title])=><button key={key} aria-pressed={tool===key} onClick={()=>{setTool(key);setDrawing(null);setError('')}}>{title}</button>)}
+   <div className="boardTools" role="toolbar" aria-label="Инструменты архитектуры"><span className="boardToolsTitle">Инструменты схемы</span>
+     {([['move','Курсор / перемещение'],['vm','+ ВМ'],['flow','→ Связь / поток'],['network','▭ Сеть / контейнер']] as const).map(([key,title])=><button key={key} aria-pressed={tool===key} onClick={()=>{setTool(key);setDrawing(null);setError('')}}>{title}</button>)}
      <button disabled={!nodes.length} onClick={()=>void fitView({padding:0.18,duration:250,maxZoom:0.9})}>Показать всё</button>
      <strong>{changes.length} изменений</strong>
      <button type="button" onClick={()=>void openHistory()}>История изменений</button>

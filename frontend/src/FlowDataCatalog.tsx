@@ -93,6 +93,15 @@ export default function FlowDataCatalog({request,flows,systems,components,proces
     try{await request('/api/flow-data-uses/'+id,{method:'DELETE'});setNotice('Привязка удалена');await reload()}
     catch(e){setError('Не удалось удалить привязку: '+String(e))}finally{setBusy(false)}
   }
+  async function loadDemoAttributes(){
+    setBusy(true);setError('');setNotice('')
+    try{
+      const result=await request<{added_attributes:number;added_mappings:number}>('/api/demo/attributes',{method:'POST'})
+      await reload()
+      setNotice('Демо загружено: '+result.added_attributes+' новых атрибутов, '+result.added_mappings+' привязок. Повторная загрузка не создаёт дубликатов.')
+    }catch(e){setError('Не удалось загрузить демонстрационные атрибуты: '+String(e))}
+    finally{setBusy(false)}
+  }
   function close(){
     if(attrFormOpen&&attrDraft.code.trim()&&!window.confirm('Закрыть справочник без сохранения атрибута?'))return
     onClose()
@@ -101,6 +110,7 @@ export default function FlowDataCatalog({request,flows,systems,components,proces
     <aside className="architectureDrawer flowDataDrawer" role="dialog" aria-modal="true" aria-label="Атрибуты потоков данных">
       <div className="flowDataHeading"><div><small>АРХИТЕКТУРА ДАННЫХ</small><h2>Атрибуты потоков</h2></div><button type="button" onClick={close} aria-label="Закрыть справочник">Закрыть ×</button></div>
       <p className="hint">Справочник хранит определения полей, но не значения персональных данных. Один атрибут может участвовать в разных потоках и бизнес-процессах.</p>
+      <button type="button" disabled={busy} onClick={()=>void loadDemoAttributes()}>Загрузить демоатрибуты и привязки к потокам</button>
       <div className="componentInspectorTabs" role="tablist" aria-label="Представление данных"><button type="button" role="tab" aria-selected={tab==='map'} className={tab==='map'?'current':''} onClick={()=>setTab('map')}>Данные потока</button><button type="button" role="tab" aria-selected={tab==='catalog'} className={tab==='catalog'?'current':''} onClick={()=>setTab('catalog')}>Справочник ({attributes.length})</button></div>
       {loading&&<p role="status">Загрузка атрибутов…</p>}
       {error&&<p className="kisError" role="alert">{error}</p>}

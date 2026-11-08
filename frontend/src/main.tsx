@@ -105,6 +105,7 @@ function App() {
   const [nics,setNics] = useState<Nic[]>([])
   const [viewMode,setViewMode] = useState<'architecture'|'security'>('architecture')
   const [selectedFlow,setSelectedFlow] = useState('')
+  const [highlightedFlowComponent,setHighlightedFlowComponent] = useState('')
   const [flowDataOpen,setFlowDataOpen]=useState(false)
   const [networkPathOpen,setNetworkPathOpen]=useState(false)
   const [systemDataId,setSystemDataId]=useState('')
@@ -875,6 +876,18 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
   })
   const incompleteComponents=componentQuality.filter(x=>x.issues.length>0)
   const visibleFlows=flows.filter(filterFlow).filter(f=>!flowComponentFocus||visibleFlowIds.has(f.id))
+  // Only an actually visible flow may restrict graph nodes. A stale selectedFlow must never blank the canvas.
+  const activeSelectedFlow=visibleFlows.find(f=>f.id===selectedFlow)
+  const renderedFlows=flowFocusOnly&&activeSelectedFlow?[activeSelectedFlow]:visibleFlows
+  const renderedFlowComponentIds=new Set(renderedFlows.flatMap(f=>[f.source_id,f.target_id]))
+  const nodeFocusId=renderedFlowComponentIds.has(highlightedFlowComponent)?highlightedFlowComponent:
+    renderedFlowComponentIds.has(flowComponentFocus)?flowComponentFocus:''
+  const highlightedFlowNodes=new Set<string>(
+    activeSelectedFlow?[activeSelectedFlow.source_id,activeSelectedFlow.target_id]:
+      nodeFocusId?[nodeFocusId,...renderedFlows.flatMap(f=>f.source_id===nodeFocusId?[f.target_id]:f.target_id===nodeFocusId?[f.source_id]:[])]:[]
+  )
+  const flowViewportFocusIds=activeSelectedFlow?[activeSelectedFlow.source_id,activeSelectedFlow.target_id]:
+    flowComponentFocus?[...renderedFlowComponentIds]:nodeFocusId?[...highlightedFlowNodes]:[]
   const unverifiedFlows=visibleFlows.filter(f=>!f.verification||!['verified','confirmed','подтверждено','подтверждён','проверено'].includes(f.verification.trim().toLowerCase()))
   const incompleteFlows=visibleFlows.filter(f=>!f.data_description?.trim()||!f.protocol?.trim()||!f.port?.trim()||!f.security?.trim())
   function exportVisibleFlowsCsv(){
@@ -893,9 +906,10 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
   }
 
   const flowLayoutGaps=flowLayoutDensity==='compact'?[265,125]:flowLayoutDensity==='spacious'?[425,220]:[330,175]
-  const flowBasePositions=dependencyLayout(
-    infra.filter(i=>visibleFlows.some(f=>f.source_id===i.id||f.target_id===i.id)).map(i=>i.id),
-    visibleFlows.map(f=>({source:f.source_id,target:f.target_id})),flowLayoutGaps[0],flowLayoutGaps[1])
+  // Use the same balanced grid as Overview. Long dependency chains must not become offscreen strips.
+  const flowBasePositions=overviewGridPositions(
+    infra.filter(i=>renderedFlowComponentIds.has(i.id)).map(i=>i.id),
+    flowLayoutGaps[0],flowLayoutGaps[1])
   const flowPositions=flowLayoutOrientation==='vertical'?Object.fromEntries(Object.entries(flowBasePositions).map(([id,p])=>[id,{x:p.y,y:p.x}])):flowBasePositions
   const flowSystemIds=[...new Set(visibleFlows.flatMap(f=>[infra.find(i=>i.id===f.source_id)?.system_id,infra.find(i=>i.id===f.target_id)?.system_id]).filter((id):id is string=>Boolean(id)))]
   const flowSystemEdges=visibleFlows.map(f=>({flow:f,source:infra.find(i=>i.id===f.source_id)?.system_id,target:infra.find(i=>i.id===f.target_id)?.system_id})).filter((x):x is {flow:Flow;source:string;target:string}=>Boolean(x.source&&x.target&&x.source!==x.target))

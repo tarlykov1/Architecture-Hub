@@ -114,9 +114,20 @@ def test_ai_receives_only_safe_failure_categories(tmp_path):
         assert timeout == 30
         return FakeResponse()
 
-    report = {"suites": [{"specs": [{"title": "test server: public navigation",
-        "tests": [{"projectName": "desktop", "results": [{"status": "failed",
-            "error": {"message": "AssertionError: Expected employee=PERSONAL_DATA password=TOP_SECRET"}}]}]}]}]}]}
+    report = {
+        "suites": [
+            {"specs": [
+                {"title": "test server: public navigation",
+                 "tests": [
+                     {"projectName": "desktop",
+                      "results": [
+                          {"status": "failed",
+                           "error": {"message": "AssertionError: Expected employee=PERSONAL_DATA password=TOP_SECRET"}}
+                      ]}
+                 ]}
+            ]}
+        ]
+    }
     result = triage(report, "mock-key", opener=fake_opener, root=tmp_path)
     assert "Possible timeout" in result
     serialized = json.dumps(seen, ensure_ascii=False)

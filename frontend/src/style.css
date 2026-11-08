@@ -733,3 +733,24 @@ button:disabled{cursor:not-allowed;opacity:.55}
   .flowContextToolbar strong{flex-basis:100%}
   .flowContextToolbar button{margin-left:0}
 }
+
+/* CMDB impact inspector, read-only by design. */
+.cmdbImpact{padding:4px 0 12px;display:grid;gap:14px}
+.cmdbImpactHead{display:flex;align-items:flex-start;justify-content:space-between;gap:14px}
+.cmdbImpactHead h3{margin:0 0 6px;font-size:17px}
+.cmdbImpactHead p{margin:0;color:#64748b;font-size:12px;line-height:1.55}
+.cmdbImpactHead label{display:grid;gap:5px;font-size:12px;color:#475569;flex:0 0 95px}
+.cmdbImpactHead select{min-width:95px;padding:7px;border:1px solid #cbd5e1;border-radius:7px;background:#fff}
+.cmdbImpactSummary{display:flex;align-items:center;gap:10px;padding:12px;background:#f1f5f9;border-radius:10px}
+.cmdbImpactSummary strong{font-size:24px;color:#1d4ed8}
+.cmdbImpactSummary span{font-size:12px;color:#334155}
+.cmdbImpactList{margin:0;padding:0;list-style:none;display:grid;gap:8px}
+.cmdbImpactItem{display:flex;justify-content:space-between;align-items:start;gap:10px;
+  border:1px solid #dce4ec;border-radius:9px;padding:11px 12px}
+.cmdbImpactItem>div{display:grid;gap:5px;min-width:0;overflow-wrap:anywhere}
+.cmdbImpactItem strong{font-size:13px}
+.cmdbImpactItem small{font-size:11px;color:#64748b}
+.cmdbImpactItem button{padding:6px 8px;font-size:11px;flex:0 0 auto}
+.cmdbImpactDisclaimer{margin:0;border-left:3px solid #94a3b8;padding:8px 10px;
+  background:#f8fafc;color:#475569;line-height:1.55;font-size:12px}
+@media(max-width:620px){.cmdbImpactHead{flex-wrap:wrap}.cmdbImpactItem{flex-direction:column}}

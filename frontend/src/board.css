@@ -215,3 +215,18 @@
 .boardFlowDraftEditor h4{margin:0;font-size:13px}
 .boardFlowDraftEditor label{display:grid}
 .boardEditorStage .boardToolFields .boardFlowDraftEditor button{background:#fff;color:#9a3412;border-color:#fed7aa}
+
+/* Persistent architectural nesting and explicit drop confirmation. */
+.boardGroupingConfirm{width:min(580px,100%);display:grid;gap:10px}
+.boardGroupingConfirm>p{margin:0;color:#475569;font-size:13px;line-height:1.55}
+.boardGroupingConfirm>p:first-of-type{font-size:15px;color:#12233b}
+.boardGroupingNote{background:#f3f7fd;border-left:3px solid #2563eb;padding:10px 12px;border-radius:6px}
+.boardGroupingNic{display:grid;gap:10px;padding:12px;border:1px solid #d5e1f0;border-radius:9px}
+.boardGroupingNic label{display:grid;gap:6px;font-size:12px;font-weight:600;color:#334155}
+.boardGroupingNic select,.boardGroupingNic input{width:100%;min-height:38px;padding:8px;border:1px solid #94a3b8;border-radius:7px;background:white}
+.boardGroupingNic small{font-size:12px;color:#64748b}
+.boardGroupingConfirm .boardGroupingActions{display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap}
+.boardGroupingConfirm .boardGroupingActions button{padding:10px 14px;border-radius:7px;cursor:pointer}
+.boardCanvas .react-flow__resize-control.handle{z-index:11;touch-action:none}
+.boardCanvas .react-flow__node-boardNetwork{user-select:none}
+.boardCanvas .react-flow__node-boardNetwork .boardNetworkLabel{pointer-events:none}

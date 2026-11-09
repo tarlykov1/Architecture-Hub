@@ -130,6 +130,20 @@ class CmdbRelationshipRule(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
 
+
+class CmdbSchemaAudit(Base):
+    """Every catalog edit records the policy difference and reason."""
+    __tablename__ = "cmdb_schema_audit"
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    resource_kind: Mapped[str] = mapped_column(String(20))
+    resource_id: Mapped[str] = mapped_column(String(90), index=True)
+    before: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    after: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    actor_role: Mapped[str] = mapped_column(String(40))
+    reason: Mapped[str] = mapped_column(String(1000))
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
 class CmdbRecordAudit(Base):
     """Immutable logical history; every update records before/after and reason."""
     __tablename__ = "cmdb_record_audit"
@@ -439,6 +453,7 @@ class CmdbClassInput(BaseModel):
     required: list[str] = Field(default_factory=list, max_length=40)
     fields: list[CmdbFieldDef] = Field(default_factory=list, max_length=30)
     enabled: bool = True
+    reason: str = Field(min_length=5, max_length=1000)
 
 
 class CmdbRuleInput(BaseModel):
@@ -448,6 +463,7 @@ class CmdbRuleInput(BaseModel):
     mode: str = Field(default="advisory", pattern=r"^(advisory|enforced)$")
     enabled: bool = True
     description: str = Field(default="", max_length=1000)
+    reason: str = Field(min_length=5, max_length=1000)
 
 
 class CmdbRuleEdit(CmdbRuleInput):

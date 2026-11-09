@@ -3,7 +3,7 @@ import './board.css'
 import {DiagramNodeLabel,diagramCardStyle} from './DiagramVisual'
 import {AutoFit} from './WorkspaceUI'
 import {MousePointer2, Monitor, GitBranch, SquareDashed, Maximize2, Save, History, ClipboardCheck} from 'lucide-react'
-import {ReactFlow, ReactFlowProvider, Background, Controls, useNodesState, useReactFlow, MarkerType, Position, type Node, type NodeChange} from '@xyflow/react'
+import {ReactFlow, ReactFlowProvider, Background, Controls, Handle, useNodesState, useReactFlow, MarkerType, Position, type Node, type NodeChange, type NodeProps} from '@xyflow/react'
 import {compactComponentLayout,flowCountLabel} from './graphLayout'
 import {ReciprocalEdge} from './ReciprocalEdge'
 import {ObstacleAwareEdge} from './ObstacleAwareEdge'
@@ -16,6 +16,21 @@ type Change = {action:'create_vm'|'create_network'|'create_flow'|'create_interfa
 type Preview = {changes:Array<{action:string;id:string;before:unknown;after:unknown;field?:string}>;count:number}
 type Props = {systemId:string;ownerName?:string;ownerBySystemId?:Record<string,string>;items:VM[];networks:Network[];interfaces:NIC[];flows:Flow[];savedPositions?:Record<string,{x:number;y:number}>;onPositionChange?:(node:Node)=>void;request:<T>(url:string,init?:RequestInit)=>Promise<T>;onCommitted:()=>Promise<void>;onEditNetwork?:(id:string)=>void;onDraftStateChange?:(pending:boolean)=>void}
 type Tool = 'move'|'vm'|'flow'|'network'
+// Visible connection ports make drawing on the canvas discoverable. Four
+// dedicated ports work in React Flow's strict source-to-target mode.
+function BoardComponentNode({data}:NodeProps){
+ const drawing=Boolean(data.flowMode)
+ return <>
+  {data.label as React.ReactNode}
+  {drawing&&<>
+   <Handle type="source" id="out-right" position={Position.Right} className="boardConnectionHandle"/>
+   <Handle type="source" id="out-bottom" position={Position.Bottom} className="boardConnectionHandle"/>
+   <Handle type="target" id="in-left" position={Position.Left} className="boardConnectionHandle"/>
+   <Handle type="target" id="in-top" position={Position.Top} className="boardConnectionHandle"/>
+  </>}
+ </>
+}
+const boardNodeTypes={boardComponent:BoardComponentNode}
 type Rect = {id:string;name:string;kind:string;x:number;y:number;width:number;height:number}
 type Geometry = {x:number;y:number;width?:number;height?:number}
 const makeId=()=>crypto.randomUUID()
@@ -94,19 +109,17 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
      const members=group?items.filter(v=>interfaces.some(n=>n.item_id===v.id&&n[fieldForKind(group.kind)]===group.id)):[]
      const index=group?members.findIndex(v=>v.id===item.id):i
      const position=savedPositions[item.id]|| (group?{x:group.x+25+(index%2)*265,y:group.y+65+Math.floor(index/2)*175}:positions[item.id]||{x:70+(i%4)*280,y:80+Math.floor(i/4)*175})
-     return {id:item.id,position,sourcePosition:Position.Bottom,targetPosition:Position.Top,data:{label:<DiagramNodeLabel name={item.name} kind={item.kind} subtitle={ownerBySystemId[item.system_id]||ownerName} detail={item.kind+' · '+String(item.details.environment||'Среда не задана')}><small className="componentNodePurpose">{item.description?.trim()||String(item.details.purpose||item.details.role||'Назначение не описано')}</small></DiagramNodeLabel>},style:diagramCardStyle({zIndex:2})}
+     return {id:item.id,type:'boardComponent',position,sourcePosition:Position.Bottom,targetPosition:Position.Top,data:{label:<DiagramNodeLabel name={item.name} kind={item.kind} subtitle={ownerBySystemId[item.system_id]||ownerName} detail={item.kind+' · '+String(item.details.environment||'Среда не задана')}><small className="componentNodePurpose">{item.description?.trim()||String(item.details.purpose||item.details.role||'Назначение не описано')}</small></DiagramNodeLabel>},flowMode:tool==='flow'},style:diagramCardStyle({zIndex:2})}
    })
- },[items,flows,interfaces,ownerName,ownerBySystemId]) // Keep dragged coordinates in React Flow during the editing session.
- const [nodes,setNodes,onNodesChange]=useNodesState<Node>(()=>{
-  const pending=(restoredDraft?.changes||[]).filter(c=>c.action==='create_vm'&&c.id&&c.name)
-  const savedIds=new Set(initialNodes.map(n=>n.id))
-  return [...initialNodes,...pending.filter(c=>!savedIds.has(c.id!)).map((c,i)=>({
-   id:c.id!,position:restoredDraft?.positions[c.id!]||{x:90+(i%4)*280,y:100+Math.floor(i/4)*175},
+ },[items,flows,interfaces,ownerName,ownerBySystemId,tool]) // Keep dragged coordinates in React Flow during the editing session.
+ const restoredNodes:Node[]=[...initialNodes,...(restoredDraft?.changes||[]).filter(c=>c.action==='create_vm'&&c.id&&c.name).filter(c=>!initialNodes.some(n=>n.id===c.id)).map((c,i)=>({
+   id:c.id!,type:'boardComponent',position:restoredDraft?.positions[c.id!]||{x:90+(i%4)*280,y:100+Math.floor(i/4)*175},
    sourcePosition:Position.Bottom,targetPosition:Position.Top,
-   data:{label:<DiagramNodeLabel name={c.name} kind="vm" subtitle={ownerName} detail="ВМ · Черновик"/>},
+   data:{label:<DiagramNodeLabel name={c.name} kind="vm" subtitle={ownerName} detail="ВМ · Черновик"/>,flowMode:tool==='flow'},
    style:diagramCardStyle({border:'1px dashed #d97706'})
   }))]
- })
+ const [nodes,setNodes,onNodesChange]=useNodesState<Node>(restoredNodes)
+
  useEffect(()=>{
   onDraftStateChange?.(changes.length>0)
  },[changes.length,onDraftStateChange])
@@ -134,10 +147,11 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
      const retained=previous.filter(node=>currentIds.has(node.id))
      const retainedIds=new Set(retained.map(node=>node.id))
      const added=initialNodes.filter(node=>!retainedIds.has(node.id))
-     if(!added.length&&retained.length===previous.length)return previous
-     return [...retained,...added]
+     const synced=retained.map(node=>node.id.startsWith('network:')?node:{...node,data:{...node.data,flowMode:tool==='flow'}})
+     if(!added.length&&retained.length===previous.length&&synced.every((node,i)=>node.data.flowMode===previous[i]?.data.flowMode))return previous
+     return [...synced,...added]
    })
- },[initialNodes,changes,setNodes])
+ },[initialNodes,changes,setNodes,tool])
  const {screenToFlowPosition,fitView}=useReactFlow()
  const allVMs=useMemo<VM[]>(()=>[...items,...changes.filter(c=>c.action==='create_vm').map(c=>({id:c.id!,name:c.name!,system_id:systemId,kind:'vm',description:'',details:{} as Record<string,unknown>}))],[items,changes,systemId])
  const allNetworks=[...networks,...changes.filter(c=>c.action==='create_network').map(c=>({id:c.id!,name:c.name!,kind:c.kind!}))]
@@ -206,7 +220,7 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
  const addVM=(point?:{x:number;y:number})=>{
    if(!name.trim())return setError('Введите имя новой ВМ.')
    const id=makeId()
-   const node:Node={id,position:point||{x:90+(nodes.length%4)*280,y:100+Math.floor(nodes.length/4)*175},sourcePosition:Position.Bottom,targetPosition:Position.Top,data:{label:<DiagramNodeLabel name={name.trim()} kind="vm" subtitle={ownerName} detail="ВМ · Черновик"/>},style:diagramCardStyle({border:'1px dashed #2674bf'})}
+   const node:Node={id,type:'boardComponent',position:point||{x:90+(nodes.length%4)*280,y:100+Math.floor(nodes.length/4)*175},sourcePosition:Position.Bottom,targetPosition:Position.Top,data:{label:<DiagramNodeLabel name={name.trim()} kind="vm" subtitle={ownerName} detail="ВМ · Черновик"/>,flowMode:tool==='flow'},style:diagramCardStyle({border:'1px dashed #2674bf'})}
    addChange({action:'create_vm',id,system_id:systemId,name:name.trim(),kind:'vm'})
    setNodes(previous=>[...previous,node])
    onPositionChange?.(node)
@@ -384,7 +398,7 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
  }
  return <section className="boardWorkspace" aria-label="Редактор архитектурной схемы">
    <div className="boardEditorStage">
-        <div className="boardCanvas" data-active-graph="infrastructure-editor"><ReactFlow nodes={displayedNodes} edges={edges} edgeTypes={{reciprocal:ReciprocalEdge,'obstacle-aware':ObstacleAwareEdge}} onNodesChange={(updates:NodeChange[])=>{
+        <div className="boardCanvas" data-active-graph="infrastructure-editor"><ReactFlow nodes={displayedNodes} edges={edges} nodeTypes={boardNodeTypes} edgeTypes={{reciprocal:ReciprocalEdge,'obstacle-aware':ObstacleAwareEdge}} onNodesChange={(updates:NodeChange[])=>{
   // React Flow is controlled: update rectangle geometry during the drag,
   // not only on drop, otherwise VRF/VLAN boxes appear stuck in place.
   const moved=new Map<string,{x:number;y:number}>()

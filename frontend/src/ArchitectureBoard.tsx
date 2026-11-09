@@ -338,7 +338,21 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
  }
  return <section className="boardWorkspace" aria-label="Редактор архитектурной схемы">
    <div className="boardEditorStage">
-        <div className="boardCanvas" data-active-graph="infrastructure-editor"><ReactFlow nodes={displayedNodes} edges={edges} edgeTypes={{reciprocal:ReciprocalEdge,'obstacle-aware':ObstacleAwareEdge}} onNodesChange={(updates:NodeChange[])=>onNodesChange(updates.filter(c=>!('id' in c)||!c.id.startsWith('network:')))} nodesDraggable={tool==='move'} snapToGrid={snapToGrid} snapGrid={[20,20]} nodesConnectable={tool==='flow'} onConnect={connection=>{if(connection.source&&connection.target&&connection.source!==connection.target){setFrom(connection.source);setTo(connection.target);setInspectedId(null);setTool('flow');setError('Заполните параметры нового потока справа и добавьте его в черновик.')}}} onEdgeClick={(_,edge)=>{setInspectedId(null);setFocusDependencies(false);setFrom(edge.source);setTo(edge.target);setTool('flow')}} onNodeClick={(_,node)=>{
+        <div className="boardCanvas" data-active-graph="infrastructure-editor"><ReactFlow nodes={displayedNodes} edges={edges} edgeTypes={{reciprocal:ReciprocalEdge,'obstacle-aware':ObstacleAwareEdge}} onNodesChange={(updates:NodeChange[])=>{
+  // React Flow is controlled: update rectangle geometry during the drag,
+  // not only on drop, otherwise VRF/VLAN boxes appear stuck in place.
+  const moved=new Map<string,{x:number;y:number}>()
+  for(const change of updates){
+    if(change.type==='position'&&change.position&&change.id.startsWith('network:')){
+      moved.set(change.id.slice(8),change.position)
+    }
+  }
+  if(moved.size)setRectangles(previous=>previous.map(rect=>{
+    const position=moved.get(rect.id)
+    return position?{...rect,x:position.x,y:position.y}:rect
+  }))
+  onNodesChange(updates.filter(change=>!('id' in change)||!change.id.startsWith('network:')))
+ }} nodesDraggable={tool==='move'} snapToGrid={snapToGrid} snapGrid={[20,20]} nodesConnectable={tool==='flow'} onConnect={connection=>{if(connection.source&&connection.target&&connection.source!==connection.target){setFrom(connection.source);setTo(connection.target);setInspectedId(null);setTool('flow');setError('Заполните параметры нового потока справа и добавьте его в черновик.')}}} onEdgeClick={(_,edge)=>{setInspectedId(null);setFocusDependencies(false);setFrom(edge.source);setTo(edge.target);setTool('flow')}} onNodeClick={(_,node)=>{
  if(node.id.startsWith('network:')){setInspectedNetworkId(node.id.slice(8));setInspectedId(null);setFocusDependencies(false);return}
  setInspectedNetworkId(null)
  if(tool==='flow'){

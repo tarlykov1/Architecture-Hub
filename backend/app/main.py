@@ -9,7 +9,7 @@ from uuid import UUID, uuid4
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from .access import access_middleware, configured_keys, ROLE_ACCESS
-from .cmdb import ci_graph, potential_impact
+from .cmdb import ci_graph, potential_impact, CI_CLASSES, LIFECYCLE_STATES, LIFECYCLE_TRANSITIONS, CRITICALITY_LEVELS, VERIFICATION_STATES
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import DateTime, ForeignKey, JSON, String, Uuid, create_engine, select
@@ -69,6 +69,39 @@ class InfrastructureItem(Base):
     name: Mapped[str] = mapped_column(String(250))
     description: Mapped[str] = mapped_column(String(4000), default="")
     details: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+
+
+
+class CmdbRecord(Base):
+    """Versioned configuration metadata layered over canonical IS/component/process records."""
+    __tablename__ = "cmdb_records"
+    ci_id: Mapped[str] = mapped_column(String(90), primary_key=True)
+    lifecycle: Mapped[str] = mapped_column(String(30), default="unknown")
+    owner: Mapped[str] = mapped_column(String(180), default="")
+    technical_owner: Mapped[str] = mapped_column(String(180), default="")
+    criticality: Mapped[str] = mapped_column(String(24), default="unknown")
+    source_system: Mapped[str] = mapped_column(String(120), default="architecture_hub")
+    source_record_id: Mapped[str] = mapped_column(String(180), default="")
+    verification_status: Mapped[str] = mapped_column(String(24), default="unverified")
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    evidence: Mapped[str] = mapped_column(String(2000), default="")
+    notes: Mapped[str] = mapped_column(String(2000), default="")
+    revision: Mapped[int] = mapped_column(default=1)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+class CmdbRecordAudit(Base):
+    """Immutable logical history; every update records before/after and reason."""
+    __tablename__ = "cmdb_record_audit"
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    ci_id: Mapped[str] = mapped_column(String(90), index=True)
+    revision: Mapped[int] = mapped_column()
+    action: Mapped[str] = mapped_column(String(24))
+    actor_role: Mapped[str] = mapped_column(String(40))
+    reason: Mapped[str] = mapped_column(String(1000))
+    before: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    after: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
 
 class DataFlow(Base):
@@ -348,6 +381,24 @@ class DiagramCreate(BaseModel):
 class DiagramOut(DiagramCreate):
     model_config = ConfigDict(from_attributes=True)
     id: UUID
+
+
+
+class CmdbRecordInput(BaseModel):
+    expected_revision: int = Field(ge=0)
+    lifecycle: str = Field(pattern="^(planned|active|maintenance|retired)$")
+    owner: str = Field(default="", max_length=180)
+    technical_owner: str = Field(default="", max_length=180)
+    criticality: str = Field(default="unknown", pattern="^(unknown|low|medium|high|critical)$")
+    source_system: str = Field(default="architecture_hub", min_length=1, max_length=120)
+    source_record_id: str = Field(default="", max_length=180)
+    notes: str = Field(default="", max_length=2000)
+    reason: str = Field(min_length=5, max_length=1000)
+
+
+class CmdbVerificationInput(BaseModel):
+    expected_revision: int = Field(ge=1)
+    evidence: str = Field(min_length=5, max_length=2000)
 
 
 def db_session():

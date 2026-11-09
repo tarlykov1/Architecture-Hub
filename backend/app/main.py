@@ -12,8 +12,9 @@ from .access import access_middleware, configured_keys, ROLE_ACCESS
 from .cmdb import ci_graph, potential_impact, CI_CLASSES, LIFECYCLE_STATES, LIFECYCLE_TRANSITIONS, CRITICALITY_LEVELS, VERIFICATION_STATES
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import DateTime, ForeignKey, JSON, String, Uuid, create_engine, select, update
+from sqlalchemy import DateTime, ForeignKey, JSON, String, Uuid, Index, create_engine, select, update, text as sql_text
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
+from sqlalchemy.exc import IntegrityError
 
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./architecture_hub.db")
 engine = create_engine(DATABASE_URL, pool_pre_ping=True, connect_args={"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {})
@@ -88,6 +89,12 @@ class CmdbRecord(Base):
     notes: Mapped[str] = mapped_column(String(2000), default="")
     revision: Mapped[int] = mapped_column(default=1)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+# Unique identity in a federated source. Empty IDs are not identities.
+Index('ux_cmdb_external_identity', CmdbRecord.source_system, CmdbRecord.source_record_id,
+      unique=True, sqlite_where=sql_text("source_record_id <> ''"),
+      postgresql_where=sql_text("source_record_id <> ''"))
 
 
 class CmdbRecordAudit(Base):
@@ -598,7 +605,11 @@ def write_cmdb_record(ci_id: str, payload: CmdbRecordInput,
                            action="update", actor_role=_cmdb_actor(request),
                            reason=payload.reason.strip(), before=previous,
                            after=new_snapshot, occurred_at=now))
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(409, "External source identity already belongs to another CI")
     return {**node, **new_snapshot}
 
 

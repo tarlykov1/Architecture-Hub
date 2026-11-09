@@ -300,3 +300,23 @@ test('an existing VRF is draggable and its saved geometry is audited',async({pag
   await editor.getByRole('toolbar').getByRole('button',{name:'История изменений'}).click()
   await expect(editor.getByRole('dialog',{name:'Журнал изменений архитектуры'})).toContainText('Сохранено расположение элементов схемы')
 })
+
+
+test('topology component inspector opens the same editable passport as Components', async({page})=>{
+  const systemId=await seedSystem(page)
+  const infra=await page.request.get('http://127.0.0.1:8001/api/infra')
+  expect(infra.ok()).toBeTruthy()
+  const component=(await infra.json()).find((item:{system_id:string})=>item.system_id===systemId)
+  expect(component).toBeTruthy()
+  await page.goto('/topology?component='+component.id)
+  const sidebar=page.getByRole('complementary',{name:'Выбранный объект топологии'})
+  await expect(sidebar).toBeVisible()
+  await expect(sidebar.getByRole('button',{name:'Редактировать паспорт'})).toBeVisible()
+  await sidebar.getByRole('button',{name:'Редактировать паспорт'}).click()
+  const passport=page.getByRole('dialog',{name:'Карточка компонента '+component.name})
+  await expect(passport).toBeVisible()
+  await expect(passport.getByRole('textbox',{name:'Название',exact:true})).toHaveValue(component.name)
+  await expect(passport.getByRole('button',{name:'Сохранить',exact:true})).toBeVisible()
+  await passport.getByRole('button',{name:'Отмена'}).click()
+  await expect(passport.getByRole('button',{name:'Редактировать паспорт'})).toBeVisible()
+})

@@ -1,5 +1,6 @@
 import React, {useEffect, useMemo, useRef, useState} from 'react'
 import {AutoFit,Disclosure} from './WorkspaceUI'
+import {DiagramNodeLabel,diagramCardStyle} from './DiagramVisual'
 import {ReactFlow,Background,Controls,MarkerType,Position,useReactFlow,type Node,type Edge} from '@xyflow/react'
 
 type Item={id:string;system_id:string;kind:string;name:string;description?:string;parent_id?:string|null;details:Record<string,unknown>}
@@ -7,7 +8,7 @@ type System={id:string;name:string}
 type Segment={id:string;kind:string;name:string;description?:string;verification?:string}
 type Nic={id:string;item_id:string;name:string;ip_address:string;vrf_id:string|null;vlan_id:string|null;zone_id:string|null}
 type Flow={id:string;source_id:string;target_id:string;name:string;protocol:string;port:string;security:string;data_description:string;verification:string;schedule:string}
-type Props={systems:System[];items:Item[];segments:Segment[];interfaces:Nic[];flows:Flow[];saveInterface:(value:Omit<Nic,"id">,id?:string)=>Promise<void>;saveFlow:(value:Omit<Flow,"id">,id?:string)=>Promise<void>;saveSegment:(value:Omit<Segment,"id">,id?:string)=>Promise<void>}
+type Props={systems:System[];items:Item[];segments:Segment[];interfaces:Nic[];flows:Flow[];saveInterface:(value:Omit<Nic,"id">,id?:string)=>Promise<void>;saveFlow:(value:Omit<Flow,"id">,id?:string)=>Promise<void>;saveSegment:(value:Omit<Segment,"id">,id?:string)=>Promise<void>;onEditComponent?:(id:string)=>void}
 const unknown='Не определено'
 const colors={verified:'#15805c',unverified:'#bc8323'}
 /** Fit declared parent group rectangles instead of relying on nested node measurements.
@@ -32,6 +33,9 @@ function TopologyGroupFit({groups}:{groups:Node[]}){
     const maxY=Math.max(...groups.map(n=>n.position.y+(Number(n.style?.height)||160)))
     const graphWidth=Math.max(1,maxX-minX),graphHeight=Math.max(1,maxY-minY)
     const margin=28
+    // Fit the *whole* network map on initial load and after resize. Large
+    // topologies can then be enlarged with the standard canvas zoom controls.
+    // Never crop groups just to enforce an arbitrary minimum initial scale.
     const zoom=Math.max(0.02,Math.min(1,(width-margin*2)/graphWidth,(height-margin*2)/graphHeight))
     void setViewport({x:(width-graphWidth*zoom)/2-minX*zoom,y:(height-graphHeight*zoom)/2-minY*zoom,zoom},{duration:0})
    })
@@ -44,7 +48,7 @@ function TopologyGroupFit({groups}:{groups:Node[]}){
  return <span ref={anchor} hidden/>
 }
 
-export default function Topology({systems,items,segments,interfaces,flows,saveInterface,saveFlow,saveSegment}:Props){
+export default function Topology({systems,items,segments,interfaces,flows,saveInterface,saveFlow,saveSegment,onEditComponent}:Props){
  const [showConnections,setShowConnections]=useState(true)
  const [showAllComponents,setShowAllComponents]=useState(true)
  const [focusMode,setFocusMode]=useState<'overview'|'dependencies'>('overview')
@@ -160,26 +164,42 @@ export default function Topology({systems,items,segments,interfaces,flows,saveIn
    }
  }
  const nodes:Node[]=[],edges:Edge[]=[]
- const columnHeights=[0,0]
+  const columnHeights=[0,0]
+  // Match Overview/Editor cards; keep group canvases compact.
+  const nodeWidth=245,cellWidth=268,rowHeight=190,groupGap=36,groupColumnWidth=596
  // Variable-height rows avoid overlapping network groups with many hosts.
  const entries=Array.from(groups.entries())
  for(let groupIndex=0;groupIndex<entries.length;groupIndex++){
    const [key,group]=entries[groupIndex]
-   const height=95+Math.ceil(group.items.length/3)*164
-   const groupWidth=Math.min(900,24+Math.min(3,group.items.length)*294)
-   const column=entries.length>3?(columnHeights[0]<=columnHeights[1]?0:1):0
+    const insideColumns=Math.min(2,Math.max(1,group.items.length))
+    const height=84+Math.ceil(group.items.length/insideColumns)*rowHeight
+    const groupWidth=24+insideColumns*cellWidth
+    const column=entries.length>1?(columnHeights[0]<=columnHeights[1]?0:1):0
    const groupId='group:'+key
    const groupNics=group.items.flatMap(i=>(nicsByItem.get(i.id)||[]).filter(n=>key==='external'||(n.vrf_id||'none')+'|'+(n.vlan_id||'none')===key))
    const zoneNames=Array.from(new Set(groupNics.map(n=>name(n.zone_id))))
    const ipCount=groupNics.filter(n=>n.ip_address).length
    const isExternal=key==='external'
-   nodes.push({id:groupId,position:{x:column*950,y:columnHeights[column]},data:{label:<div style={{textAlign:'left'}}><strong>{isExternal?'Внешние зависимости':!group.vrf&&!group.vlan?'Сеть не указана – требуется уточнить VRF/VLAN':'VRF: '+name(group.vrf)+' · VLAN: '+name(group.vlan)}</strong><div style={{fontSize:12,marginTop:5,color:'#60728b'}}>{group.items.length} компонентов · {groupNics.length} интерфейсов · {ipCount} IP{isExternal?' · вне выбранного фильтра':''}{zoneNames.length?' · Зоны: '+zoneNames.join(', '):''}</div></div>},style:{width:groupWidth,height,background:isExternal?'#fff4df':!group.vrf&&!group.vlan?'#f4f6f9':'#eaf1fb',border:'1px solid '+(isExternal?'#d6b67b':'#a8bdd6'),borderRadius:14},draggable:false,selectable:false})
+    nodes.push({id:groupId,position:{x:column*groupColumnWidth,y:columnHeights[column]},
+      data:{label:<div className="topologyGroupLabel"><strong>{isExternal?'Внешние зависимости':!group.vrf&&!group.vlan?'Сеть не указана · уточните VRF/VLAN':'VRF: '+name(group.vrf)+' · VLAN: '+name(group.vlan)}</strong>
+        <small>{group.items.length} компонентов · {groupNics.length} интерфейсов · {ipCount} IP{zoneNames.length?' · Зоны: '+zoneNames.join(', '):''}</small></div>},
+      style:{width:groupWidth,height,background:isExternal?'#fffaf1':!group.vrf&&!group.vlan?'#f8fafc':'#f0f6ff',border:'1px solid '+(isExternal?'#d6b67b':'#b4c8e4'),borderRadius:12,textAlign:'left',padding:12},
+      draggable:false,selectable:false})
    group.items.forEach((item,j)=>{
      const duplicate=(memberships.get(item.id)||[]).indexOf(key)
      const visibleNics=(nicsByItem.get(item.id)||[]).filter(n=>key==='external'||(n.vrf_id||'none')+'|'+(n.vlan_id||'none')===key)
-     nodes.push({id:'host:'+item.id+':'+key,parentId:groupId,extent:'parent',position:{x:16+(j%3)*294,y:74+Math.floor(j/3)*164},sourcePosition:Position.Right,targetPosition:Position.Left,data:{label:<div style={{textAlign:'left',display:'grid',gap:4}}><strong>{item.name}</strong><small>{systemById.get(item.system_id)?.name||'Система неизвестна'}</small><small className="topologyVmPurpose">{item.description?.trim()||String(item.details.purpose||item.details.role||'Назначение не описано')}</small><small>{item.kind} · {String(item.details.environment||'Контур не указан')}{isExternal?' · внешняя':''}</small>{visibleNics.map(n=><small key={n.id}>● {n.name}: {n.ip_address||'IP не указан'} · {name(n.zone_id)}</small>)}{(memberships.get(item.id)||[]).length>1&&<small style={{color:'#2563a6'}}>Подключён к {memberships.get(item.id)?.length} сетям · тот же компонент</small>}</div>},style:{width:272,minHeight:100,background:isExternal?'#fffcf5':'white',border:'1px solid '+(duplicate>0?'#669acb':'#adbed3'),borderRadius:9,cursor:'pointer'},draggable:false})
+      nodes.push({id:'host:'+item.id+':'+key,parentId:groupId,extent:'parent',
+        position:{x:16+(j%insideColumns)*cellWidth,y:74+Math.floor(j/insideColumns)*rowHeight},
+        sourcePosition:Position.Right,targetPosition:Position.Left,
+        data:{item_id:item.id,label:<DiagramNodeLabel name={item.name} kind={item.kind} subtitle={systemById.get(item.system_id)?.name||'Система неизвестна'} detail={item.kind+' · '+String(item.details.environment||'Контур не указан')}>
+          <small className="topologyVmPurpose">{item.description?.trim()||String(item.details.purpose||item.details.role||'Назначение не описано')}</small>
+          {visibleNics.length>0&&<small title={visibleNics.map(n=>n.name+': '+(n.ip_address||'IP не указан')).join('; ')}>{visibleNics.length} сетевых интерфейсов{visibleNics.some(n=>n.ip_address)?' · IP указан':' · IP не указан'}</small>}
+          {(memberships.get(item.id)||[]).length>1&&<small style={{color:'#2563a6'}}>Также в {memberships.get(item.id)!.length-1} сетях</small>}
+        </DiagramNodeLabel>},
+        style:diagramCardStyle({width:nodeWidth,background:isExternal?'#fffcf5':'white',border:duplicate>0?'2px solid #669acb':'1px solid #94a3b8',cursor:'pointer'}),
+        draggable:false})
    })
-   columnHeights[column]+=height+50
+    columnHeights[column]+=height+groupGap
  }
  // Resolve arrows to the correct visual copy of multi-homed components.
  const hostNode=(id:string,peerId?:string)=>{const own=memberships.get(id)||[];const peer=memberships.get(peerId||'')||[];return 'host:'+id+':'+(own.find(k=>peer.includes(k))||own[0])}
@@ -200,7 +220,16 @@ export default function Topology({systems,items,segments,interfaces,flows,saveIn
   incomingIds.forEach((id,i)=>focusPositions.set(id,{x:10,y:40+i*170}))
   outgoingIds.forEach((id,i)=>focusPositions.set(id,{x:610,y:40+i*170}))
  }
- const focusNodes:Node[]=focusIds.filter(id=>itemById.has(id)).map(id=>({id,position:focusPositions.get(id)||{x:300,y:100},sourcePosition:Position.Right,targetPosition:Position.Left,data:{label:<div style={{display:'grid',gap:6,textAlign:'left'}}><strong>{itemById.get(id)?.name}</strong><small>{systemById.get(itemById.get(id)?.system_id||'')?.name||'Система не указана'}</small><small className="topologyVmPurpose">{itemById.get(id)?.description?.trim()||String(itemById.get(id)?.details.purpose||itemById.get(id)?.details.role||'Назначение не описано')}</small><small>{(nicsByItem.get(id)||[]).map(n=>n.ip_address).filter(Boolean).join(', ')||'IP не указан'}</small></div>},style:{width:240,padding:14,background:id===selected?'#e8f2ff':'#fff',border:id===selected?'3px solid #2563eb':'1px solid #9db3d0',borderRadius:12}}))
+  const focusNodes:Node[]=focusIds.filter(id=>itemById.has(id)).map(id=>{
+    const value=itemById.get(id)!
+    const ips=(nicsByItem.get(id)||[]).map(n=>n.ip_address).filter(Boolean)
+    return {id,position:focusPositions.get(id)||{x:300,y:100},sourcePosition:Position.Right,targetPosition:Position.Left,
+      data:{label:<DiagramNodeLabel name={value.name} kind={value.kind} subtitle={systemById.get(value.system_id)?.name||'Система не указана'} detail={value.kind+' · '+String(value.details.environment||'Контур не указан')}>
+        <small className="topologyVmPurpose">{value.description?.trim()||String(value.details.purpose||value.details.role||'Назначение не описано')}</small>
+        <small>{ips.length?ips.join(', '):'IP не указан'}</small>
+      </DiagramNodeLabel>},
+      style:diagramCardStyle({background:id===selected?'#eff6ff':'#fff',border:id===selected?'2px solid #2563eb':'1px solid #94a3b8'})}
+  })
  const focusEdges:Edge[]=focusFlows.map(f=>({id:f.id,source:f.source_id,target:f.target_id,type:'smoothstep',label:f.name,markerEnd:{type:MarkerType.ArrowClosed,color:f.verification==='verified'?colors.verified:colors.unverified},style:{stroke:f.verification==='verified'?colors.verified:colors.unverified,strokeWidth:activeFlow?.id===f.id?2:1.3},labelStyle:{fontSize:12,fontWeight:600},labelBgStyle:{fill:'#fff',fillOpacity:0.96},labelBgPadding:[6,4]}))
  const item=itemById.get(selected),flow=flows.find(f=>f.id===flowId)
  return <section className="topologyWorkspace">
@@ -227,7 +256,7 @@ export default function Topology({systems,items,segments,interfaces,flows,saveIn
   </div>
   {(item||flow)&&<div className="topologyInspectorShell"><aside className="topologyInspector architectureDrawer" role="complementary" aria-label="Выбранный объект топологии">
    <button style={{float:'right'}} onClick={closeInspector} aria-label="Закрыть">×</button>{inspectorTrail.length>0&&<button type="button" onClick={closeInspector} aria-label="Назад к предыдущему объекту">← Назад</button>}
-   {item&&<><div className="topologyInspectorTitle"><h3>{item.name}</h3><small>{systemById.get(item.system_id)?.name||unknown}</small></div><nav className="topologyInspectorTabs" aria-label="Разделы компонента">{([['overview','Обзор'],['network','Сеть'],['connections','Связи']] as const).map(([tab,label])=><button type="button" key={tab} className={inspectorTab===tab?'active':''} aria-current={inspectorTab===tab?'page':undefined} onClick={()=>setInspectorTab(tab)}>{label}</button>)}</nav>
+   {item&&<><div className="topologyInspectorTitle"><h3>{item.name}</h3><small>{systemById.get(item.system_id)?.name||unknown}</small>{onEditComponent&&<button type="button" onClick={()=>onEditComponent(item.id)}>Редактировать паспорт</button>}</div><nav className="topologyInspectorTabs" aria-label="Разделы компонента">{([['overview','Обзор'],['network','Сеть'],['connections','Связи']] as const).map(([tab,label])=><button type="button" key={tab} className={inspectorTab===tab?'active':''} aria-current={inspectorTab===tab?'page':undefined} onClick={()=>setInspectorTab(tab)}>{label}</button>)}</nav>
 {inspectorTab==='overview'&&<dl className="topologyInspectorFacts"><dt>Назначение</dt><dd>{item.description?.trim()||String(item.details.purpose||item.details.role||'Не описано')}</dd><dt>Контур</dt><dd>{String(item.details.environment||unknown)}</dd><dt>Родительский компонент</dt><dd>{items.find(x=>x.id===item.parent_id)?.name||'Не указан'}</dd><dt>Тип</dt><dd>{item.kind}</dd></dl>}
 {inspectorTab==='network'&&<section><div className="topologyInspectorSectionHeader"><h4>Сетевые интерфейсы</h4>{editing&&<button type="button" onClick={()=>editNic(item)}>+ Интерфейс</button>}</div>{(nicsByItem.get(item.id)||[]).map(n=><article className="topologyInspectorEntry" key={n.id}><div className="topologyInspectorSectionHeader"><strong>{n.name}</strong>{editing&&<button type="button" onClick={()=>editNic(item,n)}>Изменить</button>}</div><dl className="topologyInspectorFacts"><dt>IP</dt><dd>{n.ip_address||unknown}</dd><dt>VRF</dt><dd>{name(n.vrf_id)}</dd><dt>VLAN</dt><dd>{name(n.vlan_id)}</dd><dt>Зона</dt><dd>{name(n.zone_id)}</dd></dl></article>)}{!(nicsByItem.get(item.id)||[]).length&&<p className="hint">Интерфейсы не описаны.</p>}</section>}
 {inspectorTab==='connections'&&<section><div className="topologyImpactStats"><span>Исходящие: <b>{flows.filter(f=>f.source_id===item.id).length}</b></span><span>Входящие: <b>{flows.filter(f=>f.target_id===item.id).length}</b></span></div><div className="topologyInspectorSectionHeader"><h4>Потоки и компоненты</h4>{editing&&<button type="button" onClick={()=>editFlowDraft(undefined,item.id,'')}>+ Поток</button>}</div>{flows.filter(f=>f.source_id===item.id||f.target_id===item.id).map(f=>{const outgoing=f.source_id===item.id;const peer=itemById.get(outgoing?f.target_id:f.source_id);return <article className="topologyInspectorEntry" key={f.id}><button type="button" className="topologyDependency" onClick={()=>openInspector(peer?.id||'')}><strong>{outgoing?'→':'←'} {peer?.name||'Неизвестный компонент'}</strong><small>{systemById.get(peer?.system_id||'')?.name||'Система не указана'}</small></button><button type="button" className="topologyInspectorFlowLink" onClick={()=>openInspector('',f.id)}>{f.name||f.protocol||'Поток'} · {f.protocol||'Протокол не задан'} {f.port||''}</button></article>})}{!flows.some(f=>f.source_id===item.id||f.target_id===item.id)&&<p className="hint">Связи не описаны.</p>}</section>}</>}

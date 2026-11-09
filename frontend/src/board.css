@@ -179,3 +179,13 @@
   }
   .boardEditorStage>.boardTools .boardToolCaption{font-size:9px}
 }
+
+
+/* Editable network rectangles have a visible grab target and required-field feedback. */
+.boardCanvas .react-flow__node[id^="network:"]{cursor:grab}
+.boardCanvas .react-flow__node[id^="network:"].dragging{cursor:grabbing}
+.boardNetworkLabel{display:flex;flex-direction:column;align-items:flex-start;gap:6px;pointer-events:none;user-select:none}
+.boardNetworkLabel strong{font-size:13px;font-weight:700}
+.boardNetworkLabel small{font-size:11px;color:#36648e}
+.boardEditorStage .boardToolFields .boardRequiredHint{font-size:12px;color:#b42318;font-weight:600}
+.boardEditorStage .boardToolFields input[aria-invalid="true"]{border-color:#d92d20;box-shadow:0 0 0 1px #d92d2033}

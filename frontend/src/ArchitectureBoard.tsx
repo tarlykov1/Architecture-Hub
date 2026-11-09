@@ -71,6 +71,7 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
  const [name,setName]=useState('')
  const [kind,setKind]=useState<'zone'|'vlan'|'vrf'>('zone')
  const [from,setFrom]=useState('')
+ const [selectedDraftFlowId,setSelectedDraftFlowId]=useState('')
  const [to,setTo]=useState('')
  const [direction,setDirection]=useState<'forward'|'reverse'|'both'>('forward')
  const [protocol,setProtocol]=useState('TCP')
@@ -227,13 +228,27 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
    setLayoutDirty(true);setLayoutMessage('')
    setName('');setTool('move');setReviewOpen(true)
  }
+ const stageDirectedFlow=(source:string,target:string)=>{
+   if(!source||!target||source===target){setError('Выберите два разных компонента для направления потока.');return}
+   if(!allVMs.some(vm=>vm.id===source)||!allVMs.some(vm=>vm.id===target)){setError('Источник или получатель отсутствует на схеме.');return}
+   const id=makeId()
+   const sourceName=allVMs.find(vm=>vm.id===source)?.name||'Источник'
+   const targetName=allVMs.find(vm=>vm.id===target)?.name||'Получатель'
+   addChange({action:'create_flow',id,source_id:source,target_id:target,
+     name:sourceName+' → '+targetName,protocol:protocol.trim(),port:port.trim(),security})
+   setSelectedDraftFlowId(id);setFrom('');setTo('');setLayoutMessage('Стрелка '+sourceName+' → '+targetName+' добавлена в черновик. При необходимости уточните протокол, порт и защиту справа.')
+ }
  const addFlow=()=>{
    if(!from||!to||from===to)return setError('Выберите разные исходный и целевой компоненты.')
-   if(!port.trim())return setError('Укажите порт или диапазон портов.')
    const source=direction==='reverse'?to:from,target=direction==='reverse'?from:to
-   addChange({action:'create_flow',id:makeId(),source_id:source,target_id:target,name:allVMs.find(v=>v.id===source)?.name+' → '+allVMs.find(v=>v.id===target)?.name,protocol,port,security})
-   if(direction==='both')addChange({action:'create_flow',id:makeId(),source_id:target,target_id:source,name:allVMs.find(v=>v.id===target)?.name+' → '+allVMs.find(v=>v.id===source)?.name,protocol,port,security})
-   setTool('move')
+   stageDirectedFlow(source,target)
+   if(direction==='both')stageDirectedFlow(target,source)
+ }
+ const selectedDraftFlow=changes.find(c=>c.action==='create_flow'&&c.id===selectedDraftFlowId)
+ const updateSelectedDraftFlow=(patch:Partial<Change>)=>{
+   if(!selectedDraftFlowId)return
+   setChanges(previous=>previous.map(c=>c.action==='create_flow'&&c.id===selectedDraftFlowId?{...c,...patch}:c))
+   setPreview(null)
  }
  const addNetwork=(start:{x:number;y:number},end:{x:number;y:number})=>{
    if(!name.trim()){setError('Заполните обязательное поле «Название сети» справа, затем нарисуйте контейнер.');networkNameInput.current?.focus();return}
@@ -356,7 +371,7 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
    const stagedNetworks=new Set(changes.filter(c=>c.action==='create_network').map(c=>c.id))
    setNodes(previous=>previous.filter(node=>!stagedVMs.has(node.id)))
    setRectangles(previous=>previous.filter(rect=>!stagedNetworks.has(rect.id)))
-   setChanges([]);setPreview(null);setError('');setReviewOpen(false)
+   setChanges([]);setSelectedDraftFlowId('');setPreview(null);setError('');setReviewOpen(false)
    setLayoutDirty(false)
    setLayoutMessage('Черновик изменений отменён. Несохранённые ВМ и сети удалены со схемы.')
  }
@@ -390,7 +405,7 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
        setLayoutDirty(true)
      }
      try{await onCommitted()}catch(e){warning+=' Не удалось обновить данные: '+String(e)}
-     setChanges([]);setPreview(null);setReason('');setDrawing(null);setReviewOpen(false)
+     setChanges([]);setSelectedDraftFlowId('');setPreview(null);setReason('');setDrawing(null);setReviewOpen(false)
      setError('ВМ, сети и связи сохранены в реестре и журнале.'+warning)
      if(showHistory)void openHistory()
    }catch(e){setPreview(null);setError('Сохранение отклонено: '+String(e)+'. Обновите предварительный просмотр.')}
@@ -412,13 +427,13 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
     return position?{...rect,x:position.x,y:position.y}:rect
   }))
   onNodesChange(updates.filter(change=>!('id' in change)||!change.id.startsWith('network:')))
- }} nodesDraggable={tool==='move'} snapToGrid={snapToGrid} snapGrid={[20,20]} nodesConnectable={tool==='flow'} onConnect={connection=>{if(connection.source&&connection.target&&connection.source!==connection.target){setFrom(connection.source);setTo(connection.target);setInspectedId(null);setTool('flow');setError('Заполните параметры нового потока справа и добавьте его в черновик.')}}} onEdgeClick={(_,edge)=>{setInspectedId(null);setFocusDependencies(false);setFrom(edge.source);setTo(edge.target);setTool('flow')}} onNodeClick={(_,node)=>{
+ }} nodesDraggable={tool==='move'} snapToGrid={snapToGrid} snapGrid={[20,20]} nodesConnectable={tool==='flow'} onConnect={connection=>{if(tool==='flow'&&connection.source&&connection.target){stageDirectedFlow(connection.source,connection.target);setInspectedId(null)}}} onEdgeClick={(_,edge)=>{setInspectedId(null);setFocusDependencies(false);setTool('flow');const draft=changes.find(c=>c.action==='create_flow'&&c.source_id===edge.source&&c.target_id===edge.target);if(draft?.id)setSelectedDraftFlowId(draft.id);else{setSelectedDraftFlowId('');setFrom(edge.source);setTo(edge.target)}}} onNodeClick={(_,node)=>{
  if(node.id.startsWith('network:')){setInspectedNetworkId(node.id.slice(8));setInspectedId(null);setFocusDependencies(false);return}
  setInspectedNetworkId(null)
  if(tool==='flow'){
    setInspectedId(null);setFocusDependencies(false)
-   if(!from||to||from===node.id){setFrom(node.id);setTo('')}
-   else setTo(node.id)
+   if(!from||from===node.id){setFrom(node.id);setTo('');setSelectedDraftFlowId('');setLayoutMessage('Источник выбран. Нажмите на целевой компонент или протяните стрелку от порта.')}
+   else stageDirectedFlow(from,node.id)
  }else if(tool==='move'){openPassport(node.id);setFocusDependencies(false)}
 }} onNodeDragStop={(_,node)=>moveNode(node)} onPaneClick={handlePaneClick} minZoom={0.08} fitView fitViewOptions={{padding:0.2,maxZoom:0.9}}><AutoFit layoutKey={systemId+':'+items.length+':'+flows.length} maxFitZoom={0.9}/><Background gap={20}/><Controls showInteractive={false}/></ReactFlow>
      {tool==='network'&&<div className="boardNetworkDrawLayer" role="region" aria-label="Поле рисования контейнера"
@@ -432,7 +447,7 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
      {([
        {key:'move',title:'Курсор / перемещение',caption:'Выбрать',icon:MousePointer2,help:'Перетаскивайте блоки и открывайте их паспорта'},
        {key:'vm',title:'+ ВМ',caption:'Добавить ВМ',icon:Monitor,help:'Укажите имя справа и нажмите на схему'},
-       {key:'flow',title:'→ Поток',caption:'Поток',icon:GitBranch,help:'Выберите источник и получателя'},
+       {key:'flow',title:'→ Поток',caption:'Поток',icon:GitBranch,help:'Потяните за порт на карточке до целевого компонента или нажмите на две карточки по очереди'},
        {key:'network',title:'▭ Сеть / контейнер',caption:'Контейнер',icon:SquareDashed,help:'Введите название справа, нажмите на холст или нарисуйте прямоугольник'},
      ] as const).map(({key,title,caption,icon:Icon,help})=>
         <button type="button" key={key} title={caption+' – '+help} aria-label={title} data-tool={key} aria-pressed={tool===key}
@@ -452,7 +467,7 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
        {tool!=='move'&&<div className="boardPropertiesHeader"><div><small>ИНСТРУМЕНТ</small><h3>{tool==='vm'?'Виртуальная машина':tool==='flow'?'Поток данных':'Сеть / контейнер'}</h3></div><button type="button" aria-label="Закрыть настройки инструмента" onClick={()=>{setTool('move');setDrawing(null);setError('');setLayoutMessage('');setReviewOpen(false);cancelNetworkDrag()}}>✕</button></div>}
           {tool==='vm'&&<div className="boardToolFields"><p>Введите название и нажмите на холст для размещения ВМ.</p><label>Имя ВМ <input value={name} onChange={e=>setName(e.target.value)} placeholder="Новая ВМ"/></label><button onClick={()=>addVM()}>Разместить на схеме</button></div>}
    {tool==='network'&&<div className="boardToolFields"><label>Название сети * <input ref={networkNameInput} required aria-required="true" aria-invalid={!name.trim()} value={name} onChange={e=>{setName(e.target.value);if(e.target.value.trim())setError('')}} placeholder="Название VRF / VLAN / зоны"/></label>{!name.trim()&&<p className="boardRequiredHint" role="alert">Обязательное поле: сначала укажите название, затем нарисуйте контейнер.</p>}<label>Тип <select value={kind} onChange={e=>setKind(e.target.value as typeof kind)}><option value="zone">Зона</option><option value="vlan">VLAN</option><option value="vrf">VRF</option></select></label><p role="status">{drawing?'Продолжайте тянуть – контур контейнера виден на схеме':'Нажмите на холст – появится стандартный контейнер 540 × 340. Или протяните прямоугольник нужного размера. Затем подтвердите изменения в черновике.'}</p></div>}
-   {tool==='flow'&&<div className="boardToolFields"><p>Протяните связь между ВМ или выберите по очереди источник и получателя на холсте.</p><label>Откуда <select aria-label="Откуда" value={from} onChange={e=>setFrom(e.target.value)}><option value="">Выберите</option>{allVMs.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}</select></label><label>Куда <select aria-label="Куда" value={to} onChange={e=>setTo(e.target.value)}><option value="">Выберите</option>{allVMs.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}</select></label><label>Направление <select value={direction} onChange={e=>setDirection(e.target.value as typeof direction)}><option value="forward">→</option><option value="reverse">←</option><option value="both">↔ (два потока)</option></select></label><label>Протокол <input value={protocol} onChange={e=>setProtocol(e.target.value)}/></label><label>Порт <input value={port} onChange={e=>setPort(e.target.value)}/></label><label>Защита <input value={security} onChange={e=>setSecurity(e.target.value)}/></label><button onClick={()=>{addFlow();setReviewOpen(true)}}>Добавить поток</button></div>}
+   {tool==='flow'&&<div className="boardToolFields"><p><strong>Нарисуйте стрелку на схеме:</strong> потяните от порта справа или снизу одной ВМ к порту слева или сверху другой. Можно также нажать на две карточки по очереди. Стрелка сразу появится в черновике, даже без указания порта.</p><div className="boardFlowHint">Сначала источник → затем получатель. Сохранение в реестр – через «Сохранить всё».</div><label>Откуда <select aria-label="Откуда" value={from} onChange={e=>setFrom(e.target.value)}><option value="">Выберите</option>{allVMs.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}</select></label><label>Куда <select aria-label="Куда" value={to} onChange={e=>setTo(e.target.value)}><option value="">Выберите</option>{allVMs.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}</select></label><label>Направление (при выборе вручную) <select value={direction} onChange={e=>setDirection(e.target.value as typeof direction)}><option value="forward">→</option><option value="reverse">←</option><option value="both">↔ (два потока)</option></select></label><label>Протокол <input value={protocol} onChange={e=>setProtocol(e.target.value)}/></label><label>Порт <input value={port} onChange={e=>setPort(e.target.value)}/></label><label>Защита <input value={security} onChange={e=>setSecurity(e.target.value)}/></label><button onClick={()=>{addFlow()}}>Добавить поток по выбранным компонентам</button>{selectedDraftFlow&&<section className="boardFlowDraftEditor" aria-label="Параметры нарисованного потока"><h4>Нарисованный поток · черновик</h4><p>{allVMs.find(v=>v.id===selectedDraftFlow.source_id)?.name||'Источник'} → {allVMs.find(v=>v.id===selectedDraftFlow.target_id)?.name||'Получатель'}</p><label>Название <input value={selectedDraftFlow.name||''} onChange={e=>updateSelectedDraftFlow({name:e.target.value})}/></label><label>Протокол <input value={selectedDraftFlow.protocol||''} onChange={e=>updateSelectedDraftFlow({protocol:e.target.value})}/></label><label>Порт <input value={selectedDraftFlow.port||''} onChange={e=>updateSelectedDraftFlow({port:e.target.value})} placeholder="Необязательно"/></label><label>Защита <input value={selectedDraftFlow.security||''} onChange={e=>updateSelectedDraftFlow({security:e.target.value})}/></label><button type="button" onClick={()=>{setChanges(p=>p.filter(c=>c.id!==selectedDraftFlowId));setSelectedDraftFlowId('');setPreview(null)}}>Удалить стрелку из черновика</button></section>}</div>}
    {(tool==='network'||(tool==='move'&&inspectedVM))&&<div className="boardToolFields"><label>Техническая привязка (необязательно) <select value={interfaceId} onChange={e=>setInterfaceId(e.target.value)}><option value="">Только расположение</option>{interfaces.filter(n=>items.some(i=>i.id===n.item_id)).map(n=><option key={n.id} value={n.id}>{items.find(i=>i.id===n.item_id)?.name} · {n.name}</option>)}</select></label><span>Перемещение ВМ в область VRF/VLAN само по себе не меняет сеть. Если явно выбрать существующий интерфейс этой ВМ, его привязка попадёт в черновик для подтверждения.</span></div>}
 
        {tool==='move'&&inspectedNetwork&&<section className="boardToolFields" aria-label="Свойства контейнера"><h3>{inspectedNetwork.name} · {inspectedNetwork.kind.toUpperCase()}</h3><p>Перетащите контейнер, чтобы изменить расположение на схеме. Сетевая принадлежность ВМ при этом не изменяется.</p>{onEditNetwork&&networks.some(n=>n.id===inspectedNetwork.id)&&<button type="button" onClick={()=>onEditNetwork(inspectedNetwork.id)}>Редактировать параметры сети</button>}<button type="button" onClick={()=>setInspectedNetworkId(null)}>Вернуться к схеме</button></section>}

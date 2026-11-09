@@ -9,6 +9,7 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
+from fastapi.encoders import jsonable_encoder
 from .access import access_middleware, configured_keys, ROLE_ACCESS
 from .cmdb import ci_graph, potential_impact, CI_CLASSES, LIFECYCLE_STATES, LIFECYCLE_TRANSITIONS, CRITICALITY_LEVELS, VERIFICATION_STATES
 from .cmdb_catalog import validate_class_schema, validate_custom_values, missing_required, assess_relation, RELATION_KINDS
@@ -1196,7 +1197,7 @@ def list_infra(system_id: UUID | None = None, db: Session = Depends(db_session))
 
 
 @app.post("/api/infra", response_model=InfraOutput, status_code=201)
-def create_infra(payload: InfraInput, db: Session = Depends(db_session)):
+def create_infra(payload: InfraInput, request: Request, db: Session = Depends(db_session)):
     if not db.get(ArchitectureObject, payload.system_id):
         raise HTTPException(422, "System not found")
     if payload.parent_id:
@@ -1205,13 +1206,16 @@ def create_infra(payload: InfraInput, db: Session = Depends(db_session)):
             raise HTTPException(422, "Parent must be in the same system")
     item = InfrastructureItem(**payload.model_dump())
     db.add(item)
+    db.flush()
+    audit_direct_edit(db, request, "create_vm", item.id, None,
+                      payload.model_dump(), "Создан компонент " + item.name)
     db.commit()
     db.refresh(item)
     return item
 
 
 @app.put("/api/infra/{item_id}", response_model=InfraOutput)
-def update_infra(item_id: UUID, payload: InfraInput, db: Session = Depends(db_session)):
+def update_infra(item_id: UUID, payload: InfraInput, request: Request, db: Session = Depends(db_session)):
     item = db.get(InfrastructureItem, item_id)
     if not item:
         raise HTTPException(404, "Item not found")
@@ -1228,8 +1232,13 @@ def update_infra(item_id: UUID, payload: InfraInput, db: Session = Depends(db_se
             cursor = db.get(InfrastructureItem, cursor.parent_id)
             if cursor is None:
                 break
+    before = {key: getattr(item, key) for key in payload.model_fields}
     for k, v in payload.model_dump().items():
         setattr(item, k, v)
+    after = payload.model_dump()
+    if before != after:
+        audit_direct_edit(db, request, "update_vm", item.id, before, after,
+                          "Изменён компонент " + item.name)
     db.commit()
     db.refresh(item)
     return item
@@ -1409,7 +1418,7 @@ def list_flows(db: Session = Depends(db_session)):
 
 
 @app.post("/api/flows", response_model=FlowOutput, status_code=201)
-def create_flow(payload: FlowInput, db: Session = Depends(db_session)):
+def create_flow(payload: FlowInput, request: Request, db: Session = Depends(db_session)):
     if payload.source_id == payload.target_id:
         raise HTTPException(422, "Source and destination must differ")
     source = db.get(InfrastructureItem, payload.source_id)
@@ -1419,13 +1428,16 @@ def create_flow(payload: FlowInput, db: Session = Depends(db_session)):
     _check_relation_allowed(db, "supplies_data_to", source.kind, target.kind)
     flow = DataFlow(**payload.model_dump())
     db.add(flow)
+    db.flush()
+    audit_direct_edit(db, request, "create_flow", flow.id, None,
+                      payload.model_dump(), "Создан поток " + flow.name)
     db.commit()
     db.refresh(flow)
     return flow
 
 
 @app.put("/api/flows/{flow_id}", response_model=FlowOutput)
-def update_flow(flow_id: UUID, payload: FlowInput, db: Session = Depends(db_session)):
+def update_flow(flow_id: UUID, payload: FlowInput, request: Request, db: Session = Depends(db_session)):
     flow = db.get(DataFlow, flow_id)
     if not flow:
         raise HTTPException(404, "Flow not found")
@@ -1436,15 +1448,20 @@ def update_flow(flow_id: UUID, payload: FlowInput, db: Session = Depends(db_sess
     if not source or not target:
         raise HTTPException(422, "Invalid endpoints")
     _check_relation_allowed(db, "supplies_data_to", source.kind, target.kind)
+    before = {key: getattr(flow, key) for key in payload.model_fields}
     for k, v in payload.model_dump().items():
         setattr(flow, k, v)
+    after = payload.model_dump()
+    if before != after:
+        audit_direct_edit(db, request, "update_flow", flow.id, before, after,
+                          "Изменён поток " + flow.name)
     db.commit()
     db.refresh(flow)
     return flow
 
 
 @app.delete("/api/flows/{flow_id}", status_code=204)
-def delete_flow(flow_id: UUID, db: Session = Depends(db_session)):
+def delete_flow(flow_id: UUID, request: Request, db: Session = Depends(db_session)):
     flow = db.get(DataFlow, flow_id)
     if flow is None:
         raise HTTPException(status_code=404, detail="Flow not found")
@@ -1452,12 +1469,15 @@ def delete_flow(flow_id: UUID, db: Session = Depends(db_session)):
         db.delete(use)
     for hop in db.scalars(select(FlowNetworkHop).where(FlowNetworkHop.flow_id == flow_id)).all():
         db.delete(hop)
+    audit_direct_edit(db, request, "delete_flow", flow.id,
+                      {"name":flow.name,"source_id":flow.source_id,"target_id":flow.target_id},
+                      None, "Удалён поток " + flow.name)
     db.delete(flow)
     db.commit()
 
 
 @app.delete("/api/infra/{item_id}", status_code=204)
-def delete_infra(item_id: UUID, db: Session = Depends(db_session)):
+def delete_infra(item_id: UUID, request: Request, db: Session = Depends(db_session)):
     item = db.get(InfrastructureItem, item_id)
     if item is None:
         raise HTTPException(status_code=404, detail="Infrastructure item not found")
@@ -1469,6 +1489,9 @@ def delete_infra(item_id: UUID, db: Session = Depends(db_session)):
         raise HTTPException(status_code=409, detail="Delete connected data flows first")
     if db.scalars(select(NetworkInterface).where(NetworkInterface.item_id == item_id)).first():
         raise HTTPException(status_code=409, detail="Delete network interfaces first")
+    audit_direct_edit(db, request, "delete_vm", item.id,
+                      {"name":item.name,"kind":item.kind,"system_id":item.system_id},
+                      None, "Удалён компонент " + item.name)
     db.delete(item)
     db.commit()
 
@@ -2049,6 +2072,16 @@ class BoardAudit(Base):
     reason: Mapped[str] = mapped_column(String(1000))
     actor: Mapped[str] = mapped_column(String(100), default="local-development")
     changes: Mapped[list[dict[str, Any]]] = mapped_column(JSON)
+
+
+def audit_direct_edit(db: Session, request: Request, action: str,
+                      resource_id: UUID, before: Any, after: Any, reason: str) -> None:
+    """Append a direct form edit to the same immutable, transactional board history."""
+    db.add(BoardAudit(reason=reason, actor=board_actor(request),
+                      changes=[{"action": action, "id": str(resource_id),
+                                "before": jsonable_encoder(before),
+                                "after": jsonable_encoder(after)}]))
+
 
 def authorize_board(payload: BoardBatch, request: Request) -> None:
     role = getattr(request.state, 'role', None)

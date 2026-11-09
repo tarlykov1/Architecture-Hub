@@ -468,7 +468,17 @@ function App() {
     return ()=>window.removeEventListener('popstate',onPopState)
   },[])
   useEffect(()=>{
-    const next=workspaceRouteUrl(layer,viewSystem)
+    const nextUrl=new URL(workspaceRouteUrl(layer,viewSystem),window.location.origin)
+    // Preserve a direct link to a selected VM/flow while bootstrapping Topology.
+    // The section router must not erase inspector-specific query parameters
+    // before the Topology component can restore its selected object.
+    if(layer==='topology'&&window.location.pathname===nextUrl.pathname){
+      for(const key of ['component','flow']){
+        const id=new URLSearchParams(window.location.search).get(key)
+        if(id)nextUrl.searchParams.set(key,id)
+      }
+    }
+    const next=nextUrl.pathname+nextUrl.search
     if(window.location.pathname+window.location.search!==next)window.history.pushState(null,'',next)
   },[layer,viewSystem])
   const [infraName,setInfraName] = useState('')

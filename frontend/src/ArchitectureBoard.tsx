@@ -96,7 +96,8 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
  const allVMs=useMemo<VM[]>(()=>[...items,...changes.filter(c=>c.action==='create_vm').map(c=>({id:c.id!,name:c.name!,system_id:systemId,kind:'vm',description:'',details:{} as Record<string,unknown>}))],[items,changes,systemId])
  const allNetworks=[...networks,...changes.filter(c=>c.action==='create_network').map(c=>({id:c.id!,name:c.name!,kind:c.kind!}))]
  const visibleRects=rectangles.filter(r=>allNetworks.some(n=>n.id===r.id))
- const backgroundNodes:Node[]=visibleRects.map(r=>({id:'network:'+r.id,type:'default',position:{x:r.x,y:r.y},width:r.width,height:r.height,measured:{width:r.width,height:r.height},draggable:tool==='move',selectable:true,connectable:false,data:{label:<div className="boardNetworkLabel"><strong>{r.name} · {r.kind.toUpperCase()}</strong><small>{tool==='move'?'Перетащите контейнер':'Контейнер сети'}</small></div>},style:{width:r.width,height:r.height,background:'#dbeafe77',border:'2px dashed #2563eb',borderRadius:9,zIndex:0,pointerEvents:'auto',textAlign:'left',padding:12,fontSize:13,color:'#1e40af'}}))
+ const draftNetworks=new Set(changes.filter(c=>c.action==='create_network').map(c=>c.id))
+ const backgroundNodes:Node[]=visibleRects.map(r=>({id:'network:'+r.id,type:'default',position:{x:r.x,y:r.y},width:r.width,height:r.height,measured:{width:r.width,height:r.height},draggable:tool==='move',selectable:true,connectable:false,data:{label:<div className="boardNetworkLabel"><strong>{r.name} · {r.kind.toUpperCase()}</strong><small>{draftNetworks.has(r.id)?'Черновик · ещё не сохранён':tool==='move'?'Перетащите контейнер':'Контейнер сети'}</small></div>},style:{width:r.width,height:r.height,background:draftNetworks.has(r.id)?'#fff7edaa':'#dbeafe77',border:draftNetworks.has(r.id)?'2px dashed #d97706':'2px dashed #2563eb',borderRadius:9,zIndex:0,pointerEvents:'auto',textAlign:'left',padding:12,fontSize:13,color:'#1e40af'}}))
  const graphNodes=[...backgroundNodes,...nodes]
  // A pair of machines has one readable connection; its technical flows stay separate records.
  const pendingFlows=changes.filter(c=>c.action==='create_flow').map(c=>({id:c.id!,source_id:c.source_id!,target_id:c.target_id!,protocol:c.protocol||'',port:c.port||'',name:c.name||''}))
@@ -292,6 +293,11 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
  }
  const saveLayout=async()=>{
    if(layoutBusy)return
+   if(changes.length){
+     setReviewOpen(true);setTool('move')
+     setError('Есть несохранённые ВМ, VRF/VLAN или связи. Введите причину изменений в черновике, проверьте их и подтвердите запись в журнал. Сохранение только расположения не создаёт объекты.')
+     return
+   }
    setLayoutBusy(true);setLayoutMessage('');setError('')
    try{
      await request('/api/board/layout/'+systemId,{method:'PUT',body:JSON.stringify({positions:collectLayout()})})
@@ -309,7 +315,8 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
    setNodes(previous=>previous.filter(node=>!stagedVMs.has(node.id)))
    setRectangles(previous=>previous.filter(rect=>!stagedNetworks.has(rect.id)))
    setChanges([]);setPreview(null);setError('');setReviewOpen(false)
-   setLayoutMessage('Черновик изменений отменён.')
+   setLayoutDirty(false)
+   setLayoutMessage('Черновик изменений отменён. Несохранённые ВМ и сети удалены со схемы.')
  }
  const openHistory=async()=>{
    setError('')
@@ -342,7 +349,7 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
      }
      try{await onCommitted()}catch(e){warning+=' Не удалось обновить данные: '+String(e)}
      setChanges([]);setPreview(null);setReason('');setDrawing(null);setReviewOpen(false)
-     setError('Изменения внесены в историю.'+warning)
+     setError('ВМ, сети и связи сохранены в реестре и журнале.'+warning)
      if(showHistory)void openHistory()
    }catch(e){setPreview(null);setError('Сохранение отклонено: '+String(e)+'. Обновите предварительный просмотр.')}
    finally{setBusy(false)}
@@ -392,12 +399,13 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
         </button>)}
      <span className="boardToolsSeparator" aria-hidden="true"/>
      <button type="button" title="Вписать всю схему в экран" aria-label="Показать всё" disabled={!nodes.length} onClick={()=>void fitView({padding:0.25,duration:250,maxZoom:0.9})}><Maximize2 size={19} aria-hidden="true"/><span className="boardToolCaption" aria-hidden="true">Вписать</span></button>
-     <button type="button" title={layoutDirty?'Сохранить расположение блоков в хабе':'Расположение сохранено'} aria-label="Сохранить расположение" disabled={!layoutDirty||layoutBusy} onClick={()=>void saveLayout()}><Save size={19} aria-hidden="true"/><span className="boardToolCaption" aria-hidden="true">Сохранить</span>{layoutDirty&&<span className="boardUnsavedDot" aria-hidden="true"/>}</button>
+     <button type="button" title={changes.length?'Сохранить новые ВМ, VRF/VLAN и связи через проверку черновика':layoutDirty?'Сохранить расположение блоков':'Расположение сохранено'} aria-label={changes.length?'Сохранить изменения схемы':'Сохранить расположение'} disabled={(!layoutDirty&&!changes.length)||layoutBusy||busy} onClick={()=>void saveLayout()}><Save size={19} aria-hidden="true"/><span className="boardToolCaption" aria-hidden="true">{changes.length?'Сохранить всё':'Сохранить'}</span>{(layoutDirty||changes.length>0)&&<span className="boardUnsavedDot" aria-hidden="true"/>}</button>
      <button type="button" title="История изменений" aria-label="История изменений" onClick={()=>void openHistory()}><History size={19} aria-hidden="true"/><span className="boardToolCaption" aria-hidden="true">История</span></button>
      <button type="button" className="boardChangeCount" title="Проверить и сохранить изменения в реестре" aria-label={'Черновик: '+changes.length+' изменений'} disabled={!changes.length} onClick={()=>{setReviewOpen(true);setTool('move');setInspectedId(null)}}>
        <ClipboardCheck size={18} aria-hidden="true"/><span className="boardToolCaption" aria-hidden="true">Черновик ({changes.length})</span><span className="boardCountLabel"> изменений</span>
      </button>
    </div>
+     {changes.length>0&&<div className="boardPendingBanner" role="status"><strong>Не сохранено: {changes.filter(c=>c.action==='create_vm').length} ВМ, {changes.filter(c=>c.action==='create_network').length} сетей и {changes.filter(c=>c.action!=='create_vm'&&c.action!=='create_network').length} других изменений.</strong><span>Новые объекты видны на схеме как черновик и исчезнут при уходе без подтверждения.</span><button type="button" onClick={()=>{setTool('move');setReviewOpen(true);setError('')}}>Проверить и сохранить в реестр</button></div>}
      {(tool!=='move'||inspectedVM||inspectedNetwork||reviewOpen)&&<aside className="boardDock" role="complementary" aria-label="Свойства и изменения схемы">
        {tool!=='move'&&<div className="boardPropertiesHeader"><div><small>ИНСТРУМЕНТ</small><h3>{tool==='vm'?'Виртуальная машина':tool==='flow'?'Поток данных':'Сеть / контейнер'}</h3></div><button type="button" aria-label="Закрыть настройки инструмента" onClick={()=>{setTool('move');setDrawing(null);setError('');setLayoutMessage('');setReviewOpen(false);cancelNetworkDrag()}}>✕</button></div>}
           {tool==='vm'&&<div className="boardToolFields"><p>Введите название и нажмите на холст для размещения ВМ.</p><label>Имя ВМ <input value={name} onChange={e=>setName(e.target.value)} placeholder="Новая ВМ"/></label><button onClick={()=>addVM()}>Разместить на схеме</button></div>}

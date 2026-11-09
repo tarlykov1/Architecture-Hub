@@ -127,7 +127,7 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
      const members=group?items.filter(v=>interfaces.some(n=>n.item_id===v.id&&n[fieldForKind(group.kind)]===group.id)):[]
      const index=group?members.findIndex(v=>v.id===item.id):i
      const position=savedPositions[item.id]|| (group?{x:group.x+25+(index%2)*265,y:group.y+65+Math.floor(index/2)*175}:positions[item.id]||{x:70+(i%4)*280,y:80+Math.floor(i/4)*175})
-     return {id:item.id,type:'architectureComponent',position,sourcePosition:Position.Bottom,targetPosition:Position.Top,data:{label:<DiagramNodeLabel name={item.name} kind={item.kind} subtitle={ownerBySystemId[item.system_id]||ownerName} detail={item.kind+' · '+String(item.details.environment||'Среда не задана')}><small className="componentNodePurpose">{item.description?.trim()||String(item.details.purpose||item.details.role||'Назначение не описано')}</small></DiagramNodeLabel>},style:diagramCardStyle({zIndex:2})}
+     return {id:item.id,type:'architectureComponent',position,sourcePosition:Position.Bottom,targetPosition:Position.Top,data:{label:<DiagramNodeLabel name={item.name} kind={item.kind} subtitle={ownerBySystemId[item.system_id]||ownerName} detail={item.kind+' · '+String(item.details.environment||'Среда не задана')}><small className="componentNodePurpose">{item.description?.trim()||String(item.details.purpose||item.details.role||'Назначение не описано')}</small></DiagramNodeLabel>},style:diagramCardStyle({zIndex:2,padding:0})}
    })
  },[items,flows,interfaces,ownerName,ownerBySystemId]) // Keep dragged coordinates in React Flow during the editing session.
  const [nodes,setNodes,onNodesChange]=useNodesState(initialNodes)
@@ -215,7 +215,7 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
  const addVM=(point?:{x:number;y:number})=>{
    if(!name.trim())return setError('Введите имя новой ВМ.')
    const id=makeId()
-   const node:Node={id,type:'architectureComponent',position:point||{x:90+(nodes.length%4)*280,y:100+Math.floor(nodes.length/4)*175},sourcePosition:Position.Bottom,targetPosition:Position.Top,data:{label:<DiagramNodeLabel name={name.trim()} kind="vm" subtitle={ownerName} detail="ВМ · Черновик"/>},style:diagramCardStyle({border:'1px dashed #2674bf'})}
+   const node:Node={id,type:'architectureComponent',position:point||{x:90+(nodes.length%4)*280,y:100+Math.floor(nodes.length/4)*175},sourcePosition:Position.Bottom,targetPosition:Position.Top,data:{label:<DiagramNodeLabel name={name.trim()} kind="vm" subtitle={ownerName} detail="ВМ · Черновик"/>},style:diagramCardStyle({border:'1px dashed #2674bf',padding:0})}
    addChange({action:'create_vm',id,system_id:systemId,name:name.trim(),kind:'vm'})
    setNodes(previous=>[...previous,node])
    onPositionChange?.(node)

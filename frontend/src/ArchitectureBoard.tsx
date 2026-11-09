@@ -294,32 +294,64 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
  useEffect(()=>{
    let active=true
    setLayoutDirty(false);setLayoutMessage('')
-   void request<{positions:Record<string,{x:number;y:number}>}>('/api/board/layout/'+systemId)
+   void request<{positions:Record<string,{x:number;y:number}>;network_rectangles?:Record<string,{x:number;y:number;width:number;height:number}>}>('/api/board/layout/'+systemId)
      .then(result=>{
-       if(!active||!result.positions)return
+       if(!active)return
        setNodes(previous=>previous.map(node=>{
-         const position=result.positions[node.id]||savedPositions[node.id]
+         const position=result.positions?.[node.id]||savedPositions[node.id]
          return position?{...node,position}:node
        }))
+       const stored=result.network_rectangles||{}
+       setRectangles(previous=>{
+         const byId=new Map(previous.map(rect=>[rect.id,{...rect,...(stored[rect.id]||{})}]))
+         for(const [id,geometry] of Object.entries(stored)){
+           const network=networks.find(item=>item.id===id)
+           if(network&&!byId.has(id))byId.set(id,{id,name:network.name,kind:network.kind,...geometry})
+         }
+         return [...byId.values()]
+       })
      }).catch(()=>{/* Browser positions remain the fallback. */})
    return ()=>{active=false}
  },[systemId,request,setNodes])
 
- const saveLayout=async()=>{
-   if(layoutBusy)return
+ const saveLayout=async(includeCommittedDraft=false):Promise<boolean>=>{
+   if(layoutBusy)return false
    setLayoutBusy(true);setLayoutMessage('');setError('')
    try{
-     const validIds=new Set(items.map(item=>item.id))
-     const positions=Object.fromEntries(nodes.filter(node=>validIds.has(node.id))
+     const pendingVMs=changes.filter(c=>c.action==='create_vm').map(c=>c.id!)
+     const pendingNetworks=changes.filter(c=>c.action==='create_network').map(c=>c.id!)
+     const validVMs=new Set([...items.map(item=>item.id),...(includeCommittedDraft?pendingVMs:[])])
+     const validNetworks=new Set([...networks.map(n=>n.id),...(includeCommittedDraft?pendingNetworks:[])])
+     const positions=Object.fromEntries(nodes.filter(node=>validVMs.has(node.id))
        .map(node=>[node.id,{x:node.position.x,y:node.position.y}]))
-     await request('/api/board/layout/'+systemId,{method:'PUT',body:JSON.stringify({positions})})
-     const hasStagedVM=changes.some(c=>c.action==='create_vm')
-     setLayoutDirty(hasStagedVM)
-     setLayoutMessage(hasStagedVM
-       ?'Расположение существующих ВМ сохранено. Новые ВМ подтвердите в черновике, затем сохраните их расположение.'
-       :'Расположение схемы сохранено.')
-   }catch(e){setError('Не удалось сохранить расположение: '+String(e))}
+     const network_rectangles=Object.fromEntries(rectangles.filter(rect=>validNetworks.has(rect.id))
+       .map(rect=>[rect.id,{x:rect.x,y:rect.y,width:rect.width,height:rect.height}]))
+     await request('/api/board/layout/'+systemId,{
+       method:'PUT',body:JSON.stringify({positions,network_rectangles})
+     })
+     const hasPending=changes.some(c=>c.action==='create_vm'||c.action==='create_network')
+     setLayoutDirty(!includeCommittedDraft&&hasPending)
+     setLayoutMessage(hasPending&&!includeCommittedDraft
+       ?'Расположение существующих объектов сохранено. Новые объекты сохраните через черновик.'
+       :'Расположение компонентов и контейнеров сохранено.')
+     return true
+   }catch(e){setLayoutDirty(true);setError('Не удалось сохранить схему: '+String(e));return false}
    finally{setLayoutBusy(false)}
+ }
+ useEffect(()=>{
+   if(!exitRequest)return
+   if(changes.length||layoutDirty)setExitPrompt(true)
+   else onExit?.()
+   // Exit requests are explicit UI events; the editor is never closed silently.
+   // eslint-disable-next-line react-hooks/exhaustive-deps
+ },[exitRequest])
+ const saveBeforeExit=async()=>{
+   setExitPrompt(false)
+   if(changes.length){
+     setExitAfterSave(true);setReviewOpen(true);setTool('move');setInspectedId(null)
+   }else if(await saveLayout()){
+     onExit?.()
+   }
  }
  const discardDraft=()=>{
    const stagedVMs=new Set(changes.filter(c=>c.action==='create_vm').map(c=>c.id))

@@ -1710,18 +1710,22 @@ def get_networks(db: Session = Depends(db_session)):
 
 
 @app.post("/api/networks", response_model=SegmentOutput, status_code=201)
-def add_network(payload: SegmentInput, db: Session = Depends(db_session)):
+def add_network(payload: SegmentInput, request: Request, db: Session = Depends(db_session)):
     if db.scalars(select(NetworkSegment).where(NetworkSegment.name == payload.name)).first():
         raise HTTPException(409, "Network name exists")
     row = NetworkSegment(**payload.model_dump())
     db.add(row)
+    db.flush()
+    db.add(BoardAudit(reason="Создана сеть " + row.name, actor=board_actor(request),
+                      changes=[{"action": "create_network", "id": str(row.id),
+                                "before": None, "after": payload.model_dump(mode="json")}]))
     db.commit()
     db.refresh(row)
     return row
 
 
 @app.put("/api/networks/{segment_id}", response_model=SegmentOutput)
-def update_network(segment_id: UUID, payload: SegmentInput, db: Session = Depends(db_session)):
+def update_network(segment_id: UUID, payload: SegmentInput, request: Request, db: Session = Depends(db_session)):
     segment = db.get(NetworkSegment, segment_id)
     if segment is None:
         raise HTTPException(404, "Network not found")
@@ -1736,8 +1740,14 @@ def update_network(segment_id: UUID, payload: SegmentInput, db: Session = Depend
         )).first()
         if refs or db.scalars(select(FlowNetworkHop).where(FlowNetworkHop.segment_id == segment_id)).first():
             raise HTTPException(409, "Cannot change kind of network referenced by interfaces or flow paths")
+    after = payload.model_dump(mode="json")
+    before = {field: getattr(segment, field) for field in after}
     for field, value in payload.model_dump().items():
         setattr(segment, field, value)
+    if before != after:
+        db.add(BoardAudit(reason="Изменена сеть " + segment.name, actor=board_actor(request),
+                          changes=[{"action": "update_network", "id": str(segment.id),
+                                    "before": before, "after": after}]))
     db.commit()
     db.refresh(segment)
     return segment
@@ -1795,7 +1805,7 @@ def delete_nic(interface_id: UUID, db: Session = Depends(db_session)):
 
 
 @app.delete("/api/networks/{segment_id}", status_code=204)
-def delete_network(segment_id: UUID, db: Session = Depends(db_session)):
+def delete_network(segment_id: UUID, request: Request, db: Session = Depends(db_session)):
     segment = db.get(NetworkSegment, segment_id)
     if segment is None:
         raise HTTPException(status_code=404, detail="Network not found")
@@ -1807,7 +1817,12 @@ def delete_network(segment_id: UUID, db: Session = Depends(db_session)):
         raise HTTPException(status_code=409, detail="Network is referenced by interfaces")
     if db.scalars(select(FlowNetworkHop).where(FlowNetworkHop.segment_id == segment_id)).first():
         raise HTTPException(409, "Network segment is referenced by flow paths")
+    before = {"name": segment.name, "kind": segment.kind, "description": segment.description,
+              "verification": segment.verification}
     db.delete(segment)
+    db.add(BoardAudit(reason="Удалена сеть " + segment.name, actor=board_actor(request),
+                      changes=[{"action": "delete_network", "id": str(segment_id),
+                                "before": before, "after": None}]))
     db.commit()
 
 

@@ -90,6 +90,7 @@ class CmdbRecord(Base):
     evidence: Mapped[str] = mapped_column(String(2000), default="")
     notes: Mapped[str] = mapped_column(String(2000), default="")
     custom_values: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    schema_revision: Mapped[int] = mapped_column(default=0)
     revision: Mapped[int] = mapped_column(default=1)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
@@ -535,6 +536,7 @@ def _cmdb_data(db: Session) -> dict:
         list(db.scalars(select(ProcessSystem)).all()),
     )
     overlays = {row.ci_id: row for row in db.scalars(select(CmdbRecord)).all()}
+    catalog_revisions = {item["id"]: item["revision"] for item in _catalog_classes(db)}
     for node in graph["nodes"]:
         record = overlays.get(node["id"])
         node["verification_status"] = "unverified"
@@ -549,7 +551,9 @@ def _cmdb_data(db: Session) -> dict:
                 "technical_owner": record.technical_owner or None,
                 "criticality": record.criticality,
                 "verified_at": record.verified_at.isoformat() if record.verified_at else None,
-                "verification_status": record.verification_status,
+                "verification_status": ("unverified" if record.verification_status == "verified"
+                                        and record.schema_revision != catalog_revisions.get(node["ci_class"], 0)
+                                        else record.verification_status),
                 "source": record.source_system,
                 "source_record_id": record.source_record_id or None,
                 "revision": record.revision,
@@ -582,7 +586,7 @@ def _cmdb_snapshot(record: CmdbRecord | None) -> dict:
             "criticality": "unknown", "source_system": "architecture_hub",
             "source_record_id": "", "verification_status": "unverified",
             "verified_at": None, "evidence": "", "notes": "", "custom_values": {},
-            "revision": 0, "updated_at": None,
+            "schema_revision": 0, "revision": 0, "updated_at": None,
         }
     return {
         "lifecycle": record.lifecycle, "owner": record.owner,
@@ -593,7 +597,7 @@ def _cmdb_snapshot(record: CmdbRecord | None) -> dict:
         "verified_at": record.verified_at.isoformat() if record.verified_at else None,
         "evidence": record.evidence,
         "notes": record.notes, "custom_values": record.custom_values or {},
-        "revision": record.revision,
+        "schema_revision": record.schema_revision, "revision": record.revision,
         "updated_at": record.updated_at.isoformat() if record.updated_at else None,
     }
 
@@ -827,7 +831,13 @@ def cmdb_impact(ci_id: str = Query(min_length=1, max_length=120),
 @app.get("/api/cmdb/records/{ci_id}")
 def read_cmdb_record(ci_id: str, db: Session = Depends(db_session)):
     node = _cmdb_node(db, ci_id)
-    return {**node, **_cmdb_snapshot(db.get(CmdbRecord, node["ci_id"]))}
+    record = db.get(CmdbRecord, node["ci_id"])
+    snapshot = _cmdb_snapshot(record)
+    if (record and record.verification_status == "verified" and
+            record.schema_revision != _class_definition(db, node["ci_class"])["revision"]):
+        snapshot["verification_status"] = "unverified"
+        snapshot["verification_warning"] = "Class definition changed; re-verification required"
+    return {**node, **snapshot}
 
 
 @app.get("/api/cmdb/records/{ci_id}/history")
@@ -920,6 +930,9 @@ def verify_cmdb_record(ci_id: str, payload: CmdbVerificationInput,
         raise HTTPException(422, "Retired configuration items cannot be verified as active")
     policy = _class_definition(db, node["ci_class"])
     snapshot = {**node, **previous}
+    issue = validate_custom_values(policy["fields"], previous["custom_values"])
+    if issue:
+        raise HTTPException(422, issue)
     missing = missing_required(snapshot, policy["required"], previous["custom_values"])
     if missing:
         raise HTTPException(422, "Missing required CMDB fields: " + ", ".join(missing))
@@ -928,7 +941,7 @@ def verify_cmdb_record(ci_id: str, payload: CmdbVerificationInput,
         CmdbRecord.ci_id == key,
         CmdbRecord.revision == payload.expected_revision
     ).values(verification_status="verified", verified_at=now,
-             evidence=payload.evidence.strip(), updated_at=now,
+             evidence=payload.evidence.strip(), schema_revision=policy["revision"], updated_at=now,
              revision=payload.expected_revision + 1))
     if result.rowcount != 1:
         db.rollback()

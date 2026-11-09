@@ -22,6 +22,10 @@ def upgrade():
             with op.batch_alter_table("cmdb_records") as batch:
                 batch.add_column(sa.Column("custom_values", sa.JSON(), nullable=False,
                                            server_default=sa.text("'{}'")))
+        if "schema_revision" not in columns:
+            with op.batch_alter_table("cmdb_records") as batch:
+                batch.add_column(sa.Column("schema_revision", sa.Integer(), nullable=False,
+                                           server_default="0"))
     if "cmdb_class_policies" not in existing:
         op.create_table(
             "cmdb_class_policies",
@@ -71,4 +75,5 @@ def downgrade():
     op.drop_table("cmdb_relationship_rules")
     op.drop_table("cmdb_class_policies")
     with op.batch_alter_table("cmdb_records") as batch:
+        batch.drop_column("schema_revision")
         batch.drop_column("custom_values")

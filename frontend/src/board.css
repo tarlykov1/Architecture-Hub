@@ -201,7 +201,10 @@
 .boardCanvas .react-flow__node-boardComponent .boardConnectionHandle{
  width:13px;height:13px;border-radius:50%;background:#176bc1;
  border:2px solid #fff;box-shadow:0 0 0 2px #176bc1;
- cursor:crosshair;z-index:9;pointer-events:all;
+ cursor:crosshair;z-index:9;opacity:0;pointer-events:none;
+}
+.boardCanvas .react-flow__node-boardComponent .boardConnectionHandleActive{
+ opacity:1;pointer-events:all;
 }
 .boardCanvas .react-flow__node-boardComponent .boardConnectionHandle:hover{
  width:17px;height:17px;background:#0c4a91;

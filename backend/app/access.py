@@ -44,6 +44,8 @@ def classify(path: str) -> str | None:
         return "business"
     if path.startswith("/api/network-paths") or path.startswith("/api/network-assets") or path.startswith("/api/networks") or path.startswith("/api/network-interfaces"):
         return "networks"
+    if path.startswith("/api/monitoring/"):
+        return "infrastructure"
     if path.startswith("/api/infra"):
         return "infrastructure"
     if path.startswith("/api/data-attributes") or path.startswith("/api/flow-data-uses"):

@@ -320,3 +320,41 @@ test('topology component inspector opens the same editable passport as Component
   await passport.getByRole('button',{name:'Отмена'}).click()
   await expect(passport.getByRole('button',{name:'Редактировать паспорт'})).toBeVisible()
 })
+
+
+test('dense all-systems component diagrams start with readable IS cards and allow full detail',async({page})=>{
+  const ids:string[]=[],vmIds:string[]=[]
+  const suffix=Date.now().toString()
+  for(const name of ['Readable overview A','Readable overview B']){
+    const created=await page.request.post('http://127.0.0.1:8001/api/objects',{
+      data:{name:name+' '+suffix,kind:'system'}
+    })
+    expect(created.status()).toBe(201)
+    ids.push((await created.json()).id as string)
+  }
+  for(let i=0;i<20;i++){
+    const vm=await page.request.post('http://127.0.0.1:8001/api/infra',{
+      data:{system_id:ids[i%2],name:'Readable node '+suffix+' '+i,kind:'vm'}
+    })
+    expect(vm.status()).toBe(201)
+    vmIds.push((await vm.json()).id as string)
+  }
+  await page.goto('/')
+  await page.getByRole('navigation',{name:'Разделы архитектуры'})
+    .getByRole('button',{name:'Компоненты',exact:true}).click()
+  await page.getByRole('group',{name:'Представление компонентов'})
+    .getByRole('button',{name:'Схема',exact:true}).click()
+  const detail=page.getByRole('combobox',{name:'Детализация схемы компонентов'})
+  const graph=page.locator('[data-active-graph="infrastructure"]')
+  await expect(detail).toHaveValue('auto')
+  await expect(page.getByText(/Обзор по информационным системам/)).toBeVisible()
+  await expect(graph.locator('.react-flow__node[data-id="'+ids[0]+'"]')).toHaveCount(1)
+  await expect(graph.locator('.react-flow__node[data-id="'+vmIds[0]+'"]')).toHaveCount(0)
+  await detail.selectOption('components')
+  await expect(graph.locator('.react-flow__node[data-id="'+vmIds[0]+'"]')).toHaveCount(1)
+  await detail.selectOption('systems')
+  await expect(graph.locator('.react-flow__node[data-id="'+ids[0]+'"]')).toHaveCount(1)
+  await graph.locator('.react-flow__node[data-id="'+ids[0]+'"]').click()
+  await expect(page.getByRole('combobox',{name:'Система компонентов'})).toHaveValue(ids[0])
+  await expect(page.getByText(/Компоненты текущей ИС:/)).toBeVisible()
+})

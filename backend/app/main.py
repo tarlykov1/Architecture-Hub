@@ -10,9 +10,10 @@ from uuid import UUID, uuid4
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from .access import access_middleware, configured_keys, ROLE_ACCESS
 from .cmdb import ci_graph, potential_impact, CI_CLASSES, LIFECYCLE_STATES, LIFECYCLE_TRANSITIONS, CRITICALITY_LEVELS, VERIFICATION_STATES
+from .cmdb_catalog import validate_class_schema, validate_custom_values, missing_required, assess_relation, RELATION_KINDS
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import DateTime, ForeignKey, JSON, String, Uuid, Index, create_engine, select, update, text as sql_text
+from sqlalchemy import DateTime, ForeignKey, JSON, String, Uuid, Index, Boolean, UniqueConstraint, create_engine, select, update, text as sql_text
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
 from sqlalchemy.exc import IntegrityError
 
@@ -87,6 +88,7 @@ class CmdbRecord(Base):
     verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     evidence: Mapped[str] = mapped_column(String(2000), default="")
     notes: Mapped[str] = mapped_column(String(2000), default="")
+    custom_values: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     revision: Mapped[int] = mapped_column(default=1)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
@@ -95,6 +97,37 @@ class CmdbRecord(Base):
 Index('ux_cmdb_external_identity', CmdbRecord.source_system, CmdbRecord.source_record_id,
       unique=True, sqlite_where=sql_text("source_record_id <> ''"),
       postgresql_where=sql_text("source_record_id <> ''"))
+
+
+
+
+class CmdbClassPolicy(Base):
+    """Editable schema overlay. Built-in definitions are fallback, never copied."""
+    __tablename__ = "cmdb_class_policies"
+    id: Mapped[str] = mapped_column(String(50), primary_key=True)
+    label: Mapped[str] = mapped_column(String(120))
+    layer: Mapped[str] = mapped_column(String(30))
+    required: Mapped[list[str]] = mapped_column(JSON, default=list)
+    fields: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    revision: Mapped[int] = mapped_column(default=1)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+class CmdbRelationshipRule(Base):
+    """Opt-in directed validation per relation kind and CI source class."""
+    __tablename__ = "cmdb_relationship_rules"
+    __table_args__ = (UniqueConstraint("relation_kind", "source_class", "target_class",
+                                      name="uq_cmdb_relation_classes"),)
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    relation_kind: Mapped[str] = mapped_column(String(60))
+    source_class: Mapped[str] = mapped_column(String(50))
+    target_class: Mapped[str] = mapped_column(String(50))
+    mode: Mapped[str] = mapped_column(String(20), default="advisory")
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    description: Mapped[str] = mapped_column(String(1000), default="")
+    revision: Mapped[int] = mapped_column(default=1)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
 
 class CmdbRecordAudit(Base):
@@ -391,6 +424,42 @@ class DiagramOut(DiagramCreate):
 
 
 
+
+class CmdbFieldDef(BaseModel):
+    key: str = Field(min_length=1, max_length=50, pattern=r"^[a-z][a-zA-Z0-9_]*$")
+    label: str = Field(min_length=1, max_length=120)
+    type: str = Field(pattern=r"^(text|number|boolean|choice)$")
+    options: list[str] = Field(default_factory=list, max_length=30)
+
+
+class CmdbClassInput(BaseModel):
+    expected_revision: int = Field(ge=0)
+    label: str = Field(min_length=1, max_length=120)
+    layer: str = Field(pattern=r"^(application|platform|infrastructure|business)$")
+    required: list[str] = Field(default_factory=list, max_length=40)
+    fields: list[CmdbFieldDef] = Field(default_factory=list, max_length=30)
+    enabled: bool = True
+
+
+class CmdbRuleInput(BaseModel):
+    relation_kind: str = Field(pattern=r"^(supplies_data_to|integrates_with|depends_on)$")
+    source_class: str = Field(pattern=r"^[a-z][a-z0-9_]{1,49}$")
+    target_class: str = Field(pattern=r"^[a-z][a-z0-9_]{1,49}$")
+    mode: str = Field(default="advisory", pattern=r"^(advisory|enforced)$")
+    enabled: bool = True
+    description: str = Field(default="", max_length=1000)
+
+
+class CmdbRuleEdit(CmdbRuleInput):
+    expected_revision: int = Field(ge=1)
+
+
+class CmdbCheckInput(BaseModel):
+    source_id: str = Field(min_length=1, max_length=90)
+    target_id: str = Field(min_length=1, max_length=90)
+    relation_kind: str = Field(pattern=r"^(supplies_data_to|integrates_with|depends_on)$")
+
+
 class CmdbRecordInput(BaseModel):
     expected_revision: int = Field(ge=0)
     lifecycle: str = Field(pattern="^(planned|active|maintenance|retired)$")
@@ -400,6 +469,7 @@ class CmdbRecordInput(BaseModel):
     source_system: str = Field(default="architecture_hub", min_length=1, max_length=120)
     source_record_id: str = Field(default="", max_length=180)
     notes: str = Field(default="", max_length=2000)
+    custom_values: dict[str, Any] | None = None
     reason: str = Field(min_length=5, max_length=1000)
 
 

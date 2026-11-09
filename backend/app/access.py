@@ -90,6 +90,12 @@ async def access_middleware(request: Request, call_next):
     role = next((role for key, role in keys.items() if hmac.compare_digest(key, token)), None)
     if not role:
         return JSONResponse({"detail":"Authentication required"}, status_code=401, headers={"WWW-Authenticate":"Bearer"})
+    # Changing the global CI schema or strict relation policies is an admin-only
+    # operation. All authenticated system readers may inspect them.
+    protected_schema = path.startswith("/api/cmdb/classes/") or path.startswith(
+        "/api/cmdb/relationship-rules")
+    if protected_schema and not method_is_read(path, request.method) and role != "admin":
+        return JSONResponse({"detail": "Only admins may change CMDB schema"}, status_code=403)
     layer = classify(path)
     if layer == "demo":
         return JSONResponse({"detail":"Demo seed endpoints are disabled in access-controlled mode"}, status_code=403)

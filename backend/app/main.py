@@ -59,6 +59,7 @@ class BoardLayout(Base):
     system_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("objects.id", ondelete="CASCADE"), primary_key=True)
     positions: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     network_rectangles: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    flow_handles: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
 
@@ -1619,9 +1620,15 @@ class BoardRectangle(BoardPoint):
     height: float = Field(ge=80, le=100000, allow_inf_nan=False)
 
 
+class BoardFlowHandles(BaseModel):
+    source_handle: str = Field(pattern="^(top|right|bottom|left)-(a|b)$")
+    target_handle: str = Field(pattern="^(top|right|bottom|left)-(a|b)$")
+
+
 class BoardLayoutInput(BaseModel):
     positions: dict[UUID, BoardPoint] = Field(default_factory=dict, max_length=1000)
     network_rectangles: dict[UUID, BoardRectangle] = Field(default_factory=dict, max_length=1000)
+    flow_handles: dict[UUID, BoardFlowHandles] = Field(default_factory=dict, max_length=2000)
 
 
 @app.get("/api/board/layout/{system_id}")
@@ -1630,7 +1637,8 @@ def read_board_layout(system_id: UUID, db: Session = Depends(db_session)):
         raise HTTPException(404, "System not found")
     stored = db.get(BoardLayout, system_id)
     return {"system_id": str(system_id), "positions": stored.positions if stored else {},
-            "network_rectangles": stored.network_rectangles if stored else {}}
+            "network_rectangles": stored.network_rectangles if stored else {},
+            "flow_handles": stored.flow_handles if stored else {}}
 
 
 @app.put("/api/board/layout/{system_id}")
@@ -1648,18 +1656,26 @@ def save_board_layout(system_id: UUID, payload: BoardLayoutInput, db: Session = 
         segment_ids = set(db.scalars(select(NetworkSegment.id).where(NetworkSegment.id.in_(rect_ids))).all())
         if len(segment_ids) != len(rect_ids):
             raise HTTPException(422, "Unknown network in diagram layout")
+    handle_ids = list(payload.flow_handles)
+    if handle_ids:
+        known_flows = set(db.scalars(select(DataFlow.id).where(DataFlow.id.in_(handle_ids))).all())
+        if len(known_flows) != len(handle_ids):
+            raise HTTPException(422, "Unknown flow in diagram layout")
     positions = {str(key): point.model_dump() for key, point in payload.positions.items()}
     rectangles = {str(key): rect.model_dump() for key, rect in payload.network_rectangles.items()}
+    flow_handles = {str(key): handle.model_dump() for key, handle in payload.flow_handles.items()}
     stored = db.get(BoardLayout, system_id)
     if stored is None:
-        stored = BoardLayout(system_id=system_id, positions=positions, network_rectangles=rectangles)
+        stored = BoardLayout(system_id=system_id, positions=positions, network_rectangles=rectangles,
+                             flow_handles=flow_handles)
         db.add(stored)
     else:
         stored.positions = positions
         stored.network_rectangles = rectangles
+        stored.flow_handles = flow_handles
         stored.updated_at = datetime.now(timezone.utc)
     db.commit()
-    return {"system_id": str(system_id), "positions": positions, "network_rectangles": rectangles}
+    return {"system_id": str(system_id), "positions": positions, "network_rectangles": rectangles, "flow_handles": flow_handles}
 
 
 class BoardBatch(BaseModel):

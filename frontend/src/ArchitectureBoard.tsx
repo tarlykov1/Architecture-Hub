@@ -148,15 +148,15 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
   }))]
  const [nodes,setNodes,onNodesChange]=useNodesState<Node>(restoredNodes)
  const visualGroupDrag=useRef<{id:string;origin:{x:number;y:number};rects:Rect[];members:Node[]}|null>(null)
- // A container visually carries all nested rectangles and visible components.
- // It does not change VLAN/VRF membership, routing or network interfaces.
  const startVisualGroupDrag=(node:Node)=>{
+   dragSnapshot.current={rects:rectangles.map(r=>({...r})),nodes:nodes.map(n=>({...n,position:{...n.position}})),dirty:layoutDirty}
    if(!node.id.startsWith('network:')){visualGroupDrag.current=null;return}
    const parent=rectangles.find(r=>r.id===node.id.slice('network:'.length))
    if(!parent){visualGroupDrag.current=null;return}
+   const childIds=descendants(node.id,parents)
    visualGroupDrag.current={id:node.id,origin:{x:parent.x,y:parent.y},
-     rects:rectangles.filter(rect=>rectFullyInside(parent,rect)),
-     members:nodes.filter(n=>rectContains(parent,{x:n.position.x+110,y:n.position.y+50}))}
+     rects:rectangles.filter(rect=>childIds.has('network:'+rect.id)),
+     members:nodes.filter(n=>childIds.has(n.id))}
  }
  const updateVisualGroupDrag=(node:Node,finished=false)=>{
    const group=visualGroupDrag.current
@@ -170,9 +170,45 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
    if(finished){
      for(const member of group.members)onPositionChange?.({...member,position:vmPositions.get(member.id)!})
      setLayoutDirty(true)
-     setLayoutMessage('Зона и вложенные элементы перемещены. Сохраните расположение; технические сетевые связи не изменились.')
+     setLayoutMessage('Группа с вложенными объектами перемещена. Сохраните расположение.')
      visualGroupDrag.current=null
    }
+ }
+ const candidateGroup=(node:Node):string|null=>{
+   const child=node.id.startsWith('network:')?rectangles.find(r=>r.id===node.id.slice(8)):undefined
+   const point=child?{x:node.position.x+child.width/2,y:node.position.y+child.height/2}:{x:node.position.x+100,y:node.position.y+45}
+   const excluded=descendants(node.id,parents)
+   const candidates=rectangles.filter(r=>!excluded.has('network:'+r.id)&&'network:'+r.id!==node.id&&
+     (!child||permittedParent(child.kind,r.kind))&&rectContains(r,point)&&
+     (!child||rectFullyInside(r,{...child,x:node.position.x,y:node.position.y})))
+   candidates.sort((a,b)=>a.width*a.height-b.width*b.height)
+   return candidates.length?'network:'+candidates[0].id:null
+ }
+ const finishVisualDrop=(node:Node)=>{
+   updateVisualGroupDrag(node,true)
+   const target=candidateGroup(node),previous=parents[node.id]||null
+   if(target!==previous){
+     const label=node.id.startsWith('network:')?rectangles.find(r=>r.id===node.id.slice(8))?.name:items.find(v=>v.id===node.id)?.name
+     setPendingGrouping({id:node.id,name:label||node.id,from:previous,to:target,snapshot:dragSnapshot.current||undefined})
+     setNicForGrouping('');setNewNicName('eth0')
+     setInspectedId(null);setInspectedNetworkId(null)
+   }
+   dragSnapshot.current=null
+ }
+ const updateNetworkSize=(id:string,size:{x:number;y:number;width:number;height:number})=>{
+   const current=rectangles.find(r=>r.id===id)
+   if(!current)return
+   const childIds=descendants('network:'+id,parents),next={...current,...size}
+   const overflowingRect=rectangles.some(r=>childIds.has('network:'+r.id)&&!rectFullyInside(next,r))
+   const overflowingVM=nodes.some(n=>childIds.has(n.id)&&
+     (!rectContains(next,{x:n.position.x,y:n.position.y})||
+      !rectContains(next,{x:n.position.x+195,y:n.position.y+95})))
+   if(overflowingRect||overflowingVM){
+     setLayoutMessage('Граница не может исключать связанные объекты. Сначала переместите их или увеличьте контейнер.')
+     return
+   }
+   setRectangles(prev=>prev.map(r=>r.id===id?next:r))
+   setLayoutDirty(true)
  }
 
  useEffect(()=>{

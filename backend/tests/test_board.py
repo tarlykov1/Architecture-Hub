@@ -296,3 +296,23 @@ def test_empty_vrf_vlan_and_vm_survive_reviewed_commit():
         assert client.get("/api/board/layout/" + system_id, headers=ADMIN).json()["positions"] == positions
         audits = client.get("/api/board/audit", headers=ADMIN).json()
         assert any(row["id"] == committed.json()["audit_id"] and len(row["changes"]) == 3 for row in audits)
+
+
+def test_layout_rejects_vm_from_a_different_system():
+    """A standalone CI cannot be silently moved to another system by presentation geometry."""
+    with TestClient(app) as client:
+        system_one, own_vm = create_system_and_vm(client)
+        system_two, foreign_vm = create_system_and_vm(client)
+        valid = client.put("/api/board/layout/" + system_one, headers=ADMIN,
+                           json={"positions": {own_vm: {"x": 100, "y": 120}}})
+        assert valid.status_code == 200, valid.text
+        rejected = client.put("/api/board/layout/" + system_one, headers=ADMIN,
+                              json={"positions": {
+                                  own_vm: {"x": 200, "y": 300},
+                                  foreign_vm: {"x": 350, "y": 410}
+                              }})
+        assert rejected.status_code == 422, rejected.text
+        assert client.get("/api/board/layout/" + system_one, headers=ADMIN).json()["positions"] == {
+            own_vm: {"x": 100.0, "y": 120.0}
+        }
+        assert client.get("/api/board/layout/" + system_two, headers=ADMIN).json()["positions"] == {}

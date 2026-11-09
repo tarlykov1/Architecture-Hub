@@ -959,11 +959,21 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
       componentCrossSystemCounts.set(key,(componentCrossSystemCounts.get(key)||0)+1)
     }
   }
+  const componentCountBySystem=new Map<string,number>()
+  const componentFlowCountBySystem=new Map<string,number>()
+  for(const item of visibleComponentItems){
+    componentCountBySystem.set(item.system_id,(componentCountBySystem.get(item.system_id)||0)+1)
+  }
+  for(const flow of flows){
+    const source=visibleComponentSystemById.get(flow.source_id),target=visibleComponentSystemById.get(flow.target_id)
+    if(source)componentFlowCountBySystem.set(source,(componentFlowCountBySystem.get(source)||0)+1)
+    if(target&&target!==source)componentFlowCountBySystem.set(target,(componentFlowCountBySystem.get(target)||0)+1)
+  }
   const readOnlyComponentNodes:Node[]=componentSystemsOverview
     ? visibleComponentSystems.map(systemId=>{
         const system=objects.find(obj=>obj.id===systemId)
-        const count=visibleComponentItems.filter(item=>item.system_id===systemId).length
-        const flowCount=flows.filter(flow=>visibleComponentItems.some(item=>item.system_id===systemId&&(item.id===flow.source_id||item.id===flow.target_id))).length
+        const count=componentCountBySystem.get(systemId)||0
+        const flowCount=componentFlowCountBySystem.get(systemId)||0
         return {id:systemId,position:componentSystemsPositions[systemId]||{x:0,y:0},
           data:{label:<DiagramNodeLabel name={system?.name||'Система без названия'} kind={system?.kind||'system'}
             subtitle={count+' компонентов · '+flowCountLabel(flowCount)} detail="Откройте ИС для просмотра ВМ"/>},

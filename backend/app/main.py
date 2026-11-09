@@ -2267,3 +2267,9 @@ def list_board_audit(limit: int = 50, db: Session = Depends(db_session)):
     rows = db.scalars(select(BoardAudit).order_by(BoardAudit.timestamp.desc()).limit(max(1, min(limit, 200)))).all()
     return [{"id": str(row.id), "timestamp": row.timestamp.isoformat(),
              "reason": row.reason, "actor": row.actor, "changes": row.changes} for row in rows]
+
+
+# Stage-one monitoring registry and optional CI-to-dashboard links.
+# Module registration happens after BoardAudit and CI models are defined.
+from .monitoring import router as monitoring_router
+app.include_router(monitoring_router)

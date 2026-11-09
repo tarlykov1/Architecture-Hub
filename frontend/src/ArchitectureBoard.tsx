@@ -572,6 +572,49 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
      </button>
    </div>
      {(tool!=='move'||inspectedVM||reviewOpen||flowCardId)&&<aside className="boardDock" role="complementary" aria-label="Свойства и изменения схемы">
+       {flowCardId&&flowCardDraft&&<section className="boardFullFlow" aria-label="Полная карточка потока">
+         <div className="boardPropertiesHeader"><div><small>ПАСПОРТ ПОТОКА</small><h3>Редактирование потока</h3></div>
+           <button type="button" aria-label="Закрыть полную карточку потока" onClick={()=>{setFlowCardId(null);setFlowCardDraft(null)}}>✕</button>
+         </div>
+         <form className="boardFullFlowForm" onSubmit={event=>{
+           event.preventDefault()
+           stageFlowUpdate(flowCardId,flowCardDraft)
+           setFlowCardId(null);setFlowCardDraft(null)
+         }}>
+           <label>Название потока <input aria-label="Название потока" value={flowCardDraft.name}
+             required maxLength={250} onChange={event=>setFlowCardDraft({...flowCardDraft,name:event.target.value})}/></label>
+           <label>Источник <select aria-label="Источник полного потока" value={flowCardDraft.source_id}
+             onChange={event=>setFlowCardDraft({...flowCardDraft,source_id:event.target.value})}>
+             {allVMs.map(vm=><option key={vm.id} value={vm.id}>{vm.name}</option>)}
+           </select></label>
+           <label>Получатель <select aria-label="Получатель полного потока" value={flowCardDraft.target_id}
+             onChange={event=>setFlowCardDraft({...flowCardDraft,target_id:event.target.value})}>
+             {allVMs.map(vm=><option key={vm.id} value={vm.id}>{vm.name}</option>)}
+           </select></label>
+           <button type="button" onClick={()=>setFlowCardDraft(current=>current?{
+             ...current,source_id:current.target_id,target_id:current.source_id}:current)}>⇄ Поменять направление</button>
+           <FlowChoice label="Протокол потока" value={flowCardDraft.protocol||''} options={PROTOCOL_OPTIONS}
+             placeholder="Например, WebSocket" onChange={value=>setFlowCardDraft(current=>current?{
+               ...current,protocol:value,port:!current.port||current.port===SUGGESTED_PORTS[current.protocol]?
+                 SUGGESTED_PORTS[value]||current.port:current.port}:current)}/>
+           <FlowChoice label="Порт потока" value={flowCardDraft.port||''} options={PORT_OPTIONS}
+             placeholder="Например, 9443" onChange={value=>setFlowCardDraft(current=>current?{...current,port:value}:current)}/>
+           <FlowChoice label="Защита потока" value={flowCardDraft.security||'unknown'} options={SECURITY_OPTIONS}
+             placeholder="Например, VPN + TLS" onChange={value=>setFlowCardDraft(current=>current?{...current,security:value}:current)}/>
+           <label>Состав передаваемых данных <textarea aria-label="Состав данных потока" rows={3}
+             maxLength={4000} value={flowCardDraft.data_description||''}
+             onChange={event=>setFlowCardDraft({...flowCardDraft,data_description:event.target.value})}/></label>
+           <label>Периодичность <input aria-label="Периодичность потока" maxLength={160}
+             value={flowCardDraft.schedule||''} onChange={event=>setFlowCardDraft({...flowCardDraft,schedule:event.target.value})}/></label>
+           <p className="boardFlowVerificationNote">Достоверность: {flowCardDraft.verification||'draft'}.
+             После изменения технических параметров требуется повторная проверка.
+             Полный состав атрибутов и сетевой маршрут учитываются в отдельных справочниках хаба.</p>
+           <div className="boardFullFlowActions">
+             <button type="submit" className="primary">Добавить изменения в черновик</button>
+             <button type="button" onClick={()=>{setFlowCardId(null);setFlowCardDraft(null)}}>Отмена</button>
+           </div>
+         </form>
+       </section>}
        {tool!=='move'&&<div className="boardPropertiesHeader"><div><small>ИНСТРУМЕНТ</small><h3>{tool==='vm'?'Виртуальная машина':tool==='flow'?'Поток данных':'Сеть / контейнер'}</h3></div><button type="button" aria-label="Закрыть настройки инструмента" onClick={()=>{setTool('move');setDrawing(null);setError('');setLayoutMessage('');setReviewOpen(false);cancelNetworkDrag()}}>✕</button></div>}
           {tool==='vm'&&<div className="boardToolFields"><p>Введите название и нажмите на холст для размещения ВМ.</p><label>Имя ВМ <input value={name} onChange={e=>setName(e.target.value)} placeholder="Новая ВМ"/></label><button onClick={()=>addVM()}>Разместить на схеме</button></div>}
    {tool==='network'&&<div className="boardToolFields"><label>Название сети <input value={name} onChange={e=>setName(e.target.value)}/></label><label>Тип <select value={kind} onChange={e=>setKind(e.target.value as typeof kind)}><option value="zone">Зона</option><option value="vlan">VLAN</option><option value="vrf">VRF</option></select></label><p role="status">{drawing?'Продолжайте тянуть – контур контейнера виден на схеме':'Нажмите мышью на свободном месте схемы и протяните прямоугольник нужного размера. Отпустите кнопку – контейнер появится в черновике.'}</p></div>}

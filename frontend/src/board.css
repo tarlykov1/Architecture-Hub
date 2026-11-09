@@ -196,3 +196,19 @@
 .boardPendingBanner span{flex:1;min-width:210px}
 .boardPendingBanner button{border:1px solid #c48a37;background:#fff;border-radius:6px;padding:7px 10px;color:#684316;font-weight:600;cursor:pointer}
 .boardPendingBanner button:hover{background:#fff0d7}
+
+/* Direct flow drawing, with ports visible only when the flow tool is selected. */
+.boardCanvas .react-flow__node-boardComponent .boardConnectionHandle{
+ width:13px;height:13px;border-radius:50%;background:#176bc1;
+ border:2px solid #fff;box-shadow:0 0 0 2px #176bc1;
+ cursor:crosshair;z-index:9;pointer-events:all;
+}
+.boardCanvas .react-flow__node-boardComponent .boardConnectionHandle:hover{
+ width:17px;height:17px;background:#0c4a91;
+}
+.boardCanvas .react-flow__connection-path{stroke:#176bc1;stroke-width:2.5;stroke-dasharray:6 3}
+.boardFlowHint{border-left:3px solid #176bc1;background:#eff6ff;padding:9px 11px;font-size:12px;line-height:1.5;color:#1e40af;border-radius:5px}
+.boardFlowDraftEditor{display:grid;gap:10px;padding:14px 0 0;border-top:1px solid #e2e8f0}
+.boardFlowDraftEditor h4{margin:0;font-size:13px}
+.boardFlowDraftEditor label{display:grid}
+.boardEditorStage .boardToolFields .boardFlowDraftEditor button{background:#fff;color:#9a3412;border-color:#fed7aa}

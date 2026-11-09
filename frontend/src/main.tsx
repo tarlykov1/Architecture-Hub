@@ -82,6 +82,7 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
 function App() {
   useWorkspaceKeyboard()
   const [componentGroupMode,setComponentGroupMode]=useState<'auto'|'environment'|'zone'|'components'>('auto')
+  const [componentOverviewPreference,setComponentOverviewPreference]=useState<'auto'|'systems'|'components'>('auto')
   const [expandedComponentGroup,setExpandedComponentGroup]=useState('')
   const [componentView,setComponentView]=useState<'diagram'|'registry'|'cards'|'board'>(()=>{
     try{const saved=localStorage.getItem('architecture-hub-component-view-v1');return saved==='board'?'diagram':saved==='diagram'||saved==='registry'||saved==='cards'?saved:'registry'}catch{return 'registry'}
@@ -939,7 +940,52 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
   const flowSystemPositions=overviewGridPositions(flowSystemIds)
   const flowOverviewPositions=flowLayoutOrientation==='vertical'?Object.fromEntries(Object.entries(flowSystemPositions).map(([id,p])=>[id,{x:p.y,y:p.x}])):flowSystemPositions
   const overviewPairs=[...new Set(flowSystemEdges.map(x=>x.source+'|'+x.target))]
-  const allComponentGridPositions=overviewGridPositions(infra.filter(filterInfra).map(item=>item.id))
+  const visibleComponentItems=infra.filter(filterInfra)
+  const visibleComponentSystems=[...new Set(visibleComponentItems.map(item=>item.system_id))]
+  // Dense company-wide maps are navigators, not microscopic technical drawings.
+  // The complete component graph remains one explicit detail level away.
+  const componentSystemsOverview=visibleComponentSystems.length>0&&(
+    componentOverviewPreference==='systems'||
+    (componentOverviewPreference==='auto'&&!workspaceQuery.trim()&&visibleComponentItems.length>18&&visibleComponentSystems.length>1)
+  )
+  const allComponentGridPositions=overviewGridPositions(visibleComponentItems.map(item=>item.id))
+  const componentSystemsPositions=overviewGridPositions(visibleComponentSystems)
+  const visibleComponentSystemById=new Map(visibleComponentItems.map(item=>[item.id,item.system_id]))
+  const componentCrossSystemCounts=new Map<string,number>()
+  for(const flow of flows){
+    const source=visibleComponentSystemById.get(flow.source_id),target=visibleComponentSystemById.get(flow.target_id)
+    if(source&&target&&source!==target){
+      const key=source+'|'+target
+      componentCrossSystemCounts.set(key,(componentCrossSystemCounts.get(key)||0)+1)
+    }
+  }
+  const readOnlyComponentNodes:Node[]=componentSystemsOverview
+    ? visibleComponentSystems.map(systemId=>{
+        const system=objects.find(obj=>obj.id===systemId)
+        const count=visibleComponentItems.filter(item=>item.system_id===systemId).length
+        const flowCount=flows.filter(flow=>visibleComponentItems.some(item=>item.system_id===systemId&&(item.id===flow.source_id||item.id===flow.target_id))).length
+        return {id:systemId,position:componentSystemsPositions[systemId]||{x:0,y:0},
+          data:{label:<DiagramNodeLabel name={system?.name||'Система без названия'} kind={system?.kind||'system'}
+            subtitle={count+' компонентов · '+flowCountLabel(flowCount)} detail="Откройте ИС для просмотра ВМ"/>},
+          style:diagramCardStyle(),sourcePosition:Position.Right,targetPosition:Position.Left}
+      })
+    : visibleComponentItems.map(item=>({
+        id:item.id,position:allComponentGridPositions[item.id]||{x:0,y:0},
+        data:{label:<DiagramNodeLabel name={item.name} kind={item.kind}
+          subtitle={objects.find(obj=>obj.id===item.system_id)?.name||'ИС не указана'}
+          detail={item.kind+' · '+String(item.details.environment||'Среда не задана')}/>},
+        style:diagramCardStyle({border:componentInspectId===item.id?'2px solid #2563eb':'1px solid #94a3b8',background:componentInspectId===item.id?'#eff6ff':'#fff'})
+      }))
+  const readOnlyComponentEdges:Edge[]=componentSystemsOverview
+    ? [...componentCrossSystemCounts].map(([key,count])=>{
+        const [source,target]=key.split('|')
+        return {id:key,source,target,type:'smoothstep',label:flowCountLabel(count),
+          markerEnd:{type:MarkerType.ArrowClosed,color:'#64748b'},
+          style:{stroke:'#64748b',strokeWidth:1.4}}
+      })
+    : flows.filter(flow=>visibleComponentSystemById.has(flow.source_id)&&visibleComponentSystemById.has(flow.target_id))
+      .map(flow=>({id:flow.id,source:flow.source_id,target:flow.target_id,
+        markerEnd:{type:MarkerType.ArrowClosed},style:{stroke:'#94a3b8'}}))
   const editorLocalIds=new Set(infra.filter(i=>i.system_id===viewSystem).map(i=>i.id))
   const editorFlowNodeIds=new Set([...editorLocalIds,...flows.filter(f=>editorLocalIds.has(f.source_id)||editorLocalIds.has(f.target_id)).flatMap(f=>[f.source_id,f.target_id])])
   const effectiveFlowOverview=shouldShowSystemsOverview(visibleFlows,flowSystemIds.length,Boolean(viewSystem),Boolean(flowComponentFocus),flowDetailPreference,flowSystemOverview)
@@ -1069,14 +1115,18 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
       </section> : <section className="infraPanel">
         {drill && <button onClick={()=>{setViewSystem("");setLayer("systems")}}>← К общей карте</button>}
         {layer==='infrastructure' ? <>
-          <div className="viewHead"><select aria-label="Система компонентов" value={viewSystem} onChange={e=>{setViewSystem(e.target.value);setFocusedComponent('');setExpandedComponentGroup('')}}><option value="">Все системы</option>{objects.map(o=><option key={o.id} value={o.id}>{o.name}</option>)}</select><div className="viewSwitch" role="group" aria-label="Представление компонентов">{([['diagram','Схема'],['registry','Реестр'],['cards','Карточки']] as const).map(([id,label])=><button key={id} aria-pressed={componentView===id} onClick={()=>{setDiagramEditMode(false);setComponentView(id)}}>{label}</button>)}</div>{componentView==='diagram'&&<><label className="componentGroupSelector">Группировка <select aria-label="Группировка компонентов" value={componentGroupMode} onChange={e=>{setComponentGroupMode(e.target.value as 'auto'|'environment'|'zone'|'components');setExpandedComponentGroup('');setFocusedComponent('');setImpactMode(false);setDiagramEditMode(false)}}><option value="auto">Автоматически</option><option value="environment">По контурам</option><option value="zone">По сетевым зонам</option><option value="components">Все компоненты</option></select></label><button type="button" className={diagramEditMode?"primary":""} aria-pressed={diagramEditMode} onClick={()=>{setComponentGroupMode('components');setExpandedComponentGroup('');setFocusedComponent('');setDiagramEditMode(v=>!v)}}>{diagramEditMode?"Завершить редактирование":"Редактировать схему"}</button><label className="externalToggle"><input type="checkbox" checked={showExternalDependencies} onChange={e=>{setShowExternalDependencies(e.target.checked);setFocusedComponent('');setImpactMode(false)}}/> Смежные ИС</label><select value={viewMode} onChange={e=>setViewMode(e.target.value as 'architecture'|'security')}><option value="architecture">Архитектура ВМ</option><option value="security">Сети и защита</option></select></>}</div>
-          {componentView==='diagram'&&!drill&&!diagramEditMode&&<div className="miniArchitecture" data-active-graph="infrastructure"><ReactFlow
-            nodes={infra.filter(filterInfra).map(i=>({id:i.id,position:allComponentGridPositions[i.id]||{x:0,y:0},data:{label:<DiagramNodeLabel name={i.name} kind={i.kind} subtitle={objects.find(o=>o.id===i.system_id)?.name||'ИС не указана'} detail={i.kind+' · '+String(i.details.environment||'Среда не задана')}/>},style:diagramCardStyle({border:componentInspectId===i.id?'2px solid #2563eb':'1px solid #94a3b8',background:componentInspectId===i.id?'#eff6ff':'#fff'})}))}
-            edges={flows.filter(f=>infra.filter(filterInfra).some(i=>i.id===f.source_id)&&infra.filter(filterInfra).some(i=>i.id===f.target_id)).map(f=>({id:f.id,source:f.source_id,target:f.target_id,markerEnd:{type:MarkerType.ArrowClosed},style:{stroke:'#94a3b8'}}))}
+          <div className="viewHead"><select aria-label="Система компонентов" value={viewSystem} onChange={e=>{setViewSystem(e.target.value);setFocusedComponent('');setExpandedComponentGroup('')}}><option value="">Все системы</option>{objects.map(o=><option key={o.id} value={o.id}>{o.name}</option>)}</select><div className="viewSwitch" role="group" aria-label="Представление компонентов">{([['diagram','Схема'],['registry','Реестр'],['cards','Карточки']] as const).map(([id,label])=><button key={id} aria-pressed={componentView===id} onClick={()=>{setDiagramEditMode(false);setComponentView(id)}}>{label}</button>)}</div>{componentView==='diagram'&&<>{!viewSystem&&<label className="flowDetailControl">Детализация <select aria-label="Детализация схемы компонентов" value={componentOverviewPreference} onChange={e=>setComponentOverviewPreference(e.target.value as 'auto'|'systems'|'components')}><option value="auto">Автоматически</option><option value="systems">По системам</option><option value="components">Все компоненты</option></select></label>}<label className="componentGroupSelector">Группировка <select aria-label="Группировка компонентов" value={componentGroupMode} onChange={e=>{setComponentGroupMode(e.target.value as 'auto'|'environment'|'zone'|'components');setExpandedComponentGroup('');setFocusedComponent('');setImpactMode(false);setDiagramEditMode(false)}}><option value="auto">Автоматически</option><option value="environment">По контурам</option><option value="zone">По сетевым зонам</option><option value="components">Все компоненты</option></select></label><button type="button" className={diagramEditMode?"primary":""} aria-pressed={diagramEditMode} onClick={()=>{setComponentGroupMode('components');setExpandedComponentGroup('');setFocusedComponent('');setDiagramEditMode(v=>!v)}}>{diagramEditMode?"Завершить редактирование":"Редактировать схему"}</button><label className="externalToggle"><input type="checkbox" checked={showExternalDependencies} onChange={e=>{setShowExternalDependencies(e.target.checked);setFocusedComponent('');setImpactMode(false)}}/> Смежные ИС</label><select value={viewMode} onChange={e=>setViewMode(e.target.value as 'architecture'|'security')}><option value="architecture">Архитектура ВМ</option><option value="security">Сети и защита</option></select></>}</div>
+          {componentView==='diagram'&&!drill&&!diagramEditMode&&<>
+          {componentSystemsOverview&&<div className="graphModeHint" role="status">Обзор по информационным системам. Нажмите на ИС, чтобы открыть её компоненты. Для общей технической схемы выберите «Все компоненты» в детализации.</div>}
+          <div className="miniArchitecture" data-active-graph="infrastructure"><ReactFlow
+            nodes={readOnlyComponentNodes} edges={readOnlyComponentEdges}
             nodesDraggable={false} nodesConnectable={false} fitView fitViewOptions={{padding:0.15,minZoom:0.3,maxZoom:1}} minZoom={0.08} maxZoom={1}
-            onNodeClick={(_,node)=>{setComponentInspectId(node.id);setComponentInspectTab('passport')}}>
-            <AutoFit layoutKey={workspaceQuery+workspaceKind+infra.length+flows.length} maxFitZoom={1}/><Background gap={20}/><Controls showInteractive={false}/>
-          </ReactFlow></div>}
+            onNodeClick={(_,node)=>{
+              if(componentSystemsOverview){setViewSystem(node.id);setExpandedComponentGroup('');setFocusedComponent('');setDiagramEditMode(false)}
+              else {setComponentInspectId(node.id);setComponentInspectTab('passport')}
+            }}>
+            <AutoFit layoutKey={workspaceQuery+workspaceKind+infra.length+flows.length+(componentSystemsOverview?':systems':':components')} maxFitZoom={1}/><Background gap={20}/><Controls showInteractive={false}/>
+          </ReactFlow></div></>}
           {componentView==='diagram'&&!drill&&diagramEditMode&&<section className="diagramEditorEntry" role="region" aria-label="Выбор информационной системы для редактора">
             <h3>Редактор схемы</h3><p>Выберите информационную систему. Затем откроется холст с инструментами: перемещение, ВМ, поток, сеть, проверка и сохранение.</p>
             <label>Информационная система <select aria-label="Выбрать ИС для редактора компонентов" value={viewSystem} onChange={e=>setViewSystem(e.target.value)}><option value="">Выберите ИС</option>{objects.map(o=><option key={o.id} value={o.id}>{o.name}</option>)}</select></label>

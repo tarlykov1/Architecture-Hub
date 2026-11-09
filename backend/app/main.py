@@ -2043,8 +2043,7 @@ def save_board_layout(system_id: UUID, payload: BoardLayoutInput,
                 raise HTTPException(422, "Component position accepts x and y only")
             vm_ids.append(target_id)
     if vm_ids:
-        known = set(db.scalars(select(InfrastructureItem.id).where(
-            InfrastructureItem.id.in_(vm_ids), InfrastructureItem.system_id == system_id)).all())
+        known = set(db.scalars(select(InfrastructureItem.id).where(InfrastructureItem.id.in_(vm_ids))).all())
         if len(known) != len(set(vm_ids)):
             raise HTTPException(422, "Unknown component in layout")
     if network_ids:

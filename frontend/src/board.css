@@ -229,4 +229,9 @@
 .boardGroupingConfirm .boardGroupingActions button{padding:10px 14px;border-radius:7px;cursor:pointer}
 .boardCanvas .react-flow__resize-control.handle{z-index:11;touch-action:none}
 .boardCanvas .react-flow__node-boardNetwork{user-select:none}
-.boardCanvas .react-flow__node-boardNetwork .boardNetworkLabel{pointer-events:none}
+.boardCanvas .react-flow__node-boardNetwork .boardNetworkLabel{
+ pointer-events:auto;cursor:grab;user-select:none;
+ position:absolute;left:0;right:0;top:0;min-height:46px;
+ padding:9px 12px;background:transparent;
+}
+.boardCanvas .react-flow__node-boardNetwork.dragging .boardNetworkLabel{cursor:grabbing}

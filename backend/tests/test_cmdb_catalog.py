@@ -48,7 +48,17 @@ def test_editable_ci_class_required_fields_and_role_protection():
         })
         class_url = "/api/cmdb/classes/" + kind
         assert client.put(class_url, json=class_payload(), headers=VIEWER).status_code == 403
-        assert client.put(class_url, json=class_payload(), headers=ARCHITECT).status_code == 403
+        # Add a real authenticated architect to this isolated test: CI only
+        # configures admin and viewer keys by default.
+        original_keys = app.state.arch_hub_keys
+        app.state.arch_hub_keys = {
+            **original_keys,
+            ARCHITECT["Authorization"].removeprefix("Bearer "): "architect",
+        }
+        try:
+            assert client.put(class_url, json=class_payload(), headers=ARCHITECT).status_code == 403
+        finally:
+            app.state.arch_hub_keys = original_keys
         saved = client.put(class_url, json=class_payload(), headers=ADMIN)
         assert saved.status_code == 200, saved.text
         assert saved.json()["revision"] == 1

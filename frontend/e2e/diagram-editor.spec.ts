@@ -342,8 +342,8 @@ test('moving a VRF drags nested VLAN and independent VM while preserving network
   const vm=(await vmRes.json()).id as string
   const start={
     ['network:'+vrf]:{x:40,y:45,width:960,height:650},
-    ['network:'+vlan]:{x:85,y:130,width:475,height:350},
-    [vm]:{x:135,y:185}
+    ['network:'+vlan]:{x:85,y:130,width:475,height:350,parent_id:'network:'+vrf},
+    [vm]:{x:135,y:185,parent_id:'network:'+vlan}
   }
   const layout=await page.request.put('http://127.0.0.1:8001/api/board/layout/'+systemId,{data:{positions:start}})
   expect(layout.ok(),await layout.text()).toBeTruthy()

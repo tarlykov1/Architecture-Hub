@@ -4,7 +4,7 @@ import {DiagramNodeLabel,diagramCardStyle} from './DiagramVisual'
 import MonitoringPanel from './MonitoringPanel'
 import {AutoFit} from './WorkspaceUI'
 import {MousePointer2, Monitor, GitBranch, SquareDashed, Maximize2, Save, History, ClipboardCheck} from 'lucide-react'
-import {ReactFlow, ReactFlowProvider, Background, Controls, Handle, useNodesState, useReactFlow, MarkerType, Position, type Node, type NodeChange, type NodeProps} from '@xyflow/react'
+import {ReactFlow, ReactFlowProvider, Background, Controls, Handle, NodeResizer, useNodesState, useReactFlow, MarkerType, Position, type Node, type NodeChange, type NodeProps} from '@xyflow/react'
 import {compactComponentLayout,flowCountLabel} from './graphLayout'
 import {ReciprocalEdge} from './ReciprocalEdge'
 import {ObstacleAwareEdge} from './ObstacleAwareEdge'
@@ -29,17 +29,36 @@ function BoardComponentNode({data}:NodeProps){
   <Handle type="target" id="in-top" position={Position.Top} isConnectable={drawing} className={'boardConnectionHandle'+(drawing?' boardConnectionHandleActive':'')}/>
  </>
 }
-const boardNodeTypes={boardComponent:BoardComponentNode}
+function BoardNetworkNode({data}:NodeProps){
+ const options=data as {label:React.ReactNode;resizable?:boolean;onResize?:(size:{x:number;y:number;width:number;height:number})=>void}
+ return <>
+  {options.label}
+  <NodeResizer isVisible={Boolean(options.resizable)} minWidth={140} minHeight={90}
+   lineStyle={{borderColor:'#2563eb'}} handleStyle={{width:9,height:9,border:'1px solid #fff',borderRadius:2,background:'#2563eb'}}
+   onResize={(_,params)=>options.onResize?.({x:params.x,y:params.y,width:params.width,height:params.height})}/>
+ </>
+}
+const boardNodeTypes={boardComponent:BoardComponentNode,boardNetwork:BoardNetworkNode}
 type Rect = {id:string;name:string;kind:string;x:number;y:number;width:number;height:number}
-type Geometry = {x:number;y:number;width?:number;height?:number}
+type Geometry = {x:number;y:number;width?:number;height?:number;parent_id?:string}
 const makeId=()=>crypto.randomUUID()
 const rectContains=(r:Rect,p:{x:number;y:number})=>p.x>=r.x&&p.x<=r.x+r.width&&p.y>=r.y&&p.y<=r.y+r.height
 // Nested rectangles are presentation groups only; no NIC or L3 membership is implied.
 const rectFullyInside=(outer:Rect,inner:Rect)=>inner.id!==outer.id&&inner.x>=outer.x&&inner.y>=outer.y&&inner.x+inner.width<=outer.x+outer.width&&inner.y+inner.height<=outer.y+outer.height
+const permittedParent=(childKind:string,parentKind:string)=>childKind==='vrf'?parentKind==='zone':childKind==='vlan'?(parentKind==='vrf'||parentKind==='zone'):childKind==='zone'?parentKind==='zone':true
+const descendants=(root:string,parents:Record<string,string>):Set<string>=>{
+ const result=new Set<string>(),queue=[root]
+ for(let i=0;i<queue.length;i++){
+  for(const [child,parent] of Object.entries(parents)){
+   if(parent===queue[i]&&!result.has(child)){result.add(child);queue.push(child)}
+  }
+ }
+ return result
+}
 const fieldForKind=(kind:string):'zone_id'|'vlan_id'|'vrf_id'=>kind==='vlan'?'vlan_id':kind==='vrf'?'vrf_id':'zone_id'
 // Save uncommitted UI work across navigating away from the editor in the same tab.
 // This is a local draft only: the API registry is changed by /api/board/commit.
-type StoredBoardDraft={changes:Change[];rectangles:Rect[];positions:Record<string,{x:number;y:number}>;reason:string}
+type StoredBoardDraft={changes:Change[];rectangles:Rect[];positions:Record<string,{x:number;y:number}>;parents?:Record<string,string>;reason:string}
 const draftKey=(systemId:string)=>'architecture-hub:board-draft:v1:'+systemId
 function readBoardDraft(systemId:string):StoredBoardDraft|null{
  try{
@@ -47,7 +66,7 @@ function readBoardDraft(systemId:string):StoredBoardDraft|null{
   if(!raw)return null
   const value=JSON.parse(raw) as Partial<StoredBoardDraft>
   if(!Array.isArray(value.changes)||!Array.isArray(value.rectangles)||!value.changes.length)return null
-  return {changes:value.changes.filter(c=>c&&typeof c.action==='string'),rectangles:value.rectangles.filter(r=>r&&typeof r.id==='string'),positions:value.positions&&typeof value.positions==='object'?value.positions:{},reason:typeof value.reason==='string'?value.reason:''}
+  return {changes:value.changes.filter(c=>c&&typeof c.action==='string'),rectangles:value.rectangles.filter(r=>r&&typeof r.id==='string'),positions:value.positions&&typeof value.positions==='object'?value.positions:{},parents:value.parents&&typeof value.parents==='object'?value.parents:{},reason:typeof value.reason==='string'?value.reason:''}
  }catch{return null}
 }
 
@@ -87,6 +106,12 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
  const networkStartPixel=useRef<{x:number;y:number}|null>(null)
  const [networkPreview,setNetworkPreview]=useState<{x:number;y:number;width:number;height:number}|null>(null)
  const [reviewOpen,setReviewOpen]=useState(Boolean(restoredDraft?.changes.length))
+ const [parents,setParents]=useState<Record<string,string>>(restoredDraft?.parents||{})
+ const persistedParents=useRef<Record<string,string>>({})
+ const [pendingGrouping,setPendingGrouping]=useState<null|{id:string;name:string;from:string|null;to:string|null;newlyCreated?:boolean;snapshot?:{rects:Rect[];nodes:Node[];dirty:boolean}}>(null)
+ const [nicForGrouping,setNicForGrouping]=useState('')
+ const [newNicName,setNewNicName]=useState('eth0')
+ const dragSnapshot=useRef<null|{rects:Rect[];nodes:Node[];dirty:boolean}>(null)
  const [rectangles,setRectangles]=useState<Rect[]>(()=>{
    const relevant = networks.filter(n=>interfaces.some(nic=>nic[fieldForKind(n.kind)]===n.id&&items.some(item=>item.id===nic.item_id)))
    const heights=relevant.map(n=>{

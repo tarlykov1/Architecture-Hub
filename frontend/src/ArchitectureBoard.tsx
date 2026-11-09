@@ -116,7 +116,7 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
  const restoredNodes:Node[]=[...initialNodes,...(restoredDraft?.changes||[]).filter(c=>c.action==='create_vm'&&c.id&&c.name).filter(c=>!initialNodes.some(n=>n.id===c.id)).map((c,i)=>({
    id:c.id!,type:'boardComponent',position:restoredDraft?.positions[c.id!]||{x:90+(i%4)*280,y:100+Math.floor(i/4)*175},
    sourcePosition:Position.Bottom,targetPosition:Position.Top,
-   data:{label:<DiagramNodeLabel name={c.name} kind="vm" subtitle={ownerName} detail="ВМ · Черновик"/>,flowMode:tool==='flow'},
+   data:{label:<DiagramNodeLabel name={c.name||"ВМ без имени"} kind="vm" subtitle={ownerName} detail="ВМ · Черновик"/>,flowMode:tool==='flow'},
    style:diagramCardStyle({border:'1px dashed #d97706'})
   }))]
  const [nodes,setNodes,onNodesChange]=useNodesState<Node>(restoredNodes)

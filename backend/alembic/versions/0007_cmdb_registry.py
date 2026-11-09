@@ -33,6 +33,13 @@ def upgrade():
             sa.Column("revision", sa.Integer(), nullable=False),
             sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
         )
+    if "ux_cmdb_external_identity" not in {index["name"] for index in inspect(bind).get_indexes("cmdb_records")}:
+        op.create_index(
+            "ux_cmdb_external_identity", "cmdb_records",
+            ["source_system", "source_record_id"], unique=True,
+            sqlite_where=sa.text("source_record_id <> ''"),
+            postgresql_where=sa.text("source_record_id <> ''"),
+        )
     if "cmdb_record_audit" not in existing:
         op.create_table(
             "cmdb_record_audit",
@@ -52,4 +59,5 @@ def upgrade():
 def downgrade():
     op.drop_index("ix_cmdb_record_audit_ci_id", table_name="cmdb_record_audit")
     op.drop_table("cmdb_record_audit")
+    op.drop_index("ux_cmdb_external_identity", table_name="cmdb_records")
     op.drop_table("cmdb_records")

@@ -7,7 +7,7 @@ export function ReciprocalEdge({id,sourceX,sourceY,targetX,targetY,markerEnd,sty
   const distance=Math.max(1,Math.hypot(dx,dy))
   // The perpendicular reverses with the edge direction, separating the lanes.
   // Keep short links readable without producing exaggerated loops.
-  const offset=Math.min(36,Math.max(10,distance*0.16))
+  const offset=typeof data?.laneOffset==='number'?data.laneOffset:Math.min(36,Math.max(10,distance*0.16))
   const nx=-dy/distance,ny=dx/distance
   const midX=(sourceX+targetX)/2+nx*offset
   const midY=(sourceY+targetY)/2+ny*offset

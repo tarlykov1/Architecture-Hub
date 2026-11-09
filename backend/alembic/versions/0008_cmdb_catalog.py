@@ -50,8 +50,24 @@ def upgrade():
                                 name="uq_cmdb_relation_classes"),
         )
 
+    if "cmdb_schema_audit" not in existing:
+        op.create_table(
+            "cmdb_schema_audit",
+            sa.Column("id", sa.Uuid(), primary_key=True),
+            sa.Column("resource_kind", sa.String(20), nullable=False),
+            sa.Column("resource_id", sa.String(90), nullable=False),
+            sa.Column("before", sa.JSON(), nullable=False),
+            sa.Column("after", sa.JSON(), nullable=False),
+            sa.Column("actor_role", sa.String(40), nullable=False),
+            sa.Column("reason", sa.String(1000), nullable=False),
+            sa.Column("occurred_at", sa.DateTime(timezone=True), nullable=False),
+        )
+        op.create_index("ix_cmdb_schema_audit_resource_id", "cmdb_schema_audit", ["resource_id"])
+
 
 def downgrade():
+    op.drop_index("ix_cmdb_schema_audit_resource_id", table_name="cmdb_schema_audit")
+    op.drop_table("cmdb_schema_audit")
     op.drop_table("cmdb_relationship_rules")
     op.drop_table("cmdb_class_policies")
     with op.batch_alter_table("cmdb_records") as batch:

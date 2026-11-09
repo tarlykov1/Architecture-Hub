@@ -108,8 +108,12 @@ test('flow tool selects endpoints on canvas and opens its settings without a hor
   await expect(dock.getByLabel('Откуда')).not.toHaveValue('')
   await target.click()
   await expect(dock.getByLabel('Куда',{exact:true})).not.toHaveValue('')
-  await dock.getByLabel('Порт').fill('443')
-  await dock.getByRole('button',{name:'Добавить поток'}).click()
+  // A second card click stages the directed arrow immediately; properties can be
+  // edited independently, instead of requiring a separate "add" form action.
+  await expect(editor.locator('.react-flow__edge')).toHaveCount(1)
+  const drafted=dock.getByRole('region',{name:'Параметры нарисованного потока'})
+  await expect(drafted).toBeVisible()
+  await drafted.getByLabel('Порт').fill('443')
   await expect(dock.getByRole('button',{name:/Проверить изменения/})).toBeVisible()
   await expect(editor.locator('.boardInspectorBackdrop')).toHaveCount(0)
 })

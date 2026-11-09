@@ -182,7 +182,7 @@
 
 /* Eight familiar, evenly distributed connection anchors on every component.
    The ports remain visible while viewing and enlarge on hover/editing. */
-.boardComponentNode{position:relative;width:100%;min-height:72px}
+.boardComponentNode{position:relative;box-sizing:border-box;width:100%;min-height:104px;padding:12px}
 .boardCanvas .react-flow__node-architectureComponent .boardComponentPort{
   width:9px;height:9px;border-radius:50%;border:1.5px solid #47617e;
   background:#fff;box-shadow:0 0 0 2px #ffffffd9;

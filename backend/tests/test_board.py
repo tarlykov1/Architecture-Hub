@@ -296,3 +296,44 @@ def test_empty_vrf_vlan_and_vm_survive_reviewed_commit():
         assert client.get("/api/board/layout/" + system_id, headers=ADMIN).json()["positions"] == positions
         audits = client.get("/api/board/audit", headers=ADMIN).json()
         assert any(row["id"] == committed.json()["audit_id"] and len(row["changes"]) == 3 for row in audits)
+
+
+def test_explicit_network_hierarchy_validates_and_round_trips():
+    with TestClient(app) as client:
+        system_id, vm_id = create_system_and_vm(client)
+        vrf_ids=[]
+        for kind in ("vrf", "vrf", "vlan"):
+            response=client.post("/api/networks", headers=ADMIN,
+                                 json={"name": "Hierarchy " + kind + " " + str(uuid4()), "kind": kind})
+            assert response.status_code == 201, response.text
+            vrf_ids.append(response.json()["id"])
+        vrf_one, vrf_two, vlan=vrf_ids
+        data={
+            "network:"+vrf_one:{"x":0,"y":0,"width":1100,"height":700},
+            "network:"+vrf_two:{"x":1150,"y":0,"width":1100,"height":700},
+            "network:"+vlan:{"x":100,"y":100,"width":600,"height":350,"parent_id":"network:"+vrf_one},
+            vm_id:{"x":180,"y":150,"parent_id":"network:"+vlan},
+        }
+        result=client.put("/api/board/layout/"+system_id,headers=ADMIN,json={"positions":data})
+        assert result.status_code == 200,result.text
+        restored=client.get("/api/board/layout/"+system_id,headers=ADMIN).json()["positions"]
+        assert restored["network:"+vlan]["parent_id"] == "network:"+vrf_one
+        assert restored[vm_id]["parent_id"] == "network:"+vlan
+        assert not [n for n in client.get("/api/network-interfaces",headers=ADMIN).json() if n["item_id"] == vm_id]
+
+        transfer={**data,"network:"+vlan:{**data["network:"+vlan],"parent_id":"network:"+vrf_two}}
+        result=client.put("/api/board/layout/"+system_id,headers=ADMIN,json={"positions":transfer})
+        assert result.status_code == 200,result.text
+        assert result.json()["positions"]["network:"+vlan]["parent_id"] == "network:"+vrf_two
+        detached={**transfer,"network:"+vlan:{k:v for k,v in transfer["network:"+vlan].items() if k!="parent_id"}}
+        result=client.put("/api/board/layout/"+system_id,headers=ADMIN,json={"positions":detached})
+        assert result.status_code == 200,result.text
+        assert "parent_id" not in result.json()["positions"]["network:"+vlan]
+
+        nested_vrf={**data,"network:"+vrf_two:{**data["network:"+vrf_two],"parent_id":"network:"+vrf_one}}
+        assert client.put("/api/board/layout/"+system_id,headers=ADMIN,json={"positions":nested_vrf}).status_code == 422
+        cycle={**data,"network:"+vrf_one:{**data["network:"+vrf_one],"parent_id":"network:"+vlan}}
+        assert client.put("/api/board/layout/"+system_id,headers=ADMIN,json={"positions":cycle}).status_code == 422
+        bad_parent={**data,vm_id:{**data[vm_id],"parent_id":"network:"+str(uuid4())}}
+        assert client.put("/api/board/layout/"+system_id,headers=ADMIN,json={"positions":bad_parent}).status_code == 422
+        assert client.get("/api/board/layout/"+system_id,headers=ADMIN).json()["positions"] == result.json()["positions"]

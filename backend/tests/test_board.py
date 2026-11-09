@@ -188,3 +188,101 @@ def test_board_layout_can_store_connected_external_components():
                               json={"positions": locations})
         assert response.status_code == 200, response.text
         assert response.json()["positions"] == locations
+
+
+def test_board_layout_roundtrip_includes_network_rectangles_and_rejects_unknown_networks():
+    with TestClient(app) as client:
+        system_id, vm_id = create_system_and_vm(client)
+        network = client.post("/api/networks", headers=ADMIN, json={
+            "name": "Saved diagram zone " + str(uuid4()), "kind": "zone"})
+        assert network.status_code == 201, network.text
+        net_id = network.json()["id"]
+        data = {"positions": {vm_id: {"x": 240, "y": 130}},
+                "network_rectangles": {net_id: {
+                    "x": 50, "y": 80, "width": 480, "height": 300}}}
+        result = client.put("/api/board/layout/" + system_id, headers=ADMIN, json=data)
+        assert result.status_code == 200, result.text
+        read = client.get("/api/board/layout/" + system_id, headers=ADMIN)
+        assert read.status_code == 200
+        assert read.json()["network_rectangles"] == data["network_rectangles"]
+        assert read.json()["positions"] == data["positions"]
+        unknown = client.put("/api/board/layout/" + system_id, headers=ADMIN, json={
+            "positions": {}, "network_rectangles": {
+                str(uuid4()): {"x": 0, "y": 0, "width": 400, "height": 320}}})
+        assert unknown.status_code == 422
+        assert client.get("/api/board/layout/" + system_id,
+                          headers=ADMIN).json()["network_rectangles"] == data["network_rectangles"]
+        assert client.put("/api/board/layout/" + system_id,
+                          headers=VIEWER, json=data).status_code == 403
+
+
+
+def test_existing_flow_can_be_reconnected_and_reversed_only_after_review():
+    with TestClient(app) as client:
+        system, source = create_system_and_vm(client)
+        another = client.post("/api/infra", headers=ADMIN, json={
+            "system_id": system, "kind": "vm", "name": "New destination " + str(uuid4())}).json()["id"]
+        final = client.post("/api/infra", headers=ADMIN, json={
+            "system_id": system, "kind": "vm", "name": "Third VM " + str(uuid4())}).json()["id"]
+        original = client.post("/api/flows", headers=ADMIN, json={
+            "source_id": source, "target_id": another, "name": "Reviewed connection",
+            "protocol": "TCP", "port": "443", "security": "TLS",
+            "data_description": "Test contract", "schedule": "daily",
+            "verification": "verified"})
+        assert original.status_code == 201, original.text
+        flow = original.json()
+        previous = {k: flow[k] for k in (
+            "source_id", "target_id", "name", "protocol", "port", "security",
+            "data_description", "schedule", "verification")}
+        batch = {"reason": "Move flow endpoint to another VM", "changes": [{
+            "action": "update_flow", "id": flow["id"], "previous_flow": previous,
+            **{**previous, "target_id": final},
+        }]}
+        preview = client.post("/api/board/preview", headers=ADMIN, json=batch)
+        assert preview.status_code == 200, preview.text
+        assert preview.json()["changes"][0]["before"]["target_id"] == another
+        unchanged = next(x for x in client.get("/api/flows", headers=ADMIN).json() if x["id"] == flow["id"])
+        assert unchanged["target_id"] == another
+        committed = client.post("/api/board/commit", headers=ADMIN, json=batch)
+        assert committed.status_code == 200, committed.text
+        now = next(x for x in client.get("/api/flows", headers=ADMIN).json() if x["id"] == flow["id"])
+        assert now["target_id"] == final
+        assert now["verification"] == "draft"
+        assert now["source_id"] == source
+        assert len([x for x in client.get("/api/flows", headers=ADMIN).json() if x["id"] == flow["id"]]) == 1
+        assert any(entry["changes"][0]["action"] == "update_flow"
+                   for entry in client.get("/api/board/audit", headers=ADMIN).json()
+                   if entry["reason"] == batch["reason"])
+        assert client.post("/api/board/commit", headers=ADMIN, json=batch).status_code == 409
+        bad = {"reason": "Cannot connect VM to itself", "changes": [{
+            **batch["changes"][0], "source_id": final, "target_id": final,
+            "previous_flow": {**previous, "target_id": final, "verification": "draft"},
+        }]}
+        assert client.post("/api/board/preview", headers=ADMIN, json=bad).status_code == 422
+        assert client.post("/api/board/commit", headers=VIEWER, json=batch).status_code == 403
+
+
+def test_flow_handles_stored_only_as_valid_presentation_coordinates():
+    with TestClient(app) as client:
+        system, source = create_system_and_vm(client)
+        target = client.post("/api/infra", headers=ADMIN, json={
+            "system_id": system, "kind": "vm", "name": "Port target " + str(uuid4())}).json()["id"]
+        flow = client.post("/api/flows", headers=ADMIN, json={
+            "source_id": source, "target_id": target, "name": "Layout-only flow",
+            "protocol": "TCP", "port": "443"}).json()
+        data = {"positions": {}, "network_rectangles": {},
+                "flow_handles": {flow["id"]: {
+                    "source_handle": "right-b", "target_handle": "left-a"}}}
+        saved = client.put("/api/board/layout/" + system, headers=ADMIN, json=data)
+        assert saved.status_code == 200, saved.text
+        after = client.get("/api/board/layout/" + system, headers=ADMIN)
+        assert after.json()["flow_handles"] == data["flow_handles"]
+        stored = next(x for x in client.get("/api/flows", headers=ADMIN).json() if x["id"] == flow["id"])
+        assert stored["source_id"] == source and stored["target_id"] == target
+        invalid = {"positions": {}, "flow_handles": {flow["id"]: {
+            "source_handle": "outside", "target_handle": "left-b"}}}
+        assert client.put("/api/board/layout/" + system, headers=ADMIN, json=invalid).status_code == 422
+        unknown = {"positions": {}, "flow_handles": {str(uuid4()): {
+            "source_handle": "top-a", "target_handle": "right-b"}}}
+        assert client.put("/api/board/layout/" + system, headers=ADMIN, json=unknown).status_code == 422
+        assert client.put("/api/board/layout/" + system, headers=VIEWER, json=data).status_code == 403

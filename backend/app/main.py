@@ -58,6 +58,8 @@ class BoardLayout(Base):
     __tablename__ = "board_layouts"
     system_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("objects.id", ondelete="CASCADE"), primary_key=True)
     positions: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    network_rectangles: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    flow_handles: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
 
@@ -1582,7 +1584,7 @@ app.include_router(views_router)
 # Board edits are applied as a single reviewed transaction. For existing interface
 # assignments the client supplies the expected previous value (optimistic check).
 class BoardChange(BaseModel):
-    action: str = Field(pattern="^(create_vm|create_network|create_flow|create_interface|move_interface|update_vm)$")
+    action: str = Field(pattern="^(create_vm|create_network|create_flow|update_flow|create_interface|move_interface|update_vm)$")
     id: UUID | None = None
     system_id: UUID | None = None
     name: str = Field(default="", max_length=250)
@@ -1605,6 +1607,7 @@ class BoardChange(BaseModel):
     previous_description: str | None = None
     details_patch: dict[str, str] = Field(default_factory=dict)
     previous_details: dict[str, Any] = Field(default_factory=dict)
+    previous_flow: dict[str, Any] = Field(default_factory=dict)
     network_field: str = Field(default="zone_id", pattern="^(zone_id|vlan_id|vrf_id)$")
 
 class BoardPoint(BaseModel):
@@ -1612,8 +1615,20 @@ class BoardPoint(BaseModel):
     y: float = Field(ge=-100000, le=100000, allow_inf_nan=False)
 
 
+class BoardRectangle(BoardPoint):
+    width: float = Field(ge=100, le=100000, allow_inf_nan=False)
+    height: float = Field(ge=80, le=100000, allow_inf_nan=False)
+
+
+class BoardFlowHandles(BaseModel):
+    source_handle: str = Field(pattern="^(top|right|bottom|left)-(a|b)$")
+    target_handle: str = Field(pattern="^(top|right|bottom|left)-(a|b)$")
+
+
 class BoardLayoutInput(BaseModel):
     positions: dict[UUID, BoardPoint] = Field(default_factory=dict, max_length=1000)
+    network_rectangles: dict[UUID, BoardRectangle] = Field(default_factory=dict, max_length=1000)
+    flow_handles: dict[UUID, BoardFlowHandles] = Field(default_factory=dict, max_length=2000)
 
 
 @app.get("/api/board/layout/{system_id}")
@@ -1621,7 +1636,9 @@ def read_board_layout(system_id: UUID, db: Session = Depends(db_session)):
     if db.get(ArchitectureObject, system_id) is None:
         raise HTTPException(404, "System not found")
     stored = db.get(BoardLayout, system_id)
-    return {"system_id": str(system_id), "positions": stored.positions if stored else {}}
+    return {"system_id": str(system_id), "positions": stored.positions if stored else {},
+            "network_rectangles": stored.network_rectangles if stored else {},
+            "flow_handles": stored.flow_handles if stored else {}}
 
 
 @app.put("/api/board/layout/{system_id}")
@@ -1634,16 +1651,31 @@ def save_board_layout(system_id: UUID, payload: BoardLayoutInput, db: Session = 
         known = set(db.scalars(select(InfrastructureItem.id).where(InfrastructureItem.id.in_(ids))).all())
         if len(known) != len(ids):
             raise HTTPException(422, "Unknown component in layout")
+    rect_ids = list(payload.network_rectangles)
+    if rect_ids:
+        segment_ids = set(db.scalars(select(NetworkSegment.id).where(NetworkSegment.id.in_(rect_ids))).all())
+        if len(segment_ids) != len(rect_ids):
+            raise HTTPException(422, "Unknown network in diagram layout")
+    handle_ids = list(payload.flow_handles)
+    if handle_ids:
+        known_flows = set(db.scalars(select(DataFlow.id).where(DataFlow.id.in_(handle_ids))).all())
+        if len(known_flows) != len(handle_ids):
+            raise HTTPException(422, "Unknown flow in diagram layout")
     positions = {str(key): point.model_dump() for key, point in payload.positions.items()}
+    rectangles = {str(key): rect.model_dump() for key, rect in payload.network_rectangles.items()}
+    flow_handles = {str(key): handle.model_dump() for key, handle in payload.flow_handles.items()}
     stored = db.get(BoardLayout, system_id)
     if stored is None:
-        stored = BoardLayout(system_id=system_id, positions=positions)
+        stored = BoardLayout(system_id=system_id, positions=positions, network_rectangles=rectangles,
+                             flow_handles=flow_handles)
         db.add(stored)
     else:
         stored.positions = positions
+        stored.network_rectangles = rectangles
+        stored.flow_handles = flow_handles
         stored.updated_at = datetime.now(timezone.utc)
     db.commit()
-    return {"system_id": str(system_id), "positions": positions}
+    return {"system_id": str(system_id), "positions": positions, "network_rectangles": rectangles, "flow_handles": flow_handles}
 
 
 class BoardBatch(BaseModel):
@@ -1753,6 +1785,45 @@ def apply_board_changes(payload: BoardBatch, db: Session) -> list[dict[str, Any]
             output.append({"action": "create_flow", "id": str(flow.id), "before": None,
                            "after": {"source_id": str(flow.source_id), "target_id": str(flow.target_id),
                                      "name": flow.name, "protocol": flow.protocol, "port": flow.port, "security": flow.security}})
+        elif change.action == "update_flow":
+            if change.id is None:
+                raise HTTPException(422, "Flow id is required")
+            db.flush()
+            flow = db.get(DataFlow, change.id)
+            if flow is None:
+                raise HTTPException(404, "Flow not found")
+            fields = ("source_id", "target_id", "name", "protocol", "port", "security",
+                      "data_description", "schedule", "verification")
+            if set(change.previous_flow) != set(fields):
+                raise HTTPException(422, "Complete previous flow snapshot is required")
+            before = {key: str(getattr(flow, key)) if key in ("source_id", "target_id")
+                      else getattr(flow, key) for key in fields}
+            if any(before[key] != change.previous_flow[key] for key in fields):
+                raise HTTPException(409, "Flow changed since opening; refresh and review")
+            if not change.source_id or not change.target_id or change.source_id == change.target_id:
+                raise HTTPException(422, "Flow needs two different components")
+            if (db.get(InfrastructureItem, change.source_id) is None
+                    or db.get(InfrastructureItem, change.target_id) is None):
+                raise HTTPException(422, "Flow endpoint not found")
+            if not change.name.strip():
+                raise HTTPException(422, "Flow name is required")
+            after = {
+                "source_id": str(change.source_id), "target_id": str(change.target_id),
+                "name": change.name.strip(), "protocol": change.protocol.strip(),
+                "port": change.port.strip(), "security": change.security.strip(),
+                "data_description": change.data_description, "schedule": change.schedule,
+                # A changed technical relationship must be verified again.
+                "verification": "draft",
+            }
+            if all(before[key] == after[key] for key in fields):
+                raise HTTPException(422, "No flow fields changed")
+            flow.source_id = change.source_id
+            flow.target_id = change.target_id
+            for key in fields:
+                if key not in ("source_id", "target_id"):
+                    setattr(flow, key, after[key])
+            output.append({"action": "update_flow", "id": str(flow.id),
+                           "before": before, "after": after})
         elif change.action == "create_interface":
             if change.item_id is None or change.network_id is None:
                 raise HTTPException(422, "New interface requires VM and network")

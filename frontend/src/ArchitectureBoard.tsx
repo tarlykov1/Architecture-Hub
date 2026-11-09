@@ -14,14 +14,65 @@ type NIC = {id:string;item_id:string;name:string;zone_id:string|null;vlan_id:str
 type Flow = {id:string;source_id:string;target_id:string;name:string;protocol:string;port:string}
 type Change = {action:'create_vm'|'create_network'|'create_flow'|'create_interface'|'move_interface'|'update_vm';id?:string;system_id?:string;name?:string;kind?:string;description?:string;source_id?:string;target_id?:string;protocol?:string;port?:string;security?:string;data_description?:string;interface_id?:string;item_id?:string;interface_name?:string;network_id?:string|null;previous_network_id?:string|null;previous_name?:string;previous_description?:string;details_patch?:Record<string,string>;previous_details?:Record<string,unknown>;network_field?:'zone_id'|'vlan_id'|'vrf_id'}
 type Preview = {changes:Array<{action:string;id:string;before:unknown;after:unknown;field?:string}>;count:number}
-type Props = {systemId:string;ownerName?:string;ownerBySystemId?:Record<string,string>;items:VM[];networks:Network[];interfaces:NIC[];flows:Flow[];savedPositions?:Record<string,{x:number;y:number}>;onPositionChange?:(node:Node)=>void;request:<T>(url:string,init?:RequestInit)=>Promise<T>;onCommitted:()=>Promise<void>}
+type Props = {systemId:string;ownerName?:string;ownerBySystemId?:Record<string,string>;items:VM[];networks:Network[];interfaces:NIC[];flows:Flow[];savedPositions?:Record<string,{x:number;y:number}>;onPositionChange?:(node:Node)=>void;request:<T>(url:string,init?:RequestInit)=>Promise<T>;onCommitted:()=>Promise<void>;exitRequest?:number;onExit?:()=>void}
 type Tool = 'move'|'vm'|'flow'|'network'
+type PickerOption={value:string;label:string}
+const CUSTOM_CHOICE='__new__'
+const PROTOCOL_OPTIONS:PickerOption[]=[
+  'TCP','UDP','HTTP','HTTPS','SSH','RDP','LDAP','LDAPS','DNS','SFTP','SMTP',
+  'PostgreSQL','MySQL','MSSQL','AMQP','Kafka','gRPC'
+].map(value=>({value,label:value}))
+const PORT_OPTIONS:PickerOption[]=[
+  '22','53','80','389','443','445','587','636','1433','1521','3306','3389',
+  '5432','5672','6379','8080','8443','9092'
+].map(value=>({value,label:value}))
+const SECURITY_OPTIONS:PickerOption[]=[
+  {value:'unknown',label:'Не указана / не проверена'},
+  {value:'none',label:'Нет защиты (подтверждено)'},
+  {value:'TLS',label:'TLS'},
+  {value:'mTLS',label:'mTLS (взаимный TLS)'},
+  {value:'VPN',label:'VPN'},
+  {value:'IPsec',label:'IPsec'},
+  {value:'Firewall',label:'Межсетевой экран'},
+  {value:'ACL',label:'ACL'},
+  {value:'TLS+Firewall',label:'TLS + межсетевой экран'},
+]
+const SUGGESTED_PORTS:Record<string,string>={
+  HTTP:'80',HTTPS:'443',SSH:'22',SFTP:'22',RDP:'3389',LDAP:'389',
+  LDAPS:'636',DNS:'53',SMTP:'587',PostgreSQL:'5432',MySQL:'3306',
+  MSSQL:'1433',AMQP:'5672',Kafka:'9092'
+}
+
+/** An explicit "Новый…" option preserves non-standard ports/protocols/controls. */
+function FlowChoice({label,value,onChange,options,placeholder}:{
+  label:string;value:string;onChange:(value:string)=>void;
+  options:PickerOption[];placeholder:string
+}){
+  const [custom,setCustom]=useState(false)
+  const known=options.some(option=>option.value===value)
+  const isCustom=custom||(Boolean(value)&&!known)
+  return <label>{label}
+    <select aria-label={label} value={isCustom?CUSTOM_CHOICE:value}
+      onChange={event=>{
+        const next=event.target.value
+        if(next===CUSTOM_CHOICE){setCustom(true);onChange('')}
+        else{setCustom(false);onChange(next)}
+      }}>
+      <option value="" disabled>Выберите</option>
+      {options.map(option=><option key={option.value} value={option.value}>{option.label}</option>)}
+      <option value={CUSTOM_CHOICE}>+ Новый…</option>
+    </select>
+    {isCustom&&<input aria-label={'Новый '+label.toLowerCase()} value={value}
+      maxLength={80} placeholder={placeholder} autoFocus
+      onChange={event=>onChange(event.target.value)}/>}
+  </label>
+}
 type Rect = {id:string;name:string;kind:string;x:number;y:number;width:number;height:number}
 const makeId=()=>crypto.randomUUID()
 const rectContains=(r:Rect,p:{x:number;y:number})=>p.x>=r.x&&p.x<=r.x+r.width&&p.y>=r.y&&p.y<=r.y+r.height
 const fieldForKind=(kind:string):'zone_id'|'vlan_id'|'vrf_id'=>kind==='vlan'?'vlan_id':kind==='vrf'?'vrf_id':'zone_id'
 
-function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfaces,flows,savedPositions={},onPositionChange,request,onCommitted}:Props){
+function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfaces,flows,savedPositions={},onPositionChange,request,onCommitted,exitRequest=0,onExit}:Props){
  const [tool,setTool]=useState<Tool>('move')
  const [inspectedId,setInspectedId]=useState<string|null>(null)
  const [focusDependencies,setFocusDependencies]=useState(false)
@@ -52,6 +103,8 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
  const networkStartPixel=useRef<{x:number;y:number}|null>(null)
  const [networkPreview,setNetworkPreview]=useState<{x:number;y:number;width:number;height:number}|null>(null)
  const [reviewOpen,setReviewOpen]=useState(false)
+ const [exitPrompt,setExitPrompt]=useState(false)
+ const [exitAfterSave,setExitAfterSave]=useState(false)
  const [rectangles,setRectangles]=useState<Rect[]>(()=>{
    const relevant = networks.filter(n=>interfaces.some(nic=>nic[fieldForKind(n.kind)]===n.id&&items.some(item=>item.id===nic.item_id)))
    const heights=relevant.map(n=>{

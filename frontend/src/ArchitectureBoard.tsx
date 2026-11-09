@@ -17,7 +17,7 @@ type FlowHandlePair={source_handle:string;target_handle:string}
 type EdgePopup={flowIds:string[];pair:string;x:number;y:number}
 type Change = {action:'create_vm'|'create_network'|'create_flow'|'update_flow'|'create_interface'|'move_interface'|'update_vm';id?:string;system_id?:string;name?:string;kind?:string;description?:string;source_id?:string;target_id?:string;protocol?:string;port?:string;security?:string;data_description?:string;interface_id?:string;item_id?:string;interface_name?:string;network_id?:string|null;previous_network_id?:string|null;previous_name?:string;previous_description?:string;details_patch?:Record<string,string>;previous_details?:Record<string,unknown>;previous_flow?:Record<string,string>;schedule?:string;verification?:string;network_field?:'zone_id'|'vlan_id'|'vrf_id'}
 type Preview = {changes:Array<{action:string;id:string;before:unknown;after:unknown;field?:string}>;count:number}
-type Props = {systemId:string;ownerName?:string;ownerBySystemId?:Record<string,string>;items:VM[];networks:Network[];interfaces:NIC[];flows:Flow[];savedPositions?:Record<string,{x:number;y:number}>;onPositionChange?:(node:Node)=>void;request:<T>(url:string,init?:RequestInit)=>Promise<T>;onCommitted:()=>Promise<void>;exitRequest?:number;onExit?:()=>void}
+type Props = {systemId:string;ownerName?:string;ownerBySystemId?:Record<string,string>;items:VM[];networks:Network[];interfaces:NIC[];flows:Flow[];savedPositions?:Record<string,{x:number;y:number}>;onPositionChange?:(node:Node)=>void;request:<T>(url:string,init?:RequestInit)=>Promise<T>;onCommitted:()=>Promise<void>;onOpenFlowData?:(id:string)=>void;onOpenFlowNetwork?:(id:string)=>void;exitRequest?:number;onExit?:()=>void}
 type Tool = 'move'|'vm'|'flow'|'network'
 type PickerOption={value:string;label:string}
 const CUSTOM_CHOICE='__new__'
@@ -75,7 +75,7 @@ const makeId=()=>crypto.randomUUID()
 const rectContains=(r:Rect,p:{x:number;y:number})=>p.x>=r.x&&p.x<=r.x+r.width&&p.y>=r.y&&p.y<=r.y+r.height
 const fieldForKind=(kind:string):'zone_id'|'vlan_id'|'vrf_id'=>kind==='vlan'?'vlan_id':kind==='vrf'?'vrf_id':'zone_id'
 
-function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfaces,flows,savedPositions={},onPositionChange,request,onCommitted,exitRequest=0,onExit}:Props){
+function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfaces,flows,savedPositions={},onPositionChange,request,onCommitted,onOpenFlowData,onOpenFlowNetwork,exitRequest=0,onExit}:Props){
  const [tool,setTool]=useState<Tool>('move')
  const [inspectedId,setInspectedId]=useState<string|null>(null)
  const [focusDependencies,setFocusDependencies]=useState(false)
@@ -607,8 +607,16 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
            <label>Периодичность <input aria-label="Периодичность потока" maxLength={160}
              value={flowCardDraft.schedule||''} onChange={event=>setFlowCardDraft({...flowCardDraft,schedule:event.target.value})}/></label>
            <p className="boardFlowVerificationNote">Достоверность: {flowCardDraft.verification||'draft'}.
-             После изменения технических параметров требуется повторная проверка.
-             Полный состав атрибутов и сетевой маршрут учитываются в отдельных справочниках хаба.</p>
+             После изменения технических параметров требуется повторная проверка.</p>
+           {flows.some(f=>f.id===flowCardId)&&<div className="boardFlowCatalogLinks">
+             <strong>Связанные справочники</strong>
+             {onOpenFlowData&&<button type="button" onClick={()=>onOpenFlowData(flowCardId)}>
+               Атрибуты передаваемых данных
+             </button>}
+             {onOpenFlowNetwork&&<button type="button" onClick={()=>onOpenFlowNetwork(flowCardId)}>
+               Сетевой маршрут и защита
+             </button>}
+           </div>}
            <div className="boardFullFlowActions">
              <button type="submit" className="primary">Добавить изменения в черновик</button>
              <button type="button" onClick={()=>{setFlowCardId(null);setFlowCardDraft(null)}}>Отмена</button>

@@ -789,3 +789,43 @@ button:disabled{cursor:not-allowed;opacity:.55}
 .cmdbImpactDisclaimer{margin:0;border-left:3px solid #94a3b8;padding:8px 10px;
   background:#f8fafc;color:#475569;line-height:1.55;font-size:12px}
 @media(max-width:620px){.cmdbImpactHead{flex-wrap:wrap}.cmdbImpactItem{flex-direction:column}}
+
+/* Versioned configuration-item governance: an uncluttered property inspector tab. */
+.cmdbRecord{display:grid;gap:14px;padding:4px 0 18px;min-width:0}
+.cmdbRecordTop{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.cmdbRecordTop h3{margin:0 0 4px;font-size:17px;color:#17283f}
+.cmdbRecordTop .hint{margin:0;font-size:12px;color:#64748b}
+.cmdbVerificationState{font-size:11px;padding:6px 9px;border-radius:8px;
+  background:#f1f5f9;color:#475569;white-space:nowrap}
+.cmdbRecordFields{display:grid;gap:14px}
+.cmdbRecordFields dl{margin:0;display:grid;gap:0}
+.cmdbRecordFields dl>div{display:grid;grid-template-columns:minmax(120px,42%) minmax(0,1fr);
+  gap:12px;padding:10px 0;border-bottom:1px solid #e2e8f0}
+.cmdbRecordFields dt{font-size:12px;color:#64748b}
+.cmdbRecordFields dd{margin:0;font-size:13px;overflow-wrap:anywhere;color:#1e293b}
+.cmdbRecordFields>button{justify-self:start}
+.cmdbRecordForm,.cmdbVerificationForm{display:grid;gap:12px;padding:13px 0}
+.cmdbRecordForm label,.cmdbVerificationForm label{display:grid;gap:5px;font-size:12px;
+  color:#334155;font-weight:600;min-width:0}
+.cmdbRecordForm input,.cmdbRecordForm select,.cmdbRecordForm textarea,
+.cmdbVerificationForm textarea{width:100%;min-width:0;box-sizing:border-box;
+  padding:9px 10px;font-size:13px;border:1px solid #cbd5e1;border-radius:8px;
+  background:#fff;color:#0f172a}
+.cmdbRecordForm textarea,.cmdbVerificationForm textarea{min-height:65px}
+.cmdbRecordButtons{display:flex;gap:8px;flex-wrap:wrap}
+.cmdbRecordForm>small{font-size:11px;line-height:1.6;color:#64748b}
+.cmdbVerificationForm{border-top:1px solid #e2e8f0}
+.cmdbVerificationForm h4{margin:0;font-size:14px}
+.cmdbVerificationForm p{margin:0;font-size:12px;line-height:1.55;color:#64748b}
+.cmdbVerificationForm button{justify-self:start}
+.cmdbAuditHistory{border-top:1px solid #e2e8f0;padding-top:12px}
+.cmdbAuditHistory summary{cursor:pointer;font-weight:600;font-size:13px;color:#334155}
+.cmdbAuditHistory ol{margin:12px 0 0;padding-left:21px;display:grid;gap:12px}
+.cmdbAuditHistory li{padding-left:3px;font-size:12px;line-height:1.5}
+.cmdbAuditHistory li strong,.cmdbAuditHistory li small{display:block}
+.cmdbAuditHistory li small{color:#64748b}
+.cmdbAuditHistory li p{margin:4px 0 0;overflow-wrap:anywhere}
+@media(max-width:680px){
+  .cmdbRecordTop{flex-wrap:wrap}
+  .cmdbRecordFields dl>div{grid-template-columns:1fr;gap:3px}
+}

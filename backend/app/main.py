@@ -9,11 +9,12 @@ from uuid import UUID, uuid4
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from .access import access_middleware, configured_keys, ROLE_ACCESS
-from .cmdb import ci_graph, potential_impact
+from .cmdb import ci_graph, potential_impact, CI_CLASSES, LIFECYCLE_STATES, LIFECYCLE_TRANSITIONS, CRITICALITY_LEVELS, VERIFICATION_STATES
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import DateTime, ForeignKey, JSON, String, Uuid, create_engine, select
+from sqlalchemy import DateTime, ForeignKey, JSON, String, Uuid, Index, create_engine, select, update, text as sql_text
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
+from sqlalchemy.exc import IntegrityError
 
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./architecture_hub.db")
 engine = create_engine(DATABASE_URL, pool_pre_ping=True, connect_args={"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {})
@@ -69,6 +70,45 @@ class InfrastructureItem(Base):
     name: Mapped[str] = mapped_column(String(250))
     description: Mapped[str] = mapped_column(String(4000), default="")
     details: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+
+
+
+class CmdbRecord(Base):
+    """Versioned configuration metadata layered over canonical IS/component/process records."""
+    __tablename__ = "cmdb_records"
+    ci_id: Mapped[str] = mapped_column(String(90), primary_key=True)
+    lifecycle: Mapped[str] = mapped_column(String(30), default="unknown")
+    owner: Mapped[str] = mapped_column(String(180), default="")
+    technical_owner: Mapped[str] = mapped_column(String(180), default="")
+    criticality: Mapped[str] = mapped_column(String(24), default="unknown")
+    source_system: Mapped[str] = mapped_column(String(120), default="architecture_hub")
+    source_record_id: Mapped[str] = mapped_column(String(180), default="")
+    verification_status: Mapped[str] = mapped_column(String(24), default="unverified")
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    evidence: Mapped[str] = mapped_column(String(2000), default="")
+    notes: Mapped[str] = mapped_column(String(2000), default="")
+    revision: Mapped[int] = mapped_column(default=1)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+# Unique identity in a federated source. Empty IDs are not identities.
+Index('ux_cmdb_external_identity', CmdbRecord.source_system, CmdbRecord.source_record_id,
+      unique=True, sqlite_where=sql_text("source_record_id <> ''"),
+      postgresql_where=sql_text("source_record_id <> ''"))
+
+
+class CmdbRecordAudit(Base):
+    """Immutable logical history; every update records before/after and reason."""
+    __tablename__ = "cmdb_record_audit"
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    ci_id: Mapped[str] = mapped_column(String(90), index=True)
+    revision: Mapped[int] = mapped_column()
+    action: Mapped[str] = mapped_column(String(24))
+    actor_role: Mapped[str] = mapped_column(String(40))
+    reason: Mapped[str] = mapped_column(String(1000))
+    before: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    after: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
 
 class DataFlow(Base):
@@ -350,6 +390,24 @@ class DiagramOut(DiagramCreate):
     id: UUID
 
 
+
+class CmdbRecordInput(BaseModel):
+    expected_revision: int = Field(ge=0)
+    lifecycle: str = Field(pattern="^(planned|active|maintenance|retired)$")
+    owner: str = Field(default="", max_length=180)
+    technical_owner: str = Field(default="", max_length=180)
+    criticality: str = Field(default="unknown", pattern="^(unknown|low|medium|high|critical)$")
+    source_system: str = Field(default="architecture_hub", min_length=1, max_length=120)
+    source_record_id: str = Field(default="", max_length=180)
+    notes: str = Field(default="", max_length=2000)
+    reason: str = Field(min_length=5, max_length=1000)
+
+
+class CmdbVerificationInput(BaseModel):
+    expected_revision: int = Field(ge=1)
+    evidence: str = Field(min_length=5, max_length=2000)
+
+
 def db_session():
     with SessionLocal() as session:
         yield session
@@ -374,10 +432,14 @@ app.add_middleware(
 )
 
 
-# The CMDB projection reads existing normalized records. This is intentionally
-# separate from diagram coordinates and does not create duplicate inventory CIs.
+# Configuration items still live in the existing architecture tables.
+# Metadata is a versioned overlay, never another copy of the VM / IS record.
+_CM_FIELDS = ("lifecycle", "owner", "technical_owner", "criticality",
+              "source_system", "source_record_id", "notes")
+
+
 def _cmdb_data(db: Session) -> dict:
-    return ci_graph(
+    graph = ci_graph(
         list(db.scalars(select(ArchitectureObject)).all()),
         list(db.scalars(select(InfrastructureItem)).all()),
         list(db.scalars(select(Relation)).all()),
@@ -385,11 +447,85 @@ def _cmdb_data(db: Session) -> dict:
         list(db.scalars(select(BusinessProcess)).all()),
         list(db.scalars(select(ProcessSystem)).all()),
     )
+    overlays = {row.ci_id: row for row in db.scalars(select(CmdbRecord)).all()}
+    for node in graph["nodes"]:
+        record = overlays.get(node["id"])
+        node["verification_status"] = "unverified"
+        node["revision"] = 0
+        node["technical_owner"] = None
+        # The legacy field is informational, NOT proof of a CMDB verification.
+        node["verified_at"] = None
+        if record:
+            node.update({
+                "lifecycle": record.lifecycle,
+                "owner": record.owner or None,
+                "technical_owner": record.technical_owner or None,
+                "criticality": record.criticality,
+                "verified_at": record.verified_at.isoformat() if record.verified_at else None,
+                "verification_status": record.verification_status,
+                "source": record.source_system,
+                "source_record_id": record.source_record_id or None,
+                "revision": record.revision,
+            })
+    return graph
+
+
+def _cmdb_node(db: Session, ci_id: str) -> dict:
+    try:
+        kind, raw_id = ci_id.split(":", 1)
+        if kind not in {"system", "component", "process"}:
+            raise ValueError
+        item_id = UUID(raw_id)
+    except (ValueError, TypeError):
+        raise HTTPException(404, "Configuration item not found")
+    table = {"system": ArchitectureObject, "component": InfrastructureItem,
+             "process": BusinessProcess}[kind]
+    item = db.get(table, item_id)
+    if item is None:
+        raise HTTPException(404, "Configuration item not found")
+    return {"ci_id": kind + ":" + str(item_id), "name": item.name,
+            "ci_class": "application" if kind == "system" else
+                        "business_process" if kind == "process" else item.kind}
+
+
+def _cmdb_snapshot(record: CmdbRecord | None) -> dict:
+    if record is None:
+        return {
+            "lifecycle": "unknown", "owner": "", "technical_owner": "",
+            "criticality": "unknown", "source_system": "architecture_hub",
+            "source_record_id": "", "verification_status": "unverified",
+            "verified_at": None, "evidence": "", "notes": "", "revision": 0,
+            "updated_at": None,
+        }
+    return {
+        "lifecycle": record.lifecycle, "owner": record.owner,
+        "technical_owner": record.technical_owner, "criticality": record.criticality,
+        "source_system": record.source_system,
+        "source_record_id": record.source_record_id,
+        "verification_status": record.verification_status,
+        "verified_at": record.verified_at.isoformat() if record.verified_at else None,
+        "evidence": record.evidence,
+        "notes": record.notes, "revision": record.revision,
+        "updated_at": record.updated_at.isoformat() if record.updated_at else None,
+    }
+
+
+def _cmdb_actor(request: Request) -> str:
+    # Authoritative role comes from access middleware. No user-supplied actor
+    # is accepted as an authenticated identity.
+    return str(getattr(request.state, "role", "development"))
+
+
+@app.get("/api/cmdb/classes")
+def cmdb_classes():
+    """Class-specific mandatory fields and controlled vocabularies."""
+    return {"classes": CI_CLASSES, "lifecycle": LIFECYCLE_STATES,
+            "criticality": CRITICALITY_LEVELS,
+            "verification": VERIFICATION_STATES}
 
 
 @app.get("/api/cmdb/graph")
 def cmdb_graph(db: Session = Depends(db_session)):
-    """Typed read-only configuration items and relationship semantics."""
     return _cmdb_data(db)
 
 
@@ -397,11 +533,155 @@ def cmdb_graph(db: Session = Depends(db_session)):
 def cmdb_impact(ci_id: str = Query(min_length=1, max_length=120),
                 depth: int = Query(default=3, ge=1, le=5),
                 db: Session = Depends(db_session)):
-    """A conservative impact candidate map; never claims a live outage."""
     try:
         return potential_impact(_cmdb_data(db), ci_id, depth)
     except KeyError:
-        raise HTTPException(status_code=404, detail="Configuration item not found")
+        raise HTTPException(404, "Configuration item not found")
+
+
+@app.get("/api/cmdb/records/{ci_id}")
+def read_cmdb_record(ci_id: str, db: Session = Depends(db_session)):
+    node = _cmdb_node(db, ci_id)
+    return {**node, **_cmdb_snapshot(db.get(CmdbRecord, node["ci_id"]))}
+
+
+@app.get("/api/cmdb/records/{ci_id}/history")
+def cmdb_record_history(ci_id: str, db: Session = Depends(db_session)):
+    node = _cmdb_node(db, ci_id)
+    records = db.scalars(select(CmdbRecordAudit).where(
+        CmdbRecordAudit.ci_id == node["ci_id"]
+    ).order_by(CmdbRecordAudit.revision.desc()).limit(100)).all()
+    return [
+        {"revision": row.revision, "action": row.action, "actor_role": row.actor_role,
+         "reason": row.reason, "before": row.before, "after": row.after,
+         "occurred_at": row.occurred_at.isoformat()}
+        for row in records
+    ]
+
+
+@app.put("/api/cmdb/records/{ci_id}")
+def write_cmdb_record(ci_id: str, payload: CmdbRecordInput,
+                      request: Request, db: Session = Depends(db_session)):
+    node = _cmdb_node(db, ci_id)
+    key = node["ci_id"]
+    record = db.get(CmdbRecord, key)
+    previous = _cmdb_snapshot(record)
+    if previous["revision"] != payload.expected_revision:
+        raise HTTPException(409, "CMDB record revision changed. Reload before saving.")
+    if payload.lifecycle not in LIFECYCLE_TRANSITIONS[previous["lifecycle"]]:
+        raise HTTPException(422, "Invalid lifecycle transition")
+    if payload.source_record_id.strip():
+        conflict = db.scalars(select(CmdbRecord).where(
+            CmdbRecord.source_system == payload.source_system.strip(),
+            CmdbRecord.source_record_id == payload.source_record_id.strip(),
+            CmdbRecord.ci_id != key,
+        )).first()
+        if conflict is not None:
+            raise HTTPException(409, "External source identity already belongs to another CI")
+    now = datetime.now(timezone.utc)
+    values = {field: getattr(payload, field).strip() if isinstance(
+        getattr(payload, field), str) else getattr(payload, field) for field in _CM_FIELDS}
+    changes = any(previous[field] != value for field, value in values.items())
+    if not changes:
+        return {**node, **previous}
+    if record is None:
+        record = CmdbRecord(ci_id=key, **values, verification_status="unverified",
+                            verified_at=None, evidence="", revision=1, updated_at=now)
+        db.add(record)
+    else:
+        # Atomic compare-and-swap for concurrent editors.
+        result = db.execute(
+            update(CmdbRecord).where(CmdbRecord.ci_id == key,
+                                     CmdbRecord.revision == payload.expected_revision)
+            .values(**values, revision=payload.expected_revision + 1,
+                    verification_status="unverified", verified_at=None,
+                    evidence="", updated_at=now))
+        if result.rowcount != 1:
+            db.rollback()
+            raise HTTPException(409, "Concurrent CMDB update. Reload before saving.")
+        db.expire(record)
+    new_snapshot = _cmdb_snapshot(record)
+    db.add(CmdbRecordAudit(ci_id=key, revision=new_snapshot["revision"],
+                           action="update", actor_role=_cmdb_actor(request),
+                           reason=payload.reason.strip(), before=previous,
+                           after=new_snapshot, occurred_at=now))
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(409, "External source identity already belongs to another CI")
+    return {**node, **new_snapshot}
+
+
+@app.post("/api/cmdb/records/{ci_id}/verify")
+def verify_cmdb_record(ci_id: str, payload: CmdbVerificationInput,
+                       request: Request, db: Session = Depends(db_session)):
+    node = _cmdb_node(db, ci_id)
+    key = node["ci_id"]
+    record = db.get(CmdbRecord, key)
+    if record is None:
+        raise HTTPException(422, "Fill in configuration metadata before verification")
+    previous = _cmdb_snapshot(record)
+    if previous["revision"] != payload.expected_revision:
+        raise HTTPException(409, "CMDB record revision changed. Reload before verifying.")
+    if record.lifecycle == "retired":
+        raise HTTPException(422, "Retired configuration items cannot be verified as active")
+    now = datetime.now(timezone.utc)
+    result = db.execute(update(CmdbRecord).where(
+        CmdbRecord.ci_id == key,
+        CmdbRecord.revision == payload.expected_revision
+    ).values(verification_status="verified", verified_at=now,
+             evidence=payload.evidence.strip(), updated_at=now,
+             revision=payload.expected_revision + 1))
+    if result.rowcount != 1:
+        db.rollback()
+        raise HTTPException(409, "Concurrent CMDB update. Reload before verifying.")
+    db.expire(record)
+    new_snapshot = _cmdb_snapshot(record)
+    db.add(CmdbRecordAudit(ci_id=key, revision=new_snapshot["revision"],
+                           action="verification", actor_role=_cmdb_actor(request),
+                           reason=payload.evidence.strip(), before=previous,
+                           after=new_snapshot, occurred_at=now))
+    db.commit()
+    return {**node, **new_snapshot}
+
+
+@app.get("/api/cmdb/quality")
+def cmdb_quality(stale_days: int = Query(default=90, ge=1, le=3650),
+                 db: Session = Depends(db_session)):
+    graph = _cmdb_data(db)
+    required = {item["id"]: item["required"] for item in CI_CLASSES}
+    now = datetime.now(timezone.utc)
+    items = []
+    for node in graph["nodes"]:
+        needed = required.get(node["ci_class"], ["technical_owner", "lifecycle"])
+        missing = [field for field in needed if node.get(field) in (None, "", "unknown")]
+        raw_date = node.get("verified_at")
+        try:
+            verified_time = datetime.fromisoformat(raw_date) if raw_date else None
+            if verified_time and verified_time.tzinfo is None:
+                verified_time = verified_time.replace(tzinfo=timezone.utc)
+        except (ValueError, TypeError):
+            verified_time = None
+        verified = node["verification_status"] == "verified" and verified_time is not None
+        stale = bool(verified and (now - verified_time).days > stale_days)
+        items.append({
+            "ci_id": node["id"], "name": node["name"],
+            "ci_class": node["ci_class"],
+            "missing": missing,
+            "completeness_percent": round(100 * (len(needed) - len(missing)) / len(needed)),
+            "verified": verified, "stale": stale,
+            "verification_status": node["verification_status"],
+            "source_system": node.get("source", "architecture_hub"),
+        })
+    return {
+        "total": len(items),
+        "verified": sum(item["verified"] for item in items),
+        "stale": sum(item["stale"] for item in items),
+        "missing_required": sum(bool(item["missing"]) for item in items),
+        "stale_days": stale_days,
+        "items": items,
+    }
 
 
 @app.get("/api/health")

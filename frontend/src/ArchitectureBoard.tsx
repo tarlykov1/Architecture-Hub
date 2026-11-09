@@ -219,6 +219,106 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
    }
  })
  const addChange=(c:Change)=>{setChanges(previous=>[...previous,c]);setPreview(null);setError('')}
+ const flowSnapshot=(f:Flow):Record<string,string>=>({
+   source_id:f.source_id,target_id:f.target_id,name:f.name,protocol:f.protocol||'',
+   port:f.port||'',security:f.security||'unknown',data_description:f.data_description||'',
+   schedule:f.schedule||'',verification:f.verification||'draft'
+ })
+ const stageFlowUpdate=(id:string,patch:Partial<Flow>)=>{
+   const current=effectiveFlows.find(f=>f.id===id)
+   if(!current)return setError('Поток не найден. Обновите редактор.')
+   const next:Flow={...current,...patch}
+   if(!next.source_id||!next.target_id||next.source_id===next.target_id||
+      !allVMs.some(v=>v.id===next.source_id)||!allVMs.some(v=>v.id===next.target_id)){
+     setError('Поток должен соединять два разных существующих компонента.')
+     return
+   }
+   if(!next.name?.trim())return setError('Название потока не может быть пустым.')
+   const base=flows.find(f=>f.id===id)
+   setChanges(previous=>{
+     if(!base)return previous.map(c=>c.action==='create_flow'&&c.id===id?
+       {...c,...flowSnapshot(next)}:c)
+     const previous_flow=flowSnapshot(base)
+     const currentValue=flowSnapshot(next)
+     const unchanged=Object.keys(previous_flow).every(key=>previous_flow[key]===currentValue[key])
+     const filtered=previous.filter(c=>!(c.action==='update_flow'&&c.id===id))
+     if(unchanged)return filtered
+     return [...filtered,{action:'update_flow',id,previous_flow,...currentValue}]
+   })
+   setPreview(null);setError('')
+   setLayoutMessage('Поток изменён в черновике. Для сохранения нажмите «Сохранить» и подтвердите изменения.')
+   setEdgePopup(null)
+ }
+ const swapFlow=(id:string)=>{
+   const f=effectiveFlows.find(flow=>flow.id===id)
+   if(!f)return
+   const left=allVMs.find(vm=>vm.id===f.source_id)?.name||''
+   const right=allVMs.find(vm=>vm.id===f.target_id)?.name||''
+   const autoName=left+' → '+right
+   stageFlowUpdate(id,{
+     source_id:f.target_id,target_id:f.source_id,
+     name:f.name===autoName?right+' → '+left:f.name
+   })
+   setFlowHandles(previous=>{
+     const current=previous[id]
+     return current?{...previous,[id]:{
+       source_handle:current.target_handle,target_handle:current.source_handle
+     }}:previous
+   })
+ }
+ const addReverseFlow=(id:string)=>{
+   const flow=effectiveFlows.find(x=>x.id===id)
+   if(!flow)return
+   if(effectiveFlows.some(x=>x.source_id===flow.target_id&&x.target_id===flow.source_id)){
+     setLayoutMessage('Обратный поток уже существует. Выберите его линию для редактирования.')
+     setEdgePopup(null);return
+   }
+   const name=(allVMs.find(vm=>vm.id===flow.target_id)?.name||'Получатель')+' → '+
+     (allVMs.find(vm=>vm.id===flow.source_id)?.name||'Источник')
+   addChange({action:'create_flow',id:makeId(),name,
+     source_id:flow.target_id,target_id:flow.source_id,
+     protocol:flow.protocol||'',port:flow.port||'',security:flow.security||'unknown',
+     data_description:flow.data_description||'',schedule:flow.schedule||'',verification:'draft'})
+   setEdgePopup(null);setLayoutMessage('Добавлен отдельный обратный поток. Подтвердите черновик для сохранения.')
+ }
+ const openFlowCard=(id:string)=>{
+   const flow=effectiveFlows.find(f=>f.id===id)
+   if(!flow)return
+   setFlowCardId(id);setFlowCardDraft({...flow});setEdgePopup(null)
+   setInspectedId(null);setTool('move');setReviewOpen(false)
+ }
+ const onFlowReconnect=(edge:Edge,connection:Connection)=>{
+   const flowIds=Array.isArray(edge.data?.flowIds)?edge.data.flowIds as string[]:[]
+   if(flowIds.length!==1){
+     setError('Выберите один поток в группе перед изменением его линии.');return
+   }
+   const id=flowIds[0]
+   if(!connection.source||!connection.target||connection.source===connection.target)return
+   if(!allVMs.some(vm=>vm.id===connection.source)||!allVMs.some(vm=>vm.id===connection.target))return
+   const source_handle=connection.sourceHandle||edge.sourceHandle||'bottom-a'
+   const target_handle=connection.targetHandle||edge.targetHandle||'top-a'
+   const valid=new Set<string>(BOARD_PORTS.map(port=>port.id))
+   if(!valid.has(source_handle)||!valid.has(target_handle))return
+   setFlowHandles(previous=>({...previous,[id]:{source_handle,target_handle}}))
+   setLayoutDirty(true)
+   const flow=effectiveFlows.find(x=>x.id===id)
+   if(flow&&(flow.source_id!==connection.source||flow.target_id!==connection.target)){
+     stageFlowUpdate(id,{source_id:connection.source,target_id:connection.target})
+   }else{
+     setLayoutMessage('Точка подключения перенесена. Нажмите «Сохранить расположение».')
+   }
+ }
+ const showEdgeMenu=(event:React.MouseEvent,edge:Edge)=>{
+   const ids=Array.isArray(edge.data?.flowIds)?edge.data.flowIds as string[]:[]
+   if(!ids.length)return
+   const rect=stageRef.current?.getBoundingClientRect()
+   if(!rect)return
+   setEdgePopup({flowIds:ids,pair:edge.source+'|'+edge.target,
+     x:Math.min(Math.max(event.clientX-rect.left+10,105),rect.width-282),
+     y:Math.min(Math.max(event.clientY-rect.top+10,10),rect.height-260)})
+   setInspectedId(null);setFocusDependencies(false);setFlowCardId(null)
+   setTool('move');setReviewOpen(false)
+ }
  const moveNode=(node:Node)=>{
    onPositionChange?.(node)
    setLayoutDirty(true);setLayoutMessage('')

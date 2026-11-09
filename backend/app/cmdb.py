@@ -135,3 +135,34 @@ def potential_impact(graph: dict, ci_id: str, depth: int = 3) -> dict:
         "affected": affected, "count": len(affected),
         "disclaimer": "Потенциальное влияние по зарегистрированным связям; не подтверждает отказ и не заменяет анализ критичности и отказоустойчивости.",
     }
+
+
+# Declarative CMDB class policies. Existing unknown kinds remain visible and are
+# never reclassified silently. This catalog does not mutate inventory data.
+CI_CLASSES = [
+    {"id": "application", "label": "Информационная система", "layer": "application",
+     "required": ["owner", "technical_owner", "criticality", "lifecycle"]},
+    {"id": "vm", "label": "Виртуальная машина", "layer": "infrastructure",
+     "required": ["technical_owner", "criticality", "lifecycle"]},
+    {"id": "database", "label": "База данных", "layer": "platform",
+     "required": ["technical_owner", "criticality", "lifecycle"]},
+    {"id": "service", "label": "Сервис", "layer": "application",
+     "required": ["owner", "technical_owner", "criticality", "lifecycle"]},
+    {"id": "container", "label": "Контейнер", "layer": "platform",
+     "required": ["technical_owner", "lifecycle"]},
+    {"id": "host", "label": "Физический хост", "layer": "infrastructure",
+     "required": ["technical_owner", "lifecycle"]},
+    {"id": "business_process", "label": "Бизнес-процесс", "layer": "business",
+     "required": ["owner", "criticality", "lifecycle"]},
+]
+
+LIFECYCLE_STATES = ["planned", "active", "maintenance", "retired"]
+LIFECYCLE_TRANSITIONS = {
+    "unknown": set(LIFECYCLE_STATES),
+    "planned": {"planned", "active", "retired"},
+    "active": {"active", "maintenance", "retired"},
+    "maintenance": {"maintenance", "active", "retired"},
+    "retired": {"retired"},  # Recommissioning requires a new change process.
+}
+CRITICALITY_LEVELS = ["unknown", "low", "medium", "high", "critical"]
+VERIFICATION_STATES = ["unverified", "assumed", "verified"]

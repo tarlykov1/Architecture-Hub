@@ -1805,8 +1805,8 @@ def apply_board_changes(payload: BoardBatch, db: Session) -> list[dict[str, Any]
             if (db.get(InfrastructureItem, change.source_id) is None
                     or db.get(InfrastructureItem, change.target_id) is None):
                 raise HTTPException(422, "Flow endpoint not found")
-            if not change.name.strip() or not change.port.strip():
-                raise HTTPException(422, "Flow name and port are required")
+            if not change.name.strip():
+                raise HTTPException(422, "Flow name is required")
             after = {
                 "source_id": str(change.source_id), "target_id": str(change.target_id),
                 "name": change.name.strip(), "protocol": change.protocol.strip(),

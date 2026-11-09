@@ -286,27 +286,10 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
    if(node.id.startsWith('network:')){
      const id=node.id.slice('network:'.length)
      setRectangles(previous=>previous.map(rect=>rect.id===id?{...rect,x:node.position.x,y:node.position.y}:rect))
-     setLayoutDirty(true);setLayoutMessage('Контейнер перемещён – сохраните его расположение на схеме.')
-     setError('')
-     return
-   }
-   onPositionChange?.(node)
-   setLayoutDirty(true);setLayoutMessage('')
-   const center={x:node.position.x+97,y:node.position.y+30}
-   const target=visibleRects.slice().reverse().find(r=>rectContains(r,center))
-   if(!target)return
-   if(!interfaceId){
-     setLayoutMessage('Изменено только расположение. Для технической привязки явно выберите интерфейс в правой панели.')
-     return
-   }
-   const nic=interfaces.find(n=>n.id===interfaceId&&n.item_id===node.id)
-   if(!nic){setError('Выбранный интерфейс не принадлежит перемещаемой ВМ. Выберите интерфейс этой ВМ или оставьте «Только расположение».');return}
-   const field=fieldForKind(target.kind)
-   const prior=changes.find(c=>c.action==='move_interface'&&c.interface_id===nic.id&&c.network_field===field)
-   if((prior?prior.network_id:nic[field])===target.id)return
-   const next:Change={action:'move_interface',interface_id:nic.id,network_id:target.id,previous_network_id:nic[field],network_field:field}
-   setChanges(previous=>[...previous.filter(c=>!(c.action==='move_interface'&&c.interface_id===nic.id&&c.network_field===field)),next])
-   setPreview(null);setError('')
+   }else onPositionChange?.(node)
+   setLayoutDirty(true)
+   setLayoutMessage('Расположение изменено. Если объект перенесён через границу зоны, подтвердите архитектурную связь. Технические интерфейсы не меняются без отдельного согласия.')
+   setError('')
  }
  const addVM=(point?:{x:number;y:number})=>{
    if(!name.trim())return setError('Введите имя новой ВМ.')

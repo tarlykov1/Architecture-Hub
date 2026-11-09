@@ -157,15 +157,33 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
  const visibleRects=rectangles.filter(r=>allNetworks.some(n=>n.id===r.id))
  const backgroundNodes:Node[]=visibleRects.map(r=>({id:'network:'+r.id,type:'default',position:{x:r.x,y:r.y},width:r.width,height:r.height,measured:{width:r.width,height:r.height},draggable:false,selectable:false,connectable:false,data:{label:r.name+' · '+r.kind.toUpperCase()},style:{width:r.width,height:r.height,background:'#dbeafe77',border:'2px dashed #2563eb',borderRadius:9,zIndex:0,pointerEvents:'none',textAlign:'left',padding:12,fontSize:13,color:'#1e40af'}}))
  const graphNodes=[...backgroundNodes,...nodes]
- // A pair of machines has one readable connection; its technical flows stay separate records.
- const pendingFlows=changes.filter(c=>c.action==='create_flow').map(c=>({id:c.id!,source_id:c.source_id!,target_id:c.target_id!,protocol:c.protocol||'',port:c.port||'',name:c.name||''}))
- const flowGroups=new Map<string,Array<{id:string;source_id:string;target_id:string;name:string;protocol:string;port:string}>>()
- for(const flow of [...flows,...pendingFlows]){
+ // Project reviewed technical changes into the editor graph without touching the database.
+ const pendingFlows:Flow[]=changes.filter(c=>c.action==='create_flow').map(c=>({
+   id:c.id!,source_id:c.source_id!,target_id:c.target_id!,protocol:c.protocol||'',port:c.port||'',
+   name:c.name||'',security:c.security||'unknown',data_description:c.data_description||'',
+   schedule:c.schedule||'',verification:c.verification||'draft'
+ }))
+ const effectiveFlows:Flow[]=[...flows.map(flow=>{
+   const update=changes.find(c=>c.action==='update_flow'&&c.id===flow.id)
+   return update?{...flow,...{
+     source_id:update.source_id!,target_id:update.target_id!,name:update.name!,
+     protocol:update.protocol||'',port:update.port||'',security:update.security||'unknown',
+     data_description:update.data_description||'',schedule:update.schedule||'',verification:'draft'
+   }}:flow
+ }),...pendingFlows]
+ const flowGroups=new Map<string,Flow[]>()
+ for(const flow of effectiveFlows){
    if(!allVMs.some(v=>v.id===flow.source_id)||!allVMs.some(v=>v.id===flow.target_id))continue
    const key=flow.source_id+'|'+flow.target_id
    flowGroups.set(key,[...(flowGroups.get(key)||[]),flow])
  }
- const relatedIds=new Set(inspectedId?[inspectedId,...[...flows,...pendingFlows].filter(f=>f.source_id===inspectedId||f.target_id===inspectedId).flatMap(f=>[f.source_id,f.target_id])]:[])
+ const visibleFlowGroups: Array<{pair:string;list:Flow[];lane:number;siblings:number}>=[]
+ for(const [pair,list] of flowGroups.entries()){
+   if(expandedPair===pair&&list.length>1){
+     list.forEach((flow,lane)=>visibleFlowGroups.push({pair,list:[flow],lane,siblings:list.length}))
+   }else visibleFlowGroups.push({pair,list,lane:0,siblings:list.length})
+ }
+ const relatedIds=new Set(inspectedId?[inspectedId,...effectiveFlows.filter(f=>f.source_id===inspectedId||f.target_id===inspectedId).flatMap(f=>[f.source_id,f.target_id])]:[])
  const displayedNodes=graphNodes.map(n=>({...n,style:{...n.style,
     border:((tool==='flow'&&(n.id===from||n.id===to))||(tool==='move'&&n.id===inspectedId))?'2px solid #2563eb':n.style?.border,
     background:((tool==='flow'&&(n.id===from||n.id===to))||(tool==='move'&&n.id===inspectedId))?'#eff6ff':n.style?.background,
@@ -174,21 +192,30 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
  const inspectedVM=allVMs.find(v=>v.id===inspectedId)
  const openPassport=(id:string)=>{const vm=allVMs.find(v=>v.id===id);if(!vm)return;setInspectedId(id);setEditingPassport(false);setPassportDraft({name:vm.name,description:vm.description||'',purpose:String(vm.details?.purpose||''),environment:String(vm.details?.environment||'')})}
  const stagePassport=()=>{if(!inspectedVM||!passportDraft.name.trim())return;const details_patch:Record<string,string>={purpose:passportDraft.purpose,environment:passportDraft.environment};const previous_details:Record<string,unknown>={purpose:inspectedVM.details?.purpose??null,environment:inspectedVM.details?.environment??null};addChange({action:'update_vm',id:inspectedVM.id,system_id:systemId,name:passportDraft.name.trim(),description:passportDraft.description,previous_name:inspectedVM.name,previous_description:inspectedVM.description||'',details_patch,previous_details});setEditingPassport(false);setInspectedId(null);setFocusDependencies(false);setReviewOpen(true)}
-
- const inspectedFlows=[...flows,...pendingFlows].filter(f=>f.source_id===inspectedId||f.target_id===inspectedId)
- const edges=Array.from(flowGroups.entries()).map(([pair,list])=>{
+ const inspectedFlows=effectiveFlows.filter(f=>f.source_id===inspectedId||f.target_id===inspectedId)
+ const edges=visibleFlowGroups.map(({pair,list,lane,siblings})=>{
    const first=list[0]
    const protocolLabel=[first.protocol,first.port].filter(Boolean).join(':')
    const reciprocal=flowGroups.has(first.target_id+'|'+first.source_id)
    const sourceNode=nodes.find(node=>node.id===first.source_id)
    const targetNode=nodes.find(node=>node.id===first.target_id)
-   const ports=sourceNode&&targetNode?pairPorts(sourceNode,targetNode,reciprocal):{}
-   return {id:'flow-pair:'+pair,source:first.source_id,target:first.target_id,...ports,type:reciprocal?'reciprocal':'obstacle-aware',animated:false,
-     style:{stroke:list.some(f=>pendingFlows.some(c=>c.id===f.id))?'#176bc1':'#369279',strokeWidth:inspectedId&&(first.source_id===inspectedId||first.target_id===inspectedId)?3:1.8,opacity:focusDependencies&&inspectedId&&first.source_id!==inspectedId&&first.target_id!==inspectedId?0.16:1},
+   const auto=sourceNode&&targetNode?pairPorts(sourceNode,targetNode,reciprocal):{}
+   const ports=list.length===1&&flowHandles[first.id]?
+     {sourceHandle:flowHandles[first.id].source_handle,targetHandle:flowHandles[first.id].target_handle}:auto
+   const caption=list.length>1?flowCountLabel(list.length):protocolLabel||'Поток'
+   return {
+     id:'flow-pair:'+pair+(siblings>1&&list.length===1?'|'+first.id:''),
+     source:first.source_id,target:first.target_id,...ports,
+     type:reciprocal||siblings>1&&list.length===1?'reciprocal':'obstacle-aware',
+     reconnectable:list.length===1,
+     animated:false,
+     style:{stroke:list.some(f=>pendingFlows.some(c=>c.id===f.id))?'#176bc1':'#369279',
+       strokeWidth:edgePopup?.flowIds.includes(first.id)?3.1:inspectedId&&(first.source_id===inspectedId||first.target_id===inspectedId)?3:1.8,
+       opacity:focusDependencies&&inspectedId&&first.source_id!==inspectedId&&first.target_id!==inspectedId?0.16:1},
      markerEnd:{type:MarkerType.ArrowClosed,width:13,height:13},
-     label:reciprocal?'':list.length>1?flowCountLabel(list.length):protocolLabel||'Поток',
+     label:reciprocal?'':caption,
      labelStyle:{fontSize:11,fontWeight:600},labelBgStyle:{fill:'#ffffff',fillOpacity:0.95},labelBgPadding:[7,4] as [number,number],
-     data:{reciprocal,flowIds:list.map(f=>f.id),caption:list.length>1?flowCountLabel(list.length):protocolLabel||'Поток'}
+     data:{reciprocal,flowIds:list.map(f=>f.id),caption, laneOffset:siblings>1&&list.length===1?18+lane*17:undefined}
    }
  })
  const addChange=(c:Change)=>{setChanges(previous=>[...previous,c]);setPreview(null);setError('')}

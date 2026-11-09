@@ -676,6 +676,24 @@ def save_cmdb_class(class_id: str, payload: CmdbClassInput, request: Request,
         raise HTTPException(409, "Class definition changed, refresh before saving")
     # New policy can refine a built-in type or define a new infrastructure kind.
     previous = current or {}
+    # Never silently orphan values already stored in managed CI passports.
+    removed_keys = {field["key"] for field in previous.get("fields", [])} - {
+        field["key"] for field in fields}
+    if removed_keys:
+        if class_id == "application":
+            eligible = {"system:" + str(ci_id) for ci_id in db.scalars(
+                select(ArchitectureObject.id)).all()}
+        elif class_id == "business_process":
+            eligible = {"process:" + str(ci_id) for ci_id in db.scalars(
+                select(BusinessProcess.id)).all()}
+        else:
+            eligible = {"component:" + str(ci_id) for ci_id in db.scalars(
+                select(InfrastructureItem.id).where(InfrastructureItem.kind == class_id)).all()}
+        in_use = any(row.ci_id in eligible and any(key in (row.custom_values or {})
+                     for key in removed_keys)
+                     for row in db.scalars(select(CmdbRecord)).all())
+        if in_use:
+            raise HTTPException(422, "Cannot remove a field that is used by existing CIs; migrate their values first")
     now = datetime.now(timezone.utc)
     values = {
         "label": payload.label.strip(), "layer": payload.layer,

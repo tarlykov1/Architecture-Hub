@@ -20,10 +20,16 @@ def upgrade():
         op.add_column("board_layouts", sa.Column(
             "network_rectangles", sa.JSON(), nullable=False,
             server_default=sa.text("'{}'")))
+    if "flow_handles" not in columns:
+        op.add_column("board_layouts", sa.Column(
+            "flow_handles", sa.JSON(), nullable=False,
+            server_default=sa.text("'{}'")))
 
 
 def downgrade():
     bind = op.get_bind()
     columns = {col["name"] for col in inspect(bind).get_columns("board_layouts")}
+    if "flow_handles" in columns:
+        op.drop_column("board_layouts", "flow_handles")
     if "network_rectangles" in columns:
         op.drop_column("board_layouts", "network_rectangles")

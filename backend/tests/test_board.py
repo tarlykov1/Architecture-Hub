@@ -188,3 +188,29 @@ def test_board_layout_can_store_connected_external_components():
                               json={"positions": locations})
         assert response.status_code == 200, response.text
         assert response.json()["positions"] == locations
+
+
+def test_board_layout_roundtrip_includes_network_rectangles_and_rejects_unknown_networks():
+    with TestClient(app) as client:
+        system_id, vm_id = create_system_and_vm(client)
+        network = client.post("/api/networks", headers=ADMIN, json={
+            "name": "Saved diagram zone " + str(uuid4()), "kind": "zone"})
+        assert network.status_code == 201, network.text
+        net_id = network.json()["id"]
+        data = {"positions": {vm_id: {"x": 240, "y": 130}},
+                "network_rectangles": {net_id: {
+                    "x": 50, "y": 80, "width": 480, "height": 300}}}
+        result = client.put("/api/board/layout/" + system_id, headers=ADMIN, json=data)
+        assert result.status_code == 200, result.text
+        read = client.get("/api/board/layout/" + system_id, headers=ADMIN)
+        assert read.status_code == 200
+        assert read.json()["network_rectangles"] == data["network_rectangles"]
+        assert read.json()["positions"] == data["positions"]
+        unknown = client.put("/api/board/layout/" + system_id, headers=ADMIN, json={
+            "positions": {}, "network_rectangles": {
+                str(uuid4()): {"x": 0, "y": 0, "width": 400, "height": 320}}})
+        assert unknown.status_code == 422
+        assert client.get("/api/board/layout/" + system_id,
+                          headers=ADMIN).json()["network_rectangles"] == data["network_rectangles"]
+        assert client.put("/api/board/layout/" + system_id,
+                          headers=VIEWER, json=data).status_code == 403

@@ -240,7 +240,12 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
    const start=networkStart.current
    networkStart.current=null;networkStartPixel.current=null
    setNetworkPreview(null);setDrawing(null)
-   if(!start)return
+   if(!start){
+     // Pointer-up finishes the browser's focus handling after pointer-down.
+     // Restore focus to the required input after the failed draw gesture.
+     if(!name.trim())requestAnimationFrame(()=>networkNameInput.current?.focus())
+     return
+   }
    const end=screenToFlowPosition({x:event.clientX,y:event.clientY})
    // Click adds a default rectangle; dragging uses the user-defined size.
    if(Math.hypot(end.x-start.x,end.y-start.y)<10){

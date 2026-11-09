@@ -58,6 +58,7 @@ class BoardLayout(Base):
     __tablename__ = "board_layouts"
     system_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("objects.id", ondelete="CASCADE"), primary_key=True)
     positions: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    network_rectangles: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
 
@@ -1612,8 +1613,14 @@ class BoardPoint(BaseModel):
     y: float = Field(ge=-100000, le=100000, allow_inf_nan=False)
 
 
+class BoardRectangle(BoardPoint):
+    width: float = Field(ge=100, le=100000, allow_inf_nan=False)
+    height: float = Field(ge=80, le=100000, allow_inf_nan=False)
+
+
 class BoardLayoutInput(BaseModel):
     positions: dict[UUID, BoardPoint] = Field(default_factory=dict, max_length=1000)
+    network_rectangles: dict[UUID, BoardRectangle] = Field(default_factory=dict, max_length=1000)
 
 
 @app.get("/api/board/layout/{system_id}")
@@ -1621,7 +1628,8 @@ def read_board_layout(system_id: UUID, db: Session = Depends(db_session)):
     if db.get(ArchitectureObject, system_id) is None:
         raise HTTPException(404, "System not found")
     stored = db.get(BoardLayout, system_id)
-    return {"system_id": str(system_id), "positions": stored.positions if stored else {}}
+    return {"system_id": str(system_id), "positions": stored.positions if stored else {},
+            "network_rectangles": stored.network_rectangles if stored else {}}
 
 
 @app.put("/api/board/layout/{system_id}")
@@ -1634,16 +1642,23 @@ def save_board_layout(system_id: UUID, payload: BoardLayoutInput, db: Session = 
         known = set(db.scalars(select(InfrastructureItem.id).where(InfrastructureItem.id.in_(ids))).all())
         if len(known) != len(ids):
             raise HTTPException(422, "Unknown component in layout")
+    rect_ids = list(payload.network_rectangles)
+    if rect_ids:
+        segment_ids = set(db.scalars(select(NetworkSegment.id).where(NetworkSegment.id.in_(rect_ids))).all())
+        if len(segment_ids) != len(rect_ids):
+            raise HTTPException(422, "Unknown network in diagram layout")
     positions = {str(key): point.model_dump() for key, point in payload.positions.items()}
+    rectangles = {str(key): rect.model_dump() for key, rect in payload.network_rectangles.items()}
     stored = db.get(BoardLayout, system_id)
     if stored is None:
-        stored = BoardLayout(system_id=system_id, positions=positions)
+        stored = BoardLayout(system_id=system_id, positions=positions, network_rectangles=rectangles)
         db.add(stored)
     else:
         stored.positions = positions
+        stored.network_rectangles = rectangles
         stored.updated_at = datetime.now(timezone.utc)
     db.commit()
-    return {"system_id": str(system_id), "positions": positions}
+    return {"system_id": str(system_id), "positions": positions, "network_rectangles": rectangles}
 
 
 class BoardBatch(BaseModel):

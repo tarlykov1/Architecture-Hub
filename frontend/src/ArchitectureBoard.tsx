@@ -377,9 +377,16 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
    setBusy(true);setError('')
    try{
      await request('/api/board/commit',{method:'POST',body:JSON.stringify({changes,reason})})
+     const layoutSaved=await saveLayout(true)
      await onCommitted()
      if(showHistory)void openHistory()
-     setChanges([]);setPreview(null);setReason('');setDrawing(null);setReviewOpen(false);setError('Изменения сохранены. Запись добавлена в журнал действий.')
+     setChanges([]);setPreview(null);setReason('');setDrawing(null);setReviewOpen(false)
+     if(layoutSaved){
+       setError('')
+       setLayoutMessage('Изменения и расположение схемы сохранены.')
+       if(exitAfterSave)onExit?.()
+     }
+     setExitAfterSave(false)
    }catch(e){setPreview(null);setError('Сохранение отклонено: '+String(e)+'. Обновите предварительный просмотр.')}
    finally{setBusy(false)}
  }
@@ -413,7 +420,12 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
         </button>)}
      <span className="boardToolsSeparator" aria-hidden="true"/>
      <button type="button" title="Вписать всю схему в экран" aria-label="Показать всё" disabled={!nodes.length} onClick={()=>void fitView({padding:0.25,duration:250,maxZoom:0.9})}><Maximize2 size={19} aria-hidden="true"/><span className="boardToolCaption" aria-hidden="true">Вписать</span></button>
-     <button type="button" title={layoutDirty?'Сохранить расположение блоков в хабе':'Расположение сохранено'} aria-label="Сохранить расположение" disabled={!layoutDirty||layoutBusy} onClick={()=>void saveLayout()}><Save size={19} aria-hidden="true"/><span className="boardToolCaption" aria-hidden="true">Сохранить</span>{layoutDirty&&<span className="boardUnsavedDot" aria-hidden="true"/>}</button>
+     <button type="button" title={changes.length?'Проверить и сохранить '+changes.length+' технических изменений':'Сохранить расположение'} aria-label={changes.length?'Сохранить изменения':'Сохранить расположение'} disabled={(!changes.length&&!layoutDirty)||layoutBusy||busy}
+       onClick={()=>{if(changes.length){setReviewOpen(true);setTool('move');setInspectedId(null)}else void saveLayout()}}>
+       <Save size={19} aria-hidden="true"/>
+       <span className="boardToolCaption" aria-hidden="true">{changes.length?'Сохранить ('+changes.length+')':'Сохранить'}</span>
+       {(layoutDirty||changes.length>0)&&<span className="boardUnsavedDot" aria-hidden="true"/>}
+     </button>
      <button type="button" title="История изменений" aria-label="История изменений" onClick={()=>void openHistory()}><History size={19} aria-hidden="true"/><span className="boardToolCaption" aria-hidden="true">История</span></button>
      <button type="button" className="boardChangeCount" title="Проверить и сохранить изменения в реестре" aria-label={'Черновик: '+changes.length+' изменений'} disabled={!changes.length} onClick={()=>{setReviewOpen(true);setTool('move');setInspectedId(null)}}>
        <ClipboardCheck size={18} aria-hidden="true"/><span className="boardToolCaption" aria-hidden="true">Черновик ({changes.length})</span><span className="boardCountLabel"> изменений</span>
@@ -454,6 +466,17 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
      </aside>}
      {(Boolean(error)||Boolean(layoutMessage))&&<div className="boardCanvasToast" role="status">{error||layoutMessage}<button type="button" aria-label="Закрыть сообщение" onClick={()=>{setError('');setLayoutMessage('')}}>✕</button></div>}
    </div>
+   {exitPrompt&&<div className="boardConfirm" role="dialog" aria-modal="true" aria-label="Несохранённые изменения схемы">
+     <div className="boardConfirmInner">
+       <h3>Есть несохранённые изменения</h3>
+       <p>Черновик: {changes.length} операций. {layoutDirty?'Расположение объектов также изменено.':''} При выходе без сохранения изменения будут потеряны.</p>
+       <div>
+         <button type="button" onClick={()=>setExitPrompt(false)}>Продолжить редактирование</button>
+         <button type="button" onClick={()=>{setExitPrompt(false);discardDraft();onExit?.()}}>Выйти без сохранения</button>
+         <button type="button" className="primary" disabled={busy||layoutBusy} onClick={()=>void saveBeforeExit()}>Сохранить и выйти</button>
+       </div>
+     </div>
+   </div>}
    {showHistory&&<div className="boardConfirm" role="dialog" aria-modal="true" aria-label="Журнал изменений архитектуры"><div className="boardConfirmInner"><h3>Журнал изменений схемы</h3><p>Последние подтверждённые пакеты операций.</p><ol>{history.map(entry=><li key={entry.id}><strong>{entry.timestamp}</strong> – {entry.reason} · {entry.changes.length} операций<details><summary>Посмотреть состав</summary><pre>{JSON.stringify(entry.changes,null,2)}</pre></details></li>)}</ol>{!history.length&&<p>Записей пока нет.</p>}<button type="button" onClick={()=>setShowHistory(false)}>Закрыть</button></div></div>}
    {preview&&<div className="boardConfirm" role="dialog" aria-modal="true" aria-label="Подтверждение изменений архитектуры"><div className="boardConfirmInner"><h3>Подтверждение изменений</h3><p>Причина: {reason}. Будет сохранено {preview.count} операций. Для существующих интерфейсов сверяется прежняя сеть.</p><ol>{preview.changes.map((c,i)=><li key={i}><strong>{c.action}</strong> · {c.id}<pre>{JSON.stringify({before:c.before,after:c.after},null,2)}</pre></li>)}</ol><div><button disabled={busy} onClick={()=>setPreview(null)}>Вернуться к схеме</button><button disabled={busy} className="primary" onClick={commit}>Подтвердить и записать в журнал</button></div></div></div>}
  </section>

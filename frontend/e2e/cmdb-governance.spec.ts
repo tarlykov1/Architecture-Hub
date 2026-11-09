@@ -40,8 +40,7 @@ test('CMDB governance updates a component, verifies its provenance and keeps the
   await governance.getByRole('textbox',{name:'Причина изменения'}).fill('Validated CI from owner and infrastructure inventory')
   await governance.getByRole('button',{name:'Сохранить паспорт КЕ'}).click()
   await expect(governance).toContainText('версия 1')
-  await expect(governance).toContainText('Требуется повторная проверка')
-    .catch(async()=>{await expect(governance).toContainText('повторная проверка')})
+  await expect(governance).toContainText('повторная проверка')
   await expect(governance).toContainText('Infrastructure team')
 
   await governance.getByRole('textbox',{name:'Основание проверки'}).fill('Compared with platform documentation')

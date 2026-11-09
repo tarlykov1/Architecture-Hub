@@ -192,24 +192,15 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
    const id=makeId()
    const rect:Rect={id,name:name.trim(),kind,x,y,width,height}
    setRectangles(prev=>[...prev,rect])
-   const networkField=fieldForKind(kind)
-   const enclosed=nodes.filter(node=>rectContains(rect,{x:node.position.x+97,y:node.position.y+30}))
-   const assignments:Change[]=[]
-   let ambiguous=0
-   for(const node of enclosed){
-     const attached=interfaces.filter(n=>n.item_id===node.id)
-     if(attached.length>1){ambiguous++;continue}
-     if(attached.length===1){
-       const nic=attached[0]
-       if(nic[networkField]!==id)assignments.push({action:'move_interface',interface_id:nic.id,previous_network_id:nic[networkField],network_id:id,network_field:networkField})
-     }else{
-       assignments.push({action:'create_interface',id:makeId(),item_id:node.id,interface_name:'eth0',network_id:id,network_field:networkField})
-     }
-   }
-   setChanges(previous=>[...previous,{action:'create_network',id,name:name.trim(),kind},...assignments])
+   // A visual rectangle is not evidence of an L2/L3 attachment. In particular,
+   // drawing a VLAN inside a VRF (or over a not-yet-persisted VM) must not
+   // automatically create duplicate eth0 NICs or silently change routing.
+   // Membership is a separate reviewed operation when the user explicitly
+   // moves a concrete VM/interface into a network or edits the NIC.
+   setChanges(previous=>[...previous,{action:'create_network',id,name:name.trim(),kind}])
    setLayoutDirty(true);setLayoutMessage('')
    setPreview(null)
-   setError(ambiguous?('Сеть нарисована. У '+ambiguous+' ВМ несколько интерфейсов – выберите интерфейс и переместите ВМ в зону вручную.'):'Новая сеть и '+assignments.length+' сетевых привязок подготовлены для подтверждения.')
+   setError('Контейнер добавлен в черновик. Размещение ВМ или VLAN внутри него не меняет автоматически сетевые интерфейсы. Подтвердите сохранение сети.')
    setDrawing(null);setName('');setTool('move');setReviewOpen(true)
  }
  const handlePaneClick=(event:React.MouseEvent)=>{

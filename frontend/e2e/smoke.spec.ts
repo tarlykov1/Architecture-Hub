@@ -1188,3 +1188,42 @@ test('frontend exposes its visible build revision and public build metadata',asy
  expect(metadata.builtAt).toMatch(/^[0-9]{4}-/)
  expect(await badge.getAttribute('title')).toContain(metadata.revision)
 })
+
+
+test('flow tool draws an arrow by dragging card handles without selecting endpoints in form',async({page})=>{
+  const stamp=String(Date.now())
+  const name='Direct flow board '+stamp
+  const create=async(path:string,body:Record<string,unknown>)=>{
+    const response=await page.request.post('http://127.0.0.1:8001'+path,{data:body})
+    expect(response.status(),await response.text()).toBe(201)
+    return (await response.json()).id as string
+  }
+  const system=await create('/api/objects',{name,kind:'system'})
+  const source=await create('/api/infra',{system_id:system,kind:'vm',name:'Direct source '+stamp})
+  const target=await create('/api/infra',{system_id:system,kind:'vm',name:'Direct target '+stamp})
+  await page.goto('/')
+  await openSystemComponents(page,name)
+  await page.getByRole('button',{name:'Редактировать схему'}).click()
+  const board=page.getByRole('region',{name:'Редактор архитектурной схемы'})
+  await board.getByRole('button',{name:'→ Поток'}).click()
+  const sourceHandle=board.locator('.react-flow__node-boardComponent[data-id="'+source+'"] .boardConnectionHandle.source').first()
+  const targetHandle=board.locator('.react-flow__node-boardComponent[data-id="'+target+'"] .boardConnectionHandle.target').first()
+  await expect(sourceHandle).toBeVisible()
+  await expect(targetHandle).toBeVisible()
+  const start=await sourceHandle.boundingBox(),end=await targetHandle.boundingBox()
+  expect(start).not.toBeNull();expect(end).not.toBeNull()
+  await page.mouse.move(start!.x+start!.width/2,start!.y+start!.height/2)
+  await page.mouse.down()
+  await page.mouse.move(end!.x+end!.width/2,end!.y+end!.height/2,{steps:18})
+  await page.mouse.up()
+  await expect(board.locator('.react-flow__edge')).toHaveCount(1)
+  await expect(board.getByText('Нарисованный поток · черновик')).toBeVisible()
+  await expect.poll(async()=> (await (await page.request.get('http://127.0.0.1:8001/api/flows')).json() as Array<{source_id:string;target_id:string}>).some(f=>f.source_id===source&&f.target_id===target)).toBe(false)
+  await board.getByRole('button',{name:'Сохранить изменения схемы'}).click()
+  await board.getByPlaceholder('Например: актуализация схемы ИС после изменения сети').fill('Review drag-created directed flow')
+  await board.getByRole('button',{name:/Проверить изменения/}).click()
+  await page.getByRole('dialog',{name:'Подтверждение изменений'}).getByRole('button',{name:'Подтвердить и записать в журнал'}).click()
+  await expect.poll(async()=> (await (await page.request.get('http://127.0.0.1:8001/api/flows')).json() as Array<{source_id:string;target_id:string}>).some(f=>f.source_id===source&&f.target_id===target)).toBe(true)
+  await page.getByRole('button',{name:'Завершить редактирование'}).click()
+  await expect(page.locator('.miniArchitecture .react-flow__edge')).toHaveCount(1)
+})

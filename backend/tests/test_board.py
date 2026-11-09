@@ -250,3 +250,49 @@ def test_board_rejects_invalid_network_geometry_without_overwriting_layout():
             response = client.put(url, headers=ADMIN, json={"positions": broken})
             assert response.status_code == 422, response.text
             assert client.get(url, headers=ADMIN).json()["positions"] == baseline
+
+
+def test_empty_vrf_vlan_and_vm_survive_reviewed_commit():
+    """Visual nesting must not require a NIC; new CI and empty networks persist independently."""
+    with TestClient(app) as client:
+        system_id, _ = create_system_and_vm(client)
+        vm_id, vlan_id, vrf_id = str(uuid4()), str(uuid4()), str(uuid4())
+        batch = {
+            "reason": "Add unconnected VM and independent VRF/VLAN",
+            "changes": [
+                {"action": "create_vm", "id": vm_id, "system_id": system_id,
+                 "name": "Standalone VM " + vm_id[:8], "kind": "vm"},
+                {"action": "create_network", "id": vlan_id,
+                 "name": "Standalone VLAN " + vlan_id[:8], "kind": "vlan"},
+                {"action": "create_network", "id": vrf_id,
+                 "name": "Standalone VRF " + vrf_id[:8], "kind": "vrf"},
+            ]
+        }
+
+        preview = client.post("/api/board/preview", headers=ADMIN, json=batch)
+        assert preview.status_code == 200, preview.text
+        assert preview.json()["count"] == 3
+        assert vm_id not in {r["id"] for r in client.get("/api/infra", headers=ADMIN).json()}
+        assert vrf_id not in {r["id"] for r in client.get("/api/networks", headers=ADMIN).json()}
+
+        committed = client.post("/api/board/commit", headers=ADMIN, json=batch)
+        assert committed.status_code == 200, committed.text
+        assert committed.json()["count"] == 3
+        infra = {r["id"]: r for r in client.get("/api/infra", headers=ADMIN).json()}
+        networks = {r["id"]: r for r in client.get("/api/networks", headers=ADMIN).json()}
+        assert infra[vm_id]["system_id"] == system_id
+        assert networks[vlan_id]["kind"] == "vlan"
+        assert networks[vrf_id]["kind"] == "vrf"
+        assert not any(n["item_id"] == vm_id for n in client.get("/api/network-interfaces", headers=ADMIN).json())
+
+        positions = {
+            vm_id: {"x": 330, "y": 170},
+            "network:" + vrf_id: {"x": 60, "y": 50, "width": 1000, "height": 600},
+            "network:" + vlan_id: {"x": 130, "y": 110, "width": 550, "height": 350},
+        }
+        stored = client.put("/api/board/layout/" + system_id, headers=ADMIN,
+                            json={"positions": positions})
+        assert stored.status_code == 200, stored.text
+        assert client.get("/api/board/layout/" + system_id, headers=ADMIN).json()["positions"] == positions
+        audits = client.get("/api/board/audit", headers=ADMIN).json()
+        assert any(row["id"] == committed.json()["audit_id"] and len(row["changes"]) == 3 for row in audits)

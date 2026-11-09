@@ -345,6 +345,13 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
    setNodes(previous=>[...previous,node])
    onPositionChange?.(node)
    setLayoutDirty(true);setLayoutMessage('')
+   // New VM placed in an existing zone must be explicitly confirmed as a child.
+   const center={x:node.position.x+100,y:node.position.y+45}
+   const candidates=visibleRects.filter(r=>rectContains(r,center)).sort((a,b)=>a.width*a.height-b.width*b.height)
+   if(candidates.length){
+     setPendingGrouping({id,name:name.trim(),from:null,to:'network:'+candidates[0].id,newlyCreated:true})
+     setNicForGrouping('');setNewNicName('eth0')
+   }
    setName('');setTool('move');setReviewOpen(true)
  }
  const stageDirectedFlow=(source:string,target:string)=>{
@@ -387,6 +394,11 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
    // Membership is a separate reviewed operation when the user explicitly
    // moves a concrete VM/interface into a network or edits the NIC.
    setChanges(previous=>[...previous,{action:'create_network',id,name:name.trim(),kind}])
+   const candidates=visibleRects.filter(r=>permittedParent(kind,r.kind)&&rectFullyInside(r,rect)).sort((a,b)=>a.width*a.height-b.width*b.height)
+   if(candidates.length){
+     setPendingGrouping({id:'network:'+id,name:name.trim(),from:null,to:'network:'+candidates[0].id,newlyCreated:true})
+     setNicForGrouping('')
+   }
    setLayoutDirty(true);setLayoutMessage('')
    setPreview(null)
    setError('Контейнер добавлен в черновик. Размещение ВМ или VLAN внутри него не меняет автоматически сетевые интерфейсы. Подтвердите сохранение сети.')
@@ -498,6 +510,8 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
    setNodes(previous=>previous.filter(node=>!stagedVMs.has(node.id)))
    setRectangles(previous=>previous.filter(rect=>!stagedNetworks.has(rect.id)))
    setChanges([]);setSelectedDraftFlowId('');setPreview(null);setError('');setReviewOpen(false)
+   setParents(persistedParents.current)
+   setPendingGrouping(null)
    setLayoutDirty(false)
    setLayoutMessage('Черновик изменений отменён. Несохранённые ВМ и сети удалены со схемы.')
  }

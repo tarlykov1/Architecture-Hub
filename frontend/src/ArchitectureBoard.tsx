@@ -1,6 +1,7 @@
 import React, {useEffect, useMemo, useRef, useState} from 'react'
 import './board.css'
 import {DiagramNodeLabel,diagramCardStyle} from './DiagramVisual'
+import MonitoringPanel from './MonitoringPanel'
 import {AutoFit} from './WorkspaceUI'
 import {MousePointer2, Monitor, GitBranch, SquareDashed, Maximize2, Save, History, ClipboardCheck} from 'lucide-react'
 import {ReactFlow, ReactFlowProvider, Background, Controls, Handle, useNodesState, useReactFlow, MarkerType, Position, type Node, type NodeChange, type NodeProps} from '@xyflow/react'
@@ -480,6 +481,7 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
        <h4>Связанные потоки ({inspectedFlows.length})</h4>
        {inspectedFlows.map(f=><div className="boardInspectorItem" key={f.id}><strong>{f.name||'Поток'}</strong><span>{allVMs.find(v=>v.id===f.source_id)?.name||f.source_id} → {allVMs.find(v=>v.id===f.target_id)?.name||f.target_id}</span><small>{f.protocol||'Протокол не указан'}{f.port?':'+f.port:''}</small></div>)}
        {!inspectedFlows.length&&<p>Связанных потоков нет.</p>}
+       {items.some(item=>item.id===inspectedVM.id)?<MonitoringPanel targetType="component" targetId={inspectedVM.id} request={request} systems={Object.entries(ownerBySystemId).map(([id,name])=>({id,name}))}/>:<p className="monitoringHint">Для настройки мониторинга сначала сохраните новую ВМ в реестр.</p>}
      </div>
      <div className="boardInspectorActions"><button type="button" onClick={()=>setEditingPassport(v=>!v)}>{editingPassport?"Скрыть редактирование":"Редактировать паспорт"}</button><label><input type="checkbox" checked={focusDependencies} onChange={e=>setFocusDependencies(e.target.checked)}/> Выделить зависимости</label><button type="button" onClick={()=>{setFrom(inspectedVM.id);setTo('');setTool('flow');setInspectedId(null);setFocusDependencies(false)}}>Добавить поток</button><button type="button" onClick={()=>{setInspectedId(null);setFocusDependencies(false)}}>Закрыть</button></div>
    </aside>}

@@ -170,12 +170,13 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
  const edges=Array.from(flowGroups.entries()).map(([pair,list])=>{
    const first=list[0]
    const protocolLabel=[first.protocol,first.port].filter(Boolean).join(':')
-   return {id:'flow-pair:'+pair,source:first.source_id,target:first.target_id,type:'obstacle-aware',animated:false,
+   const reciprocal=flowGroups.has(first.target_id+'|'+first.source_id)
+   return {id:'flow-pair:'+pair,source:first.source_id,target:first.target_id,type:reciprocal?'reciprocal':'obstacle-aware',animated:false,
      style:{stroke:list.some(f=>pendingFlows.some(c=>c.id===f.id))?'#176bc1':'#369279',strokeWidth:inspectedId&&(first.source_id===inspectedId||first.target_id===inspectedId)?3:1.8,opacity:focusDependencies&&inspectedId&&first.source_id!==inspectedId&&first.target_id!==inspectedId?0.16:1},
      markerEnd:{type:MarkerType.ArrowClosed,width:13,height:13},
-     label:list.length>1?flowCountLabel(list.length):protocolLabel||'Поток',
+     label:reciprocal?'':list.length>1?flowCountLabel(list.length):protocolLabel||'Поток',
      labelStyle:{fontSize:11,fontWeight:600},labelBgStyle:{fill:'#ffffff',fillOpacity:0.95},labelBgPadding:[7,4] as [number,number],
-     data:{reciprocal:flowGroups.has(first.target_id+'|'+first.source_id),flowIds:list.map(f=>f.id),caption:list.length>1?flowCountLabel(list.length):protocolLabel||'Поток'}
+     data:{reciprocal,flowIds:list.map(f=>f.id),caption:list.length>1?flowCountLabel(list.length):protocolLabel||'Поток'}
    }
  })
  const addChange=(c:Change)=>{setChanges(previous=>[...previous,c]);setPreview(null);setError('')}

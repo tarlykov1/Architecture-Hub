@@ -14,26 +14,40 @@ type NIC = {id:string;item_id:string;name:string;zone_id:string|null;vlan_id:str
 type Flow = {id:string;source_id:string;target_id:string;name:string;protocol:string;port:string}
 type Change = {action:'create_vm'|'create_network'|'create_flow'|'create_interface'|'move_interface'|'update_vm';id?:string;system_id?:string;name?:string;kind?:string;description?:string;source_id?:string;target_id?:string;protocol?:string;port?:string;security?:string;data_description?:string;interface_id?:string;item_id?:string;interface_name?:string;network_id?:string|null;previous_network_id?:string|null;previous_name?:string;previous_description?:string;details_patch?:Record<string,string>;previous_details?:Record<string,unknown>;network_field?:'zone_id'|'vlan_id'|'vrf_id'}
 type Preview = {changes:Array<{action:string;id:string;before:unknown;after:unknown;field?:string}>;count:number}
-type Props = {systemId:string;ownerName?:string;ownerBySystemId?:Record<string,string>;items:VM[];networks:Network[];interfaces:NIC[];flows:Flow[];savedPositions?:Record<string,{x:number;y:number}>;onPositionChange?:(node:Node)=>void;request:<T>(url:string,init?:RequestInit)=>Promise<T>;onCommitted:()=>Promise<void>;onEditNetwork?:(id:string)=>void}
+type Props = {systemId:string;ownerName?:string;ownerBySystemId?:Record<string,string>;items:VM[];networks:Network[];interfaces:NIC[];flows:Flow[];savedPositions?:Record<string,{x:number;y:number}>;onPositionChange?:(node:Node)=>void;request:<T>(url:string,init?:RequestInit)=>Promise<T>;onCommitted:()=>Promise<void>;onEditNetwork?:(id:string)=>void;onDraftStateChange?:(pending:boolean)=>void}
 type Tool = 'move'|'vm'|'flow'|'network'
 type Rect = {id:string;name:string;kind:string;x:number;y:number;width:number;height:number}
 type Geometry = {x:number;y:number;width?:number;height?:number}
 const makeId=()=>crypto.randomUUID()
 const rectContains=(r:Rect,p:{x:number;y:number})=>p.x>=r.x&&p.x<=r.x+r.width&&p.y>=r.y&&p.y<=r.y+r.height
 const fieldForKind=(kind:string):'zone_id'|'vlan_id'|'vrf_id'=>kind==='vlan'?'vlan_id':kind==='vrf'?'vrf_id':'zone_id'
+// Save uncommitted UI work across navigating away from the editor in the same tab.
+// This is a local draft only: the API registry is changed by /api/board/commit.
+type StoredBoardDraft={changes:Change[];rectangles:Rect[];positions:Record<string,{x:number;y:number}>;reason:string}
+const draftKey=(systemId:string)=>'architecture-hub:board-draft:v1:'+systemId
+function readBoardDraft(systemId:string):StoredBoardDraft|null{
+ try{
+  const raw=sessionStorage.getItem(draftKey(systemId))
+  if(!raw)return null
+  const value=JSON.parse(raw) as Partial<StoredBoardDraft>
+  if(!Array.isArray(value.changes)||!Array.isArray(value.rectangles)||!value.changes.length)return null
+  return {changes:value.changes.filter(c=>c&&typeof c.action==='string'),rectangles:value.rectangles.filter(r=>r&&typeof r.id==='string'),positions:value.positions&&typeof value.positions==='object'?value.positions:{},reason:typeof value.reason==='string'?value.reason:''}
+ }catch{return null}
+}
 
-function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfaces,flows,savedPositions={},onPositionChange,request,onCommitted,onEditNetwork}:Props){
+function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfaces,flows,savedPositions={},onPositionChange,request,onCommitted,onEditNetwork,onDraftStateChange}:Props){
+ const [restoredDraft]=useState<StoredBoardDraft|null>(()=>readBoardDraft(systemId))
  const [tool,setTool]=useState<Tool>('move')
  const [inspectedId,setInspectedId]=useState<string|null>(null)
  const [inspectedNetworkId,setInspectedNetworkId]=useState<string|null>(null)
  const [focusDependencies,setFocusDependencies]=useState(false)
  const [editingPassport,setEditingPassport]=useState(false)
  const [passportDraft,setPassportDraft]=useState({name:'',description:'',purpose:'',environment:''})
- const [changes,setChanges]=useState<Change[]>([])
+ const [changes,setChanges]=useState<Change[]>(()=>restoredDraft?.changes||[])
  const [layoutDirty,setLayoutDirty]=useState(false)
  const [layoutBusy,setLayoutBusy]=useState(false)
  const [layoutMessage,setLayoutMessage]=useState('')
- const [reason,setReason]=useState('')
+ const [reason,setReason]=useState(restoredDraft?.reason||'')
  const [preview,setPreview]=useState<Preview|null>(null)
  const [error,setError]=useState('')
  const [busy,setBusy]=useState(false)
@@ -54,19 +68,23 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
  const networkNameInput=useRef<HTMLInputElement>(null)
  const networkStartPixel=useRef<{x:number;y:number}|null>(null)
  const [networkPreview,setNetworkPreview]=useState<{x:number;y:number;width:number;height:number}|null>(null)
- const [reviewOpen,setReviewOpen]=useState(false)
+ const [reviewOpen,setReviewOpen]=useState(Boolean(restoredDraft?.changes.length))
  const [rectangles,setRectangles]=useState<Rect[]>(()=>{
    const relevant = networks.filter(n=>interfaces.some(nic=>nic[fieldForKind(n.kind)]===n.id&&items.some(item=>item.id===nic.item_id)))
    const heights=relevant.map(n=>{
      const members=items.filter(item=>interfaces.some(nic=>nic.item_id===item.id&&nic[fieldForKind(n.kind)]===n.id)).length
      return Math.max(340,90+Math.ceil(members/2)*175)
    })
-   return relevant.map((n,i)=>{
+   const defaults=relevant.map((n,i)=>{
      const row=Math.floor(i/2)
      let y=60
      for(let previous=0;previous<row;previous++)y+=Math.max(heights[previous*2]||0,heights[previous*2+1]||0)+50
      return {id:n.id,name:n.name,kind:n.kind,x:60+(i%2)*600,y,width:540,height:heights[i]}
    })
+   const validIds=new Set([...networks.map(n=>n.id),...(restoredDraft?.changes||[]).filter(c=>c.action==='create_network').map(c=>c.id)])
+   const restored=(restoredDraft?.rectangles||[]).filter(r=>validIds.has(r.id))
+   const restoredIds=new Set(restored.map(r=>r.id))
+   return [...defaults.filter(r=>!restoredIds.has(r.id)),...restored]
  })
  const initialNodes=useMemo<Node[]>(()=>{
    const positions=compactComponentLayout(items.map(i=>i.id),flows.filter(f=>items.some(i=>i.id===f.source_id)&&items.some(i=>i.id===f.target_id)).map(f=>({source:f.source_id,target:f.target_id})),280,175)
@@ -79,7 +97,35 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
      return {id:item.id,position,sourcePosition:Position.Bottom,targetPosition:Position.Top,data:{label:<DiagramNodeLabel name={item.name} kind={item.kind} subtitle={ownerBySystemId[item.system_id]||ownerName} detail={item.kind+' · '+String(item.details.environment||'Среда не задана')}><small className="componentNodePurpose">{item.description?.trim()||String(item.details.purpose||item.details.role||'Назначение не описано')}</small></DiagramNodeLabel>},style:diagramCardStyle({zIndex:2})}
    })
  },[items,flows,interfaces,ownerName,ownerBySystemId]) // Keep dragged coordinates in React Flow during the editing session.
- const [nodes,setNodes,onNodesChange]=useNodesState(initialNodes)
+ const [nodes,setNodes,onNodesChange]=useNodesState<Node[]>(()=>{
+  const pending=(restoredDraft?.changes||[]).filter(c=>c.action==='create_vm'&&c.id&&c.name)
+  const savedIds=new Set(initialNodes.map(n=>n.id))
+  return [...initialNodes,...pending.filter(c=>!savedIds.has(c.id!)).map((c,i)=>({
+   id:c.id!,position:restoredDraft?.positions[c.id!]||{x:90+(i%4)*280,y:100+Math.floor(i/4)*175},
+   sourcePosition:Position.Bottom,targetPosition:Position.Top,
+   data:{label:<DiagramNodeLabel name={c.name} kind="vm" subtitle={ownerName} detail="ВМ · Черновик"/>},
+   style:diagramCardStyle({border:'1px dashed #d97706'})
+  }))]
+ })
+ useEffect(()=>{
+  onDraftStateChange?.(changes.length>0)
+ },[changes.length,onDraftStateChange])
+ useEffect(()=>{
+  try{
+   if(!changes.length){sessionStorage.removeItem(draftKey(systemId));return}
+   sessionStorage.setItem(draftKey(systemId),JSON.stringify({
+    changes,rectangles,reason,
+    positions:Object.fromEntries(nodes.map(n=>[n.id,{x:n.position.x,y:n.position.y}]))
+   } satisfies StoredBoardDraft))
+  }catch{/* Storage might be unavailable: the visible draft remains in memory. */}
+ },[changes,rectangles,reason,nodes,systemId])
+ useEffect(()=>{
+  if(!changes.length)return
+  const preventClose=(event:BeforeUnloadEvent)=>{event.preventDefault();event.returnValue=''}
+  window.addEventListener('beforeunload',preventClose)
+  return ()=>window.removeEventListener('beforeunload',preventClose)
+ },[changes.length])
+
  // Keep the editor in sync when the selected system or inventory changes,
  // without resetting coordinates that the user has already dragged.
  useEffect(()=>{
@@ -142,24 +188,15 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
    onPositionChange?.(node)
    setLayoutDirty(true);setLayoutMessage('')
    const center={x:node.position.x+97,y:node.position.y+30}
-   // A zone move affects exactly one chosen NIC; never replace all NIC memberships.
    const target=visibleRects.slice().reverse().find(r=>rectContains(r,center))
    if(!target)return
-   const field=fieldForKind(target.kind)
-   const attached=interfaces.filter(n=>n.item_id===node.id)
-   const nic=attached.find(n=>n.id===interfaceId)|| (attached.length===1?attached[0]:undefined)
-   if(!nic){
-     if(attached.length>1){setError('У ВМ несколько сетевых интерфейсов. Выберите нужный интерфейс перед переносом.');return}
-     // A new NIC is a reviewed infrastructure change, never a silent mutation.
-     const staged=changes.find(c=>c.action==='create_interface'&&c.item_id===node.id)
-     if(staged){
-       setChanges(previous=>previous.map(c=>c===staged?{...c,network_id:target.id,network_field:field}:c))
-     }else{
-       setChanges(previous=>[...previous,{action:'create_interface',id:makeId(),item_id:node.id,interface_name:'eth0',network_id:target.id,network_field:field}])
-     }
-     setPreview(null);setError('Будет создан интерфейс eth0 без IP-адреса. Проверьте изменение перед сохранением.')
+   if(!interfaceId){
+     setLayoutMessage('Изменено только расположение. Для технической привязки явно выберите интерфейс в правой панели.')
      return
    }
+   const nic=interfaces.find(n=>n.id===interfaceId&&n.item_id===node.id)
+   if(!nic){setError('Выбранный интерфейс не принадлежит перемещаемой ВМ. Выберите интерфейс этой ВМ или оставьте «Только расположение».');return}
+   const field=fieldForKind(target.kind)
    const prior=changes.find(c=>c.action==='move_interface'&&c.interface_id===nic.id&&c.network_field===field)
    if((prior?prior.network_id:nic[field])===target.id)return
    const next:Change={action:'move_interface',interface_id:nic.id,network_id:target.id,previous_network_id:nic[field],network_field:field}
@@ -396,13 +433,13 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
        <ClipboardCheck size={18} aria-hidden="true"/><span className="boardToolCaption" aria-hidden="true">Черновик ({changes.length})</span><span className="boardCountLabel"> изменений</span>
      </button>
    </div>
-     {changes.length>0&&<div className="boardPendingBanner" role="status"><strong>Не сохранено: {changes.filter(c=>c.action==='create_vm').length} ВМ, {changes.filter(c=>c.action==='create_network').length} сетей и {changes.filter(c=>c.action!=='create_vm'&&c.action!=='create_network').length} других изменений.</strong><span>Новые объекты видны на схеме как черновик и исчезнут при уходе без подтверждения.</span><button type="button" onClick={()=>{setTool('move');setReviewOpen(true);setError('')}}>Проверить и сохранить в реестр</button></div>}
+     {changes.length>0&&<div className="boardPendingBanner" role="status"><strong>Не сохранено: {changes.filter(c=>c.action==='create_vm').length} ВМ, {changes.filter(c=>c.action==='create_network').length} сетей и {changes.filter(c=>c.action!=='create_vm'&&c.action!=='create_network').length} других изменений.</strong><span>Новые объекты ещё не в реестре. При выходе из редактора черновик сохранится в этом браузере и восстановится при возвращении.</span><button type="button" onClick={()=>{setTool('move');setReviewOpen(true);setError('')}}>Проверить и сохранить в реестр</button></div>}
      {(tool!=='move'||inspectedVM||inspectedNetwork||reviewOpen)&&<aside className="boardDock" role="complementary" aria-label="Свойства и изменения схемы">
        {tool!=='move'&&<div className="boardPropertiesHeader"><div><small>ИНСТРУМЕНТ</small><h3>{tool==='vm'?'Виртуальная машина':tool==='flow'?'Поток данных':'Сеть / контейнер'}</h3></div><button type="button" aria-label="Закрыть настройки инструмента" onClick={()=>{setTool('move');setDrawing(null);setError('');setLayoutMessage('');setReviewOpen(false);cancelNetworkDrag()}}>✕</button></div>}
           {tool==='vm'&&<div className="boardToolFields"><p>Введите название и нажмите на холст для размещения ВМ.</p><label>Имя ВМ <input value={name} onChange={e=>setName(e.target.value)} placeholder="Новая ВМ"/></label><button onClick={()=>addVM()}>Разместить на схеме</button></div>}
    {tool==='network'&&<div className="boardToolFields"><label>Название сети * <input ref={networkNameInput} required aria-required="true" aria-invalid={!name.trim()} value={name} onChange={e=>{setName(e.target.value);if(e.target.value.trim())setError('')}} placeholder="Название VRF / VLAN / зоны"/></label>{!name.trim()&&<p className="boardRequiredHint" role="alert">Обязательное поле: сначала укажите название, затем нарисуйте контейнер.</p>}<label>Тип <select value={kind} onChange={e=>setKind(e.target.value as typeof kind)}><option value="zone">Зона</option><option value="vlan">VLAN</option><option value="vrf">VRF</option></select></label><p role="status">{drawing?'Продолжайте тянуть – контур контейнера виден на схеме':'Нажмите на холст – появится стандартный контейнер 540 × 340. Или протяните прямоугольник нужного размера. Затем подтвердите изменения в черновике.'}</p></div>}
    {tool==='flow'&&<div className="boardToolFields"><p>Протяните связь между ВМ или выберите по очереди источник и получателя на холсте.</p><label>Откуда <select aria-label="Откуда" value={from} onChange={e=>setFrom(e.target.value)}><option value="">Выберите</option>{allVMs.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}</select></label><label>Куда <select aria-label="Куда" value={to} onChange={e=>setTo(e.target.value)}><option value="">Выберите</option>{allVMs.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}</select></label><label>Направление <select value={direction} onChange={e=>setDirection(e.target.value as typeof direction)}><option value="forward">→</option><option value="reverse">←</option><option value="both">↔ (два потока)</option></select></label><label>Протокол <input value={protocol} onChange={e=>setProtocol(e.target.value)}/></label><label>Порт <input value={port} onChange={e=>setPort(e.target.value)}/></label><label>Защита <input value={security} onChange={e=>setSecurity(e.target.value)}/></label><button onClick={()=>{addFlow();setReviewOpen(true)}}>Добавить поток</button></div>}
-   {(tool==='network'||(tool==='move'&&inspectedVM))&&<div className="boardToolFields"><label>Интерфейс для перемещения в сеть <select value={interfaceId} onChange={e=>setInterfaceId(e.target.value)}><option value="">Автоматически, если один</option>{interfaces.filter(n=>items.some(i=>i.id===n.item_id)).map(n=><option key={n.id} value={n.id}>{items.find(i=>i.id===n.item_id)?.name} · {n.name}</option>)}</select></label><span>Перетащите ВМ в прямоугольник сети – привязка попадёт в черновик. Перемещение на поле сохраняется только как расположение схемы.</span></div>}
+   {(tool==='network'||(tool==='move'&&inspectedVM))&&<div className="boardToolFields"><label>Техническая привязка (необязательно) <select value={interfaceId} onChange={e=>setInterfaceId(e.target.value)}><option value="">Только расположение</option>{interfaces.filter(n=>items.some(i=>i.id===n.item_id)).map(n=><option key={n.id} value={n.id}>{items.find(i=>i.id===n.item_id)?.name} · {n.name}</option>)}</select></label><span>Перемещение ВМ в область VRF/VLAN само по себе не меняет сеть. Если явно выбрать существующий интерфейс этой ВМ, его привязка попадёт в черновик для подтверждения.</span></div>}
 
        {tool==='move'&&inspectedNetwork&&<section className="boardToolFields" aria-label="Свойства контейнера"><h3>{inspectedNetwork.name} · {inspectedNetwork.kind.toUpperCase()}</h3><p>Перетащите контейнер, чтобы изменить расположение на схеме. Сетевая принадлежность ВМ при этом не изменяется.</p>{onEditNetwork&&networks.some(n=>n.id===inspectedNetwork.id)&&<button type="button" onClick={()=>onEditNetwork(inspectedNetwork.id)}>Редактировать параметры сети</button>}<button type="button" onClick={()=>setInspectedNetworkId(null)}>Вернуться к схеме</button></section>}
    {tool==='move'&&inspectedVM&&<aside className="boardInspector" role="dialog" aria-modal="false" aria-label={'Паспорт компонента '+inspectedVM.name}>

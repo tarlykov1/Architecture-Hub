@@ -630,6 +630,32 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
      </aside>}
      {(Boolean(error)||Boolean(layoutMessage))&&<div className="boardCanvasToast" role="status">{error||layoutMessage}<button type="button" aria-label="Закрыть сообщение" onClick={()=>{setError('');setLayoutMessage('')}}>✕</button></div>}
    </div>
+   {pendingGrouping&&<div className="boardConfirm" role="dialog" aria-modal="true" aria-label="Подтверждение вложенности">
+     <div className="boardConfirmInner boardGroupingConfirm">
+       <h3>{pendingGrouping.to?'Добавить объект в группу?':'Вывести объект из группы?'}</h3>
+       <p><strong>{pendingGrouping.name}</strong> {pendingGrouping.to?'→ '+(groupingTarget?.name||'контейнер'):'→ вне сетевых контейнеров'}.</p>
+       <p>Подтверждение создаёт постоянную архитектурную связь «находится внутри». При перемещении VRF или VLAN все связанные вложенные объекты будут двигаться вместе с родителем.</p>
+       {!!groupingTarget&&groupingTarget.kind==='vrf'&&<p className="boardGroupingNote">VLAN внутри VRF – логическая группировка. Маршрутизация VLAN через VRF требует отдельного L3-шлюза / SVI и не создаётся перемещением.</p>}
+       {!!groupingVM&&groupingTarget?.kind==='vlan'&&<div className="boardGroupingNic">
+         <label>Техническая привязка интерфейса к VLAN (необязательно)
+           <select value={nicForGrouping} onChange={e=>setNicForGrouping(e.target.value)}>
+             <option value="">Только архитектурная связь</option>
+             {interfaces.filter(n=>n.item_id===groupingVM.id).map(n=><option key={n.id} value={n.id}>Привязать {n.name} к VLAN</option>)}
+             <option value="new">Создать новый интерфейс</option>
+           </select>
+         </label>
+         {nicForGrouping==='new'&&<label>Имя нового интерфейса
+           <input value={newNicName} onChange={e=>setNewNicName(e.target.value)} placeholder="eth0"/>
+         </label>}
+         <small>Реальная привязка VLAN будет записана в технический реестр только после проверки черновика и подтверждения. IP-адрес не назначается.</small>
+       </div>}
+       <p className="boardGroupingNote">Перемещение на схеме не меняет конфигурацию VMware, коммутаторов или маршрутизаторов.</p>
+       <div className="boardGroupingActions">
+         <button type="button" onClick={cancelGrouping}>{pendingGrouping.newlyCreated?'Оставить без группы':'Отменить перенос'}</button>
+         <button type="button" className="primary" onClick={confirmGrouping}>Подтвердить связь</button>
+       </div>
+     </div>
+   </div>}
    {showHistory&&<div className="boardConfirm" role="dialog" aria-modal="true" aria-label="Журнал изменений архитектуры"><div className="boardConfirmInner"><h3>Журнал изменений схемы</h3><p>Последние подтверждённые пакеты операций.</p><ol>{history.map(entry=><li key={entry.id}><strong>{entry.timestamp}</strong> – {entry.reason} · {entry.changes.length} операций<details><summary>Посмотреть состав</summary><pre>{JSON.stringify(entry.changes,null,2)}</pre></details></li>)}</ol>{!history.length&&<p>Записей пока нет.</p>}<button type="button" onClick={()=>{setShowHistory(false);setTool('move');setReviewOpen(changes.length>0)}}>Вернуться к редактированию</button></div></div>}
    {preview&&<div className="boardConfirm" role="dialog" aria-modal="true" aria-label="Подтверждение изменений архитектуры"><div className="boardConfirmInner"><h3>Подтверждение изменений</h3><p>Причина: {reason}. Будет сохранено {preview.count} операций. Для существующих интерфейсов сверяется прежняя сеть.</p><ol>{preview.changes.map((c,i)=><li key={i}><strong>{c.action}</strong> · {c.id}<pre>{JSON.stringify({before:c.before,after:c.after},null,2)}</pre></li>)}</ol><div><button disabled={busy} onClick={()=>{setPreview(null);setReviewOpen(true);setTool('move')}}>Вернуться к редактированию</button><button disabled={busy} className="primary" onClick={commit}>Подтвердить и записать в журнал</button></div></div></div>}
  </section>

@@ -201,3 +201,36 @@
 .boardCanvas .react-flow__node-architectureComponent .boardComponentPort.right{
   transform:translateY(-50%);
 }
+
+/* Contextual flow actions sit near the selected line, not in an oversized toolbar. */
+.boardFlowQuickMenu{
+  position:absolute;z-index:30;width:min(270px,calc(100% - 24px));
+  box-sizing:border-box;display:grid;gap:9px;padding:12px;
+  border:1px solid #cbd5e1;border-radius:12px;background:#fff;
+  color:#0f172a;box-shadow:0 16px 38px #0f172a38;
+  font-size:12px;line-height:1.45;
+}
+.boardFlowQuickHeader{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.boardFlowQuickHeader strong{font-size:13px}
+.boardFlowQuickHeader button{border:0;background:transparent;color:#64748b;padding:1px 5px}
+.boardFlowQuickMenu p{margin:0;font-size:12px;overflow-wrap:anywhere}
+.boardFlowQuickMenu small{font-size:11px;color:#64748b}
+.boardFlowQuickMenu .boardFlowQuickRoute{font-weight:600;color:#1e3a8a}
+.boardFlowQuickMenu .boardFlowQuickHelp{color:#64748b;font-size:11px}
+.boardFlowQuickMenu>button{width:100%;text-align:left;justify-content:flex-start}
+.boardFlowQuickActions{display:grid;gap:6px}
+.boardFlowQuickActions button{width:100%;text-align:left;min-height:32px}
+.boardFullFlow{min-width:0;display:flex;flex-direction:column;min-height:0;flex:1}
+.boardFullFlowForm{padding:14px 16px;display:grid;align-content:start;gap:12px;overflow:auto;min-height:0}
+.boardFullFlowForm label{min-width:0;display:grid;gap:5px;color:#334155;font-size:12px;font-weight:600}
+.boardFullFlowForm input,.boardFullFlowForm select,.boardFullFlowForm textarea{
+  min-height:35px;width:100%;max-width:none;box-sizing:border-box;
+  padding:7px 9px;border:1px solid #cbd5e1;border-radius:7px;font-size:13px;
+  background:#fff;color:#0f172a
+}
+.boardFullFlowForm textarea{min-height:80px;resize:vertical}
+.boardFullFlowForm p{font-size:11px;line-height:1.55;color:#64748b;margin:0}
+.boardFullFlowActions{display:grid;gap:7px}
+.boardFullFlowActions button{width:100%}
+.boardCanvas .react-flow__edgeupdater{cursor:grab;fill:#2563eb;stroke:#fff;stroke-width:2}
+.boardCanvas .react-flow__edgeupdater:hover{cursor:grabbing;fill:#1d4ed8}

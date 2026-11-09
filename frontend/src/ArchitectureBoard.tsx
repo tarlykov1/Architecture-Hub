@@ -22,12 +22,10 @@ function BoardComponentNode({data}:NodeProps){
  const drawing=Boolean(data.flowMode)
  return <>
   {data.label as React.ReactNode}
-  {drawing&&<>
-   <Handle type="source" id="out-right" position={Position.Right} className="boardConnectionHandle"/>
-   <Handle type="source" id="out-bottom" position={Position.Bottom} className="boardConnectionHandle"/>
-   <Handle type="target" id="in-left" position={Position.Left} className="boardConnectionHandle"/>
-   <Handle type="target" id="in-top" position={Position.Top} className="boardConnectionHandle"/>
-  </>}
+  <Handle type="source" id="out-right" position={Position.Right} isConnectable={drawing} className={'boardConnectionHandle'+(drawing?' boardConnectionHandleActive':'')}/>
+  <Handle type="source" id="out-bottom" position={Position.Bottom} isConnectable={drawing} className={'boardConnectionHandle'+(drawing?' boardConnectionHandleActive':'')}/>
+  <Handle type="target" id="in-left" position={Position.Left} isConnectable={drawing} className={'boardConnectionHandle'+(drawing?' boardConnectionHandleActive':'')}/>
+  <Handle type="target" id="in-top" position={Position.Top} isConnectable={drawing} className={'boardConnectionHandle'+(drawing?' boardConnectionHandleActive':'')}/>
  </>
 }
 const boardNodeTypes={boardComponent:BoardComponentNode}
@@ -236,7 +234,7 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
    const targetName=allVMs.find(vm=>vm.id===target)?.name||'Получатель'
    addChange({action:'create_flow',id,source_id:source,target_id:target,
      name:sourceName+' → '+targetName,protocol:protocol.trim(),port:port.trim(),security})
-   setSelectedDraftFlowId(id);setFrom('');setTo('');setLayoutMessage('Стрелка '+sourceName+' → '+targetName+' добавлена в черновик. При необходимости уточните протокол, порт и защиту справа.')
+   setSelectedDraftFlowId(id);setFrom(source);setTo(target);setReviewOpen(true);setLayoutMessage('Стрелка '+sourceName+' → '+targetName+' добавлена в черновик. При необходимости уточните протокол, порт и защиту справа.')
  }
  const addFlow=()=>{
    if(!from||!to||from===to)return setError('Выберите разные исходный и целевой компоненты.')
@@ -432,7 +430,7 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
  setInspectedNetworkId(null)
  if(tool==='flow'){
    setInspectedId(null);setFocusDependencies(false)
-   if(!from||from===node.id){setFrom(node.id);setTo('');setSelectedDraftFlowId('');setLayoutMessage('Источник выбран. Нажмите на целевой компонент или протяните стрелку от порта.')}
+   if(!from||to||from===node.id){setFrom(node.id);setTo('');setSelectedDraftFlowId('');setLayoutMessage('Источник выбран. Нажмите на целевой компонент или протяните стрелку от порта.')}
    else stageDirectedFlow(from,node.id)
  }else if(tool==='move'){openPassport(node.id);setFocusDependencies(false)}
 }} onNodeDragStop={(_,node)=>moveNode(node)} onPaneClick={handlePaneClick} minZoom={0.08} fitView fitViewOptions={{padding:0.2,maxZoom:0.9}}><AutoFit layoutKey={systemId+':'+items.length+':'+flows.length} maxFitZoom={0.9}/><Background gap={20}/><Controls showInteractive={false}/></ReactFlow>

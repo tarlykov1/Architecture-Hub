@@ -1038,6 +1038,8 @@ def add_relation(payload: RelationCreate, db: Session = Depends(db_session)):
         raise HTTPException(status_code=422, detail="Self-connections are not supported in MVP")
     if not db.get(ArchitectureObject, payload.source_id) or not db.get(ArchitectureObject, payload.target_id):
         raise HTTPException(status_code=422, detail="Both objects must exist")
+    if payload.kind in RELATION_KINDS:
+        _check_relation_allowed(db, payload.kind, "application", "application")
     rel = Relation(**payload.model_dump())
     db.add(rel)
     db.commit()
@@ -1378,8 +1380,11 @@ def list_flows(db: Session = Depends(db_session)):
 def create_flow(payload: FlowInput, db: Session = Depends(db_session)):
     if payload.source_id == payload.target_id:
         raise HTTPException(422, "Source and destination must differ")
-    if not db.get(InfrastructureItem, payload.source_id) or not db.get(InfrastructureItem, payload.target_id):
+    source = db.get(InfrastructureItem, payload.source_id)
+    target = db.get(InfrastructureItem, payload.target_id)
+    if not source or not target:
         raise HTTPException(422, "Both endpoints must exist")
+    _check_relation_allowed(db, "supplies_data_to", source.kind, target.kind)
     flow = DataFlow(**payload.model_dump())
     db.add(flow)
     db.commit()
@@ -1392,8 +1397,13 @@ def update_flow(flow_id: UUID, payload: FlowInput, db: Session = Depends(db_sess
     flow = db.get(DataFlow, flow_id)
     if not flow:
         raise HTTPException(404, "Flow not found")
-    if payload.source_id == payload.target_id or not db.get(InfrastructureItem, payload.source_id) or not db.get(InfrastructureItem, payload.target_id):
+    if payload.source_id == payload.target_id:
         raise HTTPException(422, "Invalid endpoints")
+    source = db.get(InfrastructureItem, payload.source_id)
+    target = db.get(InfrastructureItem, payload.target_id)
+    if not source or not target:
+        raise HTTPException(422, "Invalid endpoints")
+    _check_relation_allowed(db, "supplies_data_to", source.kind, target.kind)
     for k, v in payload.model_dump().items():
         setattr(flow, k, v)
     db.commit()
@@ -2044,8 +2054,11 @@ def apply_board_changes(payload: BoardBatch, db: Session) -> list[dict[str, Any]
             db.flush()
             if db.get(DataFlow, change.id):
                 raise HTTPException(409, "Flow already exists")
-            if not db.get(InfrastructureItem, change.source_id) or not db.get(InfrastructureItem, change.target_id):
+            source = db.get(InfrastructureItem, change.source_id)
+            target = db.get(InfrastructureItem, change.target_id)
+            if not source or not target:
                 raise HTTPException(422, "Flow endpoints not found")
+            _check_relation_allowed(db, "supplies_data_to", source.kind, target.kind)
             flow = DataFlow(id=change.id, source_id=change.source_id, target_id=change.target_id, name=change.name.strip(),
                             protocol=change.protocol, port=change.port, security=change.security,
                             data_description=change.data_description, schedule=change.schedule, verification=change.verification)

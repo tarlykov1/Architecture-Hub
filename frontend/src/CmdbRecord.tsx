@@ -1,11 +1,16 @@
 import {useEffect,useState} from 'react'
+import CmdbCatalog from './CmdbCatalog'
 
 type RecordData={
   ci_id:string;name:string;ci_class:string;revision:number
   lifecycle:string;owner:string;technical_owner:string;criticality:string
   source_system:string;source_record_id:string;verification_status:string
   verified_at:string|null;notes:string;evidence:string;updated_at:string|null
+  custom_values:Record<string,string|number|boolean>
 }
+type CustomField={key:string;label:string;type:'text'|'number'|'boolean'|'choice';options:string[]}
+type ClassEntry={id:string;label:string;fields:CustomField[];required:string[]}
+type ClassesResponse={classes:ClassEntry[]}
 type HistoryEntry={
   revision:number;action:string;reason:string;actor_role:string
   occurred_at:string;before:Partial<RecordData>;after:Partial<RecordData>
@@ -39,8 +44,15 @@ export default function CmdbRecord({ciId,request}:Props){
   const [loading,setLoading]=useState(true)
   const [error,setError]=useState('')
   const [message,setMessage]=useState('')
+  const [schema,setSchema]=useState<ClassEntry[]>([])
+  const [showCatalog,setShowCatalog]=useState(false)
 
   const path='/api/cmdb/records/'+encodeURIComponent(ciId)
+  const currentClass=schema.find(item=>item.id===record?.ci_class)
+  const updateCustom=(key:string,value:string|number|boolean)=>{
+    if(!draft)return
+    setDraft({...draft,custom_values:{...draft.custom_values,[key]:value}})
+  }
   const reload=async()=>{
     const [next,entries]=await Promise.all([
       request<RecordData>(path),request<HistoryEntry[]>(path+'/history')
@@ -50,8 +62,9 @@ export default function CmdbRecord({ciId,request}:Props){
   useEffect(()=>{
     let active=true
     setLoading(true);setError('');setMessage('');setIsEditing(false)
-    void Promise.all([request<RecordData>(path),request<HistoryEntry[]>(path+'/history')])
-      .then(([next,entries])=>{if(active){setRecord(next);setDraft(next);setHistory(entries)}})
+    void Promise.all([request<RecordData>(path),request<HistoryEntry[]>(path+'/history'),
+      request<ClassesResponse>('/api/cmdb/classes')])
+      .then(([next,entries,catalog])=>{if(active){setRecord(next);setDraft(next);setHistory(entries);setSchema(catalog.classes)}})
       .catch(err=>{if(active)setError('Не удалось загрузить КЕ: '+String(err))})
       .finally(()=>{if(active)setLoading(false)})
     return ()=>{active=false}
@@ -61,7 +74,8 @@ export default function CmdbRecord({ciId,request}:Props){
     if(!record||!draft)return
     setBusy(true);setError('');setMessage('')
     try{
-      const payload=Object.fromEntries(editable.map(field=>[field,draft[field]]))
+      const payload={...Object.fromEntries(editable.map(field=>[field,draft[field]])),
+        custom_values:draft.custom_values||{}}
       await request<RecordData>(path,{
         method:'PUT',body:JSON.stringify({...payload,expected_revision:record.revision,reason})
       })
@@ -93,7 +107,7 @@ export default function CmdbRecord({ciId,request}:Props){
       </div>
       {!isEditing?<div className="cmdbRecordFields">
         <dl>
-          <div><dt>Класс</dt><dd>{record.ci_class}</dd></div>
+          <div><dt>Класс</dt><dd>{currentClass?.label||record.ci_class}</dd></div>
           <div><dt>Жизненный цикл</dt><dd>{lifecycleLabels[record.lifecycle]||record.lifecycle}</dd></div>
           <div><dt>Владелец</dt><dd>{record.owner||'Не указан'}</dd></div>
           <div><dt>Технический ответственный</dt><dd>{record.technical_owner||'Не указан'}</dd></div>
@@ -102,6 +116,12 @@ export default function CmdbRecord({ciId,request}:Props){
           <div><dt>Идентификатор в источнике</dt><dd>{record.source_record_id||'Не указан'}</dd></div>
           <div><dt>Последняя проверка</dt><dd>{formatDate(record.verified_at)}</dd></div>
           <div><dt>Примечания</dt><dd>{record.notes||'Нет'}</dd></div>
+          {currentClass?.fields?.map(field=><div key={field.key}>
+            <dt>{field.label}</dt>
+            <dd>{field.type==='boolean'
+              ? ((record.custom_values||{})[field.key]===true?'Да':(record.custom_values||{})[field.key]===false?'Нет':'Не указано')
+              :String((record.custom_values||{})[field.key]??'Не указано')}</dd>
+          </div>)}
         </dl>
         <button type="button" onClick={()=>{setDraft({...record});setIsEditing(true);setError('');setMessage('')}}>Редактировать данные КЕ</button>
       </div>:<form className="cmdbRecordForm" onSubmit={event=>{event.preventDefault();void update()}}>
@@ -121,6 +141,24 @@ export default function CmdbRecord({ciId,request}:Props){
         <label>Источник данных <input value={draft.source_system} maxLength={120} required onChange={event=>setDraft({...draft,source_system:event.target.value})}/></label>
         <label>ID в источнике <input value={draft.source_record_id} maxLength={180} onChange={event=>setDraft({...draft,source_record_id:event.target.value})}/></label>
         <label>Примечания <textarea value={draft.notes} maxLength={2000} onChange={event=>setDraft({...draft,notes:event.target.value})}/></label>
+        {(currentClass?.fields||[]).map(field=><label key={field.key}>
+          {field.label}{currentClass?.required.includes(field.key)?' *':''}
+          {field.type==='boolean'
+            ? <select aria-label={field.label} value={String((draft.custom_values||{})[field.key]??'')}
+                onChange={event=>updateCustom(field.key,event.target.value===''?'':event.target.value==='true')}>
+                <option value="">Не указано</option><option value="true">Да</option><option value="false">Нет</option>
+              </select>
+            : field.type==='choice'
+              ? <select aria-label={field.label} value={String((draft.custom_values||{})[field.key]??'')}
+                  onChange={event=>updateCustom(field.key,event.target.value)}>
+                  <option value="">Не указано</option>
+                  {field.options.map(choice=><option key={choice} value={choice}>{choice}</option>)}
+                </select>
+              : <input aria-label={field.label} type={field.type==='number'?'number':'text'}
+                  value={String((draft.custom_values||{})[field.key]??'')}
+                  onChange={event=>updateCustom(field.key,field.type==='number'
+                    ?event.target.value===''?'':Number(event.target.value):event.target.value)}/>}
+        </label>)}
         <label>Причина изменения <textarea required minLength={5} value={reason} maxLength={1000} onChange={event=>setReason(event.target.value)} placeholder="Что изменено и на основании чего?"/></label>
         <div className="cmdbRecordButtons">
           <button type="submit" className="primary" disabled={busy||reason.trim().length<5}>{busy?'Сохраняем…':'Сохранить паспорт КЕ'}</button>
@@ -135,6 +173,12 @@ export default function CmdbRecord({ciId,request}:Props){
           <label>Основание проверки <textarea minLength={5} required maxLength={2000} value={evidence} onChange={event=>setEvidence(event.target.value)} placeholder="Например, сверено с владельцем или инвентаризацией"/></label>
           <button type="submit" disabled={busy||evidence.trim().length<5}>Подтвердить актуальность</button>
         </form>}
+      <div className="cmdbCatalogEntry">
+        <button type="button" aria-expanded={showCatalog} onClick={()=>setShowCatalog(!showCatalog)}>
+          {showCatalog?'Скрыть классификатор':'Классификатор и правила CMDB'}
+        </button>
+        {showCatalog&&<CmdbCatalog request={request} onChange={()=>void request<ClassesResponse>('/api/cmdb/classes').then(catalog=>setSchema(catalog.classes))}/>}
+      </div>
       <details className="cmdbAuditHistory">
         <summary>История изменений ({history.length})</summary>
         {history.length===0?<p>Записей истории пока нет.</p>:

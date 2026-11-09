@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import hashlib
 from contextlib import asynccontextmanager
+import re
 from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID, uuid4
@@ -10,9 +11,10 @@ from uuid import UUID, uuid4
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from .access import access_middleware, configured_keys, ROLE_ACCESS
 from .cmdb import ci_graph, potential_impact, CI_CLASSES, LIFECYCLE_STATES, LIFECYCLE_TRANSITIONS, CRITICALITY_LEVELS, VERIFICATION_STATES
+from .cmdb_catalog import validate_class_schema, validate_custom_values, missing_required, assess_relation, RELATION_KINDS
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import DateTime, ForeignKey, JSON, String, Uuid, Index, create_engine, select, update, text as sql_text
+from sqlalchemy import DateTime, ForeignKey, JSON, String, Uuid, Index, Boolean, UniqueConstraint, create_engine, select, update, text as sql_text
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
 from sqlalchemy.exc import IntegrityError
 
@@ -87,6 +89,8 @@ class CmdbRecord(Base):
     verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     evidence: Mapped[str] = mapped_column(String(2000), default="")
     notes: Mapped[str] = mapped_column(String(2000), default="")
+    custom_values: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    schema_revision: Mapped[int] = mapped_column(default=0)
     revision: Mapped[int] = mapped_column(default=1)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
@@ -95,6 +99,51 @@ class CmdbRecord(Base):
 Index('ux_cmdb_external_identity', CmdbRecord.source_system, CmdbRecord.source_record_id,
       unique=True, sqlite_where=sql_text("source_record_id <> ''"),
       postgresql_where=sql_text("source_record_id <> ''"))
+
+
+
+
+class CmdbClassPolicy(Base):
+    """Editable schema overlay. Built-in definitions are fallback, never copied."""
+    __tablename__ = "cmdb_class_policies"
+    id: Mapped[str] = mapped_column(String(50), primary_key=True)
+    label: Mapped[str] = mapped_column(String(120))
+    layer: Mapped[str] = mapped_column(String(30))
+    required: Mapped[list[str]] = mapped_column(JSON, default=list)
+    fields: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    revision: Mapped[int] = mapped_column(default=1)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+class CmdbRelationshipRule(Base):
+    """Opt-in directed validation per relation kind and CI source class."""
+    __tablename__ = "cmdb_relationship_rules"
+    __table_args__ = (UniqueConstraint("relation_kind", "source_class", "target_class",
+                                      name="uq_cmdb_relation_classes"),)
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    relation_kind: Mapped[str] = mapped_column(String(60))
+    source_class: Mapped[str] = mapped_column(String(50))
+    target_class: Mapped[str] = mapped_column(String(50))
+    mode: Mapped[str] = mapped_column(String(20), default="advisory")
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    description: Mapped[str] = mapped_column(String(1000), default="")
+    revision: Mapped[int] = mapped_column(default=1)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+
+class CmdbSchemaAudit(Base):
+    """Every catalog edit records the policy difference and reason."""
+    __tablename__ = "cmdb_schema_audit"
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    resource_kind: Mapped[str] = mapped_column(String(20))
+    resource_id: Mapped[str] = mapped_column(String(90), index=True)
+    before: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    after: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    actor_role: Mapped[str] = mapped_column(String(40))
+    reason: Mapped[str] = mapped_column(String(1000))
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
 
 class CmdbRecordAudit(Base):
@@ -391,6 +440,44 @@ class DiagramOut(DiagramCreate):
 
 
 
+
+class CmdbFieldDef(BaseModel):
+    key: str = Field(min_length=1, max_length=50, pattern=r"^[a-z][a-zA-Z0-9_]*$")
+    label: str = Field(min_length=1, max_length=120)
+    type: str = Field(pattern=r"^(text|number|boolean|choice)$")
+    options: list[str] = Field(default_factory=list, max_length=30)
+
+
+class CmdbClassInput(BaseModel):
+    expected_revision: int = Field(ge=0)
+    label: str = Field(min_length=1, max_length=120)
+    layer: str = Field(pattern=r"^(application|platform|infrastructure|business)$")
+    required: list[str] = Field(default_factory=list, max_length=40)
+    fields: list[CmdbFieldDef] = Field(default_factory=list, max_length=30)
+    enabled: bool = True
+    reason: str = Field(min_length=5, max_length=1000)
+
+
+class CmdbRuleInput(BaseModel):
+    relation_kind: str = Field(pattern=r"^(supplies_data_to|integrates_with|depends_on)$")
+    source_class: str = Field(pattern=r"^[a-z][a-z0-9_]{1,49}$")
+    target_class: str = Field(pattern=r"^[a-z][a-z0-9_]{1,49}$")
+    mode: str = Field(default="advisory", pattern=r"^(advisory|enforced)$")
+    enabled: bool = True
+    description: str = Field(default="", max_length=1000)
+    reason: str = Field(min_length=5, max_length=1000)
+
+
+class CmdbRuleEdit(CmdbRuleInput):
+    expected_revision: int = Field(ge=1)
+
+
+class CmdbCheckInput(BaseModel):
+    source_id: str = Field(min_length=1, max_length=90)
+    target_id: str = Field(min_length=1, max_length=90)
+    relation_kind: str = Field(pattern=r"^(supplies_data_to|integrates_with|depends_on)$")
+
+
 class CmdbRecordInput(BaseModel):
     expected_revision: int = Field(ge=0)
     lifecycle: str = Field(pattern="^(planned|active|maintenance|retired)$")
@@ -400,6 +487,7 @@ class CmdbRecordInput(BaseModel):
     source_system: str = Field(default="architecture_hub", min_length=1, max_length=120)
     source_record_id: str = Field(default="", max_length=180)
     notes: str = Field(default="", max_length=2000)
+    custom_values: dict[str, Any] | None = Field(default=None, max_length=30)
     reason: str = Field(min_length=5, max_length=1000)
 
 
@@ -448,6 +536,7 @@ def _cmdb_data(db: Session) -> dict:
         list(db.scalars(select(ProcessSystem)).all()),
     )
     overlays = {row.ci_id: row for row in db.scalars(select(CmdbRecord)).all()}
+    catalog_revisions = {item["id"]: item["revision"] for item in _catalog_classes(db)}
     for node in graph["nodes"]:
         record = overlays.get(node["id"])
         node["verification_status"] = "unverified"
@@ -462,7 +551,9 @@ def _cmdb_data(db: Session) -> dict:
                 "technical_owner": record.technical_owner or None,
                 "criticality": record.criticality,
                 "verified_at": record.verified_at.isoformat() if record.verified_at else None,
-                "verification_status": record.verification_status,
+                "verification_status": ("unverified" if record.verification_status == "verified"
+                                        and record.schema_revision != catalog_revisions.get(node["ci_class"], 0)
+                                        else record.verification_status),
                 "source": record.source_system,
                 "source_record_id": record.source_record_id or None,
                 "revision": record.revision,
@@ -494,8 +585,8 @@ def _cmdb_snapshot(record: CmdbRecord | None) -> dict:
             "lifecycle": "unknown", "owner": "", "technical_owner": "",
             "criticality": "unknown", "source_system": "architecture_hub",
             "source_record_id": "", "verification_status": "unverified",
-            "verified_at": None, "evidence": "", "notes": "", "revision": 0,
-            "updated_at": None,
+            "verified_at": None, "evidence": "", "notes": "", "custom_values": {},
+            "schema_revision": 0, "revision": 0, "updated_at": None,
         }
     return {
         "lifecycle": record.lifecycle, "owner": record.owner,
@@ -505,7 +596,8 @@ def _cmdb_snapshot(record: CmdbRecord | None) -> dict:
         "verification_status": record.verification_status,
         "verified_at": record.verified_at.isoformat() if record.verified_at else None,
         "evidence": record.evidence,
-        "notes": record.notes, "revision": record.revision,
+        "notes": record.notes, "custom_values": record.custom_values or {},
+        "schema_revision": record.schema_revision, "revision": record.revision,
         "updated_at": record.updated_at.isoformat() if record.updated_at else None,
     }
 
@@ -516,10 +608,225 @@ def _cmdb_actor(request: Request) -> str:
     return str(getattr(request.state, "role", "development"))
 
 
+
+def _catalog_classes(db: Session) -> list[dict]:
+    """Merge built-in defaults with DB overrides; do not change existing kind IDs."""
+    defaults = {
+        entry["id"]: {**entry, "fields": [], "enabled": True,
+                      "revision": 0, "is_custom": False}
+        for entry in CI_CLASSES
+    }
+    for row in db.scalars(select(CmdbClassPolicy)).all():
+        defaults[row.id] = {
+            "id": row.id, "label": row.label, "layer": row.layer,
+            "required": row.required or [], "fields": row.fields or [],
+            "enabled": row.enabled, "revision": row.revision,
+            "is_custom": row.id not in {item["id"] for item in CI_CLASSES},
+        }
+    return sorted(defaults.values(), key=lambda entry: (entry["layer"], entry["label"]))
+
+
+def _class_definition(db: Session, class_id: str) -> dict:
+    definition = next((x for x in _catalog_classes(db) if x["id"] == class_id), None)
+    if definition is None:
+        return {"id": class_id, "label": class_id, "layer": "infrastructure",
+                "required": ["technical_owner", "lifecycle"],
+                "fields": [], "enabled": True, "revision": 0, "is_custom": True}
+    return definition
+
+
+def _schema_audit(db: Session, resource_kind: str, resource_id: str,
+                  before: dict, after: dict, reason: str, request: Request):
+    db.add(CmdbSchemaAudit(
+        resource_kind=resource_kind, resource_id=resource_id,
+        before=before, after=after,
+        actor_role=_cmdb_actor(request), reason=reason.strip(),
+        occurred_at=datetime.now(timezone.utc),
+    ))
+
+
+def _relation_policy(db: Session, relation_kind: str, source_class: str, target_class: str) -> dict:
+    rules = db.scalars(select(CmdbRelationshipRule).where(
+        CmdbRelationshipRule.relation_kind == relation_kind,
+        CmdbRelationshipRule.source_class == source_class,
+    )).all()
+    return assess_relation(relation_kind, source_class, target_class, rules)
+
+
+def _check_relation_allowed(db: Session, relation_kind: str,
+                            source_class: str, target_class: str):
+    policy = _relation_policy(db, relation_kind, source_class, target_class)
+    if not policy["allowed"]:
+        raise HTTPException(422, policy["message"])
+    return policy
+
+
+@app.put("/api/cmdb/classes/{class_id}")
+def save_cmdb_class(class_id: str, payload: CmdbClassInput, request: Request,
+                    db: Session = Depends(db_session)):
+    if not class_id.isascii() or not re.fullmatch(r"[a-z][a-z0-9_]{1,49}", class_id):
+        raise HTTPException(422, "Class ID must be stable lowercase snake_case")
+    fields = [field.model_dump() for field in payload.fields]
+    issue = validate_class_schema(payload.required, fields)
+    if issue:
+        raise HTTPException(422, issue)
+    current = next((row for row in _catalog_classes(db) if row["id"] == class_id), None)
+    current_revision = current["revision"] if current else 0
+    if current_revision != payload.expected_revision:
+        raise HTTPException(409, "Class definition changed, refresh before saving")
+    # New policy can refine a built-in type or define a new infrastructure kind.
+    previous = current or {}
+    # Never silently orphan values already stored in managed CI passports.
+    removed_keys = {field["key"] for field in previous.get("fields", [])} - {
+        field["key"] for field in fields}
+    if removed_keys:
+        if class_id == "application":
+            eligible = {"system:" + str(ci_id) for ci_id in db.scalars(
+                select(ArchitectureObject.id)).all()}
+        elif class_id == "business_process":
+            eligible = {"process:" + str(ci_id) for ci_id in db.scalars(
+                select(BusinessProcess.id)).all()}
+        else:
+            eligible = {"component:" + str(ci_id) for ci_id in db.scalars(
+                select(InfrastructureItem.id).where(InfrastructureItem.kind == class_id)).all()}
+        in_use = any(row.ci_id in eligible and any(key in (row.custom_values or {})
+                     for key in removed_keys)
+                     for row in db.scalars(select(CmdbRecord)).all())
+        if in_use:
+            raise HTTPException(422, "Cannot remove a field that is used by existing CIs; migrate their values first")
+    now = datetime.now(timezone.utc)
+    values = {
+        "label": payload.label.strip(), "layer": payload.layer,
+        "required": payload.required, "fields": fields, "enabled": payload.enabled,
+    }
+    row = db.get(CmdbClassPolicy, class_id)
+    if row is None:
+        row = CmdbClassPolicy(id=class_id, revision=1, updated_at=now, **values)
+        db.add(row)
+    else:
+        updated = db.execute(update(CmdbClassPolicy).where(
+            CmdbClassPolicy.id == class_id,
+            CmdbClassPolicy.revision == payload.expected_revision,
+        ).values(revision=payload.expected_revision+1, updated_at=now, **values))
+        if updated.rowcount != 1:
+            db.rollback()
+            raise HTTPException(409, "Class definition changed concurrently")
+    after = {"id": class_id, "revision": current_revision + 1,
+             "is_custom": class_id not in {c["id"] for c in CI_CLASSES}, **values}
+    _schema_audit(db, "class", class_id, previous, after, payload.reason, request)
+    db.commit()
+    return after
+
+
+@app.get("/api/cmdb/relationship-rules")
+def list_cmdb_relation_rules(db: Session = Depends(db_session)):
+    rows = db.scalars(select(CmdbRelationshipRule).order_by(
+        CmdbRelationshipRule.relation_kind, CmdbRelationshipRule.source_class,
+        CmdbRelationshipRule.target_class)).all()
+    return [{
+        "id": str(row.id), "relation_kind": row.relation_kind,
+        "source_class": row.source_class, "target_class": row.target_class,
+        "mode": row.mode, "enabled": row.enabled,
+        "description": row.description, "revision": row.revision,
+    } for row in rows]
+
+
+def _rule_values(payload: CmdbRuleInput, db: Session) -> dict:
+    known = {entry["id"] for entry in _catalog_classes(db)}
+    if payload.source_class not in known or payload.target_class not in known:
+        raise HTTPException(422, "Declare both CI classes before creating a rule")
+    return {
+        "relation_kind": payload.relation_kind,
+        "source_class": payload.source_class,
+        "target_class": payload.target_class, "mode": payload.mode,
+        "enabled": payload.enabled, "description": payload.description.strip(),
+    }
+
+
+@app.post("/api/cmdb/relationship-rules", status_code=201)
+def create_cmdb_rule(payload: CmdbRuleInput, request: Request,
+                     db: Session = Depends(db_session)):
+    values = _rule_values(payload, db)
+    if db.scalars(select(CmdbRelationshipRule).where(
+        CmdbRelationshipRule.relation_kind == values["relation_kind"],
+        CmdbRelationshipRule.source_class == values["source_class"],
+        CmdbRelationshipRule.target_class == values["target_class"])).first():
+        raise HTTPException(409, "This source/target class rule already exists")
+    row = CmdbRelationshipRule(**values, revision=1)
+    db.add(row)
+    try:
+        db.flush()
+        after = {"id": str(row.id), "revision": row.revision, **values}
+        _schema_audit(db, "relationship_rule", str(row.id), {}, after, payload.reason, request)
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(409, "This source/target class rule already exists")
+    return after
+
+
+@app.put("/api/cmdb/relationship-rules/{rule_id}")
+def update_cmdb_rule(rule_id: UUID, payload: CmdbRuleEdit, request: Request,
+                     db: Session = Depends(db_session)):
+    row = db.get(CmdbRelationshipRule, rule_id)
+    if row is None:
+        raise HTTPException(404, "Rule not found")
+    if row.revision != payload.expected_revision:
+        raise HTTPException(409, "Rule has changed, refresh before saving")
+    values = _rule_values(payload, db)
+    before = {"id": str(row.id), "revision": row.revision, "relation_kind": row.relation_kind,
+              "source_class": row.source_class, "target_class": row.target_class,
+              "mode": row.mode, "enabled": row.enabled, "description": row.description}
+    result = db.execute(update(CmdbRelationshipRule).where(
+        CmdbRelationshipRule.id == rule_id,
+        CmdbRelationshipRule.revision == payload.expected_revision,
+    ).values(**values, revision=row.revision + 1, updated_at=datetime.now(timezone.utc)))
+    if result.rowcount != 1:
+        db.rollback()
+        raise HTTPException(409, "Rule changed concurrently")
+    after = {"id": str(row.id), "revision": payload.expected_revision+1, **values}
+    _schema_audit(db, "relationship_rule", str(row.id), before, after, payload.reason, request)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(409, "This source/target class rule already exists")
+    return after
+
+
+@app.get("/api/cmdb/relationships/check")
+def check_cmdb_relationship(source_id: str, target_id: str,
+                            relation_kind: str = Query(pattern=r"^(supplies_data_to|integrates_with|depends_on)$"),
+                            db: Session = Depends(db_session)):
+    source, target = _cmdb_node(db, source_id), _cmdb_node(db, target_id)
+    if source["ci_id"] == target["ci_id"]:
+        raise HTTPException(422, "Self-connection is not supported")
+    if relation_kind == "supplies_data_to" and (
+        not source_id.startswith("component:") or not target_id.startswith("component:")):
+        raise HTTPException(422, "Data flow endpoints must be components")
+    if relation_kind in {"integrates_with", "depends_on"} and (
+        not source_id.startswith("system:") or not target_id.startswith("system:")):
+        raise HTTPException(422, "System relation endpoints must be systems")
+    return _relation_policy(db, relation_kind, source["ci_class"], target["ci_class"])
+
+
+@app.get("/api/cmdb/schema/history")
+def list_cmdb_schema_history(limit: int = Query(default=40, ge=1, le=100),
+                             db: Session = Depends(db_session)):
+    rows = db.scalars(select(CmdbSchemaAudit).order_by(
+        CmdbSchemaAudit.occurred_at.desc()).limit(limit)).all()
+    return [{
+        "resource_kind": row.resource_kind, "resource_id": row.resource_id,
+        "actor_role": row.actor_role, "reason": row.reason,
+        "before": row.before, "after": row.after,
+        "occurred_at": row.occurred_at.isoformat()
+    } for row in rows]
+
+
 @app.get("/api/cmdb/classes")
-def cmdb_classes():
-    """Class-specific mandatory fields and controlled vocabularies."""
-    return {"classes": CI_CLASSES, "lifecycle": LIFECYCLE_STATES,
+def cmdb_classes(db: Session = Depends(db_session)):
+    """Editable class metadata merged with original, stable type definitions."""
+    return {"classes": _catalog_classes(db), "lifecycle": LIFECYCLE_STATES,
             "criticality": CRITICALITY_LEVELS,
             "verification": VERIFICATION_STATES}
 
@@ -542,7 +849,13 @@ def cmdb_impact(ci_id: str = Query(min_length=1, max_length=120),
 @app.get("/api/cmdb/records/{ci_id}")
 def read_cmdb_record(ci_id: str, db: Session = Depends(db_session)):
     node = _cmdb_node(db, ci_id)
-    return {**node, **_cmdb_snapshot(db.get(CmdbRecord, node["ci_id"]))}
+    record = db.get(CmdbRecord, node["ci_id"])
+    snapshot = _cmdb_snapshot(record)
+    if (record and record.verification_status == "verified" and
+            record.schema_revision != _class_definition(db, node["ci_class"])["revision"]):
+        snapshot["verification_status"] = "unverified"
+        snapshot["verification_warning"] = "Class definition changed; re-verification required"
+    return {**node, **snapshot}
 
 
 @app.get("/api/cmdb/records/{ci_id}/history")
@@ -581,6 +894,13 @@ def write_cmdb_record(ci_id: str, payload: CmdbRecordInput,
     now = datetime.now(timezone.utc)
     values = {field: getattr(payload, field).strip() if isinstance(
         getattr(payload, field), str) else getattr(payload, field) for field in _CM_FIELDS}
+    custom_values = (previous["custom_values"] if payload.custom_values is None
+                     else payload.custom_values)
+    class_def = _class_definition(db, node["ci_class"])
+    issue = validate_custom_values(class_def["fields"], custom_values)
+    if issue:
+        raise HTTPException(422, issue)
+    values["custom_values"] = custom_values
     changes = any(previous[field] != value for field, value in values.items())
     if not changes:
         return {**node, **previous}
@@ -626,12 +946,20 @@ def verify_cmdb_record(ci_id: str, payload: CmdbVerificationInput,
         raise HTTPException(409, "CMDB record revision changed. Reload before verifying.")
     if record.lifecycle == "retired":
         raise HTTPException(422, "Retired configuration items cannot be verified as active")
+    policy = _class_definition(db, node["ci_class"])
+    snapshot = {**node, **previous}
+    issue = validate_custom_values(policy["fields"], previous["custom_values"])
+    if issue:
+        raise HTTPException(422, issue)
+    missing = missing_required(snapshot, policy["required"], previous["custom_values"])
+    if missing:
+        raise HTTPException(422, "Missing required CMDB fields: " + ", ".join(missing))
     now = datetime.now(timezone.utc)
     result = db.execute(update(CmdbRecord).where(
         CmdbRecord.ci_id == key,
         CmdbRecord.revision == payload.expected_revision
     ).values(verification_status="verified", verified_at=now,
-             evidence=payload.evidence.strip(), updated_at=now,
+             evidence=payload.evidence.strip(), schema_revision=policy["revision"], updated_at=now,
              revision=payload.expected_revision + 1))
     if result.rowcount != 1:
         db.rollback()
@@ -650,12 +978,16 @@ def verify_cmdb_record(ci_id: str, payload: CmdbVerificationInput,
 def cmdb_quality(stale_days: int = Query(default=90, ge=1, le=3650),
                  db: Session = Depends(db_session)):
     graph = _cmdb_data(db)
-    required = {item["id"]: item["required"] for item in CI_CLASSES}
+    required = {item["id"]: item for item in _catalog_classes(db)}
+    overlays = {row.ci_id: row for row in db.scalars(select(CmdbRecord)).all()}
     now = datetime.now(timezone.utc)
     items = []
     for node in graph["nodes"]:
-        needed = required.get(node["ci_class"], ["technical_owner", "lifecycle"])
-        missing = [field for field in needed if node.get(field) in (None, "", "unknown")]
+        definition = required.get(node["ci_class"])
+        needed = definition["required"] if definition else ["technical_owner", "lifecycle"]
+        values = overlays[node["id"]].custom_values if node["id"] in overlays else {}
+        metadata = _cmdb_snapshot(overlays[node["id"]]) if node["id"] in overlays else {}
+        missing = missing_required({**node, **metadata}, needed, values or {})
         raw_date = node.get("verified_at")
         try:
             verified_time = datetime.fromisoformat(raw_date) if raw_date else None
@@ -669,7 +1001,7 @@ def cmdb_quality(stale_days: int = Query(default=90, ge=1, le=3650),
             "ci_id": node["id"], "name": node["name"],
             "ci_class": node["ci_class"],
             "missing": missing,
-            "completeness_percent": round(100 * (len(needed) - len(missing)) / len(needed)),
+            "completeness_percent": round(100 * (len(needed) - len(missing)) / len(needed)) if needed else 100,
             "verified": verified, "stale": stale,
             "verification_status": node["verification_status"],
             "source_system": node.get("source", "architecture_hub"),
@@ -738,6 +1070,8 @@ def add_relation(payload: RelationCreate, db: Session = Depends(db_session)):
         raise HTTPException(status_code=422, detail="Self-connections are not supported in MVP")
     if not db.get(ArchitectureObject, payload.source_id) or not db.get(ArchitectureObject, payload.target_id):
         raise HTTPException(status_code=422, detail="Both objects must exist")
+    if payload.kind in RELATION_KINDS:
+        _check_relation_allowed(db, payload.kind, "application", "application")
     rel = Relation(**payload.model_dump())
     db.add(rel)
     db.commit()
@@ -1078,8 +1412,11 @@ def list_flows(db: Session = Depends(db_session)):
 def create_flow(payload: FlowInput, db: Session = Depends(db_session)):
     if payload.source_id == payload.target_id:
         raise HTTPException(422, "Source and destination must differ")
-    if not db.get(InfrastructureItem, payload.source_id) or not db.get(InfrastructureItem, payload.target_id):
+    source = db.get(InfrastructureItem, payload.source_id)
+    target = db.get(InfrastructureItem, payload.target_id)
+    if not source or not target:
         raise HTTPException(422, "Both endpoints must exist")
+    _check_relation_allowed(db, "supplies_data_to", source.kind, target.kind)
     flow = DataFlow(**payload.model_dump())
     db.add(flow)
     db.commit()
@@ -1092,8 +1429,13 @@ def update_flow(flow_id: UUID, payload: FlowInput, db: Session = Depends(db_sess
     flow = db.get(DataFlow, flow_id)
     if not flow:
         raise HTTPException(404, "Flow not found")
-    if payload.source_id == payload.target_id or not db.get(InfrastructureItem, payload.source_id) or not db.get(InfrastructureItem, payload.target_id):
+    if payload.source_id == payload.target_id:
         raise HTTPException(422, "Invalid endpoints")
+    source = db.get(InfrastructureItem, payload.source_id)
+    target = db.get(InfrastructureItem, payload.target_id)
+    if not source or not target:
+        raise HTTPException(422, "Invalid endpoints")
+    _check_relation_allowed(db, "supplies_data_to", source.kind, target.kind)
     for k, v in payload.model_dump().items():
         setattr(flow, k, v)
     db.commit()
@@ -1744,8 +2086,11 @@ def apply_board_changes(payload: BoardBatch, db: Session) -> list[dict[str, Any]
             db.flush()
             if db.get(DataFlow, change.id):
                 raise HTTPException(409, "Flow already exists")
-            if not db.get(InfrastructureItem, change.source_id) or not db.get(InfrastructureItem, change.target_id):
+            source = db.get(InfrastructureItem, change.source_id)
+            target = db.get(InfrastructureItem, change.target_id)
+            if not source or not target:
                 raise HTTPException(422, "Flow endpoints not found")
+            _check_relation_allowed(db, "supplies_data_to", source.kind, target.kind)
             flow = DataFlow(id=change.id, source_id=change.source_id, target_id=change.target_id, name=change.name.strip(),
                             protocol=change.protocol, port=change.port, security=change.security,
                             data_description=change.data_description, schedule=change.schedule, verification=change.verification)

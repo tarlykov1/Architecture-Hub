@@ -303,6 +303,15 @@ function App() {
   },[inspectorOpen,passportEditId])
 
   const [editorOpen,setEditorOpen] = useState(false)
+  const [cmdbKinds,setCmdbKinds] = useState<{id:string;label:string;layer:string;enabled:boolean}[]>([])
+  useEffect(()=>{
+    if(!editorOpen)return
+    let active=true
+    void request<{classes:{id:string;label:string;layer:string;enabled:boolean}[]}>('/api/cmdb/classes')
+      .then(result=>{if(active)setCmdbKinds(result.classes)})
+      .catch(()=>{/* retain legacy kinds if catalog cannot load */})
+    return ()=>{active=false}
+  },[editorOpen])
   const [registryOpen,setRegistryOpen] = useState<'network'|'flow'|null>(null)
   const [networkFilter,setNetworkFilter] = useState('')
   const [networkTypeFilter,setNetworkTypeFilter] = useState('all')
@@ -1365,7 +1374,13 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
         <h3>Новый компонент</h3>
         <form className="detailForm" onSubmit={addInfrastructure}>
           <input required placeholder="Имя ВМ / сервиса / API" value={infraName} onChange={e=>setInfraName(e.target.value)}/>
-          <select value={infraKind} onChange={e=>setInfraKind(e.target.value)}>{['vm','service','api','database','adapter','container','network_interface','subsystem','other'].map(x=><option key={x}>{x}</option>)}</select>
+          <select aria-label="Тип компонента" value={infraKind} onChange={e=>setInfraKind(e.target.value)}>
+             {Array.from(new Set([
+               'vm','service','api','database','adapter','container','network_interface','subsystem','other',
+               ...cmdbKinds.filter(item=>item.enabled&&item.layer!=='business'&&item.layer!=='application')
+                 .map(item=>item.id)
+             ])).map(id=><option key={id} value={id}>{cmdbKinds.find(x=>x.id===id)?.label||id} ({id})</option>)}
+           </select>
           <select value={infraParent} onChange={e=>setInfraParent(e.target.value)}><option value="">Без родителя</option>{infra.filter(i=>i.system_id===selected).map(i=><option key={i.id} value={i.id}>{i.name}</option>)}</select>
           <textarea placeholder="Сетевая зона / VLAN / VRF – примечание" value={infraDetails} onChange={e=>setInfraDetails(e.target.value)}/>
           <button className="primary">Добавить компонент</button>

@@ -101,6 +101,22 @@ def test_editable_ci_class_required_fields_and_role_protection():
                    if v["ci_id"] == key)
         assert row["verified"] is True and row["missing"] == []
 
+        # A new class schema revision invalidates verification without changing
+        # the underlying inventory or deleting the earlier evidence.
+        redefine = client.put(class_url, headers=ADMIN, json=class_payload(
+            rev=1, label="Updated message bridge",
+            reason="Change required metadata schema"))
+        assert redefine.status_code == 200, redefine.text
+        assert redefine.json()["revision"] == 2
+        outdated = client.get("/api/cmdb/records/" + key, headers=VIEWER).json()
+        assert outdated["verification_status"] == "unverified"
+        assert outdated["verification_warning"]
+        quality_after = client.get("/api/cmdb/quality", headers=VIEWER).json()
+        row = next(v for v in quality_after["items"] if v["ci_id"] == key)
+        assert row["verified"] is False
+        assert client.post("/api/cmdb/records/" + key + "/verify", headers=ADMIN,
+            json={"expected_revision": 3, "evidence": "Re-verified after new class revision"}).status_code == 200
+
         events = client.get("/api/cmdb/schema/history", headers=VIEWER)
         assert events.status_code == 200
         assert any(x["resource_id"] == kind and "Architecture class model" in x["reason"]

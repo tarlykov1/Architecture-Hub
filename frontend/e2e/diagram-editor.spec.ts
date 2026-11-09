@@ -416,3 +416,59 @@ test('existing flow has quick on-line actions, full reviewed card and direction 
   expect(reversed.target_id).toBe(src.id)
   expect(reversed.id).toBe(flow.id)
 })
+
+
+test('dragging the end of an existing flow to a different VM stages its reviewed reconnection',async({page})=>{
+  const id=await seedSystem(page)
+  const all=await (await page.request.get('http://127.0.0.1:8001/api/infra')).json()
+  const [src,target]=all.filter((item:{system_id:string})=>item.system_id===id)
+  const thirdRes=await page.request.post('http://127.0.0.1:8001/api/infra',{
+    data:{system_id:id,kind:'vm',name:'Reconnection third VM'}
+  })
+  expect(thirdRes.status()).toBe(201)
+  const third=await thirdRes.json()
+  const res=await page.request.post('http://127.0.0.1:8001/api/flows',{
+    data:{source_id:src.id,target_id:target.id,name:'Reconnect me',
+      protocol:'TCP',port:'443'}
+  })
+  expect(res.status()).toBe(201)
+  const flow=await res.json()
+  await page.goto('/')
+  await page.getByRole('navigation',{name:'Разделы архитектуры'}).getByRole('button',{name:'Компоненты',exact:true}).click()
+  await page.getByRole('group',{name:'Представление компонентов'}).getByRole('button',{name:'Схема',exact:true}).click()
+  await page.getByRole('button',{name:'Редактировать схему'}).click()
+  await page.getByRole('combobox',{name:'Выбрать ИС для редактора компонентов'}).selectOption(id)
+  const editor=page.getByRole('region',{name:'Редактор архитектурной схемы'})
+  const edge=editor.locator('.react-flow__edge').first()
+  await expect(edge).toBeVisible()
+  const path=edge.locator('.react-flow__edge-path')
+  const middle=await path.evaluate(element=>{
+    const svg=element as SVGPathElement
+    const matrix=svg.getScreenCTM()
+    if(!matrix)throw Error('SVG edge transform missing')
+    const p=svg.getPointAtLength(svg.getTotalLength()/2).matrixTransform(matrix)
+    return {x:p.x,y:p.y}
+  })
+  await page.mouse.click(middle.x,middle.y)
+  const endUpdater=edge.locator('.react-flow__edgeupdater-target')
+  await expect(endUpdater).toBeVisible()
+  const targetHandle=editor.locator('.react-flow__node-architectureComponent')
+    .filter({hasText:'Reconnection third VM'})
+    .locator('.boardComponentPort[data-handleid="top-a"]')
+  await expect(targetHandle).toBeVisible()
+  const start=await endUpdater.boundingBox()
+  const finish=await targetHandle.boundingBox()
+  expect(start&&finish).toBeTruthy()
+  await page.mouse.move(start!.x+start!.width/2,start!.y+start!.height/2)
+  await page.mouse.down()
+  await page.mouse.move(finish!.x+finish!.width/2,finish!.y+finish!.height/2,{steps:15})
+  await page.mouse.up()
+  await expect(editor.getByText(/Поток изменён в черновике/)).toBeVisible()
+  await editor.getByRole('toolbar',{name:'Инструменты архитектуры'}).getByRole('button',{name:'Сохранить изменения'}).click()
+  await editor.getByRole('textbox',{name:'Причина изменений'}).fill('Move endpoint of flow to new VM by dragging')
+  await editor.getByRole('button',{name:'Проверить изменения (1)'}).click()
+  await page.getByRole('dialog',{name:'Подтверждение изменений архитектуры'}).getByRole('button',{name:'Подтвердить и записать в журнал'}).click()
+  const saved=(await (await page.request.get('http://127.0.0.1:8001/api/flows')).json()).find((item:{id:string})=>item.id===flow.id)
+  expect(saved.target_id).toBe(third.id)
+  expect(saved.source_id).toBe(src.id)
+})

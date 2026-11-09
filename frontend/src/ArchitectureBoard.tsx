@@ -248,30 +248,47 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
  useEffect(()=>{
    let active=true
    setLayoutDirty(false);setLayoutMessage('')
-   void request<{positions:Record<string,{x:number;y:number}>}>('/api/board/layout/'+systemId)
+   void request<{positions:Record<string,Geometry>}>('/api/board/layout/'+systemId)
      .then(result=>{
        if(!active||!result.positions)return
        setNodes(previous=>previous.map(node=>{
          const position=result.positions[node.id]||savedPositions[node.id]
-         return position?{...node,position}:node
+         return position?{...node,position:{x:position.x,y:position.y}}:node
        }))
+       const persisted=Object.entries(result.positions)
+         .filter(([id,geometry])=>id.startsWith('network:')&&networks.some(network=>network.id===id.slice(8))&&
+           Number.isFinite(geometry.x)&&Number.isFinite(geometry.y)&&Number.isFinite(geometry.width)&&Number.isFinite(geometry.height))
+         .map(([id,geometry])=>({id:id.slice(8),name:networks.find(network=>network.id===id.slice(8))!.name,
+           kind:networks.find(network=>network.id===id.slice(8))!.kind,x:geometry.x,y:geometry.y,
+           width:geometry.width!,height:geometry.height!}))
+       setRectangles(previous=>{
+         const ids=new Set(persisted.map(rect=>rect.id))
+         return [...previous.filter(rect=>!ids.has(rect.id)),...persisted]
+       })
      }).catch(()=>{/* Browser positions remain the fallback. */})
    return ()=>{active=false}
- },[systemId,request,setNodes])
+ },[systemId,request,setNodes,networks])
 
+ const collectLayout=(extraVMIds:string[]=[],extraNetworkIds:string[]=[])=>{
+   const vmIds=new Set([...items.map(item=>item.id),...extraVMIds])
+   const networkIds=new Set([...networks.map(network=>network.id),...extraNetworkIds])
+   return {
+     ...Object.fromEntries(nodes.filter(node=>vmIds.has(node.id))
+       .map(node=>[node.id,{x:node.position.x,y:node.position.y}])),
+     ...Object.fromEntries(rectangles.filter(rect=>networkIds.has(rect.id))
+       .map(rect=>['network:'+rect.id,{x:rect.x,y:rect.y,width:rect.width,height:rect.height}]))
+   }
+ }
  const saveLayout=async()=>{
    if(layoutBusy)return
    setLayoutBusy(true);setLayoutMessage('');setError('')
    try{
-     const validIds=new Set(items.map(item=>item.id))
-     const positions=Object.fromEntries(nodes.filter(node=>validIds.has(node.id))
-       .map(node=>[node.id,{x:node.position.x,y:node.position.y}]))
-     await request('/api/board/layout/'+systemId,{method:'PUT',body:JSON.stringify({positions})})
-     const hasStagedVM=changes.some(c=>c.action==='create_vm')
-     setLayoutDirty(hasStagedVM)
-     setLayoutMessage(hasStagedVM
-       ?'Расположение существующих ВМ сохранено. Новые ВМ подтвердите в черновике, затем сохраните их расположение.'
-       :'Расположение схемы сохранено.')
+     await request('/api/board/layout/'+systemId,{method:'PUT',body:JSON.stringify({positions:collectLayout()})})
+     const hasStagedGeometry=changes.some(c=>c.action==='create_vm'||c.action==='create_network')
+     setLayoutDirty(hasStagedGeometry)
+     setLayoutMessage(hasStagedGeometry
+       ?'Расположение существующих объектов сохранено в историю. Новые подтвердите в черновике.'
+       :'Расположение схемы сохранено. Запись добавлена в историю.')
    }catch(e){setError('Не удалось сохранить расположение: '+String(e))}
    finally{setLayoutBusy(false)}
  }
@@ -299,9 +316,23 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
    setBusy(true);setError('')
    try{
      await request('/api/board/commit',{method:'POST',body:JSON.stringify({changes,reason})})
-     await onCommitted()
+     // Registry changes are committed. Handle geometry/refresh failures separately,
+     // never as a failure of an already committed technical transaction.
+     const newVMIds=changes.filter(c=>c.action==='create_vm').map(c=>c.id!).filter(Boolean)
+     const newNetworkIds=changes.filter(c=>c.action==='create_network').map(c=>c.id!).filter(Boolean)
+     let warning=''
+     try{
+       await request('/api/board/layout/'+systemId,{method:'PUT',
+         body:JSON.stringify({positions:collectLayout(newVMIds,newNetworkIds)})})
+       setLayoutDirty(false);setLayoutMessage('Расположение ВМ и контейнеров сохранено.')
+     }catch(e){
+       warning=' Расположение не удалось сохранить: '+String(e)
+       setLayoutDirty(true)
+     }
+     try{await onCommitted()}catch(e){warning+=' Не удалось обновить данные: '+String(e)}
+     setChanges([]);setPreview(null);setReason('');setDrawing(null);setReviewOpen(false)
+     setError('Изменения внесены в историю.'+warning)
      if(showHistory)void openHistory()
-     setChanges([]);setPreview(null);setReason('');setDrawing(null);setReviewOpen(false);setError('Изменения сохранены. Запись добавлена в журнал действий.')
    }catch(e){setPreview(null);setError('Сохранение отклонено: '+String(e)+'. Обновите предварительный просмотр.')}
    finally{setBusy(false)}
  }

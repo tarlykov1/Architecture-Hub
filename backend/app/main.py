@@ -955,7 +955,8 @@ def cmdb_quality(stale_days: int = Query(default=90, ge=1, le=3650),
         definition = required.get(node["ci_class"])
         needed = definition["required"] if definition else ["technical_owner", "lifecycle"]
         values = overlays[node["id"]].custom_values if node["id"] in overlays else {}
-        missing = missing_required(node, needed, values or {})
+        metadata = _cmdb_snapshot(overlays[node["id"]]) if node["id"] in overlays else {}
+        missing = missing_required({**node, **metadata}, needed, values or {})
         raw_date = node.get("verified_at")
         try:
             verified_time = datetime.fromisoformat(raw_date) if raw_date else None

@@ -1,6 +1,7 @@
 import React, {useEffect, useMemo, useRef, useState} from 'react'
 import './board.css'
 import {DiagramNodeLabel,diagramCardStyle} from './DiagramVisual'
+import MonitoringPanel from './MonitoringPanel'
 import {AutoFit} from './WorkspaceUI'
 import {MousePointer2, Monitor, GitBranch, SquareDashed, Maximize2, Save, History, ClipboardCheck} from 'lucide-react'
 import {ReactFlow, ReactFlowProvider, Background, Controls, Handle, useNodesState, useReactFlow, MarkerType, Position, type Node, type NodeChange, type NodeProps} from '@xyflow/react'
@@ -51,6 +52,7 @@ function readBoardDraft(systemId:string):StoredBoardDraft|null{
 function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfaces,flows,savedPositions={},onPositionChange,request,onCommitted,onEditNetwork,onDraftStateChange}:Props){
  const [restoredDraft]=useState<StoredBoardDraft|null>(()=>readBoardDraft(systemId))
  const [tool,setTool]=useState<Tool>('move')
+ const [drawingConnection,setDrawingConnection]=useState(false)
  const [inspectedId,setInspectedId]=useState<string|null>(null)
  const [inspectedNetworkId,setInspectedNetworkId]=useState<string|null>(null)
  const [focusDependencies,setFocusDependencies]=useState(false)
@@ -425,7 +427,7 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
     return position?{...rect,x:position.x,y:position.y}:rect
   }))
   onNodesChange(updates.filter(change=>!('id' in change)||!change.id.startsWith('network:')))
- }} nodesDraggable={tool==='move'} snapToGrid={snapToGrid} snapGrid={[20,20]} nodesConnectable={tool==='flow'} onConnect={connection=>{if(tool==='flow'&&connection.source&&connection.target){stageDirectedFlow(connection.source,connection.target);setInspectedId(null)}}} onEdgeClick={(_,edge)=>{setInspectedId(null);setFocusDependencies(false);setTool('flow');const draft=changes.find(c=>c.action==='create_flow'&&c.source_id===edge.source&&c.target_id===edge.target);if(draft?.id)setSelectedDraftFlowId(draft.id);else{setSelectedDraftFlowId('');setFrom(edge.source);setTo(edge.target)}}} onNodeClick={(_,node)=>{
+ }} nodesDraggable={tool==='move'} snapToGrid={snapToGrid} snapGrid={[20,20]} nodesConnectable={tool==='flow'} onConnectStart={()=>setDrawingConnection(true)} onConnectEnd={()=>setDrawingConnection(false)} onConnect={connection=>{if(tool==='flow'&&connection.source&&connection.target){stageDirectedFlow(connection.source,connection.target);setInspectedId(null)}}} onEdgeClick={(_,edge)=>{setInspectedId(null);setFocusDependencies(false);setTool('flow');const draft=changes.find(c=>c.action==='create_flow'&&c.source_id===edge.source&&c.target_id===edge.target);if(draft?.id)setSelectedDraftFlowId(draft.id);else{setSelectedDraftFlowId('');setFrom(edge.source);setTo(edge.target)}}} onNodeClick={(_,node)=>{
  if(node.id.startsWith('network:')){setInspectedNetworkId(node.id.slice(8));setInspectedId(null);setFocusDependencies(false);return}
  setInspectedNetworkId(null)
  if(tool==='flow'){
@@ -433,7 +435,7 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
    if(!from||to||from===node.id){setFrom(node.id);setTo('');setSelectedDraftFlowId('');setLayoutMessage('Источник выбран. Нажмите на целевой компонент или протяните стрелку от порта.')}
    else stageDirectedFlow(from,node.id)
  }else if(tool==='move'){openPassport(node.id);setFocusDependencies(false)}
-}} onNodeDragStop={(_,node)=>moveNode(node)} onPaneClick={handlePaneClick} minZoom={0.08} fitView fitViewOptions={{padding:0.2,maxZoom:0.9}}><AutoFit layoutKey={systemId+':'+items.length+':'+flows.length} maxFitZoom={0.9}/><Background gap={20}/><Controls showInteractive={false}/></ReactFlow>
+}} onNodeDragStop={(_,node)=>moveNode(node)} onPaneClick={handlePaneClick} minZoom={0.08} fitView fitViewOptions={{padding:0.2,maxZoom:0.9}}><AutoFit layoutKey={systemId+':'+items.length+':'+flows.length} maxFitZoom={0.9} suspended={drawingConnection}/><Background gap={20}/><Controls showInteractive={false}/></ReactFlow>
      {tool==='network'&&<div className="boardNetworkDrawLayer" role="region" aria-label="Поле рисования контейнера"
        onPointerDown={beginNetworkDrag} onPointerMove={moveNetworkDrag} onPointerUp={finishNetworkDrag}
        onPointerCancel={cancelNetworkDrag} onContextMenu={event=>event.preventDefault()}>
@@ -480,6 +482,7 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
        <h4>Связанные потоки ({inspectedFlows.length})</h4>
        {inspectedFlows.map(f=><div className="boardInspectorItem" key={f.id}><strong>{f.name||'Поток'}</strong><span>{allVMs.find(v=>v.id===f.source_id)?.name||f.source_id} → {allVMs.find(v=>v.id===f.target_id)?.name||f.target_id}</span><small>{f.protocol||'Протокол не указан'}{f.port?':'+f.port:''}</small></div>)}
        {!inspectedFlows.length&&<p>Связанных потоков нет.</p>}
+       {items.some(item=>item.id===inspectedVM.id)?<MonitoringPanel targetType="component" targetId={inspectedVM.id} request={request} systems={Object.entries(ownerBySystemId).map(([id,name])=>({id,name}))}/>:<p className="monitoringHint">Для настройки мониторинга сначала сохраните новую ВМ в реестр.</p>}
      </div>
      <div className="boardInspectorActions"><button type="button" onClick={()=>setEditingPassport(v=>!v)}>{editingPassport?"Скрыть редактирование":"Редактировать паспорт"}</button><label><input type="checkbox" checked={focusDependencies} onChange={e=>setFocusDependencies(e.target.checked)}/> Выделить зависимости</label><button type="button" onClick={()=>{setFrom(inspectedVM.id);setTo('');setTool('flow');setInspectedId(null);setFocusDependencies(false)}}>Добавить поток</button><button type="button" onClick={()=>{setInspectedId(null);setFocusDependencies(false)}}>Закрыть</button></div>
    </aside>}

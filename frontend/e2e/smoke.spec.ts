@@ -1227,3 +1227,43 @@ test('flow tool draws an arrow by dragging card handles without selecting endpoi
   await page.getByRole('button',{name:'Завершить редактирование'}).click()
   await expect(page.locator('.miniArchitecture .react-flow__edge')).toHaveCount(1)
 })
+
+
+test('monitoring tab binds Grafana dashboard to an existing standalone VM',async({page})=>{
+  const suffix=String(Date.now())
+  const systemResponse=await page.request.post('http://127.0.0.1:8001/api/objects',
+    {data:{name:'Monitoring smoke system '+suffix,kind:'system'}})
+  expect(systemResponse.status()).toBe(201)
+  const systemId=(await systemResponse.json()).id
+  const vmName='Independent monitored VM '+suffix
+  const vmResponse=await page.request.post('http://127.0.0.1:8001/api/infra',
+    {data:{system_id:systemId,name:vmName,kind:'vm'}})
+  expect(vmResponse.status()).toBe(201)
+  const vmId=(await vmResponse.json()).id
+  await page.goto('/')
+  await page.getByRole('navigation',{name:'Разделы архитектуры'}).getByRole('button',{name:'Компоненты',exact:true}).click()
+  await page.getByRole('combobox',{name:'Система компонентов'}).selectOption(systemId)
+  await page.getByRole('group',{name:'Представление компонентов'}).getByRole('button',{name:'Карточки',exact:true}).click()
+  await page.getByRole('button',{name:'Карточка компонента'}).click()
+  const dialog=page.getByRole('dialog',{name:'Карточка компонента '+vmName})
+  await dialog.getByRole('tab',{name:'Мониторинг'}).click()
+  const panel=dialog.getByRole('region',{name:'Мониторинг объекта'})
+  await expect(panel).toContainText('Мониторинг не настроен')
+  await panel.getByRole('button',{name:'+ Источник'}).click()
+  const sourceForm=panel.getByRole('form',{name:'Новый источник мониторинга'})
+  await sourceForm.getByLabel('Название').fill('Grafana smoke '+suffix)
+  await sourceForm.getByLabel('Адрес системы').fill('https://grafana.example.org')
+  await sourceForm.getByRole('button',{name:'Создать источник'}).click()
+  const linkForm=panel.getByRole('form',{name:'Новая привязка мониторинга'})
+  await expect(linkForm).toBeVisible()
+  await linkForm.getByLabel('URL дашборда').fill('https://grafana.example.org/d/ci?var-vm=test')
+  await linkForm.getByLabel('Внешний идентификатор').fill('vm-1')
+  await linkForm.getByRole('button',{name:'Сохранить привязку'}).click()
+  await expect(panel.getByRole('link',{name:/Открыть дашборд/})).toHaveAttribute('href','https://grafana.example.org/d/ci?var-vm=test')
+  const entries=await (await page.request.get('http://127.0.0.1:8001/api/monitoring/links?target_type=component&target_id='+vmId)).json()
+  expect(entries.length).toBe(1)
+  await dialog.getByRole('button',{name:/Закрыть/}).click()
+  await page.getByRole('button',{name:'Карточка компонента'}).click()
+  await dialog.getByRole('tab',{name:'Мониторинг'}).click()
+  await expect(panel.getByRole('link',{name:/Открыть дашборд/})).toBeVisible()
+})

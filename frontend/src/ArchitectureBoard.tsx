@@ -531,15 +531,15 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
    finally{setBusy(false)}
  }
  return <section className="boardWorkspace" aria-label="Редактор архитектурной схемы">
-   <div className="boardEditorStage">
-        <div className="boardCanvas" data-active-graph="infrastructure-editor"><ReactFlow nodes={displayedNodes} edges={edges} nodeTypes={BOARD_NODE_TYPES} connectionMode={ConnectionMode.Loose} edgeTypes={{reciprocal:ReciprocalEdge,'obstacle-aware':ObstacleAwareEdge}} onNodesChange={(updates:NodeChange[])=>onNodesChange(updates.filter(c=>!('id' in c)||!c.id.startsWith('network:')||c.type==='dimensions'||c.type==='select'))} nodesDraggable={tool==='move'} snapToGrid={snapToGrid} snapGrid={[20,20]} nodesConnectable={tool==='flow'} onConnect={connection=>{if(connection.source&&connection.target&&connection.source!==connection.target){setFrom(connection.source);setTo(connection.target);setInspectedId(null);setTool('flow');setError('Заполните параметры нового потока справа и добавьте его в черновик.')}}} onEdgeClick={(_,edge)=>{setInspectedId(null);setFocusDependencies(false);setFrom(edge.source);setTo(edge.target);setTool('flow')}} onNodeClick={(_,node)=>{
+   <div className="boardEditorStage" ref={stageRef}>
+        <div className="boardCanvas" data-active-graph="infrastructure-editor"><ReactFlow nodes={displayedNodes} edges={edges} nodeTypes={BOARD_NODE_TYPES} connectionMode={ConnectionMode.Loose} edgeTypes={{reciprocal:ReciprocalEdge,'obstacle-aware':ObstacleAwareEdge}} onNodesChange={(updates:NodeChange[])=>onNodesChange(updates.filter(c=>!('id' in c)||!c.id.startsWith('network:')||c.type==='dimensions'||c.type==='select'))} nodesDraggable={tool==='move'} snapToGrid={snapToGrid} snapGrid={[20,20]} nodesConnectable={tool==='flow'||tool==='move'} edgesReconnectable={tool==='move'} onReconnect={onFlowReconnect} onConnect={connection=>{if(tool==='flow'&&connection.source&&connection.target&&connection.source!==connection.target){setFrom(connection.source);setTo(connection.target);setInspectedId(null);setTool('flow');setError('Заполните параметры нового потока справа и добавьте его в черновик.')}}} onEdgeClick={(event,edge)=>showEdgeMenu(event,edge)} onNodeClick={(_,node)=>{
  if(node.id.startsWith('network:'))return
  if(tool==='flow'){
    setInspectedId(null);setFocusDependencies(false)
    if(!from||to||from===node.id){setFrom(node.id);setTo('')}
    else setTo(node.id)
  }else if(tool==='move'){openPassport(node.id);setFocusDependencies(false)}
-}} onNodeDragStop={(_,node)=>moveNode(node)} onPaneClick={handlePaneClick} minZoom={0.08} fitView fitViewOptions={{padding:0.2,maxZoom:0.9}}><AutoFit layoutKey={systemId+':'+items.length+':'+flows.length} maxFitZoom={0.9}/><Background gap={20}/><Controls showInteractive={false}/></ReactFlow>
+}} onNodeDragStop={(_,node)=>moveNode(node)} onPaneClick={event=>{setEdgePopup(null);handlePaneClick(event)}} minZoom={0.08} fitView fitViewOptions={{padding:0.2,maxZoom:0.9}}><AutoFit layoutKey={systemId+':'+items.length+':'+flows.length} maxFitZoom={0.9}/><Background gap={20}/><Controls showInteractive={false}/></ReactFlow>
      {tool==='network'&&<div className="boardNetworkDrawLayer" role="region" aria-label="Поле рисования контейнера"
        onPointerDown={beginNetworkDrag} onPointerMove={moveNetworkDrag} onPointerUp={finishNetworkDrag}
        onPointerCancel={cancelNetworkDrag} onContextMenu={event=>event.preventDefault()}>
@@ -571,7 +571,7 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
        <ClipboardCheck size={18} aria-hidden="true"/><span className="boardToolCaption" aria-hidden="true">Черновик ({changes.length})</span><span className="boardCountLabel"> изменений</span>
      </button>
    </div>
-     {(tool!=='move'||inspectedVM||reviewOpen)&&<aside className="boardDock" role="complementary" aria-label="Свойства и изменения схемы">
+     {(tool!=='move'||inspectedVM||reviewOpen||flowCardId)&&<aside className="boardDock" role="complementary" aria-label="Свойства и изменения схемы">
        {tool!=='move'&&<div className="boardPropertiesHeader"><div><small>ИНСТРУМЕНТ</small><h3>{tool==='vm'?'Виртуальная машина':tool==='flow'?'Поток данных':'Сеть / контейнер'}</h3></div><button type="button" aria-label="Закрыть настройки инструмента" onClick={()=>{setTool('move');setDrawing(null);setError('');setLayoutMessage('');setReviewOpen(false);cancelNetworkDrag()}}>✕</button></div>}
           {tool==='vm'&&<div className="boardToolFields"><p>Введите название и нажмите на холст для размещения ВМ.</p><label>Имя ВМ <input value={name} onChange={e=>setName(e.target.value)} placeholder="Новая ВМ"/></label><button onClick={()=>addVM()}>Разместить на схеме</button></div>}
    {tool==='network'&&<div className="boardToolFields"><label>Название сети <input value={name} onChange={e=>setName(e.target.value)}/></label><label>Тип <select value={kind} onChange={e=>setKind(e.target.value as typeof kind)}><option value="zone">Зона</option><option value="vlan">VLAN</option><option value="vrf">VRF</option></select></label><p role="status">{drawing?'Продолжайте тянуть – контур контейнера виден на схеме':'Нажмите мышью на свободном месте схемы и протяните прямоугольник нужного размера. Отпустите кнопку – контейнер появится в черновике.'}</p></div>}
@@ -604,7 +604,34 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
    </aside>}
        {reviewOpen&&changes.length>0&&<div className="boardReview"><div className="boardReviewHeader"><strong>Черновик: {changes.length} изменений</strong><button type="button" onClick={()=>setReviewOpen(false)} aria-label="Закрыть черновик">✕</button></div><label>Причина изменений <input value={reason} onChange={e=>{setReason(e.target.value);setPreview(null)}} placeholder="Например: актуализация схемы ИС после изменения сети"/></label><button disabled={!changes.length||busy} onClick={submitPreview}>Проверить изменения ({changes.length})</button><button disabled={!changes.length||busy} onClick={discardDraft}>Отменить черновик</button></div>}
      </aside>}
-     {(Boolean(error)||Boolean(layoutMessage))&&<div className="boardCanvasToast" role="status">{error||layoutMessage}<button type="button" aria-label="Закрыть сообщение" onClick={()=>{setError('');setLayoutMessage('')}}>✕</button></div>}
+     {edgePopup&&<div className="boardFlowQuickMenu" role="dialog" aria-modal="false" aria-label="Быстрое редактирование потока" style={{left:edgePopup.x,top:edgePopup.y}}>
+      <div className="boardFlowQuickHeader"><strong>Поток данных</strong>
+        <button type="button" aria-label="Закрыть быстрое редактирование" onClick={()=>setEdgePopup(null)}>✕</button>
+      </div>
+      {edgePopup.flowIds.length>1?
+        <>
+          <p>По этому направлению зарегистрировано {edgePopup.flowIds.length} потоков. Выберите конкретный поток:</p>
+          {edgePopup.flowIds.map(id=><button type="button" key={id}
+            onClick={()=>{setExpandedPair(edgePopup.pair);setEdgePopup({...edgePopup,flowIds:[id]})}}>
+            {effectiveFlows.find(f=>f.id===id)?.name||id.slice(0,8)}
+          </button>)}
+        </>:
+        (()=>{
+          const flow=effectiveFlows.find(f=>f.id===edgePopup.flowIds[0])
+          if(!flow)return <p>Поток недоступен.</p>
+          return <>
+            <p className="boardFlowQuickRoute">{allVMs.find(v=>v.id===flow.source_id)?.name||'Источник'} → {allVMs.find(v=>v.id===flow.target_id)?.name||'Получатель'}</p>
+            <small>{flow.protocol||'Протокол ?'} · {flow.port||'порт ?'} · {flow.security||'защита не указана'}</small>
+            <p className="boardFlowQuickHelp">Перетащите начало или конец линии на другую точку ВМ. Перемещение точки на той же ВМ сохраняет только оформление схемы.</p>
+            <div className="boardFlowQuickActions">
+              <button type="button" onClick={()=>swapFlow(flow.id)}>⇄ Поменять направление</button>
+              <button type="button" onClick={()=>addReverseFlow(flow.id)}>↔ Создать обратный поток</button>
+              <button type="button" className="primary" onClick={()=>openFlowCard(flow.id)}>Полная карточка потока</button>
+            </div>
+          </>
+        })()}
+    </div>}
+    {(Boolean(error)||Boolean(layoutMessage))&&<div className="boardCanvasToast" role="status">{error||layoutMessage}<button type="button" aria-label="Закрыть сообщение" onClick={()=>{setError('');setLayoutMessage('')}}>✕</button></div>}
    </div>
    {exitPrompt&&<div className="boardConfirm" role="dialog" aria-modal="true" aria-label="Несохранённые изменения схемы">
      <div className="boardConfirmInner">

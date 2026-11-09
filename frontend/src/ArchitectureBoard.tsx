@@ -429,13 +429,14 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
  useEffect(()=>{
    let active=true
    setLayoutDirty(false);setLayoutMessage('')
-   void request<{positions:Record<string,{x:number;y:number}>;network_rectangles?:Record<string,{x:number;y:number;width:number;height:number}>}>('/api/board/layout/'+systemId)
+   void request<{positions:Record<string,{x:number;y:number}>;network_rectangles?:Record<string,{x:number;y:number;width:number;height:number}>;flow_handles?:Record<string,FlowHandlePair>}>('/api/board/layout/'+systemId)
      .then(result=>{
        if(!active)return
        setNodes(previous=>previous.map(node=>{
          const position=result.positions?.[node.id]||savedPositions[node.id]
          return position?{...node,position}:node
        }))
+       setFlowHandles(result.flow_handles||{})
        const stored=result.network_rectangles||{}
        setRectangles(previous=>{
          const byId=new Map(previous.map(rect=>[rect.id,{...rect,...(stored[rect.id]||{})}]))
@@ -461,8 +462,12 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
        .map(node=>[node.id,{x:node.position.x,y:node.position.y}]))
      const network_rectangles=Object.fromEntries(rectangles.filter(rect=>validNetworks.has(rect.id))
        .map(rect=>[rect.id,{x:rect.x,y:rect.y,width:rect.width,height:rect.height}]))
+     const validFlows=new Set([...flows.map(f=>f.id),
+       ...(includeCommittedDraft?changes.filter(c=>c.action==='create_flow').map(c=>c.id!):[])])
+     const flow_handles=Object.fromEntries(Object.entries(flowHandles)
+       .filter(([id])=>validFlows.has(id)))
      await request('/api/board/layout/'+systemId,{
-       method:'PUT',body:JSON.stringify({positions,network_rectangles})
+       method:'PUT',body:JSON.stringify({positions,network_rectangles,flow_handles})
      })
      const hasPending=changes.some(c=>c.action==='create_vm'||c.action==='create_network')
      setLayoutDirty(!includeCommittedDraft&&hasPending)

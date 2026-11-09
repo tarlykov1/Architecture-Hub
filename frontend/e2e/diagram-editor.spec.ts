@@ -259,7 +259,7 @@ test('every VM exposes eight bidirectional connection points and reciprocal flow
   const d=await paths.evaluateAll(elements=>elements.map(element=>element.getAttribute('d')))
   expect(d.every(Boolean)).toBe(true)
   expect(new Set(d).size).toBe(2)
-  await expect(editor.locator('.react-flow__edge').filter({hasText:'HTTPS:443'})).toHaveCount(2)
+  await expect(editor.locator('.reciprocalEdgeLabel')).toHaveCount(2)
 })
 
 test('protocol, port and protection use select lists and support custom values',async({page})=>{

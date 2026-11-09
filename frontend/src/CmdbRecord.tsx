@@ -177,7 +177,7 @@ export default function CmdbRecord({ciId,request}:Props){
         <button type="button" aria-expanded={showCatalog} onClick={()=>setShowCatalog(!showCatalog)}>
           {showCatalog?'Скрыть классификатор':'Классификатор и правила CMDB'}
         </button>
-        {showCatalog&&<CmdbCatalog request={request}/>}
+        {showCatalog&&<CmdbCatalog request={request} onChange={()=>void request<ClassesResponse>('/api/cmdb/classes').then(catalog=>setSchema(catalog.classes))}/>}
       </div>
       <details className="cmdbAuditHistory">
         <summary>История изменений ({history.length})</summary>

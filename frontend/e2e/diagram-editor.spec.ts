@@ -292,6 +292,8 @@ test('an existing VRF is draggable and its saved geometry is audited',async({pag
   const moved=await node.boundingBox()
   expect(moved).not.toBeNull()
   expect(Math.abs(moved!.x-original!.x)+Math.abs(moved!.y-original!.y)).toBeGreaterThan(5)
+  const grouping=page.getByRole('dialog',{name:'Подтверждение вложенности'})
+  if(await grouping.isVisible())await grouping.getByRole('button',{name:'Подтвердить связь'}).click()
   const save=editor.getByRole('button',{name:'Сохранить расположение'})
   await expect(save).toBeEnabled()
   await save.click()
@@ -323,4 +325,219 @@ test('topology component inspector opens the same editable passport as Component
   await expect(passport.getByRole('button',{name:'Сохранить',exact:true})).toBeVisible()
   await passport.getByRole('button',{name:'Отмена'}).click()
   await expect(passport.getByRole('button',{name:'Редактировать паспорт'})).toBeVisible()
+})
+
+
+test('moving a VRF drags nested VLAN and independent VM while preserving network membership',async({page})=>{
+  const systemId=await seedSystem(page)
+  const timestamp=String(Date.now())
+  const vrfRes=await page.request.post('http://127.0.0.1:8001/api/networks',{data:{name:'VRF-PROD-'+timestamp,kind:'vrf'}})
+  expect(vrfRes.status()).toBe(201)
+  const vlanRes=await page.request.post('http://127.0.0.1:8001/api/networks',{data:{name:'VLAN-100-'+timestamp,kind:'vlan'}})
+  expect(vlanRes.status()).toBe(201)
+  const vrf=(await vrfRes.json()).id as string
+  const vlan=(await vlanRes.json()).id as string
+  const vmRes=await page.request.post('http://127.0.0.1:8001/api/infra',{data:{
+    system_id:systemId,kind:'vm',name:'Standalone nested VM '+timestamp
+  }})
+  expect(vmRes.status()).toBe(201)
+  const vm=(await vmRes.json()).id as string
+  const start={
+    ['network:'+vrf]:{x:40,y:45,width:960,height:650},
+    ['network:'+vlan]:{x:85,y:130,width:475,height:350,parent_id:'network:'+vrf},
+    [vm]:{x:135,y:185,parent_id:'network:'+vlan}
+  }
+  const layout=await page.request.put('http://127.0.0.1:8001/api/board/layout/'+systemId,{data:{positions:start}})
+  expect(layout.ok(),await layout.text()).toBeTruthy()
+  await page.goto('/')
+  await page.getByRole('navigation',{name:'Разделы архитектуры'}).getByRole('button',{name:'Компоненты',exact:true}).click()
+  await page.getByRole('group',{name:'Представление компонентов'}).getByRole('button',{name:'Схема',exact:true}).click()
+  await page.getByRole('combobox',{name:'Система компонентов'}).selectOption(systemId)
+  await expect(page.locator('.miniArchitecture .react-flow__node[data-id="network:'+vrf+'"]')).toBeVisible()
+  await expect(page.locator('.miniArchitecture .react-flow__node[data-id="network:'+vlan+'"]')).toBeVisible()
+  await page.getByRole('button',{name:'Редактировать схему'}).click()
+  const board=page.getByRole('region',{name:'Редактор архитектурной схемы'})
+  const root=board.locator('.react-flow__node[data-id="network:'+vrf+'"]')
+  const child=board.locator('.react-flow__node[data-id="network:'+vlan+'"]')
+  const member=board.locator('.react-flow__node[data-id="'+vm+'"]')
+  await expect(root).toBeVisible()
+  await expect(child).toBeVisible()
+  await expect(member).toBeVisible()
+  const rootBefore=await root.boundingBox()
+  expect(rootBefore).not.toBeNull()
+  const x=rootBefore!.x+45,y=rootBefore!.y+17
+  await page.mouse.move(x,y)
+  await page.mouse.down()
+  await page.mouse.move(x+120,y+75,{steps:12})
+  await page.mouse.up()
+  // Depending on surrounding zones the moved VRF may require a new parent
+  // confirmation. Either outcome is valid, but it must not block saving.
+  const groupPrompt=page.getByRole('dialog',{name:'Подтверждение вложенности'})
+  if(await groupPrompt.isVisible())await groupPrompt.getByRole('button',{name:'Подтвердить связь'}).click()
+  const save=board.getByRole('button',{name:'Сохранить расположение'})
+  await expect(save).toBeEnabled()
+  await save.click()
+  const response=await page.request.get('http://127.0.0.1:8001/api/board/layout/'+systemId)
+  expect(response.ok()).toBeTruthy()
+  const saved=(await response.json()).positions as Record<string,{x:number;y:number;width?:number;height?:number}>
+  const deltaX=saved['network:'+vrf].x-start['network:'+vrf].x
+  const deltaY=saved['network:'+vrf].y-start['network:'+vrf].y
+  expect(Math.abs(deltaX)+Math.abs(deltaY)).toBeGreaterThan(5)
+  expect(saved['network:'+vlan].x).toBeCloseTo(start['network:'+vlan].x+deltaX,1)
+  expect(saved['network:'+vlan].y).toBeCloseTo(start['network:'+vlan].y+deltaY,1)
+  expect(saved[vm].x).toBeCloseTo(start[vm].x+deltaX,1)
+  expect(saved[vm].y).toBeCloseTo(start[vm].y+deltaY,1)
+  const interfaces=(await (await page.request.get('http://127.0.0.1:8001/api/network-interfaces')).json()) as Array<{item_id:string}>
+  expect(interfaces.filter(n=>n.item_id===vm)).toEqual([])
+  await page.getByRole('button',{name:'Завершить редактирование'}).click()
+  await expect(page.locator('.miniArchitecture .react-flow__node[data-id="network:'+vrf+'"]')).toBeVisible()
+  await expect(page.locator('.miniArchitecture .react-flow__node[data-id="network:'+vlan+'"]')).toBeVisible()
+})
+
+test('creating a VRF inside an existing VRF is rejected before being staged',async({page})=>{
+  const systemId=await seedSystem(page)
+  const id=(await (await page.request.post('http://127.0.0.1:8001/api/networks',{
+    data:{name:'Parent VRF '+Date.now(),kind:'vrf'}
+  })).json()).id as string
+  await page.request.put('http://127.0.0.1:8001/api/board/layout/'+systemId,{
+    data:{positions:{['network:'+id]:{x:70,y:70,width:1100,height:800}}}
+  })
+  await page.goto('/')
+  await page.getByRole('navigation',{name:'Разделы архитектуры'}).getByRole('button',{name:'Компоненты',exact:true}).click()
+  await page.getByRole('group',{name:'Представление компонентов'}).getByRole('button',{name:'Схема',exact:true}).click()
+  await page.getByRole('button',{name:'Редактировать схему'}).click()
+  await page.getByRole('combobox',{name:'Выбрать ИС для редактора компонентов'}).selectOption(systemId)
+  const board=page.getByRole('region',{name:'Редактор архитектурной схемы'})
+  await expect(board.locator('.react-flow__node[data-id="network:'+id+'"]')).toBeVisible()
+  await board.getByRole('toolbar',{name:'Инструменты архитектуры'}).getByRole('button',{name:'▭ Сеть / контейнер'}).click()
+  const dock=board.getByRole('complementary',{name:'Свойства и изменения схемы'})
+  await dock.getByRole('textbox',{name:/Название сети/}).fill('Invalid nested VRF')
+  await dock.getByRole('combobox',{name:'Тип'}).selectOption('vrf')
+  const overlay=board.getByRole('region',{name:'Поле рисования контейнера'})
+  const root=board.locator('.react-flow__node[data-id="network:'+id+'"]')
+  const bounds=await root.boundingBox()
+  expect(bounds).not.toBeNull()
+  const px=bounds!.x+bounds!.width/2,py=bounds!.y+bounds!.height/2
+  await page.mouse.move(px,py)
+  await page.mouse.down()
+  await page.mouse.up()
+  await expect(board.getByText(/VRF нельзя создавать внутри другой VRF/)).toBeVisible()
+  await expect(board.locator('.react-flow__node').filter({hasText:'Invalid nested VRF'})).toHaveCount(0)
+})
+
+
+test('dragging VLAN into and out of VRF requires confirmation and resizing zone with mouse persists',async({page})=>{
+  const systemId=await seedSystem(page)
+  const suffix=String(Date.now())
+  const makeNetwork=async(kind:'vrf'|'vlan')=>{
+    const response=await page.request.post('http://127.0.0.1:8001/api/networks',{
+      data:{name:'Nested test '+kind+' '+suffix,kind}
+    })
+    expect(response.status()).toBe(201)
+    return (await response.json()).id as string
+  }
+  const vrf=await makeNetwork('vrf'),vlan=await makeNetwork('vlan')
+  const positions={
+    ['network:'+vrf]:{x:180,y:95,width:760,height:540},
+    ['network:'+vlan]:{x:1010,y:180,width:240,height:190}
+  }
+  const seeded=await page.request.put('http://127.0.0.1:8001/api/board/layout/'+systemId,{data:{positions}})
+  expect(seeded.ok(),await seeded.text()).toBeTruthy()
+  await page.goto('/')
+  await page.getByRole('navigation',{name:'Разделы архитектуры'}).getByRole('button',{name:'Компоненты',exact:true}).click()
+  await page.getByRole('group',{name:'Представление компонентов'}).getByRole('button',{name:'Схема',exact:true}).click()
+  await page.getByRole('button',{name:'Редактировать схему'}).click()
+  await page.getByRole('combobox',{name:'Выбрать ИС для редактора компонентов'}).selectOption(systemId)
+  const board=page.getByRole('region',{name:'Редактор архитектурной схемы'})
+  const parent=board.locator('.react-flow__node[data-id="network:'+vrf+'"]')
+  const child=board.locator('.react-flow__node[data-id="network:'+vlan+'"]')
+  await expect(parent).toBeVisible()
+  await expect(child).toBeVisible()
+  const vrfBox=await parent.boundingBox(),original=await child.boundingBox()
+  expect(vrfBox).not.toBeNull();expect(original).not.toBeNull()
+  const from={x:original!.x+30,y:original!.y+18}
+  const into={x:vrfBox!.x+vrfBox!.width*.24,y:vrfBox!.y+vrfBox!.height*.24}
+  await page.mouse.move(from.x,from.y)
+  await page.mouse.down()
+  await page.mouse.move(into.x,into.y,{steps:20})
+  await page.mouse.up()
+  const prompt=page.getByRole('dialog',{name:'Подтверждение вложенности'})
+  await expect(prompt).toBeVisible()
+  await expect(prompt).toContainText('Добавить объект в группу?')
+  await prompt.getByRole('button',{name:'Подтвердить связь'}).click()
+  await board.getByRole('button',{name:'Сохранить расположение'}).click()
+  const read=async()=> (await (await page.request.get('http://127.0.0.1:8001/api/board/layout/'+systemId)).json()).positions as Record<string,{x:number;y:number;width?:number;height?:number;parent_id?:string}>
+  await expect.poll(async()=>(await read())['network:'+vlan]?.parent_id).toBe('network:'+vrf)
+
+  const next=await child.boundingBox()
+  expect(next).not.toBeNull()
+  await page.mouse.move(next!.x+30,next!.y+18)
+  await page.mouse.down()
+  await page.mouse.move(from.x,from.y,{steps:20})
+  await page.mouse.up()
+  await expect(prompt).toBeVisible()
+  await expect(prompt).toContainText('Вывести объект из группы?')
+  await prompt.getByRole('button',{name:'Подтвердить связь'}).click()
+  await board.getByRole('button',{name:'Сохранить расположение'}).click()
+  await expect.poll(async()=>(await read())['network:'+vlan]?.parent_id||null).toBe(null)
+
+  const grips=parent.locator('.react-flow__resize-control.handle')
+  await expect(grips.first()).toBeVisible()
+  const before=(await read())['network:'+vrf]!.width!
+  const grip=await grips.last().boundingBox()
+  expect(grip).not.toBeNull()
+  await page.mouse.move(grip!.x+grip!.width/2,grip!.y+grip!.height/2)
+  await page.mouse.down()
+  await page.mouse.move(grip!.x+grip!.width/2+60,grip!.y+grip!.height/2+45,{steps:12})
+  await page.mouse.up()
+  await board.getByRole('button',{name:'Сохранить расположение'}).click()
+  const after=(await read())['network:'+vrf]!.width!
+  expect(Math.abs(after-before)).toBeGreaterThan(10)
+})
+
+
+test('placing VM inside VLAN requests confirmation and optional NIC is saved only after review',async({page})=>{
+  const systemId=await seedSystem(page)
+  const vlanRes=await page.request.post('http://127.0.0.1:8001/api/networks',{
+    data:{name:'VM placement VLAN '+Date.now(),kind:'vlan'}
+  })
+  expect(vlanRes.status()).toBe(201)
+  const vlan=(await vlanRes.json()).id as string
+  const seeded=await page.request.put('http://127.0.0.1:8001/api/board/layout/'+systemId,{
+    data:{positions:{['network:'+vlan]:{x:180,y:120,width:800,height:620}}}
+  })
+  expect(seeded.ok()).toBeTruthy()
+  await page.goto('/')
+  await page.getByRole('navigation',{name:'Разделы архитектуры'}).getByRole('button',{name:'Компоненты',exact:true}).click()
+  await page.getByRole('group',{name:'Представление компонентов'}).getByRole('button',{name:'Схема',exact:true}).click()
+  await page.getByRole('button',{name:'Редактировать схему'}).click()
+  await page.getByRole('combobox',{name:'Выбрать ИС для редактора компонентов'}).selectOption(systemId)
+  const board=page.getByRole('region',{name:'Редактор архитектурной схемы'})
+  const rect=board.locator('.react-flow__node[data-id="network:'+vlan+'"]')
+  await expect(rect).toBeVisible()
+  await board.getByRole('toolbar',{name:'Инструменты архитектуры'}).getByRole('button',{name:'+ ВМ'}).click()
+  await board.getByRole('textbox',{name:'Имя ВМ'}).fill('VM nested '+Date.now())
+  const name=await board.getByRole('textbox',{name:'Имя ВМ'}).inputValue()
+  const bounds=await rect.boundingBox()
+  expect(bounds).not.toBeNull()
+  await page.mouse.click(bounds!.x+bounds!.width*.64,bounds!.y+bounds!.height*.62)
+  const confirm=page.getByRole('dialog',{name:'Подтверждение вложенности'})
+  await expect(confirm).toBeVisible()
+  await expect(confirm).toContainText('Добавить объект в группу')
+  await confirm.getByRole('combobox',{name:/Техническая привязка интерфейса к VLAN/}).selectOption('new')
+  await confirm.getByRole('textbox',{name:'Имя нового интерфейса'}).fill('eth0')
+  await confirm.getByRole('button',{name:'Подтвердить связь'}).click()
+  const infraBefore=(await (await page.request.get('http://127.0.0.1:8001/api/infra')).json()) as Array<{id:string;name:string}>
+  expect(infraBefore.some(v=>v.name===name)).toBe(false)
+  await board.getByRole('button',{name:'Сохранить изменения схемы'}).click()
+  await board.getByPlaceholder('Например: актуализация схемы ИС после изменения сети').fill('Confirm VM nested into VLAN with explicit NIC')
+  await board.getByRole('button',{name:/Проверить изменения/}).click()
+  await page.getByRole('dialog',{name:'Подтверждение изменений архитектуры'}).getByRole('button',{name:'Подтвердить и записать в журнал'}).click()
+  const infra=(await (await page.request.get('http://127.0.0.1:8001/api/infra')).json()) as Array<{id:string;name:string}>
+  const vm=infra.find(v=>v.name===name)
+  expect(vm).toBeTruthy()
+  const interfaces=(await (await page.request.get('http://127.0.0.1:8001/api/network-interfaces')).json()) as Array<{item_id:string;name:string;vlan_id:string|null}>
+  expect(interfaces.some(n=>n.item_id===vm!.id&&n.name==='eth0'&&n.vlan_id===vlan)).toBe(true)
+  const positions=(await (await page.request.get('http://127.0.0.1:8001/api/board/layout/'+systemId)).json()).positions as Record<string,{parent_id?:string}>
+  expect(positions[vm!.id]?.parent_id).toBe('network:'+vlan)
 })

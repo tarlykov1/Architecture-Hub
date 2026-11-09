@@ -458,12 +458,12 @@ function App() {
   const [infra, setInfra] = useState<Infra[]>([])
   const [flows, setFlows] = useState<Flow[]>([])
   const [layer, setLayer] = useState<Section>(()=>parseWorkspaceRoute(window.location).layer)
-  const [boardViewLayout,setBoardViewLayout]=useState<Record<string,{x:number;y:number;width?:number;height?:number}>>({})
+  const [boardViewLayout,setBoardViewLayout]=useState<Record<string,{x:number;y:number;width?:number;height?:number;parent_id?:string}>>({})
   useEffect(()=>{
     let active=true
     setBoardViewLayout({})
     if(viewSystem&&layer==='infrastructure'&&!diagramEditMode){
-      void request<{positions:Record<string,{x:number;y:number;width?:number;height?:number}>}>('/api/board/layout/'+viewSystem)
+      void request<{positions:Record<string,{x:number;y:number;width?:number;height?:number;parent_id?:string}>}>('/api/board/layout/'+viewSystem)
         .then(result=>{if(active&&result&&result.positions)setBoardViewLayout(result.positions)})
         .catch(()=>{/* Fallback: the registry's nodes are still visible. */})
     }
@@ -992,15 +992,20 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
   const groupedDrillEdges:Edge[]=groupedComponents?.edges.map(edge=>({id:edge.id,source:edge.source,target:edge.target,type:'smoothstep',label:String(edge.count)+' потоков',style:{stroke:'#64748b',strokeWidth:1.6},labelStyle:{fontSize:11},markerEnd:{type:MarkerType.ArrowClosed,width:13,height:13}}))||[]
   // The read-only diagram must retain saved VRF/VLAN/zone rectangles, including
   // independent networks without NIC membership. A group is presentation only.
+  const networkDepth=(key:string)=>{
+    let depth=0,current=boardViewLayout[key]?.parent_id,seen=new Set([key])
+    while(current&&!seen.has(current)&&depth<15){seen.add(current);depth++;current=boardViewLayout[current]?.parent_id}
+    return depth
+  }
   const viewNetworkNodes:Node[]=Object.entries(boardViewLayout).flatMap(([key,geometry])=>{
     if(!key.startsWith('network:')||!Number.isFinite(geometry.width)||!Number.isFinite(geometry.height))return []
     const network=segments.find(n=>n.id===key.slice('network:'.length))
     if(!network)return []
-    return [{id:key,position:{x:geometry.x,y:geometry.y},zIndex:-1,
+    return [{id:key,position:{x:geometry.x,y:geometry.y},zIndex:-10+networkDepth(key),
       draggable:false,selectable:false,connectable:false,
-      data:{label:<div className="boardNetworkLabel"><strong>{network.name} · {network.kind.toUpperCase()}</strong></div>},
-      style:{width:geometry.width,height:geometry.height,background:'#dbeafe77',
-        border:'2px dashed #2563eb',borderRadius:9,boxSizing:'border-box',pointerEvents:'none',textAlign:'left',padding:12,fontSize:13,color:'#1e40af'}}]
+      data:{label:<div className="boardNetworkLabel"><strong>{network.name} · {network.kind.toUpperCase()}</strong>{geometry.parent_id&&<small>Внутри {segments.find(n=>'network:'+n.id===geometry.parent_id)?.name||'сети'}</small>}</div>},
+      style:{width:geometry.width,height:geometry.height,background:network.kind==='vlan'?'#e6f7efad':network.kind==='vrf'?'#dbeafe88':'#f1f5f9aa',
+        border:network.kind==='vlan'?'2px dashed #2c8d68':network.kind==='vrf'?'2px dashed #2563eb':'2px dashed #64748b',borderRadius:9,boxSizing:'border-box',pointerEvents:'none',textAlign:'left',padding:12,fontSize:13,color:'#1e40af'}}]
   })
   const renderedDrillNodes=isComponentGroupOverview?groupedDrillNodes:isComponentGroupDetail?drillNodes.filter(n=>groupMemberIds.has(n.id)):[...viewNetworkNodes,...drillNodes]
   const renderedDrillEdges=isComponentGroupOverview?groupedDrillEdges:isComponentGroupDetail?drillEdges.filter(e=>groupMemberIds.has(e.source)&&groupMemberIds.has(e.target)):drillEdges

@@ -4,7 +4,7 @@ import {DiagramNodeLabel,diagramCardStyle} from './DiagramVisual'
 import MonitoringPanel from './MonitoringPanel'
 import {AutoFit} from './WorkspaceUI'
 import {MousePointer2, Monitor, GitBranch, SquareDashed, Maximize2, Save, History, ClipboardCheck} from 'lucide-react'
-import {ReactFlow, ReactFlowProvider, Background, Controls, Handle, useNodesState, useReactFlow, MarkerType, Position, type Node, type NodeChange, type NodeProps} from '@xyflow/react'
+import {ReactFlow, ReactFlowProvider, Background, Controls, Handle, NodeResizer, useNodesState, useReactFlow, MarkerType, Position, type Node, type NodeChange, type NodeProps} from '@xyflow/react'
 import {compactComponentLayout,flowCountLabel} from './graphLayout'
 import {ReciprocalEdge} from './ReciprocalEdge'
 import {ObstacleAwareEdge} from './ObstacleAwareEdge'
@@ -29,15 +29,36 @@ function BoardComponentNode({data}:NodeProps){
   <Handle type="target" id="in-top" position={Position.Top} isConnectable={drawing} className={'boardConnectionHandle'+(drawing?' boardConnectionHandleActive':'')}/>
  </>
 }
-const boardNodeTypes={boardComponent:BoardComponentNode}
+function BoardNetworkNode({data}:NodeProps){
+ const options=data as {label:React.ReactNode;resizable?:boolean;onResize?:(size:{x:number;y:number;width:number;height:number})=>void}
+ return <>
+  {options.label}
+  <NodeResizer isVisible={Boolean(options.resizable)} minWidth={140} minHeight={90}
+   lineStyle={{borderColor:'#2563eb'}} handleStyle={{width:9,height:9,border:'1px solid #fff',borderRadius:2,background:'#2563eb'}}
+   onResize={(_,params)=>options.onResize?.({x:params.x,y:params.y,width:params.width,height:params.height})}/>
+ </>
+}
+const boardNodeTypes={boardComponent:BoardComponentNode,boardNetwork:BoardNetworkNode}
 type Rect = {id:string;name:string;kind:string;x:number;y:number;width:number;height:number}
-type Geometry = {x:number;y:number;width?:number;height?:number}
+type Geometry = {x:number;y:number;width?:number;height?:number;parent_id?:string}
 const makeId=()=>crypto.randomUUID()
 const rectContains=(r:Rect,p:{x:number;y:number})=>p.x>=r.x&&p.x<=r.x+r.width&&p.y>=r.y&&p.y<=r.y+r.height
+// Nested rectangles are presentation groups only; no NIC or L3 membership is implied.
+const rectFullyInside=(outer:Rect,inner:Rect)=>inner.id!==outer.id&&inner.x>=outer.x&&inner.y>=outer.y&&inner.x+inner.width<=outer.x+outer.width&&inner.y+inner.height<=outer.y+outer.height
+const permittedParent=(childKind:string,parentKind:string)=>childKind==='vrf'?parentKind==='zone':childKind==='vlan'?(parentKind==='vrf'||parentKind==='zone'):childKind==='zone'?parentKind==='zone':true
+const descendants=(root:string,parents:Record<string,string>):Set<string>=>{
+ const result=new Set<string>(),queue=[root]
+ for(let i=0;i<queue.length;i++){
+  for(const [child,parent] of Object.entries(parents)){
+   if(parent===queue[i]&&!result.has(child)){result.add(child);queue.push(child)}
+  }
+ }
+ return result
+}
 const fieldForKind=(kind:string):'zone_id'|'vlan_id'|'vrf_id'=>kind==='vlan'?'vlan_id':kind==='vrf'?'vrf_id':'zone_id'
 // Save uncommitted UI work across navigating away from the editor in the same tab.
 // This is a local draft only: the API registry is changed by /api/board/commit.
-type StoredBoardDraft={changes:Change[];rectangles:Rect[];positions:Record<string,{x:number;y:number}>;reason:string}
+type StoredBoardDraft={changes:Change[];rectangles:Rect[];positions:Record<string,{x:number;y:number}>;parents?:Record<string,string>;reason:string}
 const draftKey=(systemId:string)=>'architecture-hub:board-draft:v1:'+systemId
 function readBoardDraft(systemId:string):StoredBoardDraft|null{
  try{
@@ -45,7 +66,7 @@ function readBoardDraft(systemId:string):StoredBoardDraft|null{
   if(!raw)return null
   const value=JSON.parse(raw) as Partial<StoredBoardDraft>
   if(!Array.isArray(value.changes)||!Array.isArray(value.rectangles)||!value.changes.length)return null
-  return {changes:value.changes.filter(c=>c&&typeof c.action==='string'),rectangles:value.rectangles.filter(r=>r&&typeof r.id==='string'),positions:value.positions&&typeof value.positions==='object'?value.positions:{},reason:typeof value.reason==='string'?value.reason:''}
+  return {changes:value.changes.filter(c=>c&&typeof c.action==='string'),rectangles:value.rectangles.filter(r=>r&&typeof r.id==='string'),positions:value.positions&&typeof value.positions==='object'?value.positions:{},parents:value.parents&&typeof value.parents==='object'?value.parents:{},reason:typeof value.reason==='string'?value.reason:''}
  }catch{return null}
 }
 
@@ -53,6 +74,7 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
  const [restoredDraft]=useState<StoredBoardDraft|null>(()=>readBoardDraft(systemId))
  const [tool,setTool]=useState<Tool>('move')
  const [drawingConnection,setDrawingConnection]=useState(false)
+ const [draggingNode,setDraggingNode]=useState(false)
  const [inspectedId,setInspectedId]=useState<string|null>(null)
  const [inspectedNetworkId,setInspectedNetworkId]=useState<string|null>(null)
  const [focusDependencies,setFocusDependencies]=useState(false)
@@ -77,7 +99,7 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
  const [protocol,setProtocol]=useState('') // Unknown until an architect confirms the transport.
  const [port,setPort]=useState('')
  const [security,setSecurity]=useState('unknown')
- const [interfaceId,setInterfaceId]=useState('')
+
  const [snapToGrid,setSnapToGrid]=useState(false)
  const [drawing,setDrawing]=useState<{x:number;y:number}|null>(null)
  const networkStart=useRef<{x:number;y:number}|null>(null)
@@ -85,6 +107,12 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
  const networkStartPixel=useRef<{x:number;y:number}|null>(null)
  const [networkPreview,setNetworkPreview]=useState<{x:number;y:number;width:number;height:number}|null>(null)
  const [reviewOpen,setReviewOpen]=useState(Boolean(restoredDraft?.changes.length))
+ const [parents,setParents]=useState<Record<string,string>>(restoredDraft?.parents||{})
+ const persistedParents=useRef<Record<string,string>>({})
+ const [pendingGrouping,setPendingGrouping]=useState<null|{id:string;name:string;from:string|null;to:string|null;newlyCreated?:boolean;snapshot?:{rects:Rect[];nodes:Node[];dirty:boolean}}>(null)
+ const [nicForGrouping,setNicForGrouping]=useState('')
+ const [newNicName,setNewNicName]=useState('eth0')
+ const dragSnapshot=useRef<null|{rects:Rect[];nodes:Node[];dirty:boolean}>(null)
  const [rectangles,setRectangles]=useState<Rect[]>(()=>{
    const relevant = networks.filter(n=>interfaces.some(nic=>nic[fieldForKind(n.kind)]===n.id&&items.some(item=>item.id===nic.item_id)))
    const heights=relevant.map(n=>{
@@ -120,6 +148,69 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
    style:diagramCardStyle({border:'1px dashed #d97706'})
   }))]
  const [nodes,setNodes,onNodesChange]=useNodesState<Node>(restoredNodes)
+ const visualGroupDrag=useRef<{id:string;origin:{x:number;y:number};rects:Rect[];members:Node[]}|null>(null)
+ const startVisualGroupDrag=(node:Node)=>{
+   dragSnapshot.current={rects:rectangles.map(r=>({...r})),nodes:nodes.map(n=>({...n,position:{...n.position}})),dirty:layoutDirty}
+   if(!node.id.startsWith('network:')){visualGroupDrag.current=null;return}
+   const parent=rectangles.find(r=>r.id===node.id.slice('network:'.length))
+   if(!parent){visualGroupDrag.current=null;return}
+   const childIds=descendants(node.id,parents)
+   visualGroupDrag.current={id:node.id,origin:{x:parent.x,y:parent.y},
+     rects:rectangles.filter(rect=>childIds.has('network:'+rect.id)),
+     members:nodes.filter(n=>childIds.has(n.id))}
+ }
+ const updateVisualGroupDrag=(node:Node,finished=false)=>{
+   const group=visualGroupDrag.current
+   if(!group||group.id!==node.id)return
+   const dx=node.position.x-group.origin.x,dy=node.position.y-group.origin.y
+   if(!dx&&!dy){if(finished)visualGroupDrag.current=null;return}
+   const childPositions=new Map(group.rects.map(r=>[r.id,{x:r.x+dx,y:r.y+dy}]))
+   setRectangles(previous=>previous.map(rect=>childPositions.has(rect.id)?{...rect,...childPositions.get(rect.id)!}:rect))
+   const vmPositions=new Map(group.members.map(member=>[member.id,{x:member.position.x+dx,y:member.position.y+dy}]))
+   setNodes(previous=>previous.map(member=>vmPositions.has(member.id)?{...member,position:vmPositions.get(member.id)!}:member))
+   if(finished){
+     for(const member of group.members)onPositionChange?.({...member,position:vmPositions.get(member.id)!})
+     setLayoutDirty(true)
+     setLayoutMessage('Группа с вложенными объектами перемещена. Сохраните расположение.')
+     visualGroupDrag.current=null
+   }
+ }
+ const candidateGroup=(node:Node):string|null=>{
+   const child=node.id.startsWith('network:')?rectangles.find(r=>r.id===node.id.slice(8)):undefined
+   const point=child?{x:node.position.x+child.width/2,y:node.position.y+child.height/2}:{x:node.position.x+100,y:node.position.y+45}
+   const excluded=descendants(node.id,parents)
+   const candidates=rectangles.filter(r=>!excluded.has('network:'+r.id)&&'network:'+r.id!==node.id&&
+     (!child||permittedParent(child.kind,r.kind))&&rectContains(r,point)&&
+     (!child||rectFullyInside(r,{...child,x:node.position.x,y:node.position.y})))
+   candidates.sort((a,b)=>a.width*a.height-b.width*b.height)
+   return candidates.length?'network:'+candidates[0].id:null
+ }
+ const finishVisualDrop=(node:Node)=>{
+   updateVisualGroupDrag(node,true)
+   const target=candidateGroup(node),previous=parents[node.id]||null
+   if(target!==previous){
+     const label=node.id.startsWith('network:')?rectangles.find(r=>r.id===node.id.slice(8))?.name:items.find(v=>v.id===node.id)?.name
+     setPendingGrouping({id:node.id,name:label||node.id,from:previous,to:target,snapshot:dragSnapshot.current||undefined})
+     setNicForGrouping('');setNewNicName('eth0')
+     setInspectedId(null);setInspectedNetworkId(null)
+   }
+   dragSnapshot.current=null
+ }
+ const updateNetworkSize=(id:string,size:{x:number;y:number;width:number;height:number})=>{
+   const current=rectangles.find(r=>r.id===id)
+   if(!current)return
+   const childIds=descendants('network:'+id,parents),next={...current,...size}
+   const overflowingRect=rectangles.some(r=>childIds.has('network:'+r.id)&&!rectFullyInside(next,r))
+   const overflowingVM=nodes.some(n=>childIds.has(n.id)&&
+     (!rectContains(next,{x:n.position.x,y:n.position.y})||
+      !rectContains(next,{x:n.position.x+195,y:n.position.y+95})))
+   if(overflowingRect||overflowingVM){
+     setLayoutMessage('Граница не может исключать связанные объекты. Сначала переместите их или увеличьте контейнер.')
+     return
+   }
+   setRectangles(prev=>prev.map(r=>r.id===id?next:r))
+   setLayoutDirty(true)
+ }
 
  useEffect(()=>{
   onDraftStateChange?.(changes.length>0)
@@ -128,11 +219,11 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
   try{
    if(!changes.length){sessionStorage.removeItem(draftKey(systemId));return}
    sessionStorage.setItem(draftKey(systemId),JSON.stringify({
-    changes,rectangles,reason,
+    changes,rectangles,parents,reason,
     positions:Object.fromEntries(nodes.map(n=>[n.id,{x:n.position.x,y:n.position.y}]))
    } satisfies StoredBoardDraft))
   }catch{/* Storage might be unavailable: the visible draft remains in memory. */}
- },[changes,rectangles,reason,nodes,systemId])
+ },[changes,rectangles,parents,reason,nodes,systemId])
  useEffect(()=>{
   if(!changes.length)return
   const preventClose=(event:BeforeUnloadEvent)=>{event.preventDefault();event.returnValue=''}
@@ -158,7 +249,7 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
  const allNetworks=[...networks,...changes.filter(c=>c.action==='create_network').map(c=>({id:c.id!,name:c.name!,kind:c.kind!}))]
  const visibleRects=rectangles.filter(r=>allNetworks.some(n=>n.id===r.id))
  const draftNetworks=new Set(changes.filter(c=>c.action==='create_network').map(c=>c.id))
- const backgroundNodes:Node[]=visibleRects.map(r=>({id:'network:'+r.id,type:'default',position:{x:r.x,y:r.y},width:r.width,height:r.height,measured:{width:r.width,height:r.height},draggable:tool==='move',selectable:true,connectable:false,data:{label:<div className="boardNetworkLabel"><strong>{r.name} · {r.kind.toUpperCase()}</strong><small>{draftNetworks.has(r.id)?'Черновик · ещё не сохранён':tool==='move'?'Перетащите контейнер':'Контейнер сети'}</small></div>},style:{width:r.width,height:r.height,background:draftNetworks.has(r.id)?'#fff7edaa':'#dbeafe77',border:draftNetworks.has(r.id)?'2px dashed #d97706':'2px dashed #2563eb',borderRadius:9,zIndex:0,pointerEvents:'auto',textAlign:'left',padding:12,fontSize:13,color:'#1e40af'}}))
+ const backgroundNodes:Node[]=visibleRects.map(r=>({id:'network:'+r.id,type:'boardNetwork',dragHandle:'.boardNetworkLabel',position:{x:r.x,y:r.y},width:r.width,height:r.height,measured:{width:r.width,height:r.height},draggable:tool==='move',selectable:true,connectable:false,data:{resizable:tool==='move',onResize:(size:{x:number;y:number;width:number;height:number})=>updateNetworkSize(r.id,size),label:<div className="boardNetworkLabel"><strong>{r.name} · {r.kind.toUpperCase()}</strong><small>{draftNetworks.has(r.id)?'Черновик · ещё не сохранён':parents['network:'+r.id]?'В группе: '+(allNetworks.find(n=>'network:'+n.id===parents['network:'+r.id])?.name||'сеть'):'Свободная зона'} · {tool==='move'?'Тяните край для изменения размера':''}</small></div>},style:{width:r.width,height:r.height,background:draftNetworks.has(r.id)?'#fff7edaa':'#dbeafe77',border:draftNetworks.has(r.id)?'2px dashed #d97706':'2px dashed #2563eb',borderRadius:9,zIndex:1+(()=>{let depth=0,p=parents['network:'+r.id];while(p&&depth<10){depth++;p=parents[p]}return depth})(),pointerEvents:'auto',textAlign:'left',padding:12,fontSize:13,color:'#1e40af'}}))
  const graphNodes=[...backgroundNodes,...nodes]
  // A pair of machines has one readable connection; its technical flows stay separate records.
  const pendingFlows=changes.filter(c=>c.action==='create_flow').map(c=>({id:c.id!,source_id:c.source_id!,target_id:c.target_id!,protocol:c.protocol||'',port:c.port||'',name:c.name||''}))
@@ -192,31 +283,60 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
    }
  })
  const addChange=(c:Change)=>{setChanges(previous=>[...previous,c]);setPreview(null);setError('')}
+ const groupingTarget= pendingGrouping?.to?visibleRects.find(r=>'network:'+r.id===pendingGrouping.to):undefined
+ const groupingVM=pendingGrouping&&!pendingGrouping.id.startsWith('network:')?allVMs.find(v=>v.id===pendingGrouping.id):undefined
+ const confirmGrouping=()=>{
+   if(!pendingGrouping)return
+   const change=pendingGrouping
+   if(change.to&&groupingTarget?.kind==='vlan'&&groupingVM&&nicForGrouping==='new'){
+     const label=newNicName.trim()
+     const existing=interfaces.filter(n=>n.item_id===groupingVM.id)
+     const pending=changes.filter(c=>c.action==='create_interface'&&c.item_id===groupingVM.id)
+     if(!label||existing.some(n=>n.name===label)||pending.some(n=>n.interface_name===label)){
+       setError('Имя нового сетевого интерфейса должно быть непустым и уникальным для ВМ.')
+       return
+     }
+     addChange({action:'create_interface',id:makeId(),item_id:groupingVM.id,
+       interface_name:label,network_id:groupingTarget.id,network_field:'vlan_id'})
+   }else if(change.to&&groupingTarget?.kind==='vlan'&&groupingVM&&nicForGrouping){
+     const nic=interfaces.find(n=>n.id===nicForGrouping&&n.item_id===groupingVM.id)
+     if(!nic){setError('Указанный сетевой интерфейс не найден.');return}
+     setChanges(prev=>[...prev.filter(c=>!(c.action==='move_interface'&&c.interface_id===nic.id&&c.network_field==='vlan_id')),
+       {action:'move_interface',interface_id:nic.id,network_id:groupingTarget.id,
+        previous_network_id:nic.vlan_id,network_field:'vlan_id'}])
+     setPreview(null)
+   }
+   setParents(prev=>{
+     const next={...prev}
+     if(change.to)next[change.id]=change.to
+     else delete next[change.id]
+     return next
+   })
+   setLayoutDirty(true)
+   setPendingGrouping(null);setNicForGrouping('')
+   setLayoutMessage(change.to
+     ?'Архитектурная вложенность подтверждена. Сохраните схему. Технические связи изменяются только отдельной согласованной операцией.'
+     :'Объект выведен из группы. Сохраните схему; реальные сетевые интерфейсы не изменены.')
+ }
+ const cancelGrouping=()=>{
+   const snapshot=pendingGrouping?.snapshot
+   if(snapshot){
+     setRectangles(snapshot.rects)
+     setNodes(snapshot.nodes)
+     setLayoutDirty(snapshot.dirty)
+     for(const node of snapshot.nodes)onPositionChange?.(node)
+   }
+   setPendingGrouping(null);setNicForGrouping('');setError('')
+   setLayoutMessage('Перемещение и изменение вложенности отменены.')
+ }
  const moveNode=(node:Node)=>{
    if(node.id.startsWith('network:')){
      const id=node.id.slice('network:'.length)
      setRectangles(previous=>previous.map(rect=>rect.id===id?{...rect,x:node.position.x,y:node.position.y}:rect))
-     setLayoutDirty(true);setLayoutMessage('Контейнер перемещён – сохраните его расположение на схеме.')
-     setError('')
-     return
-   }
-   onPositionChange?.(node)
-   setLayoutDirty(true);setLayoutMessage('')
-   const center={x:node.position.x+97,y:node.position.y+30}
-   const target=visibleRects.slice().reverse().find(r=>rectContains(r,center))
-   if(!target)return
-   if(!interfaceId){
-     setLayoutMessage('Изменено только расположение. Для технической привязки явно выберите интерфейс в правой панели.')
-     return
-   }
-   const nic=interfaces.find(n=>n.id===interfaceId&&n.item_id===node.id)
-   if(!nic){setError('Выбранный интерфейс не принадлежит перемещаемой ВМ. Выберите интерфейс этой ВМ или оставьте «Только расположение».');return}
-   const field=fieldForKind(target.kind)
-   const prior=changes.find(c=>c.action==='move_interface'&&c.interface_id===nic.id&&c.network_field===field)
-   if((prior?prior.network_id:nic[field])===target.id)return
-   const next:Change={action:'move_interface',interface_id:nic.id,network_id:target.id,previous_network_id:nic[field],network_field:field}
-   setChanges(previous=>[...previous.filter(c=>!(c.action==='move_interface'&&c.interface_id===nic.id&&c.network_field===field)),next])
-   setPreview(null);setError('')
+   }else onPositionChange?.(node)
+   setLayoutDirty(true)
+   setLayoutMessage('Расположение изменено. Если объект перенесён через границу зоны, подтвердите архитектурную связь. Технические интерфейсы не меняются без отдельного согласия.')
+   setError('')
  }
  const addVM=(point?:{x:number;y:number})=>{
    if(!name.trim())return setError('Введите имя новой ВМ.')
@@ -226,6 +346,13 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
    setNodes(previous=>[...previous,node])
    onPositionChange?.(node)
    setLayoutDirty(true);setLayoutMessage('')
+   // New VM placed in an existing zone must be explicitly confirmed as a child.
+   const center={x:node.position.x+100,y:node.position.y+45}
+   const candidates=visibleRects.filter(r=>rectContains(r,center)).sort((a,b)=>a.width*a.height-b.width*b.height)
+   if(candidates.length){
+     setPendingGrouping({id,name:name.trim(),from:null,to:'network:'+candidates[0].id,newlyCreated:true})
+     setNicForGrouping('');setNewNicName('eth0')
+   }
    setName('');setTool('move');setReviewOpen(true)
  }
  const stageDirectedFlow=(source:string,target:string)=>{
@@ -255,6 +382,10 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
    const x=Math.min(start.x,end.x),y=Math.min(start.y,end.y)
    const width=Math.abs(end.x-start.x),height=Math.abs(end.y-start.y)
    if(width<140||height<90){setError('Контейнер слишком мал: растяните минимум 140 × 90 или просто нажмите на холст для стандартного размера.');return}
+   if(kind==='vrf'&&visibleRects.some(r=>r.kind==='vrf'&&rectContains(r,{x:x+width/2,y:y+height/2}))){
+     setError('VRF нельзя создавать внутри другой VRF. Разместите её отдельно; VLAN внутри VRF допускается.')
+     return
+   }
    const id=makeId()
    const rect:Rect={id,name:name.trim(),kind,x,y,width,height}
    setRectangles(prev=>[...prev,rect])
@@ -264,6 +395,11 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
    // Membership is a separate reviewed operation when the user explicitly
    // moves a concrete VM/interface into a network or edits the NIC.
    setChanges(previous=>[...previous,{action:'create_network',id,name:name.trim(),kind}])
+   const candidates=visibleRects.filter(r=>permittedParent(kind,r.kind)&&rectFullyInside(r,rect)).sort((a,b)=>a.width*a.height-b.width*b.height)
+   if(candidates.length){
+     setPendingGrouping({id:'network:'+id,name:name.trim(),from:null,to:'network:'+candidates[0].id,newlyCreated:true})
+     setNicForGrouping('')
+   }
    setLayoutDirty(true);setLayoutMessage('')
    setPreview(null)
    setError('Контейнер добавлен в черновик. Размещение ВМ или VLAN внутри него не меняет автоматически сетевые интерфейсы. Подтвердите сохранение сети.')
@@ -334,6 +470,9 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
          const ids=new Set(persisted.map(rect=>rect.id))
          return [...previous.filter(rect=>!ids.has(rect.id)),...persisted]
        })
+       const loaded=Object.fromEntries(Object.entries(result.positions).filter(([,geometry])=>geometry.parent_id).map(([id,geometry])=>[id,geometry.parent_id!]))
+       persistedParents.current=loaded
+       setParents({...loaded,...(restoredDraft?.parents||{})})
      }).catch(()=>{/* Browser positions remain the fallback. */})
    return ()=>{active=false}
  },[systemId,request,setNodes,networks])
@@ -343,9 +482,9 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
    const networkIds=new Set([...networks.map(network=>network.id),...extraNetworkIds])
    return {
      ...Object.fromEntries(nodes.filter(node=>vmIds.has(node.id))
-       .map(node=>[node.id,{x:node.position.x,y:node.position.y}])),
+       .map(node=>[node.id,{x:node.position.x,y:node.position.y,...(parents[node.id]?{parent_id:parents[node.id]}:{})}])),
      ...Object.fromEntries(rectangles.filter(rect=>networkIds.has(rect.id))
-       .map(rect=>['network:'+rect.id,{x:rect.x,y:rect.y,width:rect.width,height:rect.height}]))
+       .map(rect=>['network:'+rect.id,{x:rect.x,y:rect.y,width:rect.width,height:rect.height,...(parents['network:'+rect.id]?{parent_id:parents['network:'+rect.id]}:{})}]))
    }
  }
  const saveLayout=async()=>{
@@ -372,6 +511,8 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
    setNodes(previous=>previous.filter(node=>!stagedVMs.has(node.id)))
    setRectangles(previous=>previous.filter(rect=>!stagedNetworks.has(rect.id)))
    setChanges([]);setSelectedDraftFlowId('');setPreview(null);setError('');setReviewOpen(false)
+   setParents(persistedParents.current)
+   setPendingGrouping(null)
    setLayoutDirty(false)
    setLayoutMessage('Черновик изменений отменён. Несохранённые ВМ и сети удалены со схемы.')
  }
@@ -427,7 +568,13 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
     return position?{...rect,x:position.x,y:position.y}:rect
   }))
   onNodesChange(updates.filter(change=>!('id' in change)||!change.id.startsWith('network:')))
- }} nodesDraggable={tool==='move'} snapToGrid={snapToGrid} snapGrid={[20,20]} nodesConnectable={tool==='flow'} onConnectStart={()=>setDrawingConnection(true)} onConnectEnd={()=>setDrawingConnection(false)} onConnect={connection=>{if(tool==='flow'&&connection.source&&connection.target){stageDirectedFlow(connection.source,connection.target);setInspectedId(null)}}} onEdgeClick={(_,edge)=>{setInspectedId(null);setFocusDependencies(false);setTool('flow');const draft=changes.find(c=>c.action==='create_flow'&&c.source_id===edge.source&&c.target_id===edge.target);if(draft?.id)setSelectedDraftFlowId(draft.id);else{setSelectedDraftFlowId('');setFrom(edge.source);setTo(edge.target)}}} onNodeClick={(_,node)=>{
+ }} nodesDraggable={tool==='move'} snapToGrid={snapToGrid} snapGrid={[20,20]} nodesConnectable={tool==='flow'} onConnectStart={()=>setDrawingConnection(true)} onConnectEnd={()=>setDrawingConnection(false)} onConnect={connection=>{if(tool==='flow'&&connection.source&&connection.target){stageDirectedFlow(connection.source,connection.target);setInspectedId(null)}}} onEdgeClick={(_,edge)=>{setInspectedId(null);setFocusDependencies(false);setTool('flow');const draft=changes.find(c=>c.action==='create_flow'&&c.source_id===edge.source&&c.target_id===edge.target);if(draft?.id)setSelectedDraftFlowId(draft.id);else{setSelectedDraftFlowId('');setFrom(edge.source);setTo(edge.target)}}} onNodeClick={(event,node)=>{
+ // Network rectangles occupy their whole area; a click on one is not a pane
+ // click. The VM tool must still allow placing a VM inside that container.
+ if(tool==='vm'&&node.id.startsWith('network:')){
+   addVM(screenToFlowPosition({x:event.clientX,y:event.clientY}))
+   return
+ }
  if(node.id.startsWith('network:')){setInspectedNetworkId(node.id.slice(8));setInspectedId(null);setFocusDependencies(false);return}
  setInspectedNetworkId(null)
  if(tool==='flow'){
@@ -435,7 +582,7 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
    if(!from||to||from===node.id){setFrom(node.id);setTo('');setSelectedDraftFlowId('');setLayoutMessage('Источник выбран. Нажмите на целевой компонент или протяните стрелку от порта.')}
    else stageDirectedFlow(from,node.id)
  }else if(tool==='move'){openPassport(node.id);setFocusDependencies(false)}
-}} onNodeDragStop={(_,node)=>moveNode(node)} onPaneClick={handlePaneClick} minZoom={0.08} fitView fitViewOptions={{padding:0.2,maxZoom:0.9}}><AutoFit layoutKey={systemId+':'+items.length+':'+flows.length} maxFitZoom={0.9} suspended={drawingConnection}/><Background gap={20}/><Controls showInteractive={false}/></ReactFlow>
+}} onNodeDragStart={(_,node)=>{setDraggingNode(true);startVisualGroupDrag(node)}} onNodeDrag={(_,node)=>updateVisualGroupDrag(node)} onNodeDragStop={(_,node)=>{finishVisualDrop(node);moveNode(node);setDraggingNode(false)} } onPaneClick={handlePaneClick} minZoom={0.08} fitView fitViewOptions={{padding:0.2,maxZoom:0.9}}><AutoFit layoutKey={systemId+':'+items.length+':'+flows.length} maxFitZoom={0.9} suspended={drawingConnection||draggingNode}/><Background gap={20}/><Controls showInteractive={false}/></ReactFlow>
      {tool==='network'&&<div className="boardNetworkDrawLayer" role="region" aria-label="Поле рисования контейнера"
        onPointerDown={beginNetworkDrag} onPointerMove={moveNetworkDrag} onPointerUp={finishNetworkDrag}
        onPointerCancel={cancelNetworkDrag} onContextMenu={event=>event.preventDefault()}>
@@ -468,9 +615,9 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
           {tool==='vm'&&<div className="boardToolFields"><p>Введите название и нажмите на холст для размещения ВМ.</p><label>Имя ВМ <input value={name} onChange={e=>setName(e.target.value)} placeholder="Новая ВМ"/></label><button onClick={()=>addVM()}>Разместить на схеме</button></div>}
    {tool==='network'&&<div className="boardToolFields"><label>Название сети * <input ref={networkNameInput} required aria-required="true" aria-invalid={!name.trim()} value={name} onChange={e=>{setName(e.target.value);if(e.target.value.trim())setError('')}} placeholder="Название VRF / VLAN / зоны"/></label>{!name.trim()&&<p className="boardRequiredHint" role="alert">Обязательное поле: сначала укажите название, затем нарисуйте контейнер.</p>}<label>Тип <select value={kind} onChange={e=>setKind(e.target.value as typeof kind)}><option value="zone">Зона</option><option value="vlan">VLAN</option><option value="vrf">VRF</option></select></label><p role="status">{drawing?'Продолжайте тянуть – контур контейнера виден на схеме':'Нажмите на холст – появится стандартный контейнер 540 × 340. Или протяните прямоугольник нужного размера. Затем подтвердите изменения в черновике.'}</p></div>}
    {tool==='flow'&&<div className="boardToolFields"><p><strong>Нарисуйте стрелку на схеме:</strong> потяните от порта справа или снизу одной ВМ к порту слева или сверху другой. Можно также нажать на две карточки по очереди. Стрелка сразу появится в черновике, даже без указания порта.</p><div className="boardFlowHint">Сначала источник → затем получатель. Сохранение в реестр – через «Сохранить всё».</div><label>Откуда <select aria-label="Откуда" value={from} onChange={e=>setFrom(e.target.value)}><option value="">Выберите</option>{allVMs.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}</select></label><label>Куда <select aria-label="Куда" value={to} onChange={e=>setTo(e.target.value)}><option value="">Выберите</option>{allVMs.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}</select></label><label>Направление (при выборе вручную) <select value={direction} onChange={e=>setDirection(e.target.value as typeof direction)}><option value="forward">→</option><option value="reverse">←</option><option value="both">↔ (два потока)</option></select></label><label>Протокол <input value={protocol} onChange={e=>setProtocol(e.target.value)}/></label><label>Порт <input value={port} onChange={e=>setPort(e.target.value)}/></label><label>Защита <input value={security} onChange={e=>setSecurity(e.target.value)}/></label><button onClick={()=>{addFlow()}}>Добавить поток по выбранным компонентам</button>{selectedDraftFlow&&<section className="boardFlowDraftEditor" aria-label="Параметры нарисованного потока"><h4>Нарисованный поток · черновик</h4><p>{allVMs.find(v=>v.id===selectedDraftFlow.source_id)?.name||'Источник'} → {allVMs.find(v=>v.id===selectedDraftFlow.target_id)?.name||'Получатель'}</p><label>Название <input value={selectedDraftFlow.name||''} onChange={e=>updateSelectedDraftFlow({name:e.target.value})}/></label><label>Протокол <input value={selectedDraftFlow.protocol||''} onChange={e=>updateSelectedDraftFlow({protocol:e.target.value})}/></label><label>Порт <input value={selectedDraftFlow.port||''} onChange={e=>updateSelectedDraftFlow({port:e.target.value})} placeholder="Необязательно"/></label><label>Защита <input value={selectedDraftFlow.security||''} onChange={e=>updateSelectedDraftFlow({security:e.target.value})}/></label><button type="button" onClick={()=>{setChanges(p=>p.filter(c=>c.id!==selectedDraftFlowId));setSelectedDraftFlowId('');setPreview(null)}}>Удалить стрелку из черновика</button></section>}</div>}
-   {(tool==='network'||(tool==='move'&&inspectedVM))&&<div className="boardToolFields"><label>Техническая привязка (необязательно) <select value={interfaceId} onChange={e=>setInterfaceId(e.target.value)}><option value="">Только расположение</option>{interfaces.filter(n=>items.some(i=>i.id===n.item_id)).map(n=><option key={n.id} value={n.id}>{items.find(i=>i.id===n.item_id)?.name} · {n.name}</option>)}</select></label><span>Перемещение ВМ в область VRF/VLAN само по себе не меняет сеть. Если явно выбрать существующий интерфейс этой ВМ, его привязка попадёт в черновик для подтверждения.</span></div>}
+   {(tool==='network'||(tool==='move'&&inspectedVM))&&<div className="boardToolFields"><p>Вложенность на схеме подтверждается после перетаскивания. При размещении ВМ в VLAN можно отдельно выбрать существующий интерфейс или создать новый. Перемещение VRF/VLAN само по себе не настраивает маршруты и шлюзы.</p></div>}
 
-       {tool==='move'&&inspectedNetwork&&<section className="boardToolFields" aria-label="Свойства контейнера"><h3>{inspectedNetwork.name} · {inspectedNetwork.kind.toUpperCase()}</h3><p>Перетащите контейнер, чтобы изменить расположение на схеме. Сетевая принадлежность ВМ при этом не изменяется.</p>{onEditNetwork&&networks.some(n=>n.id===inspectedNetwork.id)&&<button type="button" onClick={()=>onEditNetwork(inspectedNetwork.id)}>Редактировать параметры сети</button>}<button type="button" onClick={()=>setInspectedNetworkId(null)}>Вернуться к схеме</button></section>}
+       {tool==='move'&&inspectedNetwork&&<section className="boardToolFields" aria-label="Свойства контейнера"><h3>{inspectedNetwork.name} · {inspectedNetwork.kind.toUpperCase()}</h3><p>Перемещение группы переносит все подтверждённые вложенные VLAN, зоны и ВМ. Размер границ меняется мышью за маркеры на рамке.</p><p>Связанных вложенных объектов: {descendants('network:'+inspectedNetwork.id,parents).size}. При переносе в другую зону или на свободное поле потребуется подтверждение новой архитектурной связи. Реальная маршрутизация автоматически не меняется.</p>{onEditNetwork&&networks.some(n=>n.id===inspectedNetwork.id)&&<button type="button" onClick={()=>onEditNetwork(inspectedNetwork.id)}>Редактировать параметры сети</button>}<button type="button" onClick={()=>setInspectedNetworkId(null)}>Вернуться к схеме</button></section>}
    {tool==='move'&&inspectedVM&&<aside className="boardInspector" role="dialog" aria-modal="false" aria-label={'Паспорт компонента '+inspectedVM.name}>
      <div className="boardInspectorHeader"><div><small>Паспорт компонента</small><h3>{inspectedVM.name}</h3></div><button type="button" aria-label="Закрыть паспорт" onClick={()=>{setInspectedId(null);setFocusDependencies(false)}}>✕</button></div>
      <div className="boardInspectorBody">
@@ -490,6 +637,32 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
      </aside>}
      {(Boolean(error)||Boolean(layoutMessage))&&<div className="boardCanvasToast" role="status">{error||layoutMessage}<button type="button" aria-label="Закрыть сообщение" onClick={()=>{setError('');setLayoutMessage('')}}>✕</button></div>}
    </div>
+   {pendingGrouping&&<div className="boardConfirm" role="dialog" aria-modal="true" aria-label="Подтверждение вложенности">
+     <div className="boardConfirmInner boardGroupingConfirm">
+       <h3>{pendingGrouping.to?'Добавить объект в группу?':'Вывести объект из группы?'}</h3>
+       <p><strong>{pendingGrouping.name}</strong> {pendingGrouping.to?'→ '+(groupingTarget?.name||'контейнер'):'→ вне сетевых контейнеров'}.</p>
+       <p>Подтверждение создаёт постоянную архитектурную связь «находится внутри». При перемещении VRF или VLAN все связанные вложенные объекты будут двигаться вместе с родителем.</p>
+       {!!groupingTarget&&groupingTarget.kind==='vrf'&&<p className="boardGroupingNote">VLAN внутри VRF – логическая группировка. Маршрутизация VLAN через VRF требует отдельного L3-шлюза / SVI и не создаётся перемещением.</p>}
+       {!!groupingVM&&groupingTarget?.kind==='vlan'&&<div className="boardGroupingNic">
+         <label>Техническая привязка интерфейса к VLAN (необязательно)
+           <select value={nicForGrouping} onChange={e=>setNicForGrouping(e.target.value)}>
+             <option value="">Только архитектурная связь</option>
+             {interfaces.filter(n=>n.item_id===groupingVM.id).map(n=><option key={n.id} value={n.id}>Привязать {n.name} к VLAN</option>)}
+             <option value="new">Создать новый интерфейс</option>
+           </select>
+         </label>
+         {nicForGrouping==='new'&&<label>Имя нового интерфейса
+           <input value={newNicName} onChange={e=>setNewNicName(e.target.value)} placeholder="eth0"/>
+         </label>}
+         <small>Реальная привязка VLAN будет записана в технический реестр только после проверки черновика и подтверждения. IP-адрес не назначается.</small>
+       </div>}
+       <p className="boardGroupingNote">Перемещение на схеме не меняет конфигурацию VMware, коммутаторов или маршрутизаторов.</p>
+       <div className="boardGroupingActions">
+         <button type="button" onClick={cancelGrouping}>{pendingGrouping.newlyCreated?'Оставить без группы':'Отменить перенос'}</button>
+         <button type="button" className="primary" onClick={confirmGrouping}>Подтвердить связь</button>
+       </div>
+     </div>
+   </div>}
    {showHistory&&<div className="boardConfirm" role="dialog" aria-modal="true" aria-label="Журнал изменений архитектуры"><div className="boardConfirmInner"><h3>Журнал изменений схемы</h3><p>Последние подтверждённые пакеты операций.</p><ol>{history.map(entry=><li key={entry.id}><strong>{entry.timestamp}</strong> – {entry.reason} · {entry.changes.length} операций<details><summary>Посмотреть состав</summary><pre>{JSON.stringify(entry.changes,null,2)}</pre></details></li>)}</ol>{!history.length&&<p>Записей пока нет.</p>}<button type="button" onClick={()=>{setShowHistory(false);setTool('move');setReviewOpen(changes.length>0)}}>Вернуться к редактированию</button></div></div>}
    {preview&&<div className="boardConfirm" role="dialog" aria-modal="true" aria-label="Подтверждение изменений архитектуры"><div className="boardConfirmInner"><h3>Подтверждение изменений</h3><p>Причина: {reason}. Будет сохранено {preview.count} операций. Для существующих интерфейсов сверяется прежняя сеть.</p><ol>{preview.changes.map((c,i)=><li key={i}><strong>{c.action}</strong> · {c.id}<pre>{JSON.stringify({before:c.before,after:c.after},null,2)}</pre></li>)}</ol><div><button disabled={busy} onClick={()=>{setPreview(null);setReviewOpen(true);setTool('move')}}>Вернуться к редактированию</button><button disabled={busy} className="primary" onClick={commit}>Подтвердить и записать в журнал</button></div></div></div>}
  </section>

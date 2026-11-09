@@ -34,6 +34,8 @@ type Rect = {id:string;name:string;kind:string;x:number;y:number;width:number;he
 type Geometry = {x:number;y:number;width?:number;height?:number}
 const makeId=()=>crypto.randomUUID()
 const rectContains=(r:Rect,p:{x:number;y:number})=>p.x>=r.x&&p.x<=r.x+r.width&&p.y>=r.y&&p.y<=r.y+r.height
+// Nested rectangles are presentation groups only; no NIC or L3 membership is implied.
+const rectFullyInside=(outer:Rect,inner:Rect)=>inner.id!==outer.id&&inner.x>=outer.x&&inner.y>=outer.y&&inner.x+inner.width<=outer.x+outer.width&&inner.y+inner.height<=outer.y+outer.height
 const fieldForKind=(kind:string):'zone_id'|'vlan_id'|'vrf_id'=>kind==='vlan'?'vlan_id':kind==='vrf'?'vrf_id':'zone_id'
 // Save uncommitted UI work across navigating away from the editor in the same tab.
 // This is a local draft only: the API registry is changed by /api/board/commit.
@@ -120,6 +122,33 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
    style:diagramCardStyle({border:'1px dashed #d97706'})
   }))]
  const [nodes,setNodes,onNodesChange]=useNodesState<Node>(restoredNodes)
+ const visualGroupDrag=useRef<{id:string;origin:{x:number;y:number};rects:Rect[];members:Node[]}|null>(null)
+ // A container visually carries all nested rectangles and visible components.
+ // It does not change VLAN/VRF membership, routing or network interfaces.
+ const startVisualGroupDrag=(node:Node)=>{
+   if(!node.id.startsWith('network:')){visualGroupDrag.current=null;return}
+   const parent=rectangles.find(r=>r.id===node.id.slice('network:'.length))
+   if(!parent){visualGroupDrag.current=null;return}
+   visualGroupDrag.current={id:node.id,origin:{x:parent.x,y:parent.y},
+     rects:rectangles.filter(rect=>rectFullyInside(parent,rect)),
+     members:nodes.filter(n=>rectContains(parent,{x:n.position.x+110,y:n.position.y+50}))}
+ }
+ const updateVisualGroupDrag=(node:Node,finished=false)=>{
+   const group=visualGroupDrag.current
+   if(!group||group.id!==node.id)return
+   const dx=node.position.x-group.origin.x,dy=node.position.y-group.origin.y
+   if(!dx&&!dy){if(finished)visualGroupDrag.current=null;return}
+   const childPositions=new Map(group.rects.map(r=>[r.id,{x:r.x+dx,y:r.y+dy}]))
+   setRectangles(previous=>previous.map(rect=>childPositions.has(rect.id)?{...rect,...childPositions.get(rect.id)!}:rect))
+   const vmPositions=new Map(group.members.map(member=>[member.id,{x:member.position.x+dx,y:member.position.y+dy}]))
+   setNodes(previous=>previous.map(member=>vmPositions.has(member.id)?{...member,position:vmPositions.get(member.id)!}:member))
+   if(finished){
+     for(const member of group.members)onPositionChange?.({...member,position:vmPositions.get(member.id)!})
+     setLayoutDirty(true)
+     setLayoutMessage('Зона и вложенные элементы перемещены. Сохраните расположение; технические сетевые связи не изменились.')
+     visualGroupDrag.current=null
+   }
+ }
 
  useEffect(()=>{
   onDraftStateChange?.(changes.length>0)
@@ -255,6 +284,10 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
    const x=Math.min(start.x,end.x),y=Math.min(start.y,end.y)
    const width=Math.abs(end.x-start.x),height=Math.abs(end.y-start.y)
    if(width<140||height<90){setError('Контейнер слишком мал: растяните минимум 140 × 90 или просто нажмите на холст для стандартного размера.');return}
+   if(kind==='vrf'&&visibleRects.some(r=>r.kind==='vrf'&&rectContains(r,{x:x+width/2,y:y+height/2}))){
+     setError('VRF нельзя создавать внутри другой VRF. Разместите её отдельно; VLAN внутри VRF допускается.')
+     return
+   }
    const id=makeId()
    const rect:Rect={id,name:name.trim(),kind,x,y,width,height}
    setRectangles(prev=>[...prev,rect])
@@ -435,7 +468,7 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
    if(!from||to||from===node.id){setFrom(node.id);setTo('');setSelectedDraftFlowId('');setLayoutMessage('Источник выбран. Нажмите на целевой компонент или протяните стрелку от порта.')}
    else stageDirectedFlow(from,node.id)
  }else if(tool==='move'){openPassport(node.id);setFocusDependencies(false)}
-}} onNodeDragStop={(_,node)=>moveNode(node)} onPaneClick={handlePaneClick} minZoom={0.08} fitView fitViewOptions={{padding:0.2,maxZoom:0.9}}><AutoFit layoutKey={systemId+':'+items.length+':'+flows.length} maxFitZoom={0.9} suspended={drawingConnection}/><Background gap={20}/><Controls showInteractive={false}/></ReactFlow>
+}} onNodeDragStart={(_,node)=>startVisualGroupDrag(node)} onNodeDrag={(_,node)=>updateVisualGroupDrag(node)} onNodeDragStop={(_,node)=>{updateVisualGroupDrag(node,true);moveNode(node)}} onPaneClick={handlePaneClick} minZoom={0.08} fitView fitViewOptions={{padding:0.2,maxZoom:0.9}}><AutoFit layoutKey={systemId+':'+items.length+':'+flows.length} maxFitZoom={0.9} suspended={drawingConnection}/><Background gap={20}/><Controls showInteractive={false}/></ReactFlow>
      {tool==='network'&&<div className="boardNetworkDrawLayer" role="region" aria-label="Поле рисования контейнера"
        onPointerDown={beginNetworkDrag} onPointerMove={moveNetworkDrag} onPointerUp={finishNetworkDrag}
        onPointerCancel={cancelNetworkDrag} onContextMenu={event=>event.preventDefault()}>

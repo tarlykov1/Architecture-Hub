@@ -282,6 +282,52 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
    }
  })
  const addChange=(c:Change)=>{setChanges(previous=>[...previous,c]);setPreview(null);setError('')}
+ const groupingTarget= pendingGrouping?.to?visibleRects.find(r=>'network:'+r.id===pendingGrouping.to):undefined
+ const groupingVM=pendingGrouping&&!pendingGrouping.id.startsWith('network:')?allVMs.find(v=>v.id===pendingGrouping.id):undefined
+ const confirmGrouping=()=>{
+   if(!pendingGrouping)return
+   const change=pendingGrouping
+   if(change.to&&groupingTarget?.kind==='vlan'&&groupingVM&&nicForGrouping==='new'){
+     const label=newNicName.trim()
+     const existing=interfaces.filter(n=>n.item_id===groupingVM.id)
+     const pending=changes.filter(c=>c.action==='create_interface'&&c.item_id===groupingVM.id)
+     if(!label||existing.some(n=>n.name===label)||pending.some(n=>n.interface_name===label)){
+       setError('Имя нового сетевого интерфейса должно быть непустым и уникальным для ВМ.')
+       return
+     }
+     addChange({action:'create_interface',id:makeId(),item_id:groupingVM.id,
+       interface_name:label,network_id:groupingTarget.id,network_field:'vlan_id'})
+   }else if(change.to&&groupingTarget?.kind==='vlan'&&groupingVM&&nicForGrouping){
+     const nic=interfaces.find(n=>n.id===nicForGrouping&&n.item_id===groupingVM.id)
+     if(!nic){setError('Указанный сетевой интерфейс не найден.');return}
+     setChanges(prev=>[...prev.filter(c=>!(c.action==='move_interface'&&c.interface_id===nic.id&&c.network_field==='vlan_id')),
+       {action:'move_interface',interface_id:nic.id,network_id:groupingTarget.id,
+        previous_network_id:nic.vlan_id,network_field:'vlan_id'}])
+     setPreview(null)
+   }
+   setParents(prev=>{
+     const next={...prev}
+     if(change.to)next[change.id]=change.to
+     else delete next[change.id]
+     return next
+   })
+   setLayoutDirty(true)
+   setPendingGrouping(null);setNicForGrouping('')
+   setLayoutMessage(change.to
+     ?'Архитектурная вложенность подтверждена. Сохраните схему. Технические связи изменяются только отдельной согласованной операцией.'
+     :'Объект выведен из группы. Сохраните схему; реальные сетевые интерфейсы не изменены.')
+ }
+ const cancelGrouping=()=>{
+   const snapshot=pendingGrouping?.snapshot
+   if(snapshot){
+     setRectangles(snapshot.rects)
+     setNodes(snapshot.nodes)
+     setLayoutDirty(snapshot.dirty)
+     for(const node of snapshot.nodes)onPositionChange?.(node)
+   }
+   setPendingGrouping(null);setNicForGrouping('');setError('')
+   setLayoutMessage('Перемещение и изменение вложенности отменены.')
+ }
  const moveNode=(node:Node)=>{
    if(node.id.startsWith('network:')){
      const id=node.id.slice('network:'.length)

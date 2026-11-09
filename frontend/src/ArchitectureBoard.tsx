@@ -208,6 +208,7 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
      source:first.source_id,target:first.target_id,...ports,
      type:reciprocal||siblings>1&&list.length===1?'reciprocal':'obstacle-aware',
      reconnectable:list.length===1,
+     selected:!!edgePopup?.flowIds.includes(first.id)||flowCardId===first.id,
      animated:false,
      style:{stroke:list.some(f=>pendingFlows.some(c=>c.id===f.id))?'#176bc1':'#369279',
        strokeWidth:edgePopup?.flowIds.includes(first.id)?3.1:inspectedId&&(first.source_id===inspectedId||first.target_id===inspectedId)?3:1.8,

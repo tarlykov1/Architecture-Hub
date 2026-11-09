@@ -14,16 +14,18 @@ type NIC = {id:string;item_id:string;name:string;zone_id:string|null;vlan_id:str
 type Flow = {id:string;source_id:string;target_id:string;name:string;protocol:string;port:string}
 type Change = {action:'create_vm'|'create_network'|'create_flow'|'create_interface'|'move_interface'|'update_vm';id?:string;system_id?:string;name?:string;kind?:string;description?:string;source_id?:string;target_id?:string;protocol?:string;port?:string;security?:string;data_description?:string;interface_id?:string;item_id?:string;interface_name?:string;network_id?:string|null;previous_network_id?:string|null;previous_name?:string;previous_description?:string;details_patch?:Record<string,string>;previous_details?:Record<string,unknown>;network_field?:'zone_id'|'vlan_id'|'vrf_id'}
 type Preview = {changes:Array<{action:string;id:string;before:unknown;after:unknown;field?:string}>;count:number}
-type Props = {systemId:string;ownerName?:string;ownerBySystemId?:Record<string,string>;items:VM[];networks:Network[];interfaces:NIC[];flows:Flow[];savedPositions?:Record<string,{x:number;y:number}>;onPositionChange?:(node:Node)=>void;request:<T>(url:string,init?:RequestInit)=>Promise<T>;onCommitted:()=>Promise<void>}
+type Props = {systemId:string;ownerName?:string;ownerBySystemId?:Record<string,string>;items:VM[];networks:Network[];interfaces:NIC[];flows:Flow[];savedPositions?:Record<string,{x:number;y:number}>;onPositionChange?:(node:Node)=>void;request:<T>(url:string,init?:RequestInit)=>Promise<T>;onCommitted:()=>Promise<void>;onEditNetwork?:(id:string)=>void}
 type Tool = 'move'|'vm'|'flow'|'network'
 type Rect = {id:string;name:string;kind:string;x:number;y:number;width:number;height:number}
+type Geometry = {x:number;y:number;width?:number;height?:number}
 const makeId=()=>crypto.randomUUID()
 const rectContains=(r:Rect,p:{x:number;y:number})=>p.x>=r.x&&p.x<=r.x+r.width&&p.y>=r.y&&p.y<=r.y+r.height
 const fieldForKind=(kind:string):'zone_id'|'vlan_id'|'vrf_id'=>kind==='vlan'?'vlan_id':kind==='vrf'?'vrf_id':'zone_id'
 
-function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfaces,flows,savedPositions={},onPositionChange,request,onCommitted}:Props){
+function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfaces,flows,savedPositions={},onPositionChange,request,onCommitted,onEditNetwork}:Props){
  const [tool,setTool]=useState<Tool>('move')
  const [inspectedId,setInspectedId]=useState<string|null>(null)
+ const [inspectedNetworkId,setInspectedNetworkId]=useState<string|null>(null)
  const [focusDependencies,setFocusDependencies]=useState(false)
  const [editingPassport,setEditingPassport]=useState(false)
  const [passportDraft,setPassportDraft]=useState({name:'',description:'',purpose:'',environment:''})
@@ -49,6 +51,7 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
  const [snapToGrid,setSnapToGrid]=useState(false)
  const [drawing,setDrawing]=useState<{x:number;y:number}|null>(null)
  const networkStart=useRef<{x:number;y:number}|null>(null)
+ const networkNameInput=useRef<HTMLInputElement>(null)
  const networkStartPixel=useRef<{x:number;y:number}|null>(null)
  const [networkPreview,setNetworkPreview]=useState<{x:number;y:number;width:number;height:number}|null>(null)
  const [reviewOpen,setReviewOpen]=useState(false)
@@ -93,7 +96,7 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
  const allVMs=useMemo<VM[]>(()=>[...items,...changes.filter(c=>c.action==='create_vm').map(c=>({id:c.id!,name:c.name!,system_id:systemId,kind:'vm',description:'',details:{} as Record<string,unknown>}))],[items,changes,systemId])
  const allNetworks=[...networks,...changes.filter(c=>c.action==='create_network').map(c=>({id:c.id!,name:c.name!,kind:c.kind!}))]
  const visibleRects=rectangles.filter(r=>allNetworks.some(n=>n.id===r.id))
- const backgroundNodes:Node[]=visibleRects.map(r=>({id:'network:'+r.id,type:'default',position:{x:r.x,y:r.y},width:r.width,height:r.height,measured:{width:r.width,height:r.height},draggable:false,selectable:false,connectable:false,data:{label:r.name+' · '+r.kind.toUpperCase()},style:{width:r.width,height:r.height,background:'#dbeafe77',border:'2px dashed #2563eb',borderRadius:9,zIndex:0,pointerEvents:'none',textAlign:'left',padding:12,fontSize:13,color:'#1e40af'}}))
+ const backgroundNodes:Node[]=visibleRects.map(r=>({id:'network:'+r.id,type:'default',position:{x:r.x,y:r.y},width:r.width,height:r.height,measured:{width:r.width,height:r.height},draggable:tool==='move',selectable:true,connectable:false,data:{label:<div className="boardNetworkLabel"><strong>{r.name} · {r.kind.toUpperCase()}</strong><small>{tool==='move'?'Перетащите контейнер':'Контейнер сети'}</small></div>},style:{width:r.width,height:r.height,background:'#dbeafe77',border:'2px dashed #2563eb',borderRadius:9,zIndex:0,pointerEvents:'auto',textAlign:'left',padding:12,fontSize:13,color:'#1e40af'}}))
  const graphNodes=[...backgroundNodes,...nodes]
  // A pair of machines has one readable connection; its technical flows stay separate records.
  const pendingFlows=changes.filter(c=>c.action==='create_flow').map(c=>({id:c.id!,source_id:c.source_id!,target_id:c.target_id!,protocol:c.protocol||'',port:c.port||'',name:c.name||''}))
@@ -110,6 +113,7 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
     opacity:focusDependencies&&inspectedId&&!n.id.startsWith('network:')&&!relatedIds.has(n.id)?0.22:1
   }}))
  const inspectedVM=allVMs.find(v=>v.id===inspectedId)
+ const inspectedNetwork=allNetworks.find(n=>n.id===inspectedNetworkId)
  const openPassport=(id:string)=>{const vm=allVMs.find(v=>v.id===id);if(!vm)return;setInspectedId(id);setEditingPassport(false);setPassportDraft({name:vm.name,description:vm.description||'',purpose:String(vm.details?.purpose||''),environment:String(vm.details?.environment||'')})}
  const stagePassport=()=>{if(!inspectedVM||!passportDraft.name.trim())return;const details_patch:Record<string,string>={purpose:passportDraft.purpose,environment:passportDraft.environment};const previous_details:Record<string,unknown>={purpose:inspectedVM.details?.purpose??null,environment:inspectedVM.details?.environment??null};addChange({action:'update_vm',id:inspectedVM.id,system_id:systemId,name:passportDraft.name.trim(),description:passportDraft.description,previous_name:inspectedVM.name,previous_description:inspectedVM.description||'',details_patch,previous_details});setEditingPassport(false);setInspectedId(null);setFocusDependencies(false);setReviewOpen(true)}
 
@@ -127,6 +131,13 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
  })
  const addChange=(c:Change)=>{setChanges(previous=>[...previous,c]);setPreview(null);setError('')}
  const moveNode=(node:Node)=>{
+   if(node.id.startsWith('network:')){
+     const id=node.id.slice('network:'.length)
+     setRectangles(previous=>previous.map(rect=>rect.id===id?{...rect,x:node.position.x,y:node.position.y}:rect))
+     setLayoutDirty(true);setLayoutMessage('Контейнер перемещён – сохраните его расположение на схеме.')
+     setError('')
+     return
+   }
    onPositionChange?.(node)
    setLayoutDirty(true);setLayoutMessage('')
    const center={x:node.position.x+97,y:node.position.y+30}
@@ -173,7 +184,7 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
    setTool('move')
  }
  const addNetwork=(start:{x:number;y:number},end:{x:number;y:number})=>{
-   if(!name.trim()){setError('Укажите название сети справа, затем нарисуйте контейнер.');return}
+   if(!name.trim()){setError('Заполните обязательное поле «Название сети» справа, затем нарисуйте контейнер.');networkNameInput.current?.focus();return}
    const x=Math.min(start.x,end.x),y=Math.min(start.y,end.y)
    const width=Math.abs(end.x-start.x),height=Math.abs(end.y-start.y)
    if(width<140||height<90){setError('Контейнер слишком мал. Протяните прямоугольник не менее 140 × 90.');return}
@@ -195,6 +206,7 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
      }
    }
    setChanges(previous=>[...previous,{action:'create_network',id,name:name.trim(),kind},...assignments])
+   setLayoutDirty(true);setLayoutMessage('')
    setPreview(null)
    setError(ambiguous?('Сеть нарисована. У '+ambiguous+' ВМ несколько интерфейсов – выберите интерфейс и переместите ВМ в зону вручную.'):'Новая сеть и '+assignments.length+' сетевых привязок подготовлены для подтверждения.')
    setDrawing(null);setName('');setTool('move');setReviewOpen(true)
@@ -207,7 +219,7 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
  }
  const beginNetworkDrag=(event:React.PointerEvent<HTMLDivElement>)=>{
    if(event.button!==0)return
-   if(!name.trim()){setError('Сначала укажите название сети справа.');return}
+   if(!name.trim()){setError('Контейнер не создан: заполните обязательное поле «Название сети».');networkNameInput.current?.focus();return}
    const rect=event.currentTarget.getBoundingClientRect()
    networkStartPixel.current={x:event.clientX-rect.left,y:event.clientY-rect.top}
    networkStart.current=screenToFlowPosition({x:event.clientX,y:event.clientY})

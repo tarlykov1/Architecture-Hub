@@ -74,7 +74,7 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
  const [selectedDraftFlowId,setSelectedDraftFlowId]=useState('')
  const [to,setTo]=useState('')
  const [direction,setDirection]=useState<'forward'|'reverse'|'both'>('forward')
- const [protocol,setProtocol]=useState('TCP')
+ const [protocol,setProtocol]=useState('') // Unknown until an architect confirms the transport.
  const [port,setPort]=useState('')
  const [security,setSecurity]=useState('unknown')
  const [interfaceId,setInterfaceId]=useState('')

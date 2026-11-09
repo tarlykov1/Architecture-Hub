@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import hashlib
 from contextlib import asynccontextmanager
+import re
 from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID, uuid4
@@ -485,7 +486,7 @@ class CmdbRecordInput(BaseModel):
     source_system: str = Field(default="architecture_hub", min_length=1, max_length=120)
     source_record_id: str = Field(default="", max_length=180)
     notes: str = Field(default="", max_length=2000)
-    custom_values: dict[str, Any] | None = None
+    custom_values: dict[str, Any] | None = Field(default=None, max_length=30)
     reason: str = Field(min_length=5, max_length=1000)
 
 
@@ -580,8 +581,8 @@ def _cmdb_snapshot(record: CmdbRecord | None) -> dict:
             "lifecycle": "unknown", "owner": "", "technical_owner": "",
             "criticality": "unknown", "source_system": "architecture_hub",
             "source_record_id": "", "verification_status": "unverified",
-            "verified_at": None, "evidence": "", "notes": "", "revision": 0,
-            "updated_at": None,
+            "verified_at": None, "evidence": "", "notes": "", "custom_values": {},
+            "revision": 0, "updated_at": None,
         }
     return {
         "lifecycle": record.lifecycle, "owner": record.owner,
@@ -591,7 +592,8 @@ def _cmdb_snapshot(record: CmdbRecord | None) -> dict:
         "verification_status": record.verification_status,
         "verified_at": record.verified_at.isoformat() if record.verified_at else None,
         "evidence": record.evidence,
-        "notes": record.notes, "revision": record.revision,
+        "notes": record.notes, "custom_values": record.custom_values or {},
+        "revision": record.revision,
         "updated_at": record.updated_at.isoformat() if record.updated_at else None,
     }
 
@@ -658,7 +660,7 @@ def _check_relation_allowed(db: Session, relation_kind: str,
 @app.put("/api/cmdb/classes/{class_id}")
 def save_cmdb_class(class_id: str, payload: CmdbClassInput, request: Request,
                     db: Session = Depends(db_session)):
-    if not class_id.isascii() or not __import__("re").fullmatch(r"[a-z][a-z0-9_]{1,49}", class_id):
+    if not class_id.isascii() or not re.fullmatch(r"[a-z][a-z0-9_]{1,49}", class_id):
         raise HTTPException(422, "Class ID must be stable lowercase snake_case")
     fields = [field.model_dump() for field in payload.fields]
     issue = validate_class_schema(payload.required, fields)
@@ -800,9 +802,9 @@ def list_cmdb_schema_history(limit: int = Query(default=40, ge=1, le=100),
 
 
 @app.get("/api/cmdb/classes")
-def cmdb_classes():
-    """Class-specific mandatory fields and controlled vocabularies."""
-    return {"classes": CI_CLASSES, "lifecycle": LIFECYCLE_STATES,
+def cmdb_classes(db: Session = Depends(db_session)):
+    """Editable class metadata merged with original, stable type definitions."""
+    return {"classes": _catalog_classes(db), "lifecycle": LIFECYCLE_STATES,
             "criticality": CRITICALITY_LEVELS,
             "verification": VERIFICATION_STATES}
 
@@ -864,6 +866,13 @@ def write_cmdb_record(ci_id: str, payload: CmdbRecordInput,
     now = datetime.now(timezone.utc)
     values = {field: getattr(payload, field).strip() if isinstance(
         getattr(payload, field), str) else getattr(payload, field) for field in _CM_FIELDS}
+    custom_values = (previous["custom_values"] if payload.custom_values is None
+                     else payload.custom_values)
+    class_def = _class_definition(db, node["ci_class"])
+    issue = validate_custom_values(class_def["fields"], custom_values)
+    if issue:
+        raise HTTPException(422, issue)
+    values["custom_values"] = custom_values
     changes = any(previous[field] != value for field, value in values.items())
     if not changes:
         return {**node, **previous}
@@ -909,6 +918,11 @@ def verify_cmdb_record(ci_id: str, payload: CmdbVerificationInput,
         raise HTTPException(409, "CMDB record revision changed. Reload before verifying.")
     if record.lifecycle == "retired":
         raise HTTPException(422, "Retired configuration items cannot be verified as active")
+    policy = _class_definition(db, node["ci_class"])
+    snapshot = {**node, **previous}
+    missing = missing_required(snapshot, policy["required"], previous["custom_values"])
+    if missing:
+        raise HTTPException(422, "Missing required CMDB fields: " + ", ".join(missing))
     now = datetime.now(timezone.utc)
     result = db.execute(update(CmdbRecord).where(
         CmdbRecord.ci_id == key,
@@ -933,12 +947,15 @@ def verify_cmdb_record(ci_id: str, payload: CmdbVerificationInput,
 def cmdb_quality(stale_days: int = Query(default=90, ge=1, le=3650),
                  db: Session = Depends(db_session)):
     graph = _cmdb_data(db)
-    required = {item["id"]: item["required"] for item in CI_CLASSES}
+    required = {item["id"]: item for item in _catalog_classes(db)}
+    overlays = {row.ci_id: row for row in db.scalars(select(CmdbRecord)).all()}
     now = datetime.now(timezone.utc)
     items = []
     for node in graph["nodes"]:
-        needed = required.get(node["ci_class"], ["technical_owner", "lifecycle"])
-        missing = [field for field in needed if node.get(field) in (None, "", "unknown")]
+        definition = required.get(node["ci_class"])
+        needed = definition["required"] if definition else ["technical_owner", "lifecycle"]
+        values = overlays[node["id"]].custom_values if node["id"] in overlays else {}
+        missing = missing_required(node, needed, values or {})
         raw_date = node.get("verified_at")
         try:
             verified_time = datetime.fromisoformat(raw_date) if raw_date else None
@@ -952,7 +969,7 @@ def cmdb_quality(stale_days: int = Query(default=90, ge=1, le=3650),
             "ci_id": node["id"], "name": node["name"],
             "ci_class": node["ci_class"],
             "missing": missing,
-            "completeness_percent": round(100 * (len(needed) - len(missing)) / len(needed)),
+            "completeness_percent": round(100 * (len(needed) - len(missing)) / len(needed)) if needed else 100,
             "verified": verified, "stale": stale,
             "verification_status": node["verification_status"],
             "source_system": node.get("source", "architecture_hub"),

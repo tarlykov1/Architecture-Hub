@@ -1782,7 +1782,7 @@ def get_nics(db: Session = Depends(db_session)):
 
 
 @app.post("/api/network-interfaces", response_model=NICOutput, status_code=201)
-def add_nic(payload: NICInput, db: Session = Depends(db_session)):
+def add_nic(payload: NICInput, request: Request, db: Session = Depends(db_session)):
     if not db.get(InfrastructureItem, payload.item_id):
         raise HTTPException(422, "Unknown VM/component")
     for field, kind in [("zone_id", "zone"), ("vlan_id", "vlan"), ("vrf_id", "vrf")]:
@@ -1793,13 +1793,16 @@ def add_nic(payload: NICInput, db: Session = Depends(db_session)):
                 raise HTTPException(422, "Invalid " + field)
     row = NetworkInterface(**payload.model_dump())
     db.add(row)
+    db.flush()
+    audit_direct_edit(db, request, "create_interface", row.id, None,
+                      payload.model_dump(), "Создан сетевой интерфейс " + row.name)
     db.commit()
     db.refresh(row)
     return row
 
 
 @app.put("/api/network-interfaces/{interface_id}", response_model=NICOutput)
-def update_nic(interface_id: UUID, payload: NICInput, db: Session = Depends(db_session)):
+def update_nic(interface_id: UUID, payload: NICInput, request: Request, db: Session = Depends(db_session)):
     row = db.get(NetworkInterface, interface_id)
     if row is None:
         raise HTTPException(404, "Network interface not found")
@@ -1811,18 +1814,27 @@ def update_nic(interface_id: UUID, payload: NICInput, db: Session = Depends(db_s
             segment = db.get(NetworkSegment, segment_id)
             if segment is None or segment.kind != kind:
                 raise HTTPException(422, "Invalid " + field)
+    before = {field: getattr(row, field) for field in payload.model_fields}
     for field, value in payload.model_dump().items():
         setattr(row, field, value)
+    after = payload.model_dump()
+    if before != after:
+        audit_direct_edit(db, request, "update_interface", row.id, before, after,
+                          "Изменён сетевой интерфейс " + row.name)
     db.commit()
     db.refresh(row)
     return row
 
 
 @app.delete("/api/network-interfaces/{interface_id}", status_code=204)
-def delete_nic(interface_id: UUID, db: Session = Depends(db_session)):
+def delete_nic(interface_id: UUID, request: Request, db: Session = Depends(db_session)):
     row = db.get(NetworkInterface, interface_id)
     if row is None:
         raise HTTPException(status_code=404, detail="Network interface not found")
+    audit_direct_edit(db, request, "delete_interface", row.id,
+                      {"item_id":row.item_id,"name":row.name,
+                       "zone_id":row.zone_id,"vlan_id":row.vlan_id,"vrf_id":row.vrf_id},
+                      None, "Удалён сетевой интерфейс " + row.name)
     db.delete(row)
     db.commit()
 

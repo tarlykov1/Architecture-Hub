@@ -1952,10 +1952,14 @@ class BoardChange(BaseModel):
 class BoardPoint(BaseModel):
     x: float = Field(ge=-100000, le=100000, allow_inf_nan=False)
     y: float = Field(ge=-100000, le=100000, allow_inf_nan=False)
+    # Only network rectangle entries carry dimensions. VM positions keep x/y.
+    width: float | None = Field(default=None, ge=140, le=100000, allow_inf_nan=False)
+    height: float | None = Field(default=None, ge=90, le=100000, allow_inf_nan=False)
 
 
 class BoardLayoutInput(BaseModel):
-    positions: dict[UUID, BoardPoint] = Field(default_factory=dict, max_length=1000)
+    # Network rectangles are stored as "network:<segment UUID>".
+    positions: dict[str, BoardPoint] = Field(default_factory=dict, max_length=1000)
 
 
 @app.get("/api/board/layout/{system_id}")
@@ -1967,23 +1971,54 @@ def read_board_layout(system_id: UUID, db: Session = Depends(db_session)):
 
 
 @app.put("/api/board/layout/{system_id}")
-def save_board_layout(system_id: UUID, payload: BoardLayoutInput, db: Session = Depends(db_session)):
-    """Positions are presentation data and cannot create or modify any infrastructure item."""
+def save_board_layout(system_id: UUID, payload: BoardLayoutInput,
+                      request: Request, db: Session = Depends(db_session)):
+    """Save presentation geometry without changing network-interface membership."""
     if db.get(ArchitectureObject, system_id) is None:
         raise HTTPException(404, "System not found")
-    ids = list(payload.positions)
-    if ids:
-        known = set(db.scalars(select(InfrastructureItem.id).where(InfrastructureItem.id.in_(ids))).all())
-        if len(known) != len(ids):
+    vm_ids: list[UUID] = []
+    network_ids: list[UUID] = []
+    for key, point in payload.positions.items():
+        is_network = key.startswith("network:")
+        try:
+            target_id = UUID(key.removeprefix("network:") if is_network else key)
+        except ValueError:
+            raise HTTPException(422, "Invalid layout object id") from None
+        if is_network:
+            if point.width is None or point.height is None:
+                raise HTTPException(422, "Network rectangle requires width and height")
+            network_ids.append(target_id)
+        else:
+            if point.width is not None or point.height is not None:
+                raise HTTPException(422, "Component position accepts x and y only")
+            vm_ids.append(target_id)
+    if vm_ids:
+        known = set(db.scalars(select(InfrastructureItem.id).where(InfrastructureItem.id.in_(vm_ids))).all())
+        if len(known) != len(set(vm_ids)):
             raise HTTPException(422, "Unknown component in layout")
-    positions = {str(key): point.model_dump() for key, point in payload.positions.items()}
+    if network_ids:
+        known = set(db.scalars(select(NetworkSegment.id).where(NetworkSegment.id.in_(network_ids))).all())
+        if len(known) != len(set(network_ids)):
+            raise HTTPException(422, "Unknown network in layout")
+    positions = {key: point.model_dump(exclude_none=True) for key, point in payload.positions.items()}
     stored = db.get(BoardLayout, system_id)
+    before = dict(stored.positions or {}) if stored else {}
+    if before == positions:
+        return {"system_id": str(system_id), "positions": positions}
     if stored is None:
         stored = BoardLayout(system_id=system_id, positions=positions)
         db.add(stored)
     else:
         stored.positions = positions
         stored.updated_at = datetime.now(timezone.utc)
+    # The layout and its audit event commit atomically. Draft actions do not enter history.
+    layout_changes = [
+        {"action": "update_layout", "id":key, "before":before.get(key), "after":positions.get(key)}
+        for key in sorted(set(before) | set(positions))
+        if before.get(key) != positions.get(key)
+    ]
+    db.add(BoardAudit(reason="Сохранено расположение элементов схемы",
+                      actor=board_actor(request), changes=layout_changes))
     db.commit()
     return {"system_id": str(system_id), "positions": positions}
 

@@ -490,3 +490,50 @@ test('dragging VLAN into and out of VRF requires confirmation and resizing zone 
   const after=(await read())['network:'+vrf]!.width!
   expect(Math.abs(after-before)).toBeGreaterThan(10)
 })
+
+
+test('placing VM inside VLAN requests confirmation and optional NIC is saved only after review',async({page})=>{
+  const systemId=await seedSystem(page)
+  const vlanRes=await page.request.post('http://127.0.0.1:8001/api/networks',{
+    data:{name:'VM placement VLAN '+Date.now(),kind:'vlan'}
+  })
+  expect(vlanRes.status()).toBe(201)
+  const vlan=(await vlanRes.json()).id as string
+  const seeded=await page.request.put('http://127.0.0.1:8001/api/board/layout/'+systemId,{
+    data:{positions:{['network:'+vlan]:{x:180,y:120,width:800,height:620}}}
+  })
+  expect(seeded.ok()).toBeTruthy()
+  await page.goto('/')
+  await page.getByRole('navigation',{name:'Разделы архитектуры'}).getByRole('button',{name:'Компоненты',exact:true}).click()
+  await page.getByRole('group',{name:'Представление компонентов'}).getByRole('button',{name:'Схема',exact:true}).click()
+  await page.getByRole('button',{name:'Редактировать схему'}).click()
+  await page.getByRole('combobox',{name:'Выбрать ИС для редактора компонентов'}).selectOption(systemId)
+  const board=page.getByRole('region',{name:'Редактор архитектурной схемы'})
+  const rect=board.locator('.react-flow__node[data-id="network:'+vlan+'"]')
+  await expect(rect).toBeVisible()
+  await board.getByRole('toolbar',{name:'Инструменты архитектуры'}).getByRole('button',{name:'+ ВМ'}).click()
+  await board.getByRole('textbox',{name:'Имя ВМ'}).fill('VM nested '+Date.now())
+  const name=await board.getByRole('textbox',{name:'Имя ВМ'}).inputValue()
+  const bounds=await rect.boundingBox()
+  expect(bounds).not.toBeNull()
+  await page.mouse.click(bounds!.x+bounds!.width*.64,bounds!.y+bounds!.height*.62)
+  const confirm=page.getByRole('dialog',{name:'Подтверждение вложенности'})
+  await expect(confirm).toBeVisible()
+  await expect(confirm).toContainText('Добавить объект в группу')
+  await confirm.getByRole('combobox',{name:/Техническая привязка интерфейса к VLAN/}).selectOption('new')
+  await confirm.getByRole('textbox',{name:'Имя нового интерфейса'}).fill('eth0')
+  await confirm.getByRole('button',{name:'Подтвердить связь'}).click()
+  const infraBefore=(await (await page.request.get('http://127.0.0.1:8001/api/infra')).json()) as Array<{id:string;name:string}>
+  expect(infraBefore.some(v=>v.name===name)).toBe(false)
+  await board.getByRole('button',{name:'Сохранить изменения схемы'}).click()
+  await board.getByPlaceholder('Например: актуализация схемы ИС после изменения сети').fill('Confirm VM nested into VLAN with explicit NIC')
+  await board.getByRole('button',{name:/Проверить изменения/}).click()
+  await page.getByRole('dialog',{name:'Подтверждение изменений архитектуры'}).getByRole('button',{name:'Подтвердить и записать в журнал'}).click()
+  const infra=(await (await page.request.get('http://127.0.0.1:8001/api/infra')).json()) as Array<{id:string;name:string}>
+  const vm=infra.find(v=>v.name===name)
+  expect(vm).toBeTruthy()
+  const interfaces=(await (await page.request.get('http://127.0.0.1:8001/api/network-interfaces')).json()) as Array<{item_id:string;name:string;vlan_id:string|null}>
+  expect(interfaces.some(n=>n.item_id===vm!.id&&n.name==='eth0'&&n.vlan_id===vlan)).toBe(true)
+  const positions=(await (await page.request.get('http://127.0.0.1:8001/api/board/layout/'+systemId)).json()).positions as Record<string,{parent_id?:string}>
+  expect(positions[vm!.id]?.parent_id).toBe('network:'+vlan)
+})

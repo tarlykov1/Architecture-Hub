@@ -292,6 +292,8 @@ test('an existing VRF is draggable and its saved geometry is audited',async({pag
   const moved=await node.boundingBox()
   expect(moved).not.toBeNull()
   expect(Math.abs(moved!.x-original!.x)+Math.abs(moved!.y-original!.y)).toBeGreaterThan(5)
+  const grouping=page.getByRole('dialog',{name:'Подтверждение вложенности'})
+  if(await grouping.isVisible())await grouping.getByRole('button',{name:'Подтвердить связь'}).click()
   const save=editor.getByRole('button',{name:'Сохранить расположение'})
   await expect(save).toBeEnabled()
   await save.click()

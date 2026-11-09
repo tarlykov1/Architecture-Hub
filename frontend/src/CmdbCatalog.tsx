@@ -11,7 +11,7 @@ type Rule={
   mode:'advisory'|'enforced';enabled:boolean;description:string;revision:number
 }
 type Catalog={classes:CiClass[]}
-type Props={request:<T>(url:string,init?:RequestInit)=>Promise<T>}
+type Props={request:<T>(url:string,init?:RequestInit)=>Promise<T>;onChange?:()=>void}
 const builtInFields=[
   ['owner','Владелец'],['technical_owner','Технический ответственный'],
   ['criticality','Критичность'],['lifecycle','Жизненный цикл'],
@@ -33,7 +33,7 @@ const emptyRule=():Rule=>({
   mode:'advisory',enabled:true,description:'',revision:0
 })
 
-export default function CmdbCatalog({request}:Props){
+export default function CmdbCatalog({request,onChange}:Props){
   const [classes,setClasses]=useState<CiClass[]>([])
   const [rules,setRules]=useState<Rule[]>([])
   const [selected,setSelected]=useState('')
@@ -96,7 +96,7 @@ export default function CmdbCatalog({request}:Props){
       const updated=await load()
       const current=updated.find(item=>item.id===classDraft.id)
       if(current){setClassDraft(current);setSelected(current.id)}
-      setReason('');setNotice('Определение класса КЕ сохранено.')
+      setReason('');setNotice('Определение класса КЕ сохранено.');onChange?.()
     }catch(err){setError('Ошибка сохранения класса: '+String(err))}
     finally{setBusy(false)}
   }

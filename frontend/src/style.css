@@ -829,3 +829,37 @@ button:disabled{cursor:not-allowed;opacity:.55}
   .cmdbRecordTop{flex-wrap:wrap}
   .cmdbRecordFields dl>div{grid-template-columns:1fr;gap:3px}
 }
+
+
+/* Schema governance is collapsed until requested; nothing overlays the diagram. */
+.cmdbCatalogEntry{border-top:1px solid #dce4ec;padding-top:14px;display:grid;gap:12px}
+.cmdbCatalogEntry>button{justify-self:start;padding:9px 12px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;font-weight:600;color:#1e40af}
+.cmdbCatalog{display:grid;gap:16px;min-width:0}
+.cmdbCatalog>p,.cmdbCatalogPanel>p{margin:0;font-size:12px;line-height:1.55;color:#64748b}
+.cmdbCatalogPanel{padding:14px 0 18px;border-top:1px solid #e2e8f0;display:grid;gap:12px;min-width:0}
+.cmdbCatalogPanel h4{margin:0;color:#1e293b;font-size:14px}
+.cmdbCatalogPanel label,.cmdbCatalogForm label{display:grid;gap:5px;min-width:0;font-size:12px;color:#334155;font-weight:600}
+.cmdbCatalogPanel select,.cmdbCatalogPanel input:not([type="checkbox"]){
+  width:100%;box-sizing:border-box;min-width:0;min-height:36px;
+  border:1px solid #cbd5e1;border-radius:8px;padding:7px 9px;background:#fff;
+  color:#1e293b;font-size:12px
+}
+.cmdbCatalogForm{display:grid;gap:11px;min-width:0}
+.cmdbCatalogForm>button{justify-self:start;padding:9px 12px;border-radius:8px}
+.cmdbCatalogRequired{display:grid;gap:7px;margin:0;padding:10px;border:1px solid #e2e8f0;border-radius:9px}
+.cmdbCatalogRequired legend{font-size:12px;font-weight:700;color:#334155;padding:0 4px}
+.cmdbCatalogRequired label,.cmdbCatalogPanel label.cmdbCatalogToggle{
+  display:flex;flex-direction:row;align-items:center;gap:8px;font-weight:500
+}
+.cmdbCatalogRequired input,.cmdbCatalogToggle input{width:16px;height:16px;flex:0 0 auto}
+.cmdbCatalogFields{display:grid;gap:10px}
+.cmdbCatalogSectionHead{display:flex;gap:9px;align-items:center;justify-content:space-between}
+.cmdbCatalogSectionHead strong{font-size:12px}
+.cmdbCatalogSectionHead button{white-space:nowrap;padding:6px 9px}
+.cmdbCatalogField{padding:12px;border-radius:9px;background:#f8fafc;border:1px solid #e2e8f0;display:grid;gap:8px}
+.cmdbCatalogField>button{justify-self:start;padding:7px 9px}
+.cmdbCatalogPanel summary{cursor:pointer;font-size:12px;font-weight:600}
+.cmdbCatalogPanel ol{margin:0;padding-left:20px;display:grid;gap:9px}
+.cmdbCatalogPanel li{font-size:11px;overflow-wrap:anywhere}
+.cmdbCatalogPanel li strong,.cmdbCatalogPanel li small{display:block}
+.cmdbCatalogPanel li small{color:#64748b}

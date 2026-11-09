@@ -1583,7 +1583,7 @@ app.include_router(views_router)
 # Board edits are applied as a single reviewed transaction. For existing interface
 # assignments the client supplies the expected previous value (optimistic check).
 class BoardChange(BaseModel):
-    action: str = Field(pattern="^(create_vm|create_network|create_flow|create_interface|move_interface|update_vm)$")
+    action: str = Field(pattern="^(create_vm|create_network|create_flow|update_flow|create_interface|move_interface|update_vm)$")
     id: UUID | None = None
     system_id: UUID | None = None
     name: str = Field(default="", max_length=250)
@@ -1606,6 +1606,7 @@ class BoardChange(BaseModel):
     previous_description: str | None = None
     details_patch: dict[str, str] = Field(default_factory=dict)
     previous_details: dict[str, Any] = Field(default_factory=dict)
+    previous_flow: dict[str, Any] = Field(default_factory=dict)
     network_field: str = Field(default="zone_id", pattern="^(zone_id|vlan_id|vrf_id)$")
 
 class BoardPoint(BaseModel):
@@ -1768,6 +1769,45 @@ def apply_board_changes(payload: BoardBatch, db: Session) -> list[dict[str, Any]
             output.append({"action": "create_flow", "id": str(flow.id), "before": None,
                            "after": {"source_id": str(flow.source_id), "target_id": str(flow.target_id),
                                      "name": flow.name, "protocol": flow.protocol, "port": flow.port, "security": flow.security}})
+        elif change.action == "update_flow":
+            if change.id is None:
+                raise HTTPException(422, "Flow id is required")
+            db.flush()
+            flow = db.get(DataFlow, change.id)
+            if flow is None:
+                raise HTTPException(404, "Flow not found")
+            fields = ("source_id", "target_id", "name", "protocol", "port", "security",
+                      "data_description", "schedule", "verification")
+            if set(change.previous_flow) != set(fields):
+                raise HTTPException(422, "Complete previous flow snapshot is required")
+            before = {key: str(getattr(flow, key)) if key in ("source_id", "target_id")
+                      else getattr(flow, key) for key in fields}
+            if any(before[key] != change.previous_flow[key] for key in fields):
+                raise HTTPException(409, "Flow changed since opening; refresh and review")
+            if not change.source_id or not change.target_id or change.source_id == change.target_id:
+                raise HTTPException(422, "Flow needs two different components")
+            if (db.get(InfrastructureItem, change.source_id) is None
+                    or db.get(InfrastructureItem, change.target_id) is None):
+                raise HTTPException(422, "Flow endpoint not found")
+            if not change.name.strip() or not change.port.strip():
+                raise HTTPException(422, "Flow name and port are required")
+            after = {
+                "source_id": str(change.source_id), "target_id": str(change.target_id),
+                "name": change.name.strip(), "protocol": change.protocol.strip(),
+                "port": change.port.strip(), "security": change.security.strip(),
+                "data_description": change.data_description, "schedule": change.schedule,
+                # A changed technical relationship must be verified again.
+                "verification": "draft",
+            }
+            if all(before[key] == after[key] for key in fields):
+                raise HTTPException(422, "No flow fields changed")
+            flow.source_id = change.source_id
+            flow.target_id = change.target_id
+            for key in fields:
+                if key not in ("source_id", "target_id"):
+                    setattr(flow, key, after[key])
+            output.append({"action": "update_flow", "id": str(flow.id),
+                           "before": before, "after": after})
         elif change.action == "create_interface":
             if change.item_id is None or change.network_id is None:
                 raise HTTPException(422, "New interface requires VM and network")

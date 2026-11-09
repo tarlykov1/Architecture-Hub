@@ -189,3 +189,10 @@
 .boardNetworkLabel small{font-size:11px;color:#36648e}
 .boardEditorStage .boardToolFields .boardRequiredHint{font-size:12px;color:#b42318;font-weight:600}
 .boardEditorStage .boardToolFields input[aria-invalid="true"]{border-color:#d92d20;box-shadow:0 0 0 1px #d92d2033}
+
+/* Unsaved topology objects are not database records until the reviewed commit. */
+.boardPendingBanner{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;padding:10px 13px;border:1px solid #dfba83;border-radius:9px;background:#fff8ec;color:#684316;font-size:12px}
+.boardPendingBanner strong{font-weight:700}
+.boardPendingBanner span{flex:1;min-width:210px}
+.boardPendingBanner button{border:1px solid #c48a37;background:#fff;border-radius:6px;padding:7px 10px;color:#684316;font-weight:600;cursor:pointer}
+.boardPendingBanner button:hover{background:#fff0d7}

@@ -602,6 +602,203 @@ def _cmdb_actor(request: Request) -> str:
     return str(getattr(request.state, "role", "development"))
 
 
+
+def _catalog_classes(db: Session) -> list[dict]:
+    """Merge built-in defaults with DB overrides; do not change existing kind IDs."""
+    defaults = {
+        entry["id"]: {**entry, "fields": [], "enabled": True,
+                      "revision": 0, "is_custom": False}
+        for entry in CI_CLASSES
+    }
+    for row in db.scalars(select(CmdbClassPolicy)).all():
+        defaults[row.id] = {
+            "id": row.id, "label": row.label, "layer": row.layer,
+            "required": row.required or [], "fields": row.fields or [],
+            "enabled": row.enabled, "revision": row.revision,
+            "is_custom": row.id not in {item["id"] for item in CI_CLASSES},
+        }
+    return sorted(defaults.values(), key=lambda entry: (entry["layer"], entry["label"]))
+
+
+def _class_definition(db: Session, class_id: str) -> dict:
+    definition = next((x for x in _catalog_classes(db) if x["id"] == class_id), None)
+    if definition is None:
+        return {"id": class_id, "label": class_id, "layer": "infrastructure",
+                "required": ["technical_owner", "lifecycle"],
+                "fields": [], "enabled": True, "revision": 0, "is_custom": True}
+    return definition
+
+
+def _schema_audit(db: Session, resource_kind: str, resource_id: str,
+                  before: dict, after: dict, reason: str, request: Request):
+    db.add(CmdbSchemaAudit(
+        resource_kind=resource_kind, resource_id=resource_id,
+        before=before, after=after,
+        actor_role=_cmdb_actor(request), reason=reason.strip(),
+        occurred_at=datetime.now(timezone.utc),
+    ))
+
+
+def _relation_policy(db: Session, relation_kind: str, source_class: str, target_class: str) -> dict:
+    rules = db.scalars(select(CmdbRelationshipRule).where(
+        CmdbRelationshipRule.relation_kind == relation_kind,
+        CmdbRelationshipRule.source_class == source_class,
+    )).all()
+    return assess_relation(relation_kind, source_class, target_class, rules)
+
+
+def _check_relation_allowed(db: Session, relation_kind: str,
+                            source_class: str, target_class: str):
+    policy = _relation_policy(db, relation_kind, source_class, target_class)
+    if not policy["allowed"]:
+        raise HTTPException(422, policy["message"])
+    return policy
+
+
+@app.put("/api/cmdb/classes/{class_id}")
+def save_cmdb_class(class_id: str, payload: CmdbClassInput, request: Request,
+                    db: Session = Depends(db_session)):
+    if not class_id.isascii() or not __import__("re").fullmatch(r"[a-z][a-z0-9_]{1,49}", class_id):
+        raise HTTPException(422, "Class ID must be stable lowercase snake_case")
+    fields = [field.model_dump() for field in payload.fields]
+    issue = validate_class_schema(payload.required, fields)
+    if issue:
+        raise HTTPException(422, issue)
+    current = next((row for row in _catalog_classes(db) if row["id"] == class_id), None)
+    current_revision = current["revision"] if current else 0
+    if current_revision != payload.expected_revision:
+        raise HTTPException(409, "Class definition changed, refresh before saving")
+    # New policy can refine a built-in type or define a new infrastructure kind.
+    previous = current or {}
+    now = datetime.now(timezone.utc)
+    values = {
+        "label": payload.label.strip(), "layer": payload.layer,
+        "required": payload.required, "fields": fields, "enabled": payload.enabled,
+    }
+    row = db.get(CmdbClassPolicy, class_id)
+    if row is None:
+        row = CmdbClassPolicy(id=class_id, revision=1, updated_at=now, **values)
+        db.add(row)
+    else:
+        updated = db.execute(update(CmdbClassPolicy).where(
+            CmdbClassPolicy.id == class_id,
+            CmdbClassPolicy.revision == payload.expected_revision,
+        ).values(revision=payload.expected_revision+1, updated_at=now, **values))
+        if updated.rowcount != 1:
+            db.rollback()
+            raise HTTPException(409, "Class definition changed concurrently")
+    after = {"id": class_id, "revision": current_revision + 1,
+             "is_custom": class_id not in {c["id"] for c in CI_CLASSES}, **values}
+    _schema_audit(db, "class", class_id, previous, after, payload.reason, request)
+    db.commit()
+    return after
+
+
+@app.get("/api/cmdb/relationship-rules")
+def list_cmdb_relation_rules(db: Session = Depends(db_session)):
+    rows = db.scalars(select(CmdbRelationshipRule).order_by(
+        CmdbRelationshipRule.relation_kind, CmdbRelationshipRule.source_class,
+        CmdbRelationshipRule.target_class)).all()
+    return [{
+        "id": str(row.id), "relation_kind": row.relation_kind,
+        "source_class": row.source_class, "target_class": row.target_class,
+        "mode": row.mode, "enabled": row.enabled,
+        "description": row.description, "revision": row.revision,
+    } for row in rows]
+
+
+def _rule_values(payload: CmdbRuleInput, db: Session) -> dict:
+    known = {entry["id"] for entry in _catalog_classes(db)}
+    if payload.source_class not in known or payload.target_class not in known:
+        raise HTTPException(422, "Declare both CI classes before creating a rule")
+    return {
+        "relation_kind": payload.relation_kind,
+        "source_class": payload.source_class,
+        "target_class": payload.target_class, "mode": payload.mode,
+        "enabled": payload.enabled, "description": payload.description.strip(),
+    }
+
+
+@app.post("/api/cmdb/relationship-rules", status_code=201)
+def create_cmdb_rule(payload: CmdbRuleInput, request: Request,
+                     db: Session = Depends(db_session)):
+    values = _rule_values(payload, db)
+    if db.scalars(select(CmdbRelationshipRule).where(
+        CmdbRelationshipRule.relation_kind == values["relation_kind"],
+        CmdbRelationshipRule.source_class == values["source_class"],
+        CmdbRelationshipRule.target_class == values["target_class"])).first():
+        raise HTTPException(409, "This source/target class rule already exists")
+    row = CmdbRelationshipRule(**values, revision=1)
+    db.add(row)
+    try:
+        db.flush()
+        after = {"id": str(row.id), "revision": row.revision, **values}
+        _schema_audit(db, "relationship_rule", str(row.id), {}, after, payload.reason, request)
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(409, "This source/target class rule already exists")
+    return after
+
+
+@app.put("/api/cmdb/relationship-rules/{rule_id}")
+def update_cmdb_rule(rule_id: UUID, payload: CmdbRuleEdit, request: Request,
+                     db: Session = Depends(db_session)):
+    row = db.get(CmdbRelationshipRule, rule_id)
+    if row is None:
+        raise HTTPException(404, "Rule not found")
+    if row.revision != payload.expected_revision:
+        raise HTTPException(409, "Rule has changed, refresh before saving")
+    values = _rule_values(payload, db)
+    before = {"id": str(row.id), "revision": row.revision, "relation_kind": row.relation_kind,
+              "source_class": row.source_class, "target_class": row.target_class,
+              "mode": row.mode, "enabled": row.enabled, "description": row.description}
+    result = db.execute(update(CmdbRelationshipRule).where(
+        CmdbRelationshipRule.id == rule_id,
+        CmdbRelationshipRule.revision == payload.expected_revision,
+    ).values(**values, revision=row.revision + 1, updated_at=datetime.now(timezone.utc)))
+    if result.rowcount != 1:
+        db.rollback()
+        raise HTTPException(409, "Rule changed concurrently")
+    after = {"id": str(row.id), "revision": payload.expected_revision+1, **values}
+    _schema_audit(db, "relationship_rule", str(row.id), before, after, payload.reason, request)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(409, "This source/target class rule already exists")
+    return after
+
+
+@app.get("/api/cmdb/relationships/check")
+def check_cmdb_relationship(source_id: str, target_id: str,
+                            relation_kind: str = Query(pattern=r"^(supplies_data_to|integrates_with|depends_on)$"),
+                            db: Session = Depends(db_session)):
+    source, target = _cmdb_node(db, source_id), _cmdb_node(db, target_id)
+    if source["ci_id"] == target["ci_id"]:
+        raise HTTPException(422, "Self-connection is not supported")
+    if relation_kind == "supplies_data_to" and (
+        not source_id.startswith("component:") or not target_id.startswith("component:")):
+        raise HTTPException(422, "Data flow endpoints must be components")
+    if relation_kind in {"integrates_with", "depends_on"} and (
+        not source_id.startswith("system:") or not target_id.startswith("system:")):
+        raise HTTPException(422, "System relation endpoints must be systems")
+    return _relation_policy(db, relation_kind, source["ci_class"], target["ci_class"])
+
+
+@app.get("/api/cmdb/schema/history")
+def list_cmdb_schema_history(limit: int = Query(default=40, ge=1, le=100),
+                             db: Session = Depends(db_session)):
+    rows = db.scalars(select(CmdbSchemaAudit).order_by(
+        CmdbSchemaAudit.occurred_at.desc()).limit(limit)).all()
+    return [{
+        "resource_kind": row.resource_kind, "resource_id": row.resource_id,
+        "actor_role": row.actor_role, "reason": row.reason,
+        "before": row.before, "after": row.after,
+        "occurred_at": row.occurred_at.isoformat()
+    } for row in rows]
+
+
 @app.get("/api/cmdb/classes")
 def cmdb_classes():
     """Class-specific mandatory fields and controlled vocabularies."""

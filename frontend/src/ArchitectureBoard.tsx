@@ -97,7 +97,7 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
      return {id:item.id,position,sourcePosition:Position.Bottom,targetPosition:Position.Top,data:{label:<DiagramNodeLabel name={item.name} kind={item.kind} subtitle={ownerBySystemId[item.system_id]||ownerName} detail={item.kind+' · '+String(item.details.environment||'Среда не задана')}><small className="componentNodePurpose">{item.description?.trim()||String(item.details.purpose||item.details.role||'Назначение не описано')}</small></DiagramNodeLabel>},style:diagramCardStyle({zIndex:2})}
    })
  },[items,flows,interfaces,ownerName,ownerBySystemId]) // Keep dragged coordinates in React Flow during the editing session.
- const [nodes,setNodes,onNodesChange]=useNodesState<Node[]>(()=>{
+ const [nodes,setNodes,onNodesChange]=useNodesState<Node>(()=>{
   const pending=(restoredDraft?.changes||[]).filter(c=>c.action==='create_vm'&&c.id&&c.name)
   const savedIds=new Set(initialNodes.map(n=>n.id))
   return [...initialNodes,...pending.filter(c=>!savedIds.has(c.id!)).map((c,i)=>({

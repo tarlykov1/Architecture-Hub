@@ -370,6 +370,10 @@ test('moving a VRF drags nested VLAN and independent VM while preserving network
   await page.mouse.down()
   await page.mouse.move(x+120,y+75,{steps:12})
   await page.mouse.up()
+  // Depending on surrounding zones the moved VRF may require a new parent
+  // confirmation. Either outcome is valid, but it must not block saving.
+  const groupPrompt=page.getByRole('dialog',{name:'Подтверждение вложенности'})
+  if(await groupPrompt.isVisible())await groupPrompt.getByRole('button',{name:'Подтвердить связь'}).click()
   const save=board.getByRole('button',{name:'Сохранить расположение'})
   await expect(save).toBeEnabled()
   await save.click()

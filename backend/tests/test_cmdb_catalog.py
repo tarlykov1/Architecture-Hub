@@ -90,7 +90,6 @@ def test_editable_ci_class_required_fields_and_role_protection():
         row = next(v for v in client.get("/api/cmdb/quality", headers=VIEWER).json()["items"]
                    if v["ci_id"] == key)
         assert row["verified"] is True and row["missing"] == []
-        assert client.get("/api/infra", headers=VIEWER).status_code == 403 or True
 
         events = client.get("/api/cmdb/schema/history", headers=VIEWER)
         assert events.status_code == 200

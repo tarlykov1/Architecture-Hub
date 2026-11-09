@@ -3,17 +3,19 @@ import './board.css'
 import {DiagramNodeLabel,diagramCardStyle} from './DiagramVisual'
 import {AutoFit} from './WorkspaceUI'
 import {MousePointer2, Monitor, GitBranch, SquareDashed, Maximize2, Save, History, ClipboardCheck} from 'lucide-react'
-import {ReactFlow, ReactFlowProvider, Background, Controls, useNodesState, useReactFlow, MarkerType, Position, ConnectionMode, type Node, type NodeChange} from '@xyflow/react'
+import {ReactFlow, ReactFlowProvider, Background, Controls, useNodesState, useReactFlow, MarkerType, Position, ConnectionMode, type Node, type NodeChange, type Edge, type Connection} from '@xyflow/react'
 import {compactComponentLayout,flowCountLabel} from './graphLayout'
 import {ReciprocalEdge} from './ReciprocalEdge'
 import {ObstacleAwareEdge} from './ObstacleAwareEdge'
-import {BOARD_NODE_TYPES,pairPorts} from './BoardComponentNode'
+import {BOARD_NODE_TYPES,BOARD_PORTS,pairPorts} from './BoardComponentNode'
 
 type VM = {id:string;system_id:string;kind:string;name:string;description?:string;details:Record<string,unknown>}
 type Network = {id:string;name:string;kind:string}
 type NIC = {id:string;item_id:string;name:string;zone_id:string|null;vlan_id:string|null;vrf_id:string|null}
-type Flow = {id:string;source_id:string;target_id:string;name:string;protocol:string;port:string}
-type Change = {action:'create_vm'|'create_network'|'create_flow'|'create_interface'|'move_interface'|'update_vm';id?:string;system_id?:string;name?:string;kind?:string;description?:string;source_id?:string;target_id?:string;protocol?:string;port?:string;security?:string;data_description?:string;interface_id?:string;item_id?:string;interface_name?:string;network_id?:string|null;previous_network_id?:string|null;previous_name?:string;previous_description?:string;details_patch?:Record<string,string>;previous_details?:Record<string,unknown>;network_field?:'zone_id'|'vlan_id'|'vrf_id'}
+type Flow = {id:string;source_id:string;target_id:string;name:string;protocol:string;port:string;security?:string;data_description?:string;schedule?:string;verification?:string}
+type FlowHandlePair={source_handle:string;target_handle:string}
+type EdgePopup={flowIds:string[];pair:string;x:number;y:number}
+type Change = {action:'create_vm'|'create_network'|'create_flow'|'update_flow'|'create_interface'|'move_interface'|'update_vm';id?:string;system_id?:string;name?:string;kind?:string;description?:string;source_id?:string;target_id?:string;protocol?:string;port?:string;security?:string;data_description?:string;interface_id?:string;item_id?:string;interface_name?:string;network_id?:string|null;previous_network_id?:string|null;previous_name?:string;previous_description?:string;details_patch?:Record<string,string>;previous_details?:Record<string,unknown>;previous_flow?:Record<string,string>;schedule?:string;verification?:string;network_field?:'zone_id'|'vlan_id'|'vrf_id'}
 type Preview = {changes:Array<{action:string;id:string;before:unknown;after:unknown;field?:string}>;count:number}
 type Props = {systemId:string;ownerName?:string;ownerBySystemId?:Record<string,string>;items:VM[];networks:Network[];interfaces:NIC[];flows:Flow[];savedPositions?:Record<string,{x:number;y:number}>;onPositionChange?:(node:Node)=>void;request:<T>(url:string,init?:RequestInit)=>Promise<T>;onCommitted:()=>Promise<void>;exitRequest?:number;onExit?:()=>void}
 type Tool = 'move'|'vm'|'flow'|'network'
@@ -106,6 +108,12 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
  const [reviewOpen,setReviewOpen]=useState(false)
  const [exitPrompt,setExitPrompt]=useState(false)
  const [exitAfterSave,setExitAfterSave]=useState(false)
+ const [flowHandles,setFlowHandles]=useState<Record<string,FlowHandlePair>>({})
+ const [edgePopup,setEdgePopup]=useState<EdgePopup|null>(null)
+ const [flowCardId,setFlowCardId]=useState<string|null>(null)
+ const [flowCardDraft,setFlowCardDraft]=useState<Flow|null>(null)
+ const [expandedPair,setExpandedPair]=useState<string|null>(null)
+ const stageRef=useRef<HTMLDivElement|null>(null)
  const [rectangles,setRectangles]=useState<Rect[]>(()=>{
    const relevant = networks.filter(n=>interfaces.some(nic=>nic[fieldForKind(n.kind)]===n.id&&items.some(item=>item.id===nic.item_id)))
    const heights=relevant.map(n=>{

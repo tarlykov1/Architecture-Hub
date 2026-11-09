@@ -52,6 +52,7 @@ function readBoardDraft(systemId:string):StoredBoardDraft|null{
 function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfaces,flows,savedPositions={},onPositionChange,request,onCommitted,onEditNetwork,onDraftStateChange}:Props){
  const [restoredDraft]=useState<StoredBoardDraft|null>(()=>readBoardDraft(systemId))
  const [tool,setTool]=useState<Tool>('move')
+ const [drawingConnection,setDrawingConnection]=useState(false)
  const [inspectedId,setInspectedId]=useState<string|null>(null)
  const [inspectedNetworkId,setInspectedNetworkId]=useState<string|null>(null)
  const [focusDependencies,setFocusDependencies]=useState(false)
@@ -426,7 +427,7 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
     return position?{...rect,x:position.x,y:position.y}:rect
   }))
   onNodesChange(updates.filter(change=>!('id' in change)||!change.id.startsWith('network:')))
- }} nodesDraggable={tool==='move'} snapToGrid={snapToGrid} snapGrid={[20,20]} nodesConnectable={tool==='flow'} onConnect={connection=>{if(tool==='flow'&&connection.source&&connection.target){stageDirectedFlow(connection.source,connection.target);setInspectedId(null)}}} onEdgeClick={(_,edge)=>{setInspectedId(null);setFocusDependencies(false);setTool('flow');const draft=changes.find(c=>c.action==='create_flow'&&c.source_id===edge.source&&c.target_id===edge.target);if(draft?.id)setSelectedDraftFlowId(draft.id);else{setSelectedDraftFlowId('');setFrom(edge.source);setTo(edge.target)}}} onNodeClick={(_,node)=>{
+ }} nodesDraggable={tool==='move'} snapToGrid={snapToGrid} snapGrid={[20,20]} nodesConnectable={tool==='flow'} onConnectStart={()=>setDrawingConnection(true)} onConnectEnd={()=>setDrawingConnection(false)} onConnect={connection=>{if(tool==='flow'&&connection.source&&connection.target){stageDirectedFlow(connection.source,connection.target);setInspectedId(null)}}} onEdgeClick={(_,edge)=>{setInspectedId(null);setFocusDependencies(false);setTool('flow');const draft=changes.find(c=>c.action==='create_flow'&&c.source_id===edge.source&&c.target_id===edge.target);if(draft?.id)setSelectedDraftFlowId(draft.id);else{setSelectedDraftFlowId('');setFrom(edge.source);setTo(edge.target)}}} onNodeClick={(_,node)=>{
  if(node.id.startsWith('network:')){setInspectedNetworkId(node.id.slice(8));setInspectedId(null);setFocusDependencies(false);return}
  setInspectedNetworkId(null)
  if(tool==='flow'){
@@ -434,7 +435,7 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
    if(!from||to||from===node.id){setFrom(node.id);setTo('');setSelectedDraftFlowId('');setLayoutMessage('Источник выбран. Нажмите на целевой компонент или протяните стрелку от порта.')}
    else stageDirectedFlow(from,node.id)
  }else if(tool==='move'){openPassport(node.id);setFocusDependencies(false)}
-}} onNodeDragStop={(_,node)=>moveNode(node)} onPaneClick={handlePaneClick} minZoom={0.08} fitView fitViewOptions={{padding:0.2,maxZoom:0.9}}><AutoFit layoutKey={systemId+':'+items.length+':'+flows.length} maxFitZoom={0.9}/><Background gap={20}/><Controls showInteractive={false}/></ReactFlow>
+}} onNodeDragStop={(_,node)=>moveNode(node)} onPaneClick={handlePaneClick} minZoom={0.08} fitView fitViewOptions={{padding:0.2,maxZoom:0.9}}><AutoFit layoutKey={systemId+':'+items.length+':'+flows.length} maxFitZoom={0.9} suspended={drawingConnection}/><Background gap={20}/><Controls showInteractive={false}/></ReactFlow>
      {tool==='network'&&<div className="boardNetworkDrawLayer" role="region" aria-label="Поле рисования контейнера"
        onPointerDown={beginNetworkDrag} onPointerMove={moveNetworkDrag} onPointerUp={finishNetworkDrag}
        onPointerCancel={cancelNetworkDrag} onContextMenu={event=>event.preventDefault()}>

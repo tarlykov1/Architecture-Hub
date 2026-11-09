@@ -420,3 +420,73 @@ test('creating a VRF inside an existing VRF is rejected before being staged',asy
   await expect(board.getByText(/VRF нельзя создавать внутри другой VRF/)).toBeVisible()
   await expect(board.locator('.react-flow__node').filter({hasText:'Invalid nested VRF'})).toHaveCount(0)
 })
+
+
+test('dragging VLAN into and out of VRF requires confirmation and resizing zone with mouse persists',async({page})=>{
+  const systemId=await seedSystem(page)
+  const suffix=String(Date.now())
+  const makeNetwork=async(kind:'vrf'|'vlan')=>{
+    const response=await page.request.post('http://127.0.0.1:8001/api/networks',{
+      data:{name:'Nested test '+kind+' '+suffix,kind}
+    })
+    expect(response.status()).toBe(201)
+    return (await response.json()).id as string
+  }
+  const vrf=await makeNetwork('vrf'),vlan=await makeNetwork('vlan')
+  const positions={
+    ['network:'+vrf]:{x:180,y:95,width:760,height:540},
+    ['network:'+vlan]:{x:1010,y:180,width:240,height:190}
+  }
+  const seeded=await page.request.put('http://127.0.0.1:8001/api/board/layout/'+systemId,{data:{positions}})
+  expect(seeded.ok(),await seeded.text()).toBeTruthy()
+  await page.goto('/')
+  await page.getByRole('navigation',{name:'Разделы архитектуры'}).getByRole('button',{name:'Компоненты',exact:true}).click()
+  await page.getByRole('group',{name:'Представление компонентов'}).getByRole('button',{name:'Схема',exact:true}).click()
+  await page.getByRole('button',{name:'Редактировать схему'}).click()
+  await page.getByRole('combobox',{name:'Выбрать ИС для редактора компонентов'}).selectOption(systemId)
+  const board=page.getByRole('region',{name:'Редактор архитектурной схемы'})
+  const parent=board.locator('.react-flow__node[data-id="network:'+vrf+'"]')
+  const child=board.locator('.react-flow__node[data-id="network:'+vlan+'"]')
+  await expect(parent).toBeVisible()
+  await expect(child).toBeVisible()
+  const vrfBox=await parent.boundingBox(),original=await child.boundingBox()
+  expect(vrfBox).not.toBeNull();expect(original).not.toBeNull()
+  const from={x:original!.x+30,y:original!.y+18}
+  const into={x:vrfBox!.x+vrfBox!.width*.24,y:vrfBox!.y+vrfBox!.height*.24}
+  await page.mouse.move(from.x,from.y)
+  await page.mouse.down()
+  await page.mouse.move(into.x,into.y,{steps:20})
+  await page.mouse.up()
+  const prompt=page.getByRole('dialog',{name:'Подтверждение вложенности'})
+  await expect(prompt).toBeVisible()
+  await expect(prompt).toContainText('Добавить объект в группу?')
+  await prompt.getByRole('button',{name:'Подтвердить связь'}).click()
+  await board.getByRole('button',{name:'Сохранить расположение'}).click()
+  const read=async()=> (await (await page.request.get('http://127.0.0.1:8001/api/board/layout/'+systemId)).json()).positions as Record<string,{x:number;y:number;width?:number;height?:number;parent_id?:string}>
+  await expect.poll(async()=>(await read())['network:'+vlan]?.parent_id).toBe('network:'+vrf)
+
+  const next=await child.boundingBox()
+  expect(next).not.toBeNull()
+  await page.mouse.move(next!.x+30,next!.y+18)
+  await page.mouse.down()
+  await page.mouse.move(from.x,from.y,{steps:20})
+  await page.mouse.up()
+  await expect(prompt).toBeVisible()
+  await expect(prompt).toContainText('Вывести объект из группы?')
+  await prompt.getByRole('button',{name:'Подтвердить связь'}).click()
+  await board.getByRole('button',{name:'Сохранить расположение'}).click()
+  await expect.poll(async()=>(await read())['network:'+vlan]?.parent_id||null).toBe(null)
+
+  const grips=parent.locator('.react-flow__resize-control.handle')
+  await expect(grips.first()).toBeVisible()
+  const before=(await read())['network:'+vrf]!.width!
+  const grip=await grips.last().boundingBox()
+  expect(grip).not.toBeNull()
+  await page.mouse.move(grip!.x+grip!.width/2,grip!.y+grip!.height/2)
+  await page.mouse.down()
+  await page.mouse.move(grip!.x+grip!.width/2+60,grip!.y+grip!.height/2+45,{steps:12})
+  await page.mouse.up()
+  await board.getByRole('button',{name:'Сохранить расположение'}).click()
+  const after=(await read())['network:'+vrf]!.width!
+  expect(Math.abs(after-before)).toBeGreaterThan(10)
+})

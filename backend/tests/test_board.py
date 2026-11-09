@@ -188,3 +188,65 @@ def test_board_layout_can_store_connected_external_components():
                               json={"positions": locations})
         assert response.status_code == 200, response.text
         assert response.json()["positions"] == locations
+
+
+def test_board_network_rectangles_can_move_and_are_persisted_with_history():
+    with TestClient(app) as client:
+        system_id, vm_id = create_system_and_vm(client)
+        vlan = client.post("/api/networks", headers=ADMIN,
+                           json={"name": "Move VLAN " + str(uuid4()), "kind": "vlan"})
+        vrf = client.post("/api/networks", headers=ADMIN,
+                          json={"name": "Move VRF " + str(uuid4()), "kind": "vrf"})
+        assert vlan.status_code == 201, vlan.text
+        assert vrf.status_code == 201, vrf.text
+        vlan_id, vrf_id = vlan.json()["id"], vrf.json()["id"]
+        positions = {
+            vm_id: {"x": 120, "y": 140},
+            "network:" + vlan_id: {"x": 50, "y": 70, "width": 540, "height": 340},
+            "network:" + vrf_id: {"x": 700, "y": 70, "width": 540, "height": 340},
+        }
+        before_audit = client.get("/api/board/audit", headers=ADMIN).json()
+        saved = client.put("/api/board/layout/" + system_id, headers=ADMIN,
+                           json={"positions": positions})
+        assert saved.status_code == 200, saved.text
+        assert client.get("/api/board/layout/" + system_id, headers=ADMIN).json()["positions"] == positions
+        history = client.get("/api/board/audit", headers=ADMIN).json()
+        assert len(history) == len(before_audit) + 1
+        event = history[0]
+        assert event["actor"].startswith("admin:")
+        assert {change["id"] for change in event["changes"]} == set(positions)
+        assert all(change["action"] == "update_layout" for change in event["changes"])
+
+        positions["network:" + vrf_id] = {"x": 850, "y": 260, "width": 600, "height": 380}
+        moved = client.put("/api/board/layout/" + system_id, headers=ADMIN,
+                           json={"positions": positions})
+        assert moved.status_code == 200, moved.text
+        change = client.get("/api/board/audit", headers=ADMIN).json()[0]["changes"]
+        assert len(change) == 1
+        assert change[0]["id"] == "network:" + vrf_id
+        assert change[0]["before"]["x"] == 700
+        assert change[0]["after"]["x"] == 850
+
+        # Re-saving unchanged coordinates must not create a phantom history event.
+        before = len(client.get("/api/board/audit", headers=ADMIN).json())
+        assert client.put("/api/board/layout/" + system_id, headers=ADMIN,
+                          json={"positions": positions}).status_code == 200
+        assert len(client.get("/api/board/audit", headers=ADMIN).json()) == before
+
+
+def test_board_rejects_invalid_network_geometry_without_overwriting_layout():
+    with TestClient(app) as client:
+        system_id, _ = create_system_and_vm(client)
+        network_id = client.post("/api/networks", headers=ADMIN,
+                                 json={"name": "Geometry check " + str(uuid4()), "kind": "vrf"}).json()["id"]
+        url = "/api/board/layout/" + system_id
+        baseline = client.get(url, headers=ADMIN).json()["positions"]
+        for broken in [
+            {"network:" + str(uuid4()): {"x": 20, "y": 30, "width": 400, "height": 200}},
+            {"network:" + network_id: {"x": 20, "y": 30}},
+            {"network:" + network_id: {"x": 20, "y": 30, "width": 20, "height": 40}},
+            {"network:not-a-uuid": {"x": 20, "y": 30, "width": 400, "height": 200}},
+        ]:
+            response = client.put(url, headers=ADMIN, json={"positions": broken})
+            assert response.status_code == 422, response.text
+            assert client.get(url, headers=ADMIN).json()["positions"] == baseline

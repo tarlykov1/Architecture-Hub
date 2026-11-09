@@ -2005,6 +2005,9 @@ class BoardPoint(BaseModel):
     # Only network rectangle entries carry dimensions. VM positions keep x/y.
     width: float | None = Field(default=None, ge=140, le=100000, allow_inf_nan=False)
     height: float | None = Field(default=None, ge=90, le=100000, allow_inf_nan=False)
+    # Explicit, confirmed architectural containment. This is NOT a routed SVI,
+    # VLAN membership or a VM network-interface assignment.
+    parent_id: str | None = Field(default=None, pattern=r"^network:[0-9a-fA-F-]{36}$")
 
 
 class BoardLayoutInput(BaseModel):
@@ -2050,6 +2053,33 @@ def save_board_layout(system_id: UUID, payload: BoardLayoutInput,
         known = set(db.scalars(select(NetworkSegment.id).where(NetworkSegment.id.in_(network_ids))).all())
         if len(known) != len(set(network_ids)):
             raise HTTPException(422, "Unknown network in layout")
+    # Validate the typed architectural hierarchy independently of displayed
+    # rectangle overlaps: a move into a container is confirmed by the user,
+    # not inferred by the API from coordinates.
+    network_kinds = {str(row.id): row.kind for row in db.scalars(
+        select(NetworkSegment).where(NetworkSegment.id.in_(network_ids))).all()} if network_ids else {}
+    for key, point in payload.positions.items():
+        if not point.parent_id:
+            continue
+        if point.parent_id == key or point.parent_id not in payload.positions or not point.parent_id.startswith("network:"):
+            raise HTTPException(422, "Parent network must be on the same diagram")
+        child_kind = network_kinds.get(key.removeprefix("network:")) if key.startswith("network:") else None
+        parent_kind = network_kinds.get(point.parent_id.removeprefix("network:"))
+        if parent_kind is None:
+            raise HTTPException(422, "Parent must be a known network")
+        if child_kind == "vrf" and parent_kind != "zone":
+            raise HTTPException(422, "VRF can be nested in a zone, not in VRF/VLAN")
+        if child_kind == "vlan" and parent_kind not in ("vrf", "zone"):
+            raise HTTPException(422, "VLAN can be nested in VRF/zone, not another VLAN")
+        if child_kind == "zone" and parent_kind != "zone":
+            raise HTTPException(422, "Zone can only be nested in a zone")
+        visited = {key}
+        ancestor = point.parent_id
+        while ancestor:
+            if ancestor in visited:
+                raise HTTPException(422, "Cyclic architectural containment is not allowed")
+            visited.add(ancestor)
+            ancestor = payload.positions[ancestor].parent_id
     positions = {key: point.model_dump(exclude_none=True) for key, point in payload.positions.items()}
     stored = db.get(BoardLayout, system_id)
     before = dict(stored.positions or {}) if stored else {}

@@ -863,3 +863,11 @@ button:disabled{cursor:not-allowed;opacity:.55}
 .cmdbCatalogPanel li{font-size:11px;overflow-wrap:anywhere}
 .cmdbCatalogPanel li strong,.cmdbCatalogPanel li small{display:block}
 .cmdbCatalogPanel li small{color:#64748b}
+
+
+/* Network topology shares the same card typography as Overview and the editor. */
+.topologyGroupLabel{display:flex;flex-direction:column;align-items:flex-start;gap:6px;text-align:left}
+.topologyGroupLabel strong{font-size:13px;line-height:1.35;color:#1d3654}
+.topologyGroupLabel small{font-size:11px;line-height:1.4;color:#60728b;overflow-wrap:anywhere}
+.topologyCanvas .architectureGraphNode{max-width:100%;overflow-wrap:anywhere}
+.topologyCanvas .react-flow__node-group{box-sizing:border-box}

@@ -1,4 +1,4 @@
-import {useEffect,useMemo,useState} from 'react'
+import {useEffect,useMemo,useState, type FormEvent} from 'react'
 
 type FieldType='text'|'number'|'boolean'|'choice'
 type FieldDef={key:string;label:string;type:FieldType;options:string[]}
@@ -82,7 +82,7 @@ export default function CmdbCatalog({request}:Props){
   const updateField=(index:number,field:FieldDef)=>{
     setClassDraft(previous=>({...previous,fields:previous.fields.map((item,i)=>i===index?field:item)}))
   }
-  const saveClass=async(event:React.FormEvent)=>{
+  const saveClass=async(event:FormEvent)=>{
     event.preventDefault()
     setBusy(true);setError('');setNotice('')
     try{
@@ -103,7 +103,7 @@ export default function CmdbCatalog({request}:Props){
   const chooseRule=(id:string)=>{
     setRuleDraft(rules.find(rule=>rule.id===id)||emptyRule());setRuleReason('');setError('');setNotice('')
   }
-  const saveRule=async(event:React.FormEvent)=>{
+  const saveRule=async(event:FormEvent)=>{
     event.preventDefault();setBusy(true);setError('');setNotice('')
     try{
       const {id,revision,...values}=ruleDraft

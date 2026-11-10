@@ -25,14 +25,15 @@ function BoardComponentNode({data}:NodeProps){
  const start=(event:React.PointerEvent<HTMLDivElement>)=>{if(!drawing)return;event.stopPropagation();event.preventDefault();props.onStartFlow?.(event)}
  const move=(event:React.PointerEvent<HTMLDivElement>)=>props.onMoveFlow?.(event)
  const end=(event:React.PointerEvent<HTMLDivElement>)=>props.onFinishFlow?.(event)
+ const swallowHandleClick=(event:React.MouseEvent<HTMLDivElement>)=>{event.preventDefault();event.stopPropagation()}
  const sourceProps={onPointerDown:start,onPointerMove:move,onPointerUp:end,onPointerCancel:end,
-   onMouseDown:(event:React.MouseEvent<HTMLDivElement>)=>{event.preventDefault();event.stopPropagation()}}
+   onMouseDown:(event:React.MouseEvent<HTMLDivElement>)=>{event.preventDefault();event.stopPropagation()},onClick:swallowHandleClick}
  return <>
   <div className="boardComponentClickArea" onClick={event=>{if(drawing){event.stopPropagation();props.onDirectClick?.()}}}>{props.label}</div>
   <Handle type="source" id="out-right" position={Position.Right} isConnectable={false} className={'boardConnectionHandle'+(drawing?' boardConnectionHandleActive':'')} {...sourceProps}/>
   <Handle type="source" id="out-bottom" position={Position.Bottom} isConnectable={false} className={'boardConnectionHandle'+(drawing?' boardConnectionHandleActive':'')} {...sourceProps}/>
-  <Handle type="target" id="in-left" position={Position.Left} isConnectable={false} className={'boardConnectionHandle'+(drawing?' boardConnectionHandleActive':'')}/>
-  <Handle type="target" id="in-top" position={Position.Top} isConnectable={false} className={'boardConnectionHandle'+(drawing?' boardConnectionHandleActive':'')}/>
+  <Handle type="target" id="in-left" position={Position.Left} isConnectable={false} className={'boardConnectionHandle'+(drawing?' boardConnectionHandleActive':'')} onClick={swallowHandleClick}/>
+  <Handle type="target" id="in-top" position={Position.Top} isConnectable={false} className={'boardConnectionHandle'+(drawing?' boardConnectionHandleActive':'')} onClick={swallowHandleClick}/>
  </>
 }
 function BoardNetworkNode({data}:NodeProps){

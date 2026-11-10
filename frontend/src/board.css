@@ -278,3 +278,25 @@
 .boardExistingFlowActions button[type=submit]{background:#176bc1;color:white;border-color:#176bc1}
 .boardExistingFlowStaged{border-left:3px solid #176bc1;background:#eff6ff;padding:8px}
 .boardFlowValidation{color:#b91c1c!important}
+
+/* Per-process data dictionary, with descriptions only (no sensitive values). */
+.boardFlowDataMap{display:grid;gap:11px;padding:12px;border:1px solid #dce5ef;border-radius:9px;background:#fbfdff}
+.boardFlowDataMapHeader{display:flex;justify-content:space-between;align-items:start;gap:8px}
+.boardFlowDataMapHeader>div{display:grid;gap:4px}
+.boardFlowDataMapHeader strong{font-size:14px;color:#233347}
+.boardFlowDataMapHeader small,.boardFlowDataMapCount{color:#64748b;font-size:11px}
+.boardFlowDataMapHeader button{border:1px solid #b6c8db;border-radius:6px;padding:6px 9px;background:#fff;color:#176bc1;cursor:pointer}
+.boardFlowDataMap>p{font-size:12px;color:#64748b;line-height:1.5;margin:0}
+.boardFlowDataMap>p[role=alert]{color:#b91c1c}
+.boardFlowDataMapFilters{display:grid;gap:8px}
+.boardFlowDataMapFilters label{display:grid;gap:4px;font-size:12px;font-weight:600;color:#334155}
+.boardFlowDataMapFilters select{width:100%;min-width:0;border:1px solid #cbd5e1;background:#fff;color:#243449;padding:7px 9px;border-radius:6px}
+.boardFlowDataMapList{display:grid;gap:7px;max-height:400px;overflow-y:auto}
+.boardFlowDataMapList article{display:grid;gap:5px;border:1px solid #e2e8f0;border-radius:7px;padding:10px;background:white;min-width:0}
+.boardFlowDataMapList article strong{font-size:12px;color:#1e293b;overflow-wrap:anywhere}
+.boardFlowDataMapList article code{font-size:11px;color:#176bc1;overflow-wrap:anywhere}
+.boardFlowDataMapList article div{display:flex;gap:5px;flex-wrap:wrap}
+.boardFlowDataMapList article span{font-size:10px;background:#f1f5f9;border-radius:4px;padding:3px 5px}
+.boardFlowDataMapList article small{font-size:11px;color:#475569;overflow-wrap:anywhere}
+.boardFlowDataMapList article p{font-size:11px;color:#64748b;line-height:1.45;margin:0}
+.boardFlowDataMapEmpty{padding:10px;border:1px dashed #cbd5e1;border-radius:7px}

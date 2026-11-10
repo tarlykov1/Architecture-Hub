@@ -129,8 +129,27 @@ export function ObstacleAwareEdge({id,source,target,sourceX,sourceY,targetX,targ
    return {path:pathString(points),label:midpoint(points)}
  },[nodes,source,target,sourceX,sourceY,targetX,targetY,sourcePosition,targetPosition,data?.reciprocal])
  const caption=typeof data?.caption==='string'?data.caption:''
+ const endpointEditor=data?.endpointEditor as undefined|{
+   onBegin:(end:'source'|'target',event:React.PointerEvent<HTMLButtonElement>)=>void
+   onMove:(event:React.PointerEvent<HTMLButtonElement>)=>void
+   onEnd:(event:React.PointerEvent<HTMLButtonElement>)=>void
+ }
+ const grip=(end:'source'|'target',x:number,y:number)=>endpointEditor&&<button key={end}
+   type="button" className="boardEndpointGrip nodrag nopan"
+   aria-label={end==='source'?'Перенести начало стрелки':'Перенести конец стрелки'}
+   title={end==='source'?'Перетащить начало в другую точку той же ВМ':'Перетащить конец в другую точку той же ВМ'}
+   style={{position:'absolute',left:0,top:0,transform:`translate(-50%,-50%) translate(${x}px,${y}px)`}}
+   onPointerDown={event=>{event.preventDefault();event.stopPropagation();endpointEditor.onBegin(end,event)}}
+   onPointerMove={event=>endpointEditor.onMove(event)}
+   onPointerUp={event=>endpointEditor.onEnd(event)}
+   onPointerCancel={event=>endpointEditor.onEnd(event)}
+   onClick={event=>{event.preventDefault();event.stopPropagation()}}>●</button>
  return <>
    <BaseEdge id={id} path={path} markerEnd={markerEnd} style={style} interactionWidth={18}/>
-   {caption&&<EdgeLabelRenderer><div className="reciprocalEdgeLabel" style={{position:'absolute',transform:`translate(-50%,-50%) translate(${label.x}px,${label.y}px)`,pointerEvents:'none',opacity:style?.opacity??1}}>{caption}</div></EdgeLabelRenderer>}
+   {(caption||endpointEditor)&&<EdgeLabelRenderer>
+     {caption&&<div className="reciprocalEdgeLabel" style={{position:'absolute',transform:`translate(-50%,-50%) translate(${label.x}px,${label.y}px)`,pointerEvents:'none',opacity:style?.opacity??1}}>{caption}</div>}
+     {endpointEditor&&grip('source',sourceX,sourceY)}
+     {endpointEditor&&grip('target',targetX,targetY)}
+   </EdgeLabelRenderer>}
  </>
 }

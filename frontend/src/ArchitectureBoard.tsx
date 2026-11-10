@@ -9,6 +9,7 @@ import {ReactFlow, ReactFlowProvider, Background, Controls, Handle, NodeResizer,
 import {compactComponentLayout,flowCountLabel} from './graphLayout'
 import {ReciprocalEdge} from './ReciprocalEdge'
 import {ObstacleAwareEdge} from './ObstacleAwareEdge'
+import {FlowPortHandles, autoFlowPorts, closestVisiblePort, type FlowPortPair, type FlowEnd} from './flowPorts'
 
 type VM = {id:string;system_id:string;kind:string;name:string;description?:string;details:Record<string,unknown>}
 type Network = {id:string;name:string;kind:string}
@@ -18,23 +19,18 @@ type Change = {action:'create_vm'|'create_network'|'create_flow'|'update_flow'|'
 type Preview = {changes:Array<{action:string;id:string;before:unknown;after:unknown;field?:string}>;count:number}
 type Props = {systemId:string;ownerName?:string;ownerBySystemId?:Record<string,string>;items:VM[];networks:Network[];interfaces:NIC[];flows:Flow[];savedPositions?:Record<string,{x:number;y:number}>;onPositionChange?:(node:Node)=>void;request:<T>(url:string,init?:RequestInit)=>Promise<T>;onCommitted:()=>Promise<void>;onEditNetwork?:(id:string)=>void;onDraftStateChange?:(pending:boolean)=>void}
 type Tool = 'move'|'vm'|'flow'|'network'
-// Visible connection ports make drawing on the canvas discoverable. Four
-// dedicated ports work in React Flow's strict source-to-target mode.
+// Eight geometrically independent handles per VM, each usable for outgoing
+// and incoming data flows. Target handles are invisible but stay measurable.
 function BoardComponentNode({data}:NodeProps){
  const drawing=Boolean(data.flowMode)
- const props=data as {label:React.ReactNode;flowMode?:boolean;onDirectClick?:()=>void;onStartFlow?:(event:React.PointerEvent<HTMLDivElement>)=>void;onMoveFlow?:(event:React.PointerEvent<HTMLDivElement>)=>void;onFinishFlow?:(event:React.PointerEvent<HTMLDivElement>)=>void}
- const start=(event:React.PointerEvent<HTMLDivElement>)=>{if(!drawing)return;event.stopPropagation();event.preventDefault();props.onStartFlow?.(event)}
- const move=(event:React.PointerEvent<HTMLDivElement>)=>props.onMoveFlow?.(event)
- const end=(event:React.PointerEvent<HTMLDivElement>)=>props.onFinishFlow?.(event)
- const swallowHandleClick=(event:React.MouseEvent<HTMLDivElement>)=>{event.preventDefault();event.stopPropagation()}
- const sourceProps={onPointerDown:start,onPointerMove:move,onPointerUp:end,onPointerCancel:end,
-   onMouseDown:(event:React.MouseEvent<HTMLDivElement>)=>{event.preventDefault();event.stopPropagation()},onClick:swallowHandleClick}
+ const props=data as {label:React.ReactNode;flowMode?:boolean;onDirectClick?:()=>void;
+  onStartFlow?:(handle:string,event:React.PointerEvent<HTMLDivElement>)=>void;
+  onMoveFlow?:(event:React.PointerEvent<HTMLDivElement>)=>void;
+  onFinishFlow?:(event:React.PointerEvent<HTMLDivElement>)=>void}
  return <>
   <div className="boardComponentClickArea" onClick={event=>{if(drawing){event.stopPropagation();props.onDirectClick?.()}}}>{props.label}</div>
-  <Handle type="source" id="out-right" position={Position.Right} isConnectable={false} className={'boardConnectionHandle'+(drawing?' boardConnectionHandleActive':'')} {...sourceProps}/>
-  <Handle type="source" id="out-bottom" position={Position.Bottom} isConnectable={false} className={'boardConnectionHandle'+(drawing?' boardConnectionHandleActive':'')} {...sourceProps}/>
-  <Handle type="target" id="in-left" position={Position.Left} isConnectable={false} className={'boardConnectionHandle'+(drawing?' boardConnectionHandleActive':'')} onClick={swallowHandleClick}/>
-  <Handle type="target" id="in-top" position={Position.Top} isConnectable={false} className={'boardConnectionHandle'+(drawing?' boardConnectionHandleActive':'')} onClick={swallowHandleClick}/>
+  <FlowPortHandles visible={drawing} sourcePointerDown={props.onStartFlow}
+    sourcePointerMove={props.onMoveFlow} sourcePointerUp={props.onFinishFlow}/>
  </>
 }
 function BoardNetworkNode({data}:NodeProps){
@@ -66,7 +62,7 @@ const descendants=(root:string,parents:Record<string,string>):Set<string>=>{
 const fieldForKind=(kind:string):'zone_id'|'vlan_id'|'vrf_id'=>kind==='vlan'?'vlan_id':kind==='vrf'?'vrf_id':'zone_id'
 // Save uncommitted UI work across navigating away from the editor in the same tab.
 // This is a local draft only: the API registry is changed by /api/board/commit.
-type StoredBoardDraft={changes:Change[];rectangles:Rect[];positions:Record<string,{x:number;y:number}>;parents?:Record<string,string>;reason:string}
+type StoredBoardDraft={changes:Change[];rectangles:Rect[];positions:Record<string,{x:number;y:number}>;parents?:Record<string,string>;flowAnchors?:Record<string,FlowPortPair>;reason:string}
 const draftKey=(systemId:string)=>'architecture-hub:board-draft:v1:'+systemId
 function readBoardDraft(systemId:string):StoredBoardDraft|null{
  try{
@@ -74,7 +70,7 @@ function readBoardDraft(systemId:string):StoredBoardDraft|null{
   if(!raw)return null
   const value=JSON.parse(raw) as Partial<StoredBoardDraft>
   if(!Array.isArray(value.changes)||!Array.isArray(value.rectangles)||!value.changes.length)return null
-  return {changes:value.changes.filter(c=>c&&typeof c.action==='string'),rectangles:value.rectangles.filter(r=>r&&typeof r.id==='string'),positions:value.positions&&typeof value.positions==='object'?value.positions:{},parents:value.parents&&typeof value.parents==='object'?value.parents:{},reason:typeof value.reason==='string'?value.reason:''}
+  return {changes:value.changes.filter(c=>c&&typeof c.action==='string'),rectangles:value.rectangles.filter(r=>r&&typeof r.id==='string'),positions:value.positions&&typeof value.positions==='object'?value.positions:{},parents:value.parents&&typeof value.parents==='object'?value.parents:{},flowAnchors:value.flowAnchors&&typeof value.flowAnchors==='object'?value.flowAnchors:{},reason:typeof value.reason==='string'?value.reason:''}
  }catch{return null}
 }
 
@@ -85,7 +81,9 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
  const [draggingNode,setDraggingNode]=useState(false)
  const [canvasInteracted,setCanvasInteracted]=useState(false)
  const boardCanvasRef=useRef<HTMLDivElement>(null)
- const flowGesture=useRef<{sourceId:string;start:{x:number;y:number}}|null>(null)
+ const flowGesture=useRef<{sourceId:string;sourceHandle:string;start:{x:number;y:number}}|null>(null)
+ const retargetGesture=useRef<{flowId:string;end:FlowEnd;nodeId:string}|null>(null)
+ const [preferredSourceHandle,setPreferredSourceHandle]=useState('')
  const [flowGhost,setFlowGhost]=useState<{start:{x:number;y:number};end:{x:number;y:number}}|null>(null)
  const [inspectedId,setInspectedId]=useState<string|null>(null)
  const [inspectedNetworkId,setInspectedNetworkId]=useState<string|null>(null)
@@ -122,6 +120,8 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
  const [networkPreview,setNetworkPreview]=useState<{x:number;y:number;width:number;height:number}|null>(null)
  const [reviewOpen,setReviewOpen]=useState(Boolean(restoredDraft?.changes.length))
  const [parents,setParents]=useState<Record<string,string>>(restoredDraft?.parents||{})
+ const [flowAnchors,setFlowAnchors]=useState<Record<string,FlowPortPair>>(restoredDraft?.flowAnchors||{})
+ const persistedFlowAnchors=useRef<Record<string,FlowPortPair>>({})
  const persistedParents=useRef<Record<string,string>>({})
  const [pendingGrouping,setPendingGrouping]=useState<null|{id:string;name:string;from:string|null;to:string|null;newlyCreated?:boolean;snapshot?:{rects:Rect[];nodes:Node[];dirty:boolean}}>(null)
  const [nicForGrouping,setNicForGrouping]=useState('')
@@ -285,11 +285,11 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
   try{
    if(!changes.length){sessionStorage.removeItem(draftKey(systemId));return}
    sessionStorage.setItem(draftKey(systemId),JSON.stringify({
-    changes,rectangles,parents,reason,
+    changes,rectangles,parents,flowAnchors,reason,
     positions:Object.fromEntries(nodes.map(n=>[n.id,{x:n.position.x,y:n.position.y}]))
    } satisfies StoredBoardDraft))
   }catch{/* Storage might be unavailable: the visible draft remains in memory. */}
- },[changes,rectangles,parents,reason,nodes,systemId])
+ },[changes,rectangles,parents,flowAnchors,reason,nodes,systemId])
  useEffect(()=>{
   if(!changes.length)return
   const preventClose=(event:BeforeUnloadEvent)=>{event.preventDefault();event.returnValue=''}
@@ -325,10 +325,20 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
      data_description:edit.data_description??flow.data_description,schedule:edit.schedule??flow.schedule,verification:edit.verification??flow.verification}:flow
  })
  const effectiveFlows=[...effectiveSavedFlows,...pendingFlows]
+ const automaticPorts=(source:string,target:string):FlowPortPair=>{
+   const a=nodes.find(n=>n.id===source),b=nodes.find(n=>n.id===target)
+   return autoFlowPorts(
+     {x:(a?.position.x||0)+110,y:(a?.position.y||0)+50},
+     {x:(b?.position.x||0)+110,y:(b?.position.y||0)+50}
+   )
+ }
+ const portsForFlow=(flow:Flow):FlowPortPair=>flowAnchors[flow.id]||automaticPorts(flow.source_id,flow.target_id)
+ // Two flows share a painted arrow only if both actual endpoint handles match.
  const flowGroups=new Map<string,Flow[]>()
  for(const flow of effectiveFlows){
    if(!allVMs.some(v=>v.id===flow.source_id)||!allVMs.some(v=>v.id===flow.target_id))continue
-   const key=flow.source_id+'|'+flow.target_id
+   const anchors=portsForFlow(flow)
+   const key=[flow.source_id,flow.target_id,anchors.source_handle,anchors.target_handle].join('|')
    flowGroups.set(key,[...(flowGroups.get(key)||[]),flow])
  }
  const relatedIds=new Set(inspectedId?[inspectedId,...effectiveFlows.filter(f=>f.source_id===inspectedId||f.target_id===inspectedId).flatMap(f=>[f.source_id,f.target_id])]:[])
@@ -336,13 +346,26 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
    const box=boardCanvasRef.current?.getBoundingClientRect()
    return {x:x-(box?.left||0),y:y-(box?.top||0)}
  }
- const beginFlowPointer=(id:string,event:React.PointerEvent<HTMLDivElement>)=>{
+ const vmElement=(id:string)=>[...(boardCanvasRef.current?.querySelectorAll<HTMLElement>('.react-flow__node-boardComponent')||[])]
+   .find(node=>node.dataset.id===id)
+ const findDropTarget=(at:{x:number;y:number},exclude:string)=>{
+   const candidates=[...(boardCanvasRef.current?.querySelectorAll<HTMLElement>('.react-flow__node-boardComponent')||[])]
+     .filter(node=>node.dataset.id&&node.dataset.id!==exclude)
+   const near=(rect:DOMRect,margin:number)=>at.x>=rect.left-margin&&at.x<=rect.right+margin&&at.y>=rect.top-margin&&at.y<=rect.bottom+margin
+   const byHandle=candidates.map(node=>({node,nearest:closestVisiblePort(node,at,'target',28)}))
+     .filter(x=>x.nearest).sort((a,b)=>a.nearest!.distance-b.nearest!.distance)[0]
+   const target=byHandle?.node||candidates.find(node=>near(node.getBoundingClientRect(),8))
+   if(!target||!target.dataset.id)return null
+   const nearest=closestVisiblePort(target,at,'target')
+   return nearest?{targetId:target.dataset.id,targetHandle:nearest.id}:null
+ }
+ const beginFlowPointer=(id:string,handle:string,event:React.PointerEvent<HTMLDivElement>)=>{
    if(tool!=='flow'||event.button!==0)return
    event.stopPropagation();event.preventDefault()
-   setCanvasInteracted(true)
+   setCanvasInteracted(true);setPreferredSourceHandle(handle)
    const bounds=event.currentTarget.getBoundingClientRect()
    const point=canvasPoint(bounds.x+bounds.width/2,bounds.y+bounds.height/2)
-   flowGesture.current={sourceId:id,start:point}
+   flowGesture.current={sourceId:id,sourceHandle:handle,start:point}
    setFlowGhost({start:point,end:point})
    event.currentTarget.setPointerCapture(event.pointerId)
  }
@@ -356,32 +379,69 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
    const gesture=flowGesture.current
    if(!gesture)return
    event.stopPropagation()
-   // A React Flow target Handle sits half outside its parent card. During
-   // pointer capture, elementFromPoint may see the background (or overlay)
-   // instead of the target node; use actual handle geometry first.
-   const candidates=[...(boardCanvasRef.current?.querySelectorAll<HTMLElement>('.react-flow__node-boardComponent')||[])]
-     .filter(node=>node.dataset.id&&node.dataset.id!==gesture.sourceId)
-   const near=(rect:DOMRect,margin:number)=>event.clientX>=rect.left-margin&&event.clientX<=rect.right+margin&&
-     event.clientY>=rect.top-margin&&event.clientY<=rect.bottom+margin
-   const byHandle=candidates.find(node=>[...node.querySelectorAll<HTMLElement>('.boardConnectionHandle.target')]
-     .some(handle=>near(handle.getBoundingClientRect(),12)))
-   const byCard=candidates.find(node=>near(node.getBoundingClientRect(),8))
-   const target=(byHandle||byCard)?.dataset.id
+   const result=findDropTarget({x:event.clientX,y:event.clientY},gesture.sourceId)
    if(event.currentTarget.hasPointerCapture(event.pointerId))event.currentTarget.releasePointerCapture(event.pointerId)
    flowGesture.current=null;setFlowGhost(null)
-   if(target)stageDirectedFlow(gesture.sourceId,target)
+   if(result){
+     stageDirectedFlow(gesture.sourceId,result.targetId,{source_handle:gesture.sourceHandle,target_handle:result.targetHandle})
+   }else{
+     setFrom(gesture.sourceId);setTo('')
+     setLayoutMessage('Точка выхода выбрана. Нажмите на другую ВМ или протяните стрелку к одной из её восьми точек.')
+   }
+ }
+ const beginReattach=(flowId:string,end:FlowEnd,event:React.PointerEvent<HTMLButtonElement>)=>{
+   if(event.button!==0)return
+   const flow=effectiveFlows.find(f=>f.id===flowId)
+   if(!flow)return
+   event.stopPropagation();event.preventDefault()
+   const nodeId=end==='source'?flow.source_id:flow.target_id
+   retargetGesture.current={flowId,end,nodeId}
+   setCanvasInteracted(true)
+   const box=event.currentTarget.getBoundingClientRect()
+   const point=canvasPoint(box.left+box.width/2,box.top+box.height/2)
+   setFlowGhost({start:point,end:point})
+   event.currentTarget.setPointerCapture(event.pointerId)
+ }
+ const moveReattach=(event:React.PointerEvent<HTMLButtonElement>)=>{
+   if(!retargetGesture.current)return
+   event.stopPropagation()
+   setFlowGhost(previous=>previous?{...previous,end:canvasPoint(event.clientX,event.clientY)}:null)
+ }
+ const endReattach=(event:React.PointerEvent<HTMLButtonElement>)=>{
+   const gesture=retargetGesture.current
+   if(!gesture)return
+   event.stopPropagation()
+   if(event.currentTarget.hasPointerCapture(event.pointerId))event.currentTarget.releasePointerCapture(event.pointerId)
+   retargetGesture.current=null;setFlowGhost(null)
+   const node=vmElement(gesture.nodeId)
+   if(!node){setError('Компонент потока больше не отображается на схеме.');return}
+   const at={x:event.clientX,y:event.clientY}
+   const bounds=node.getBoundingClientRect()
+   const within=at.x>=bounds.left-30&&at.x<=bounds.right+30&&at.y>=bounds.top-30&&at.y<=bounds.bottom+30
+   if(!within){setLayoutMessage('Конец стрелки можно перенести на другую точку той же ВМ. Для смены ВМ создайте новый поток.');return}
+   const next=closestVisiblePort(node,at,gesture.end)
+   if(!next)return
+   const flow=effectiveFlows.find(f=>f.id===gesture.flowId)
+   if(!flow)return
+   const current=portsForFlow(flow)
+   const pair={...current,[gesture.end==='source'?'source_handle':'target_handle']:next.id}
+   if(pair.source_handle===current.source_handle&&pair.target_handle===current.target_handle)return
+   setFlowAnchors(previous=>({...previous,[gesture.flowId]:pair}))
+   setLayoutDirty(true)
+   setLayoutMessage('Точка подключения стрелки изменена. Нажмите «Сохранить», чтобы сохранить расположение концов в схеме.')
+   setError('')
  }
  const selectFlowComponent=(id:string)=>{
    setInspectedId(null);setInspectedNetworkId(null);setFocusDependencies(false)
    if(!from||to||from===id){
      setFrom(id);setTo('');setSelectedDraftFlowId('')
      setLayoutMessage('Источник выбран. Нажмите целевую ВМ или протяните стрелку.')
-   }else stageDirectedFlow(from,id)
+   }else stageDirectedFlow(from,id,preferredSourceHandle?{...automaticPorts(from,id),source_handle:preferredSourceHandle}:undefined)
  }
  const displayedNodes=graphNodes.map(n=>({...n,
    data:n.id.startsWith('network:')?n.data:{...n.data,flowMode:tool==='flow',
      onDirectClick:()=>selectFlowComponent(n.id),
-     onStartFlow:(event:React.PointerEvent<HTMLDivElement>)=>beginFlowPointer(n.id,event),
+     onStartFlow:(handle:string,event:React.PointerEvent<HTMLDivElement>)=>beginFlowPointer(n.id,handle,event),
      onMoveFlow:moveFlowPointer,onFinishFlow:endFlowPointer},
    style:{...n.style,
     border:((tool==='flow'&&(n.id===from||n.id===to))||(tool==='move'&&n.id===inspectedId))?'2px solid #2563eb':n.style?.border,
@@ -397,12 +457,23 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
  const edges=Array.from(flowGroups.entries()).map(([pair,list])=>{
    const first=list[0]
    const protocolLabel=[first.protocol,first.port].filter(Boolean).join(':')
-   return {id:'flow-pair:'+pair,source:first.source_id,target:first.target_id,type:'obstacle-aware',animated:false,
+   const anchor=portsForFlow(first)
+   const selectedId=selectedExistingFlowId||selectedDraftFlowId
+   const selectedForReattach=selectedId&&list.some(flow=>flow.id===selectedId)&&selectedEdgeFlowIds.some(id=>list.some(flow=>flow.id===id))
+   return {id:'flow-pair:'+pair,source:first.source_id,target:first.target_id,
+     sourceHandle:anchor.source_handle,targetHandle:anchor.target_handle,
+     type:'obstacle-aware',animated:false,
      style:{stroke:list.some(f=>changes.some(c=>c.id===f.id&&(c.action==='create_flow'||c.action==='update_flow')))?'#176bc1':'#369279',strokeWidth:selectedEdgeFlowIds.some(id=>list.some(f=>f.id===id))?3.2:inspectedId&&(first.source_id===inspectedId||first.target_id===inspectedId)?3:1.8,opacity:focusDependencies&&inspectedId&&first.source_id!==inspectedId&&first.target_id!==inspectedId?0.16:1},
      markerEnd:{type:MarkerType.ArrowClosed,width:13,height:13},
      label:list.length>1?flowCountLabel(list.length):protocolLabel||'Поток',
      labelStyle:{fontSize:11,fontWeight:600},labelBgStyle:{fill:'#ffffff',fillOpacity:0.95},labelBgPadding:[7,4] as [number,number],
-     data:{reciprocal:flowGroups.has(first.target_id+'|'+first.source_id),flowIds:list.map(f=>f.id),caption:list.length>1?flowCountLabel(list.length):protocolLabel||'Поток'}
+     data:{reciprocal:effectiveFlows.some(f=>f.source_id===first.target_id&&f.target_id===first.source_id),
+       flowIds:list.map(f=>f.id),caption:list.length>1?flowCountLabel(list.length):protocolLabel||'Поток',
+       ...(selectedForReattach?{endpointEditor:{
+         onBegin:(end:FlowEnd,event:React.PointerEvent<HTMLButtonElement>)=>beginReattach(selectedId,end,event),
+         onMove:(event:React.PointerEvent<HTMLButtonElement>)=>moveReattach(event),
+         onEnd:(event:React.PointerEvent<HTMLButtonElement>)=>endReattach(event)
+       }}:{})}
    }
  })
  const addChange=(c:Change)=>{setChanges(previous=>[...previous,c]);setPreview(null);setError('')}
@@ -478,11 +549,14 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
    }
    setName('');setTool('move');setReviewOpen(true)
  }
- const stageDirectedFlow=(source:string,target:string)=>{
+ const stageDirectedFlow=(source:string,target:string,anchors?:FlowPortPair)=>{
    setSelectedEdgeFlowIds([]);setSelectedExistingFlowId('')
    if(!source||!target||source===target){setError('Выберите два разных компонента для направления потока.');return}
    if(!allVMs.some(vm=>vm.id===source)||!allVMs.some(vm=>vm.id===target)){setError('Источник или получатель отсутствует на схеме.');return}
    const id=makeId()
+   // Store a chosen entry and exit immediately in the local layout draft.
+   setFlowAnchors(previous=>({...previous,[id]:anchors||automaticPorts(source,target)}))
+   setPreferredSourceHandle('')
    const sourceName=allVMs.find(vm=>vm.id===source)?.name||'Источник'
    const targetName=allVMs.find(vm=>vm.id===target)?.name||'Получатель'
    addChange({action:'create_flow',id,source_id:source,target_id:target,
@@ -622,7 +696,7 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
  useEffect(()=>{
    let active=true
    setLayoutDirty(false);setLayoutMessage('')
-   void request<{positions:Record<string,Geometry>}>('/api/board/layout/'+systemId)
+   void request<{positions:Record<string,Geometry>;flow_anchors?:Record<string,FlowPortPair>}>('/api/board/layout/'+systemId)
      .then(result=>{
        if(!active||!result.positions)return
        setNodes(previous=>previous.map(node=>{
@@ -642,6 +716,8 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
        const loaded=Object.fromEntries(Object.entries(result.positions).filter(([,geometry])=>geometry.parent_id).map(([id,geometry])=>[id,geometry.parent_id!]))
        persistedParents.current=loaded
        setParents({...loaded,...(restoredDraft?.parents||{})})
+       persistedFlowAnchors.current=result.flow_anchors||{}
+       setFlowAnchors({...persistedFlowAnchors.current,...(restoredDraft?.flowAnchors||{})})
      }).catch(()=>{/* Browser positions remain the fallback. */})
    return ()=>{active=false}
  },[systemId,request,setNodes,networks])
@@ -656,6 +732,10 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
        .map(rect=>['network:'+rect.id,{x:rect.x,y:rect.y,width:rect.width,height:rect.height,...(parents['network:'+rect.id]?{parent_id:parents['network:'+rect.id]}:{})}]))
    }
  }
+ const collectFlowAnchors=(newFlowIds:string[]=[])=>{
+   const known=new Set([...flows.map(f=>f.id),...newFlowIds])
+   return Object.fromEntries(Object.entries(flowAnchors).filter(([id])=>known.has(id)))
+ }
  const saveLayout=async()=>{
    if(layoutBusy)return
    if(changes.length){
@@ -665,7 +745,8 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
    }
    setLayoutBusy(true);setLayoutMessage('');setError('')
    try{
-     await request('/api/board/layout/'+systemId,{method:'PUT',body:JSON.stringify({positions:collectLayout()})})
+     await request('/api/board/layout/'+systemId,{method:'PUT',body:JSON.stringify({positions:collectLayout(),flow_anchors:collectFlowAnchors()})})
+     persistedFlowAnchors.current=collectFlowAnchors()
      const hasStagedGeometry=changes.some(c=>c.action==='create_vm'||c.action==='create_network')
      setLayoutDirty(hasStagedGeometry)
      setLayoutMessage(hasStagedGeometry
@@ -681,6 +762,7 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
    setRectangles(previous=>previous.filter(rect=>!stagedNetworks.has(rect.id)))
    setChanges([]);setSelectedDraftFlowId('');setSelectedExistingFlowId('');setSelectedEdgeFlowIds([]);setPreview(null);setError('');setReviewOpen(false)
    setParents(persistedParents.current)
+   setFlowAnchors(persistedFlowAnchors.current)
    setPendingGrouping(null)
    setLayoutDirty(false)
    setLayoutMessage('Черновик изменений отменён. Несохранённые ВМ и сети удалены со схемы.')
@@ -705,11 +787,13 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
      // never as a failure of an already committed technical transaction.
      const newVMIds=changes.filter(c=>c.action==='create_vm').map(c=>c.id!).filter(Boolean)
      const newNetworkIds=changes.filter(c=>c.action==='create_network').map(c=>c.id!).filter(Boolean)
+     const newFlowIds=changes.filter(c=>c.action==='create_flow').map(c=>c.id!).filter(Boolean)
      let warning=''
      try{
        await request('/api/board/layout/'+systemId,{method:'PUT',
-         body:JSON.stringify({positions:collectLayout(newVMIds,newNetworkIds)})})
-       setLayoutDirty(false);setLayoutMessage('Расположение ВМ и контейнеров сохранено.')
+         body:JSON.stringify({positions:collectLayout(newVMIds,newNetworkIds),flow_anchors:collectFlowAnchors(newFlowIds)})})
+       persistedFlowAnchors.current=collectFlowAnchors(newFlowIds)
+       setLayoutDirty(false);setLayoutMessage('Расположение ВМ, контейнеров и точки стрелок сохранены.')
      }catch(e){
        warning=' Расположение не удалось сохранить: '+String(e)
        setLayoutDirty(true)
@@ -723,7 +807,7 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
  }
  return <section className="boardWorkspace" aria-label="Редактор архитектурной схемы">
    <div className="boardEditorStage">
-        <div ref={boardCanvasRef} className="boardCanvas" data-active-graph="infrastructure-editor" onPointerDownCapture={()=>setCanvasInteracted(true)}><ReactFlow nodes={displayedNodes} edges={edges} nodeTypes={boardNodeTypes} edgeTypes={{reciprocal:ReciprocalEdge,'obstacle-aware':ObstacleAwareEdge}} onNodesChange={(updates:NodeChange[])=>{
+        <div ref={boardCanvasRef} className="boardCanvas" data-active-graph="infrastructure-editor" onPointerMoveCapture={()=>setCanvasInteracted(true)} onPointerDownCapture={()=>setCanvasInteracted(true)}><ReactFlow nodes={displayedNodes} edges={edges} nodeTypes={boardNodeTypes} edgeTypes={{reciprocal:ReciprocalEdge,'obstacle-aware':ObstacleAwareEdge}} onNodesChange={(updates:NodeChange[])=>{
   // React Flow is controlled: update rectangle geometry during the drag,
   // not only on drop, otherwise VRF/VLAN boxes appear stuck in place.
   const moved=new Map<string,{x:number;y:number}>()
@@ -751,7 +835,7 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
    if(!from||to||from===node.id){setFrom(node.id);setTo('');setSelectedDraftFlowId('');setLayoutMessage('Источник выбран. Нажмите на целевой компонент или протяните стрелку от порта.')}
    else stageDirectedFlow(from,node.id)
  }else if(tool==='move'){openPassport(node.id);setFocusDependencies(false)}
-}} onNodeDragStart={(_,node)=>{setDraggingNode(true);startVisualGroupDrag(node)}} onNodeDrag={(_,node)=>updateVisualGroupDrag(node)} onNodeDragStop={(_,node)=>{finishVisualDrop(node);moveNode(node);setDraggingNode(false)} } onPaneClick={handlePaneClick} minZoom={0.08} fitView fitViewOptions={{padding:0.2,maxZoom:0.9}}><AutoFit layoutKey={systemId+':'+items.length+':'+flows.length} maxFitZoom={0.9} suspended={canvasInteracted||drawingConnection||draggingNode}/><Background gap={20}/><Controls showInteractive={false}/></ReactFlow>
+}} onNodeDragStart={(_,node)=>{setDraggingNode(true);startVisualGroupDrag(node)}} onNodeDrag={(_,node)=>updateVisualGroupDrag(node)} onNodeDragStop={(_,node)=>{finishVisualDrop(node);moveNode(node);setDraggingNode(false)} } onPaneClick={handlePaneClick} minZoom={0.08} fitView fitViewOptions={{padding:0.2,maxZoom:0.9}}><AutoFit layoutKey={systemId+':'+items.length+':'+flows.length} maxFitZoom={0.9} suspended={canvasInteracted||drawingConnection||draggingNode} settleDelayMs={0}/><Background gap={20}/><Controls showInteractive={false}/></ReactFlow>
      {flowGhost&&<svg className="boardFlowGesturePreview" aria-hidden="true" width="100%" height="100%">
        <defs><marker id="board-flow-ghost-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill="#176bc1"/></marker></defs>
        <line x1={flowGhost.start.x} y1={flowGhost.start.y} x2={flowGhost.end.x} y2={flowGhost.end.y} stroke="#176bc1" strokeWidth="2.5" strokeDasharray="6 3" markerEnd="url(#board-flow-ghost-arrow)"/>
@@ -787,7 +871,7 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
        {tool!=='move'&&<div className="boardPropertiesHeader"><div><small>ИНСТРУМЕНТ</small><h3>{tool==='vm'?'Виртуальная машина':tool==='flow'?'Поток данных':'Сеть / контейнер'}</h3></div><button type="button" aria-label="Закрыть настройки инструмента" onClick={()=>{setTool('move');setDrawing(null);setError('');setLayoutMessage('');setReviewOpen(false);cancelNetworkDrag()}}>✕</button></div>}
           {tool==='vm'&&<div className="boardToolFields"><p>Введите название и нажмите на холст для размещения ВМ.</p><label>Имя ВМ <input value={name} onChange={e=>setName(e.target.value)} placeholder="Новая ВМ"/></label><button onClick={()=>addVM()}>Разместить на схеме</button></div>}
    {tool==='network'&&<div className="boardToolFields"><label>Название сети * <input ref={networkNameInput} required aria-required="true" aria-invalid={!name.trim()} value={name} onChange={e=>{setName(e.target.value);if(e.target.value.trim())setError('')}} placeholder="Название VRF / VLAN / зоны"/></label>{!name.trim()&&<p className="boardRequiredHint" role="alert">Обязательное поле: сначала укажите название, затем нарисуйте контейнер.</p>}<label>Тип <select value={kind} onChange={e=>setKind(e.target.value as typeof kind)}><option value="zone">Зона</option><option value="vlan">VLAN</option><option value="vrf">VRF</option></select></label><p role="status">{drawing?'Продолжайте тянуть – контур контейнера виден на схеме':'Нажмите на холст – появится стандартный контейнер 540 × 340. Или протяните прямоугольник нужного размера. Затем подтвердите изменения в черновике.'}</p></div>}
-   {tool==='flow'&&<div className="boardToolFields"><p><strong>Нарисуйте стрелку на схеме:</strong> потяните от порта справа или снизу одной ВМ к порту слева или сверху другой. Можно также нажать на две карточки по очереди. Стрелка сразу появится в черновике, даже без указания порта.</p><div className="boardFlowHint">Сначала источник → затем получатель. Сохранение в реестр – через «Сохранить всё».</div><label>Откуда <select aria-label="Откуда" value={from} onChange={e=>setFrom(e.target.value)}><option value="">Выберите</option>{allVMs.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}</select></label><label>Куда <select aria-label="Куда" value={to} onChange={e=>setTo(e.target.value)}><option value="">Выберите</option>{allVMs.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}</select></label><label>Направление (при выборе вручную) <select value={direction} onChange={e=>setDirection(e.target.value as typeof direction)}><option value="forward">→</option><option value="reverse">←</option><option value="both">↔ (два потока)</option></select></label><label>Протокол <input value={protocol} onChange={e=>setProtocol(e.target.value)}/></label><label>Порт <input value={port} onChange={e=>setPort(e.target.value)}/></label><label>Защита <input value={security} onChange={e=>setSecurity(e.target.value)}/></label><button onClick={()=>{addFlow()}}>Добавить поток по выбранным компонентам</button>{selectedDraftFlow&&<section className="boardFlowDraftEditor" aria-label="Параметры нарисованного потока"><h4>Нарисованный поток · черновик</h4><p>{allVMs.find(v=>v.id===selectedDraftFlow.source_id)?.name||'Источник'} → {allVMs.find(v=>v.id===selectedDraftFlow.target_id)?.name||'Получатель'}</p><label>Название <input value={selectedDraftFlow.name||''} onChange={e=>updateSelectedDraftFlow({name:e.target.value})}/></label><label>Протокол <input value={selectedDraftFlow.protocol||''} onChange={e=>updateSelectedDraftFlow({protocol:e.target.value})}/></label><label>Порт <input value={selectedDraftFlow.port||''} onChange={e=>updateSelectedDraftFlow({port:e.target.value})} placeholder="Необязательно"/></label><label>Защита <input value={selectedDraftFlow.security||''} onChange={e=>updateSelectedDraftFlow({security:e.target.value})}/></label><button type="button" onClick={()=>{setChanges(p=>p.filter(c=>c.id!==selectedDraftFlowId));setSelectedDraftFlowId('');setPreview(null)}}>Удалить стрелку из черновика</button></section>}</div>}
+   {tool==='flow'&&<div className="boardToolFields"><p><strong>8 точек подключения на каждой ВМ.</strong> Начните стрелку от любой точки по периметру и отпустите на нужной точке другой ВМ. Можно нажать на две карточки по очереди. Чтобы перенести уже созданный конец стрелки, выберите поток и перетащите жёлтый маркер на другую точку той же ВМ.</p><div className="boardFlowHint">Сначала источник → затем получатель. Сохранение в реестр – через «Сохранить всё».</div><label>Откуда <select aria-label="Откуда" value={from} onChange={e=>setFrom(e.target.value)}><option value="">Выберите</option>{allVMs.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}</select></label><label>Куда <select aria-label="Куда" value={to} onChange={e=>setTo(e.target.value)}><option value="">Выберите</option>{allVMs.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}</select></label><label>Направление (при выборе вручную) <select value={direction} onChange={e=>setDirection(e.target.value as typeof direction)}><option value="forward">→</option><option value="reverse">←</option><option value="both">↔ (два потока)</option></select></label><label>Протокол <input value={protocol} onChange={e=>setProtocol(e.target.value)}/></label><label>Порт <input value={port} onChange={e=>setPort(e.target.value)}/></label><label>Защита <input value={security} onChange={e=>setSecurity(e.target.value)}/></label><button onClick={()=>{addFlow()}}>Добавить поток по выбранным компонентам</button>{selectedDraftFlow&&<section className="boardFlowDraftEditor" aria-label="Параметры нарисованного потока"><h4>Нарисованный поток · черновик</h4><p>{allVMs.find(v=>v.id===selectedDraftFlow.source_id)?.name||'Источник'} → {allVMs.find(v=>v.id===selectedDraftFlow.target_id)?.name||'Получатель'}</p><label>Название <input value={selectedDraftFlow.name||''} onChange={e=>updateSelectedDraftFlow({name:e.target.value})}/></label><label>Протокол <input value={selectedDraftFlow.protocol||''} onChange={e=>updateSelectedDraftFlow({protocol:e.target.value})}/></label><label>Порт <input value={selectedDraftFlow.port||''} onChange={e=>updateSelectedDraftFlow({port:e.target.value})} placeholder="Необязательно"/></label><label>Защита <input value={selectedDraftFlow.security||''} onChange={e=>updateSelectedDraftFlow({security:e.target.value})}/></label><button type="button" onClick={()=>{setChanges(p=>p.filter(c=>c.id!==selectedDraftFlowId));setFlowAnchors(p=>{const copy={...p};delete copy[selectedDraftFlowId];return copy});setSelectedDraftFlowId('');setPreview(null)}}>Удалить стрелку из черновика</button></section>}</div>}
    {tool==='flow'&&selectedEdgeFlowIds.length>0&&<section className="boardFlowEdgeList" aria-label="Потоки выбранной стрелки">
      <h4>Связи на стрелке ({selectedEdgeFlowIds.length})</h4>
      <p>На одной стрелке могут находиться разные потоки между одинаковыми компонентами. Выберите конкретную запись для редактирования.</p>

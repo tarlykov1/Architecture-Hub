@@ -512,7 +512,7 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
    }
    const onClick=(event:MouseEvent)=>{
      if(Date.now()>suppressFlowClickUntil.current)return
-     if(canvas.contains(event.target as Node)){event.preventDefault();event.stopPropagation()}
+     if(canvas.contains(event.target as HTMLElement)){event.preventDefault();event.stopPropagation()}
    }
    document.addEventListener('pointerdown',onDown,true)
    document.addEventListener('pointermove',onMove,true)

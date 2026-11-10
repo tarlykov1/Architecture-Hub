@@ -114,3 +114,29 @@ test('move existing arrow endpoint to another of eight positions and see it on r
  }
  expect(after.flow_anchors[flowId].target_handle).toBe('in-bottom-2')
 })
+
+
+test('top to top and right to left drag each create exactly one flow',async({page})=>{
+ const {system,source,target}=await seed(page)
+ const editor=await openBoard(page,system)
+ await editor.getByRole('toolbar',{name:'Инструменты архитектуры'})
+  .getByRole('button',{name:'→ Поток'}).click()
+ const origin=editor.locator('.react-flow__node[data-id="'+source.id+'"]')
+ const recipient=editor.locator('.react-flow__node[data-id="'+target.id+'"]')
+ await expect(origin.locator('.flowPortSource.boardConnectionHandleActive')).toHaveCount(8)
+
+ // Regression for the intermittently failing main CI scenario: the first
+ // source/target handles are both above the cards and the pointer travels
+ // horizontally across React Flow's pane.
+ await drag(page,origin.locator('[data-anchor="out-top-1"]'),
+  recipient.locator('[data-anchor="in-top-1"]'))
+ await expect(editor.locator('.react-flow__edge')).toHaveCount(1)
+ await expect(editor.getByRole('button',{name:'Проверить изменения (1)'})).toBeVisible()
+
+ // Starting a second flow must neither duplicate the first nor lose its
+ // chosen port when the component data rerenders after staging.
+ await drag(page,origin.locator('[data-anchor="out-right-2"]'),
+  recipient.locator('[data-anchor="in-left-2"]'))
+ await expect(editor.locator('.react-flow__edge')).toHaveCount(2)
+ await expect(editor.getByRole('button',{name:'Проверить изменения (2)'})).toBeVisible()
+})

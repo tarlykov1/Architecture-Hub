@@ -1215,6 +1215,15 @@ test('flow tool draws an arrow by dragging card handles without selecting endpoi
   await expect(targetHandle).toBeVisible()
   const start=await sourceHandle.boundingBox(),end=await targetHandle.boundingBox()
   expect(start).not.toBeNull();expect(end).not.toBeNull()
+  // In flow mode the editor must not refit the viewport after the handles
+  // have been measured. Previously cards shifted ~160 px before mouse.down.
+  await page.waitForTimeout(350)
+  const stableStart=await sourceHandle.boundingBox(),stableEnd=await targetHandle.boundingBox()
+  expect(stableStart).not.toBeNull();expect(stableEnd).not.toBeNull()
+  expect(Math.abs(stableStart!.x-start!.x)).toBeLessThan(2)
+  expect(Math.abs(stableEnd!.x-end!.x)).toBeLessThan(2)
+  expect(Math.abs(stableStart!.y-start!.y)).toBeLessThan(2)
+  expect(Math.abs(stableEnd!.y-end!.y)).toBeLessThan(2)
   await page.mouse.move(start!.x+start!.width/2,start!.y+start!.height/2)
   await page.mouse.down()
   await page.mouse.move(end!.x+end!.width/2,end!.y+end!.height/2,{steps:18})

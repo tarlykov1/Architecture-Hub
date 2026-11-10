@@ -378,12 +378,10 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
    event.stopPropagation()
    setFlowGhost({start:gesture.start,end:canvasPoint(event.clientX,event.clientY)})
  }
- const endFlowPointer=(event:React.PointerEvent<HTMLDivElement>)=>{
+ const finishFlowAt=(at:{x:number;y:number})=>{
    const gesture=flowGesture.current
    if(!gesture)return
-   event.stopPropagation()
-   const result=findDropTarget({x:event.clientX,y:event.clientY},gesture.sourceId)
-   if(event.currentTarget.hasPointerCapture(event.pointerId))event.currentTarget.releasePointerCapture(event.pointerId)
+   const result=findDropTarget(at,gesture.sourceId)
    flowGesture.current=null;setFlowGhost(null)
    if(result){
      stageDirectedFlow(gesture.sourceId,result.targetId,{source_handle:gesture.sourceHandle,target_handle:result.targetHandle})
@@ -391,6 +389,12 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
      setFrom(gesture.sourceId);setTo('')
      setLayoutMessage('Точка выхода выбрана. Нажмите на другую ВМ или протяните стрелку к одной из её восьми точек.')
    }
+ }
+ const endFlowPointer=(event:React.PointerEvent<HTMLDivElement>)=>{
+   if(!flowGesture.current)return
+   event.stopPropagation()
+   if(event.currentTarget.hasPointerCapture(event.pointerId))event.currentTarget.releasePointerCapture(event.pointerId)
+   finishFlowAt({x:event.clientX,y:event.clientY})
  }
  const beginReattach=(flowId:string,end:FlowEnd,event:React.PointerEvent<HTMLElement>)=>{
    if(event.button!==0)return
@@ -411,15 +415,12 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
    event.stopPropagation()
    setFlowGhost(previous=>previous?{...previous,end:canvasPoint(event.clientX,event.clientY)}:null)
  }
- const endReattach=(event:React.PointerEvent<HTMLElement>)=>{
+ const finishReattachAt=(at:{x:number;y:number})=>{
    const gesture=retargetGesture.current
    if(!gesture)return
-   event.stopPropagation()
-   if(event.currentTarget.hasPointerCapture(event.pointerId))event.currentTarget.releasePointerCapture(event.pointerId)
    retargetGesture.current=null;setFlowGhost(null)
    const node=vmElement(gesture.nodeId)
    if(!node){setError('Компонент потока больше не отображается на схеме.');return}
-   const at={x:event.clientX,y:event.clientY}
    const bounds=node.getBoundingClientRect()
    const within=at.x>=bounds.left-30&&at.x<=bounds.right+30&&at.y>=bounds.top-30&&at.y<=bounds.bottom+30
    if(!within){setLayoutMessage('Конец стрелки можно перенести на другую точку той же ВМ. Для смены ВМ создайте новый поток.');return}
@@ -435,6 +436,101 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
    setLayoutMessage('Точка подключения стрелки изменена. Нажмите «Сохранить», чтобы сохранить расположение концов в схеме.')
    setError('')
  }
+ const endReattach=(event:React.PointerEvent<HTMLElement>)=>{
+   if(!retargetGesture.current)return
+   event.stopPropagation()
+   if(event.currentTarget.hasPointerCapture(event.pointerId))event.currentTarget.releasePointerCapture(event.pointerId)
+   finishReattachAt({x:event.clientX,y:event.clientY})
+ }
+
+ // React Flow's pane, the handle and the edge label can each take pointer
+ // capture. A document-level listener guarantees mouseup is observed even
+ // when it lands on another handle or outside the original React component.
+ // Capture the start before React Flow receives pointerdown, too.
+ const suppressFlowClickUntil=useRef(0)
+ useEffect(()=>{
+   if(tool!=='flow')return
+   const canvas=boardCanvasRef.current
+   if(!canvas)return
+   const center=(element:HTMLElement)=>{
+     const rect=element.getBoundingClientRect()
+     return {x:rect.left+rect.width/2,y:rect.top+rect.height/2}
+   }
+   const nearest=(selector:string,point:{x:number;y:number})=>
+     [...canvas.querySelectorAll<HTMLElement>(selector)]
+       .map(el=>({el,distance:Math.hypot(center(el).x-point.x,center(el).y-point.y)}))
+       .sort((a,b)=>a.distance-b.distance)[0]
+   const active=()=>Boolean(flowGesture.current||retargetGesture.current)
+   const onDown=(event:PointerEvent)=>{
+     if(event.button!==0||active())return
+     const bounds=canvas.getBoundingClientRect()
+     const at={x:event.clientX,y:event.clientY}
+     if(at.x<bounds.left||at.x>bounds.right||at.y<bounds.top||at.y>bounds.bottom)return
+     const selected=selectedExistingFlowId||selectedDraftFlowId
+     if(selected){
+       const grip=nearest('.boardEndpointGrip',at)
+       const end=grip?.el.dataset.flowEnd
+       const flow=effectiveFlows.find(f=>f.id===selected)
+       if(grip&&grip.distance<=21&&flow&&(end==='source'||end==='target')){
+         event.preventDefault();event.stopPropagation()
+         const nodeId=end==='source'?flow.source_id:flow.target_id
+         retargetGesture.current={flowId:selected,end,nodeId}
+         setCanvasInteracted(true)
+         const point=center(grip.el)
+         setFlowGhost({start:canvasPoint(point.x,point.y),end:canvasPoint(point.x,point.y)})
+         return
+       }
+     }
+     const source=nearest('.react-flow__node-boardComponent .flowPortSource.boardConnectionHandleActive',at)
+     const node=source?.el.closest<HTMLElement>('.react-flow__node-boardComponent')
+     const anchor=source?.el.dataset.anchor
+     if(!source||source.distance>21||!node?.dataset.id||!anchor)return
+     event.preventDefault();event.stopPropagation()
+     const point=center(source.el)
+     flowGesture.current={sourceId:node.dataset.id,sourceHandle:anchor,start:canvasPoint(point.x,point.y)}
+     setPreferredSourceHandle(anchor);setCanvasInteracted(true)
+     setFlowGhost({start:canvasPoint(point.x,point.y),end:canvasPoint(point.x,point.y)})
+   }
+   const onMove=(event:PointerEvent|MouseEvent)=>{
+     if(!active())return
+     event.preventDefault();event.stopPropagation()
+     setFlowGhost(previous=>previous?{...previous,end:canvasPoint(event.clientX,event.clientY)}:null)
+   }
+   const onUp=(event:PointerEvent|MouseEvent)=>{
+     if(!active())return
+     event.preventDefault();event.stopPropagation()
+     // Do not turn the synthetic click following a drag into a new source selection.
+     suppressFlowClickUntil.current=Date.now()+300
+     const at={x:event.clientX,y:event.clientY}
+     if(retargetGesture.current)finishReattachAt(at)
+     else finishFlowAt(at)
+   }
+   const onCancel=()=>{
+     if(!active())return
+     flowGesture.current=null;retargetGesture.current=null;setFlowGhost(null)
+     setLayoutMessage('Жест подключения прерван. Повторите перетаскивание.')
+   }
+   const onClick=(event:MouseEvent)=>{
+     if(Date.now()>suppressFlowClickUntil.current)return
+     if(canvas.contains(event.target as HTMLElement)){event.preventDefault();event.stopPropagation()}
+   }
+   document.addEventListener('pointerdown',onDown,true)
+   document.addEventListener('pointermove',onMove,true)
+   document.addEventListener('pointerup',onUp,true)
+   document.addEventListener('pointercancel',onCancel,true)
+   document.addEventListener('mousemove',onMove,true)
+   document.addEventListener('mouseup',onUp,true)
+   document.addEventListener('click',onClick,true)
+   return ()=>{
+     document.removeEventListener('pointerdown',onDown,true)
+     document.removeEventListener('pointermove',onMove,true)
+     document.removeEventListener('pointerup',onUp,true)
+     document.removeEventListener('pointercancel',onCancel,true)
+     document.removeEventListener('mousemove',onMove,true)
+     document.removeEventListener('mouseup',onUp,true)
+     document.removeEventListener('click',onClick,true)
+   }
+ },[tool,systemId,selectedExistingFlowId,selectedDraftFlowId,flows,changes,flowAnchors])
  const selectFlowComponent=(id:string)=>{
    setInspectedId(null);setInspectedNetworkId(null);setFocusDependencies(false)
    if(!from||to||from===id){
@@ -911,7 +1007,7 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
    if(!from||to||from===node.id){setFrom(node.id);setTo('');setSelectedDraftFlowId('');setLayoutMessage('Источник выбран. Нажмите на целевой компонент или протяните стрелку от порта.')}
    else stageDirectedFlow(from,node.id)
  }else if(tool==='move'){openPassport(node.id);setFocusDependencies(false)}
-}} onNodeDragStart={(_,node)=>{setDraggingNode(true);startVisualGroupDrag(node)}} onNodeDrag={(_,node)=>updateVisualGroupDrag(node)} onNodeDragStop={(_,node)=>{finishVisualDrop(node);moveNode(node);setDraggingNode(false)} } onPaneClick={handlePaneClick} minZoom={0.08} fitView fitViewOptions={{padding:0.2,maxZoom:0.9}}><AutoFit layoutKey={systemId+':'+items.length+':'+flows.length} maxFitZoom={0.9} suspended={canvasInteracted||drawingConnection||draggingNode} settleDelayMs={0}/><Background gap={20}/><Controls showInteractive={false}/></ReactFlow>
+}} onNodeDragStart={(_,node)=>{setDraggingNode(true);startVisualGroupDrag(node)}} onNodeDrag={(_,node)=>updateVisualGroupDrag(node)} onNodeDragStop={(_,node)=>{finishVisualDrop(node);moveNode(node);setDraggingNode(false)} } onPaneClick={handlePaneClick} minZoom={0.08} fitViewOptions={{padding:0.2,maxZoom:0.9}}><AutoFit layoutKey={systemId+':'+items.length+':'+flows.length} maxFitZoom={0.9} suspended={tool!=='move'||canvasInteracted||drawingConnection||draggingNode} settleDelayMs={0}/><Background gap={20}/><Controls showInteractive={false}/></ReactFlow>
      {flowGhost&&<svg className="boardFlowGesturePreview" aria-hidden="true" width="100%" height="100%">
        <defs><marker id="board-flow-ghost-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill="#176bc1"/></marker></defs>
        <line x1={flowGhost.start.x} y1={flowGhost.start.y} x2={flowGhost.end.x} y2={flowGhost.end.y} stroke="#176bc1" strokeWidth="2.5" strokeDasharray="6 3" markerEnd="url(#board-flow-ghost-arrow)"/>

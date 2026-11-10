@@ -61,17 +61,19 @@ test('eight real ports on each VM, drawing from chosen exit to chosen entry pers
  await dock.getByPlaceholder('Например: актуализация схемы ИС после изменения сети')
   .fill('Confirmed chosen anchors for integration')
  await dock.getByRole('button',{name:'Проверить изменения (1)'}).click()
- await editor.getByRole('dialog',{name:'Подтверждение изменений архитектуры'})
-  .getByRole('button',{name:'Подтвердить и записать в журнал'}).click()
+ const review=editor.getByRole('dialog',{name:'Подтверждение изменений архитектуры'})
+ await review.getByRole('button',{name:'Подтвердить и записать в журнал'}).click()
+ // Confirm the complete sequence: registry transaction AND layout persistence.
+ await expect(review).toHaveCount(0)
  const flows=(await (await page.request.get('http://127.0.0.1:8001/api/flows')).json()) as
   Array<{id:string;source_id:string;target_id:string}>
  const saved=flows.find(f=>f.source_id===source.id&&f.target_id===target.id)
  expect(saved).toBeTruthy()
- const positions=(await (await page.request.get('http://127.0.0.1:8001/api/board/layout/'+system))
-  .json()) as {flow_anchors:Record<string,{source_handle:string;target_handle:string}>}
- expect(positions.flow_anchors[saved!.id]).toEqual({
-  source_handle:'out-bottom-2',target_handle:'in-top-1'
- })
+ await expect.poll(async()=>{
+   const response=await page.request.get('http://127.0.0.1:8001/api/board/layout/'+system)
+   const positions=await response.json() as {flow_anchors:Record<string,{source_handle:string;target_handle:string}>}
+   return positions.flow_anchors[saved!.id]
+ }).toEqual({source_handle:'out-bottom-2',target_handle:'in-top-1'})
 })
 
 test('move existing arrow endpoint to another of eight positions and see it on reopened scheme',async({page})=>{

@@ -236,7 +236,10 @@ test('infrastructure graph permits connecting components',async({page})=>{
  await page.getByRole('combobox',{name:'Система компонентов'}).selectOption(id)
  await page.getByRole('group',{name:'Представление компонентов'}).getByRole('button',{name:'Схема',exact:true}).click()
  const handles=page.locator('.miniArchitecture .react-flow__handle')
- await expect(handles).toHaveCount(4)
+ // Two VM cards now expose eight source plus eight target ports each.
+ await expect(handles).toHaveCount(32)
+ await expect(page.locator('.miniArchitecture .flowPortSource')).toHaveCount(16)
+ await expect(page.locator('.miniArchitecture .flowPortTarget')).toHaveCount(16)
 })
 
 test('single component diagram stays compact after auto-fit',async({page})=>{

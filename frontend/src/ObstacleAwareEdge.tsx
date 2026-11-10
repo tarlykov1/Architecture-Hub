@@ -135,7 +135,7 @@ export function ObstacleAwareEdge({id,source,target,sourceX,sourceY,targetX,targ
    onEnd:(event:React.PointerEvent<HTMLButtonElement>)=>void
  }
  const grip=(end:'source'|'target',x:number,y:number)=>endpointEditor&&<button key={end}
-   type="button" className="boardEndpointGrip nodrag nopan"
+   type="button" className="boardEndpointGrip nodrag nopan" data-flow-end={end}
    aria-label={end==='source'?'Перенести начало стрелки':'Перенести конец стрелки'}
    title={end==='source'?'Перетащить начало в другую точку той же ВМ':'Перетащить конец в другую точку той же ВМ'}
    style={{position:'absolute',left:0,top:0,transform:`translate(-50%,-50%) translate(${x}px,${y}px)`}}

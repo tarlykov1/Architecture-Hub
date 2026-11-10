@@ -592,7 +592,9 @@ test('saved flow edits are reviewed from VM passport and survive reloading the d
   await page.getByRole('navigation',{name:'Разделы архитектуры'}).getByRole('button',{name:'Компоненты',exact:true}).click()
   await page.getByRole('group',{name:'Представление компонентов'}).getByRole('button',{name:'Схема',exact:true}).click()
   await page.getByRole('button',{name:'Редактировать схему'}).click()
-  await page.getByRole('combobox',{name:'Выбрать ИС для редактора компонентов'}).selectOption(systemId)
+  // On reload the application may remember the chosen IS and open the editor directly.
+  const chooser=page.getByRole('combobox',{name:'Выбрать ИС для редактора компонентов'})
+  if(await chooser.isVisible())await chooser.selectOption(systemId)
   const refreshed=page.getByRole('region',{name:'Редактор архитектурной схемы'})
   await refreshed.locator('.react-flow__node').filter({hasText:'Editor source'}).click()
   await refreshed.getByRole('dialog',{name:'Паспорт компонента Editor source'}).getByRole('button',{name:'Открыть параметры потока'}).click()

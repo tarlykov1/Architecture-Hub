@@ -235,3 +235,19 @@
  padding:9px 12px;background:transparent;
 }
 .boardCanvas .react-flow__node-boardNetwork.dragging .boardNetworkLabel{cursor:grabbing}
+
+/* A network's title/resize grips are interactive above VM cards; the rest of
+   the network is click-through so it never steals VM selections or flow drops. */
+.boardCanvas .react-flow__node-boardNetwork{pointer-events:none}
+.boardCanvas .react-flow__node-boardNetwork .boardNetworkDragArea{
+ pointer-events:auto;position:absolute;left:0;right:0;top:0;height:49px;
+ z-index:3;cursor:grab;touch-action:none
+}
+.boardCanvas .react-flow__node-boardNetwork .boardNetworkDragArea:active{cursor:grabbing}
+.boardCanvas .react-flow__node-boardNetwork .boardNetworkLabel{pointer-events:auto;cursor:inherit}
+.boardCanvas .react-flow__node-boardNetwork .react-flow__resize-control.handle{pointer-events:auto}
+.boardComponentClickArea{cursor:pointer}
+.boardFlowGesturePreview{
+ position:absolute;inset:0;z-index:15;
+ pointer-events:none;overflow:visible
+}

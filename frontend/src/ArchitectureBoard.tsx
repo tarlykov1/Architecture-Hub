@@ -363,7 +363,10 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
    if(tool!=='flow'||event.button!==0)return
    event.stopPropagation();event.preventDefault()
    setCanvasInteracted(true);setPreferredSourceHandle(handle)
-   const bounds=event.currentTarget.getBoundingClientRect()
+   // Use the true port location, even if the pointer is intercepted by the
+   // canvas hit-test layer (React Flow's pane can sit over narrow top handles).
+   const port=vmElement(id)?.querySelector<HTMLElement>('[data-anchor="'+handle+'"]')
+   const bounds=(port||event.currentTarget).getBoundingClientRect()
    const point=canvasPoint(bounds.x+bounds.width/2,bounds.y+bounds.height/2)
    flowGesture.current={sourceId:id,sourceHandle:handle,start:point}
    setFlowGhost({start:point,end:point})
@@ -389,7 +392,7 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
      setLayoutMessage('Точка выхода выбрана. Нажмите на другую ВМ или протяните стрелку к одной из её восьми точек.')
    }
  }
- const beginReattach=(flowId:string,end:FlowEnd,event:React.PointerEvent<HTMLButtonElement>)=>{
+ const beginReattach=(flowId:string,end:FlowEnd,event:React.PointerEvent<HTMLElement>)=>{
    if(event.button!==0)return
    const flow=effectiveFlows.find(f=>f.id===flowId)
    if(!flow)return
@@ -397,17 +400,18 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
    const nodeId=end==='source'?flow.source_id:flow.target_id
    retargetGesture.current={flowId,end,nodeId}
    setCanvasInteracted(true)
-   const box=event.currentTarget.getBoundingClientRect()
+   const grip=boardCanvasRef.current?.querySelector<HTMLElement>('.boardEndpointGrip[data-flow-end="'+end+'"]')
+   const box=(grip||event.currentTarget).getBoundingClientRect()
    const point=canvasPoint(box.left+box.width/2,box.top+box.height/2)
    setFlowGhost({start:point,end:point})
    event.currentTarget.setPointerCapture(event.pointerId)
  }
- const moveReattach=(event:React.PointerEvent<HTMLButtonElement>)=>{
+ const moveReattach=(event:React.PointerEvent<HTMLElement>)=>{
    if(!retargetGesture.current)return
    event.stopPropagation()
    setFlowGhost(previous=>previous?{...previous,end:canvasPoint(event.clientX,event.clientY)}:null)
  }
- const endReattach=(event:React.PointerEvent<HTMLButtonElement>)=>{
+ const endReattach=(event:React.PointerEvent<HTMLElement>)=>{
    const gesture=retargetGesture.current
    if(!gesture)return
    event.stopPropagation()
@@ -807,7 +811,79 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
  }
  return <section className="boardWorkspace" aria-label="Редактор архитектурной схемы">
    <div className="boardEditorStage">
-        <div ref={boardCanvasRef} className="boardCanvas" data-active-graph="infrastructure-editor" onPointerMoveCapture={()=>setCanvasInteracted(true)} onPointerDownCapture={()=>setCanvasInteracted(true)}><ReactFlow nodes={displayedNodes} edges={edges} nodeTypes={boardNodeTypes} edgeTypes={{reciprocal:ReciprocalEdge,'obstacle-aware':ObstacleAwareEdge}} onNodesChange={(updates:NodeChange[])=>{
+        <div ref={boardCanvasRef} className="boardCanvas" data-active-graph="infrastructure-editor"
+          onPointerDownCapture={event=>{
+            setCanvasInteracted(true)
+            if(tool!=='flow'||event.button!==0)return
+            const selectedFlowId=selectedExistingFlowId||selectedDraftFlowId
+            const at={x:event.clientX,y:event.clientY}
+            // The renderer places the yellow grips over an SVG label layer;
+            // hit-testing by their geometry prevents the pane from receiving
+            // the gesture when the visible grip's hitbox is clipped or covered.
+            if(selectedFlowId){
+              const grips=[...(boardCanvasRef.current?.querySelectorAll<HTMLElement>('.boardEndpointGrip')||[])]
+                .map(el=>{const b=el.getBoundingClientRect();return {el,distance:Math.hypot(at.x-b.left-b.width/2,at.y-b.top-b.height/2)}})
+                .sort((a,b)=>a.distance-b.distance)
+              const closestGrip=grips[0]
+              const end=closestGrip?.el.dataset.flowEnd
+              if(closestGrip&&closestGrip.distance<=20&&(end==='source'||end==='target')){
+                beginReattach(selectedFlowId,end,event)
+                return
+              }
+            }
+            // The top/side handles are on the card boundary. Their visible
+            // circles can be obscured by React Flow's panning layer even when
+            // a click appears to land on the port. Hit-test them by coordinates
+            // before the pane handles pointerdown and starts dragging canvas.
+            const targets=[...(boardCanvasRef.current?.querySelectorAll<HTMLElement>('.react-flow__node-boardComponent .flowPortSource.boardConnectionHandleActive')||[])]
+              .map(el=>{const b=el.getBoundingClientRect();return {el,distance:Math.hypot(at.x-b.left-b.width/2,at.y-b.top-b.height/2)}})
+              .sort((a,b)=>a.distance-b.distance)
+            const closest=targets[0]
+            const node=closest?.el.closest<HTMLElement>('.react-flow__node-boardComponent')
+            const anchor=closest?.el.dataset.anchor
+            if(closest&&closest.distance<=18&&node?.dataset.id&&anchor){
+              beginFlowPointer(node.dataset.id,anchor,event)
+            }
+          }}
+          onMouseDownCapture={event=>{
+            if(tool!=='flow'||event.button!==0)return
+            if(flowGesture.current||retargetGesture.current){
+              event.preventDefault();event.stopPropagation()
+              return
+            }
+            // React Flow begins panning on mousedown rather than pointerdown.
+            // Some browsers dispatch the compatibility mouse event on the
+            // pane despite a hit on a visible port. Recover the gesture from
+            // DOM anchor geometry and suppress the pane handler.
+            const at={x:event.clientX,y:event.clientY}
+            const sources=[...(boardCanvasRef.current?.querySelectorAll<HTMLElement>('.react-flow__node-boardComponent .flowPortSource.boardConnectionHandleActive')||[])]
+              .map(el=>{const b=el.getBoundingClientRect();return {el,distance:Math.hypot(at.x-b.left-b.width/2,at.y-b.top-b.height/2)}})
+              .sort((a,b)=>a.distance-b.distance)
+            const selected=sources[0]
+            const node=selected?.el.closest<HTMLElement>('.react-flow__node-boardComponent')
+            const handle=selected?.el.dataset.anchor
+            if(selected&&selected.distance<=24&&node?.dataset.id&&handle){
+              event.preventDefault();event.stopPropagation()
+              const box=selected.el.getBoundingClientRect()
+              const point=canvasPoint(box.left+box.width/2,box.top+box.height/2)
+              setPreferredSourceHandle(handle)
+              flowGesture.current={sourceId:node.dataset.id,sourceHandle:handle,start:point}
+              setFlowGhost({start:point,end:point})
+            }
+          }}
+          onPointerMoveCapture={event=>{
+            setCanvasInteracted(true)
+            if(retargetGesture.current)moveReattach(event)
+            else if(flowGesture.current)moveFlowPointer(event)
+          }}
+          onPointerUpCapture={event=>{
+            if(retargetGesture.current)endReattach(event)
+            else if(flowGesture.current)endFlowPointer(event)
+          }}
+          onPointerCancelCapture={event=>{
+            if(retargetGesture.current)endReattach(event)
+            else if(flowGesture.current)endFlowPointer(event)
+          }}><ReactFlow nodes={displayedNodes} edges={edges} panOnDrag={tool==='move'} nodeTypes={boardNodeTypes} edgeTypes={{reciprocal:ReciprocalEdge,'obstacle-aware':ObstacleAwareEdge}} onNodesChange={(updates:NodeChange[])=>{
   // React Flow is controlled: update rectangle geometry during the drag,
   // not only on drop, otherwise VRF/VLAN boxes appear stuck in place.
   const moved=new Map<string,{x:number;y:number}>()

@@ -83,10 +83,12 @@ jobs:
           # Chromium and its OS dependencies are baked into the pinned image.
       - name: Start isolated services
         env:
-          DATABASE_URL: sqlite:///${{ runner.temp }}/browser_ci.db
+          DATABASE_URL: sqlite:////tmp/architecture_hub_browser_ci.db
           PYTHONPATH: backend
           VITE_API_TARGET: http://127.0.0.1:8001
         run: |
+          # GitHub's checkout may be host-owned inside this container.
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
           python -m uvicorn app.main:app --host 127.0.0.1 --port 8001 > /tmp/arch-api.log 2>&1 &
           cd frontend
           npm run dev -- --host 127.0.0.1 --port 5174 --strictPort > /tmp/arch-vite.log 2>&1 &

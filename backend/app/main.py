@@ -1972,9 +1972,19 @@ app.include_router(views_router)
 
 
 # Board edits are applied as a single reviewed transaction. For existing interface
-# assignments the client supplies the expected previous value (optimistic check).
+# assignments and flows the client supplies previous values (optimistic check).
+class PreviousFlowValues(BaseModel):
+    name: str
+    protocol: str
+    port: str
+    security: str
+    data_description: str
+    schedule: str
+    verification: str
+
+
 class BoardChange(BaseModel):
-    action: str = Field(pattern="^(create_vm|create_network|create_flow|create_interface|move_interface|update_vm)$")
+    action: str = Field(pattern="^(create_vm|create_network|create_flow|update_flow|create_interface|move_interface|update_vm)$")
     id: UUID | None = None
     system_id: UUID | None = None
     name: str = Field(default="", max_length=250)
@@ -1988,6 +1998,7 @@ class BoardChange(BaseModel):
     data_description: str = Field(default="", max_length=4000)
     schedule: str = Field(default="", max_length=160)
     verification: str = Field(default="draft", max_length=30)
+    previous_flow: PreviousFlowValues | None = None
     interface_id: UUID | None = None
     item_id: UUID | None = None
     interface_name: str = Field(default="eth0", min_length=1, max_length=100)
@@ -2131,7 +2142,7 @@ def authorize_board(payload: BoardBatch, request: Request) -> None:
         return
     grants = ROLE_ACCESS[role]
     for change in payload.changes:
-        layer = 'networks' if change.action in ('create_network', 'create_interface', 'move_interface') else ('flows' if change.action == 'create_flow' else 'infrastructure')
+        layer = 'networks' if change.action in ('create_network', 'create_interface', 'move_interface') else ('flows' if change.action in ('create_flow', 'update_flow') else 'infrastructure')
         if grants.get(layer) != 'write':
             raise HTTPException(403, f'Insufficient permission to modify {layer}')
 
@@ -2223,6 +2234,32 @@ def apply_board_changes(payload: BoardBatch, db: Session) -> list[dict[str, Any]
             output.append({"action": "create_flow", "id": str(flow.id), "before": None,
                            "after": {"source_id": str(flow.source_id), "target_id": str(flow.target_id),
                                      "name": flow.name, "protocol": flow.protocol, "port": flow.port, "security": flow.security}})
+        elif change.action == "update_flow":
+            if change.id is None:
+                raise HTTPException(422, "Flow id is required")
+            flow = db.get(DataFlow, change.id)
+            if flow is None:
+                raise HTTPException(404, "Flow not found")
+            if change.previous_flow is None:
+                raise HTTPException(422, "Previous flow values are required")
+            if change.source_id != flow.source_id or change.target_id != flow.target_id:
+                raise HTTPException(409, "Flow endpoints changed; redraw the connection explicitly")
+            if not change.name.strip():
+                raise HTTPException(422, "Flow name is required")
+            fields = ("name", "protocol", "port", "security",
+                      "data_description", "schedule", "verification")
+            before = {field: getattr(flow, field) for field in fields}
+            if before != change.previous_flow.model_dump():
+                raise HTTPException(409, "Flow changed since it was opened; refresh and review")
+            after = {field: change.name.strip() if field == "name"
+                     else getattr(change, field) for field in fields}
+            if before == after:
+                raise HTTPException(422, "No flow parameters changed")
+            for field, value in after.items():
+                setattr(flow, field, value)
+            output.append({"action": "update_flow", "id": str(flow.id),
+                           "source_id": str(flow.source_id), "target_id": str(flow.target_id),
+                           "before": before, "after": after})
         elif change.action == "create_interface":
             if change.item_id is None or change.network_id is None:
                 raise HTTPException(422, "New interface requires VM and network")

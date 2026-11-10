@@ -251,3 +251,30 @@
  position:absolute;inset:0;z-index:15;
  pointer-events:none;overflow:visible
 }
+
+/* Editing an existing CMDB flow must remain in the right-hand dock, not on canvas. */
+.boardFlowEdgeList,.boardExistingFlowEditor{
+ display:grid;gap:10px;padding:12px;border:1px solid #dce5ef;border-radius:9px;
+ background:#fbfdff;color:#243449;min-width:0
+}
+.boardFlowEdgeList h4,.boardExistingFlowEditor strong{margin:0;font-size:14px}
+.boardFlowEdgeList p,.boardExistingFlowEditor p{font-size:12px;color:#5b6980;line-height:1.5;margin:0}
+.boardFlowEdgeList>button{display:grid;gap:5px;justify-items:start;text-align:left;background:#fff;
+ padding:10px;border:1px solid #d8e3ef;border-radius:7px;cursor:pointer;color:#243449}
+.boardFlowEdgeList>button.boardFlowSelected{border:2px solid #2563eb;background:#eff6ff}
+.boardFlowEdgeList>button strong{font-size:12px;overflow-wrap:anywhere}
+.boardFlowEdgeList>button small,.boardExistingFlowHeading small{font-size:11px;color:#64748b}
+.boardExistingFlowHeading{display:flex;align-items:start;justify-content:space-between;gap:10px}
+.boardExistingFlowHeading>div{display:grid;gap:3px}
+.boardExistingFlowHeading>button{border:0;background:transparent;cursor:pointer}
+.boardExistingFlowEditor label{display:grid;gap:5px;font-size:12px;font-weight:600;color:#46566a}
+.boardExistingFlowEditor input,.boardExistingFlowEditor select,.boardExistingFlowEditor textarea{
+ width:100%;min-width:0;box-sizing:border-box;border:1px solid #cbd5e1;
+ border-radius:6px;padding:8px;background:#fff;color:#243449;font:inherit;font-weight:400
+}
+.boardExistingFlowFields{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px}
+.boardExistingFlowActions{display:flex;gap:8px;flex-wrap:wrap}
+.boardExistingFlowActions button{border:1px solid #a8c4e4;border-radius:7px;padding:8px 10px;cursor:pointer}
+.boardExistingFlowActions button[type=submit]{background:#176bc1;color:white;border-color:#176bc1}
+.boardExistingFlowStaged{border-left:3px solid #176bc1;background:#eff6ff;padding:8px}
+.boardFlowValidation{color:#b91c1c!important}

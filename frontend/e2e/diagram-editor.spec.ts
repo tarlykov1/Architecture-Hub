@@ -541,3 +541,90 @@ test('placing VM inside VLAN requests confirmation and optional NIC is saved onl
   const positions=(await (await page.request.get('http://127.0.0.1:8001/api/board/layout/'+systemId)).json()).positions as Record<string,{parent_id?:string}>
   expect(positions[vm!.id]?.parent_id).toBe('network:'+vlan)
 })
+
+
+test('saved flow edits are reviewed from VM passport and survive reloading the diagram',async({page})=>{
+  const systemId=await seedSystem(page)
+  const infra=(await (await page.request.get('http://127.0.0.1:8001/api/infra')).json())
+    .filter((v:{system_id:string})=>v.system_id===systemId) as Array<{id:string;name:string}>
+  const source=infra.find(v=>v.name==='Editor source')!,target=infra.find(v=>v.name==='Editor destination')!
+  const created=await page.request.post('http://127.0.0.1:8001/api/flows',{data:{
+    source_id:source.id,target_id:target.id,name:'HR data batch',protocol:'TCP',
+    port:'443',security:'unknown',data_description:'Employee identifier',schedule:'daily',verification:'draft'
+  }})
+  expect(created.status()).toBe(201)
+  const flowId=(await created.json()).id as string
+  await page.goto('/')
+  await page.getByRole('navigation',{name:'Разделы архитектуры'}).getByRole('button',{name:'Компоненты',exact:true}).click()
+  await page.getByRole('group',{name:'Представление компонентов'}).getByRole('button',{name:'Схема',exact:true}).click()
+  await page.getByRole('button',{name:'Редактировать схему'}).click()
+  await page.getByRole('combobox',{name:'Выбрать ИС для редактора компонентов'}).selectOption(systemId)
+  const editor=page.getByRole('region',{name:'Редактор архитектурной схемы'})
+  await editor.locator('.react-flow__node').filter({hasText:'Editor source'}).click()
+  const inspector=editor.getByRole('dialog',{name:'Паспорт компонента Editor source'})
+  await expect(inspector.getByRole('button',{name:'Открыть параметры потока'})).toBeVisible()
+  await inspector.getByRole('button',{name:'Открыть параметры потока'}).click()
+  const savedEditor=editor.getByRole('form',{name:'Редактирование существующего потока'})
+  await expect(savedEditor).toBeVisible()
+  await expect(savedEditor.getByRole('textbox',{name:'Название потока'})).toHaveValue('HR data batch')
+  await savedEditor.getByRole('textbox',{name:'Название потока'}).fill('HR data verified')
+  await savedEditor.getByRole('textbox',{name:'Протокол'}).fill('HTTPS')
+  await savedEditor.getByRole('textbox',{name:'Порт'}).fill('8443')
+  await savedEditor.getByRole('textbox',{name:'Защита'}).fill('TLS')
+  await savedEditor.getByRole('textbox',{name:'Описание данных'}).fill('Employee identifier and workplace')
+  await savedEditor.getByRole('textbox',{name:'Периодичность'}).fill('hourly')
+  await savedEditor.getByRole('combobox',{name:'Достоверность'}).selectOption('verified')
+  await savedEditor.getByRole('button',{name:'Добавить изменение в черновик'}).click()
+  await expect(editor.getByRole('button',{name:'Проверить изменения (1)'})).toBeVisible()
+  const notSaved=(await (await page.request.get('http://127.0.0.1:8001/api/flows')).json()).find((x:{id:string})=>x.id===flowId)
+  expect(notSaved.port).toBe('443')
+  const dock=editor.getByRole('complementary',{name:'Свойства и изменения схемы'})
+  await dock.getByPlaceholder('Например: актуализация схемы ИС после изменения сети').fill('Confirmed technical flow attributes')
+  await dock.getByRole('button',{name:'Проверить изменения (1)'}).click()
+  const review=editor.getByRole('dialog',{name:'Подтверждение изменений архитектуры'})
+  await expect(review).toContainText('update_flow')
+  await review.getByRole('button',{name:'Подтвердить и записать в журнал'}).click()
+  await expect(review).toHaveCount(0)
+  const updated=(await (await page.request.get('http://127.0.0.1:8001/api/flows')).json()).find((x:{id:string})=>x.id===flowId)
+  expect(updated).toMatchObject({name:'HR data verified',protocol:'HTTPS',port:'8443',
+    security:'TLS',data_description:'Employee identifier and workplace',schedule:'hourly',verification:'verified'})
+  await page.reload()
+  await page.getByRole('navigation',{name:'Разделы архитектуры'}).getByRole('button',{name:'Компоненты',exact:true}).click()
+  await page.getByRole('group',{name:'Представление компонентов'}).getByRole('button',{name:'Схема',exact:true}).click()
+  await page.getByRole('button',{name:'Редактировать схему'}).click()
+  // On reload the application may remember the chosen IS and open the editor directly.
+  const chooser=page.getByRole('combobox',{name:'Выбрать ИС для редактора компонентов'})
+  if(await chooser.isVisible())await chooser.selectOption(systemId)
+  const refreshed=page.getByRole('region',{name:'Редактор архитектурной схемы'})
+  await refreshed.locator('.react-flow__node').filter({hasText:'Editor source'}).click()
+  await refreshed.getByRole('dialog',{name:'Паспорт компонента Editor source'}).getByRole('button',{name:'Открыть параметры потока'}).click()
+  await expect(refreshed.getByRole('form',{name:'Редактирование существующего потока'}).getByRole('textbox',{name:'Порт'})).toHaveValue('8443')
+})
+
+test('one grouped arrow exposes its separate saved flow records',async({page})=>{
+  const systemId=await seedSystem(page)
+  const infra=(await (await page.request.get('http://127.0.0.1:8001/api/infra')).json())
+    .filter((v:{system_id:string})=>v.system_id===systemId) as Array<{id:string;name:string}>
+  const source=infra.find(v=>v.name==='Editor source')!,target=infra.find(v=>v.name==='Editor destination')!
+  for(const name of ['Payroll','Work schedule']){
+    const result=await page.request.post('http://127.0.0.1:8001/api/flows',{
+      data:{source_id:source.id,target_id:target.id,name,protocol:'HTTPS',port:'443'}
+    })
+    expect(result.status()).toBe(201)
+  }
+  await page.goto('/')
+  await page.getByRole('navigation',{name:'Разделы архитектуры'}).getByRole('button',{name:'Компоненты',exact:true}).click()
+  await page.getByRole('group',{name:'Представление компонентов'}).getByRole('button',{name:'Схема',exact:true}).click()
+  await page.getByRole('button',{name:'Редактировать схему'}).click()
+  await page.getByRole('combobox',{name:'Выбрать ИС для редактора компонентов'}).selectOption(systemId)
+  const editor=page.getByRole('region',{name:'Редактор архитектурной схемы'})
+  await expect(editor.locator('.react-flow__edge')).toHaveCount(1)
+  await editor.locator('.react-flow__edge').first().click()
+  const selection=editor.getByRole('region',{name:'Потоки выбранной стрелки'})
+  await expect(selection).toBeVisible()
+  await expect(selection.getByRole('button')).toHaveCount(2)
+  await selection.getByRole('button',{name:/Payroll/}).click()
+  const form=editor.getByRole('form',{name:'Редактирование существующего потока'})
+  await expect(form.getByRole('textbox',{name:'Название потока'})).toHaveValue('Payroll')
+  await expect(form.getByRole('textbox',{name:'Протокол'})).toHaveValue('HTTPS')
+})

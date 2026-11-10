@@ -337,3 +337,86 @@ def test_explicit_network_hierarchy_validates_and_round_trips():
         bad_parent={**data,vm_id:{**data[vm_id],"parent_id":"network:"+str(uuid4())}}
         assert client.put("/api/board/layout/"+system_id,headers=ADMIN,json={"positions":bad_parent}).status_code == 422
         assert client.get("/api/board/layout/"+system_id,headers=ADMIN).json()["positions"] == result.json()["positions"]
+
+
+def test_existing_flow_edit_requires_review_and_writes_audited_parameters():
+    """Edits never mutate storage on preview, and include original values in audit."""
+    with TestClient(app) as client:
+        _, source = create_system_and_vm(client)
+        _, target = create_system_and_vm(client)
+        flow_id = str(uuid4())
+        created = client.post("/api/flows", headers=ADMIN, json={
+            "source_id": source, "target_id": target, "name": "HR export",
+            "protocol": "TCP", "port": "443", "security": "unknown",
+            "data_description": "employee id", "schedule": "daily", "verification": "draft"
+        })
+        assert created.status_code == 201, created.text
+        flow_id = created.json()["id"]
+        before = {key: created.json()[key] for key in (
+            "name", "protocol", "port", "security", "data_description", "schedule", "verification")}
+        item = {
+            "action": "update_flow", "id": flow_id,
+            "source_id": source, "target_id": target,
+            **{**before, "name": "HR employee export", "protocol": "HTTPS",
+               "port": "8443", "security": "TLS",
+               "data_description": "employee id and work location",
+               "schedule": "hourly", "verification": "verified"},
+            "previous_flow": before
+        }
+        batch = {"reason": "Validated integration protocol", "changes": [item]}
+        preview = client.post("/api/board/preview", headers=ADMIN, json=batch)
+        assert preview.status_code == 200, preview.text
+        diff = preview.json()["changes"][0]
+        assert diff["action"] == "update_flow"
+        assert diff["before"] == before
+        assert diff["after"]["protocol"] == "HTTPS"
+        flow = next(f for f in client.get("/api/flows", headers=ADMIN).json()
+                    if f["id"] == flow_id)
+        assert flow["protocol"] == "TCP"
+        commit = client.post("/api/board/commit", headers=ADMIN, json=batch)
+        assert commit.status_code == 200, commit.text
+        updated = next(f for f in client.get("/api/flows", headers=ADMIN).json()
+                       if f["id"] == flow_id)
+        assert updated["name"] == "HR employee export"
+        assert updated["port"] == "8443"
+        assert updated["security"] == "TLS"
+        assert updated["data_description"] == "employee id and work location"
+        assert updated["schedule"] == "hourly"
+        assert updated["verification"] == "verified"
+        history = client.get("/api/board/audit", headers=ADMIN).json()
+        assert any(h["id"] == commit.json()["audit_id"] and
+                   h["changes"][0]["before"] == before and
+                   h["changes"][0]["after"]["verification"] == "verified"
+                   for h in history)
+        # The stale original revision can never overwrite newer data.
+        assert client.post("/api/board/commit", headers=ADMIN, json=batch).status_code == 409
+
+
+def test_existing_flow_review_rejects_invalid_or_unauthorized_edits():
+    with TestClient(app) as client:
+        _, source = create_system_and_vm(client)
+        _, target = create_system_and_vm(client)
+        created = client.post("/api/flows", headers=ADMIN, json={
+            "source_id": source, "target_id": target, "name": "Flow original"})
+        assert created.status_code == 201, created.text
+        before = {key: created.json()[key] for key in (
+            "name", "protocol", "port", "security", "data_description", "schedule", "verification")}
+        change = {"action": "update_flow", "id": created.json()["id"],
+                  "source_id": source, "target_id": target,
+                  "previous_flow": before, **before}
+        batch = {"reason": "Edit flow permissions and revision", "changes": [
+            {**change, "name": "Updated"}]}
+        assert client.post("/api/board/preview", headers=VIEWER, json=batch).status_code == 403
+        assert client.post("/api/board/commit", headers=VIEWER, json=batch).status_code == 403
+        assert client.post("/api/board/commit", headers=ADMIN, json={
+            **batch, "changes": [{k:v for k,v in batch["changes"][0].items()
+                                  if k != "previous_flow"}]}).status_code == 422
+        assert client.post("/api/board/preview", headers=ADMIN, json={
+            **batch, "changes": [change]}).status_code == 422
+        assert client.post("/api/board/preview", headers=ADMIN, json={
+            **batch, "changes": [{**change, "source_id": target, "name": "Updated"}]}).status_code == 409
+        assert client.post("/api/board/preview", headers=ADMIN, json={
+            **batch, "changes": [{**change, "previous_flow": {**before, "port": "999"},
+                                  "name": "Updated"}]}).status_code == 409
+        assert client.post("/api/board/commit", headers=ADMIN, json={
+            **batch, "changes": [{**change, "name": "Updated"}]}).status_code == 200

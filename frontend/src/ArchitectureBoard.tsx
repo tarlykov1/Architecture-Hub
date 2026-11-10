@@ -346,13 +346,26 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
    const box=boardCanvasRef.current?.getBoundingClientRect()
    return {x:x-(box?.left||0),y:y-(box?.top||0)}
  }
- const beginFlowPointer=(id:string,event:React.PointerEvent<HTMLDivElement>)=>{
+ const vmElement=(id:string)=>[...(boardCanvasRef.current?.querySelectorAll<HTMLElement>('.react-flow__node-boardComponent')||[])]
+   .find(node=>node.dataset.id===id)
+ const findDropTarget=(at:{x:number;y:number},exclude:string)=>{
+   const candidates=[...(boardCanvasRef.current?.querySelectorAll<HTMLElement>('.react-flow__node-boardComponent')||[])]
+     .filter(node=>node.dataset.id&&node.dataset.id!==exclude)
+   const near=(rect:DOMRect,margin:number)=>at.x>=rect.left-margin&&at.x<=rect.right+margin&&at.y>=rect.top-margin&&at.y<=rect.bottom+margin
+   const byHandle=candidates.map(node=>({node,nearest:closestVisiblePort(node,at,'target',28)}))
+     .filter(x=>x.nearest).sort((a,b)=>a.nearest!.distance-b.nearest!.distance)[0]
+   const target=byHandle?.node||candidates.find(node=>near(node.getBoundingClientRect(),8))
+   if(!target||!target.dataset.id)return null
+   const nearest=closestVisiblePort(target,at,'target')
+   return nearest?{targetId:target.dataset.id,targetHandle:nearest.id}:null
+ }
+ const beginFlowPointer=(id:string,handle:string,event:React.PointerEvent<HTMLDivElement>)=>{
    if(tool!=='flow'||event.button!==0)return
    event.stopPropagation();event.preventDefault()
-   setCanvasInteracted(true)
+   setCanvasInteracted(true);setPreferredSourceHandle(handle)
    const bounds=event.currentTarget.getBoundingClientRect()
    const point=canvasPoint(bounds.x+bounds.width/2,bounds.y+bounds.height/2)
-   flowGesture.current={sourceId:id,start:point}
+   flowGesture.current={sourceId:id,sourceHandle:handle,start:point}
    setFlowGhost({start:point,end:point})
    event.currentTarget.setPointerCapture(event.pointerId)
  }
@@ -366,32 +379,69 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
    const gesture=flowGesture.current
    if(!gesture)return
    event.stopPropagation()
-   // A React Flow target Handle sits half outside its parent card. During
-   // pointer capture, elementFromPoint may see the background (or overlay)
-   // instead of the target node; use actual handle geometry first.
-   const candidates=[...(boardCanvasRef.current?.querySelectorAll<HTMLElement>('.react-flow__node-boardComponent')||[])]
-     .filter(node=>node.dataset.id&&node.dataset.id!==gesture.sourceId)
-   const near=(rect:DOMRect,margin:number)=>event.clientX>=rect.left-margin&&event.clientX<=rect.right+margin&&
-     event.clientY>=rect.top-margin&&event.clientY<=rect.bottom+margin
-   const byHandle=candidates.find(node=>[...node.querySelectorAll<HTMLElement>('.boardConnectionHandle.target')]
-     .some(handle=>near(handle.getBoundingClientRect(),12)))
-   const byCard=candidates.find(node=>near(node.getBoundingClientRect(),8))
-   const target=(byHandle||byCard)?.dataset.id
+   const result=findDropTarget({x:event.clientX,y:event.clientY},gesture.sourceId)
    if(event.currentTarget.hasPointerCapture(event.pointerId))event.currentTarget.releasePointerCapture(event.pointerId)
    flowGesture.current=null;setFlowGhost(null)
-   if(target)stageDirectedFlow(gesture.sourceId,target)
+   if(result){
+     stageDirectedFlow(gesture.sourceId,result.targetId,{source_handle:gesture.sourceHandle,target_handle:result.targetHandle})
+   }else{
+     setFrom(gesture.sourceId);setTo('')
+     setLayoutMessage('Точка выхода выбрана. Нажмите на другую ВМ или протяните стрелку к одной из её восьми точек.')
+   }
+ }
+ const beginReattach=(flowId:string,end:FlowEnd,event:React.PointerEvent<HTMLButtonElement>)=>{
+   if(event.button!==0)return
+   const flow=effectiveFlows.find(f=>f.id===flowId)
+   if(!flow)return
+   event.stopPropagation();event.preventDefault()
+   const nodeId=end==='source'?flow.source_id:flow.target_id
+   retargetGesture.current={flowId,end,nodeId}
+   setCanvasInteracted(true)
+   const box=event.currentTarget.getBoundingClientRect()
+   const point=canvasPoint(box.left+box.width/2,box.top+box.height/2)
+   setFlowGhost({start:point,end:point})
+   event.currentTarget.setPointerCapture(event.pointerId)
+ }
+ const moveReattach=(event:React.PointerEvent<HTMLButtonElement>)=>{
+   if(!retargetGesture.current)return
+   event.stopPropagation()
+   setFlowGhost(previous=>previous?{...previous,end:canvasPoint(event.clientX,event.clientY)}:null)
+ }
+ const endReattach=(event:React.PointerEvent<HTMLButtonElement>)=>{
+   const gesture=retargetGesture.current
+   if(!gesture)return
+   event.stopPropagation()
+   if(event.currentTarget.hasPointerCapture(event.pointerId))event.currentTarget.releasePointerCapture(event.pointerId)
+   retargetGesture.current=null;setFlowGhost(null)
+   const node=vmElement(gesture.nodeId)
+   if(!node){setError('Компонент потока больше не отображается на схеме.');return}
+   const at={x:event.clientX,y:event.clientY}
+   const bounds=node.getBoundingClientRect()
+   const within=at.x>=bounds.left-30&&at.x<=bounds.right+30&&at.y>=bounds.top-30&&at.y<=bounds.bottom+30
+   if(!within){setLayoutMessage('Конец стрелки можно перенести на другую точку той же ВМ. Для смены ВМ создайте новый поток.');return}
+   const next=closestVisiblePort(node,at,gesture.end)
+   if(!next)return
+   const flow=effectiveFlows.find(f=>f.id===gesture.flowId)
+   if(!flow)return
+   const current=portsForFlow(flow)
+   const pair={...current,[gesture.end==='source'?'source_handle':'target_handle']:next.id}
+   if(pair.source_handle===current.source_handle&&pair.target_handle===current.target_handle)return
+   setFlowAnchors(previous=>({...previous,[gesture.flowId]:pair}))
+   setLayoutDirty(true)
+   setLayoutMessage('Точка подключения стрелки изменена. Нажмите «Сохранить», чтобы сохранить расположение концов в схеме.')
+   setError('')
  }
  const selectFlowComponent=(id:string)=>{
    setInspectedId(null);setInspectedNetworkId(null);setFocusDependencies(false)
    if(!from||to||from===id){
      setFrom(id);setTo('');setSelectedDraftFlowId('')
      setLayoutMessage('Источник выбран. Нажмите целевую ВМ или протяните стрелку.')
-   }else stageDirectedFlow(from,id)
+   }else stageDirectedFlow(from,id,preferredSourceHandle?{...automaticPorts(from,id),source_handle:preferredSourceHandle}:undefined)
  }
  const displayedNodes=graphNodes.map(n=>({...n,
    data:n.id.startsWith('network:')?n.data:{...n.data,flowMode:tool==='flow',
      onDirectClick:()=>selectFlowComponent(n.id),
-     onStartFlow:(event:React.PointerEvent<HTMLDivElement>)=>beginFlowPointer(n.id,event),
+     onStartFlow:(handle:string,event:React.PointerEvent<HTMLDivElement>)=>beginFlowPointer(n.id,handle,event),
      onMoveFlow:moveFlowPointer,onFinishFlow:endFlowPointer},
    style:{...n.style,
     border:((tool==='flow'&&(n.id===from||n.id===to))||(tool==='move'&&n.id===inspectedId))?'2px solid #2563eb':n.style?.border,
@@ -499,11 +549,14 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
    }
    setName('');setTool('move');setReviewOpen(true)
  }
- const stageDirectedFlow=(source:string,target:string)=>{
+ const stageDirectedFlow=(source:string,target:string,anchors?:FlowPortPair)=>{
    setSelectedEdgeFlowIds([]);setSelectedExistingFlowId('')
    if(!source||!target||source===target){setError('Выберите два разных компонента для направления потока.');return}
    if(!allVMs.some(vm=>vm.id===source)||!allVMs.some(vm=>vm.id===target)){setError('Источник или получатель отсутствует на схеме.');return}
    const id=makeId()
+   // Store a chosen entry and exit immediately in the local layout draft.
+   setFlowAnchors(previous=>({...previous,[id]:anchors||automaticPorts(source,target)}))
+   setPreferredSourceHandle('')
    const sourceName=allVMs.find(vm=>vm.id===source)?.name||'Источник'
    const targetName=allVMs.find(vm=>vm.id===target)?.name||'Получатель'
    addChange({action:'create_flow',id,source_id:source,target_id:target,

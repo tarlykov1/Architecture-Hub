@@ -845,6 +845,32 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
               beginFlowPointer(node.dataset.id,anchor,event)
             }
           }}
+          onMouseDownCapture={event=>{
+            if(tool!=='flow'||event.button!==0)return
+            if(flowGesture.current||retargetGesture.current){
+              event.preventDefault();event.stopPropagation()
+              return
+            }
+            // React Flow begins panning on mousedown rather than pointerdown.
+            // Some browsers dispatch the compatibility mouse event on the
+            // pane despite a hit on a visible port. Recover the gesture from
+            // DOM anchor geometry and suppress the pane handler.
+            const at={x:event.clientX,y:event.clientY}
+            const sources=[...(boardCanvasRef.current?.querySelectorAll<HTMLElement>('.react-flow__node-boardComponent .flowPortSource.boardConnectionHandleActive')||[])]
+              .map(el=>{const b=el.getBoundingClientRect();return {el,distance:Math.hypot(at.x-b.left-b.width/2,at.y-b.top-b.height/2)}})
+              .sort((a,b)=>a.distance-b.distance)
+            const selected=sources[0]
+            const node=selected?.el.closest<HTMLElement>('.react-flow__node-boardComponent')
+            const handle=selected?.el.dataset.anchor
+            if(selected&&selected.distance<=24&&node?.dataset.id&&handle){
+              event.preventDefault();event.stopPropagation()
+              const box=selected.el.getBoundingClientRect()
+              const point=canvasPoint(box.left+box.width/2,box.top+box.height/2)
+              setPreferredSourceHandle(handle)
+              flowGesture.current={sourceId:node.dataset.id,sourceHandle:handle,start:point}
+              setFlowGhost({start:point,end:point})
+            }
+          }}
           onPointerMoveCapture={event=>{
             setCanvasInteracted(true)
             if(retargetGesture.current)moveReattach(event)
@@ -857,7 +883,7 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
           onPointerCancelCapture={event=>{
             if(retargetGesture.current)endReattach(event)
             else if(flowGesture.current)endFlowPointer(event)
-          }}><ReactFlow nodes={displayedNodes} edges={edges} nodeTypes={boardNodeTypes} edgeTypes={{reciprocal:ReciprocalEdge,'obstacle-aware':ObstacleAwareEdge}} onNodesChange={(updates:NodeChange[])=>{
+          }}><ReactFlow nodes={displayedNodes} edges={edges} panOnDrag={tool==='move'} nodeTypes={boardNodeTypes} edgeTypes={{reciprocal:ReciprocalEdge,'obstacle-aware':ObstacleAwareEdge}} onNodesChange={(updates:NodeChange[])=>{
   // React Flow is controlled: update rectangle geometry during the drag,
   // not only on drop, otherwise VRF/VLAN boxes appear stuck in place.
   const moved=new Map<string,{x:number;y:number}>()

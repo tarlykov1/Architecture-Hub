@@ -325,10 +325,20 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
      data_description:edit.data_description??flow.data_description,schedule:edit.schedule??flow.schedule,verification:edit.verification??flow.verification}:flow
  })
  const effectiveFlows=[...effectiveSavedFlows,...pendingFlows]
+ const automaticPorts=(source:string,target:string):FlowPortPair=>{
+   const a=nodes.find(n=>n.id===source),b=nodes.find(n=>n.id===target)
+   return autoFlowPorts(
+     {x:(a?.position.x||0)+110,y:(a?.position.y||0)+50},
+     {x:(b?.position.x||0)+110,y:(b?.position.y||0)+50}
+   )
+ }
+ const portsForFlow=(flow:Flow):FlowPortPair=>flowAnchors[flow.id]||automaticPorts(flow.source_id,flow.target_id)
+ // Two flows share a painted arrow only if both actual endpoint handles match.
  const flowGroups=new Map<string,Flow[]>()
  for(const flow of effectiveFlows){
    if(!allVMs.some(v=>v.id===flow.source_id)||!allVMs.some(v=>v.id===flow.target_id))continue
-   const key=flow.source_id+'|'+flow.target_id
+   const anchors=portsForFlow(flow)
+   const key=[flow.source_id,flow.target_id,anchors.source_handle,anchors.target_handle].join('|')
    flowGroups.set(key,[...(flowGroups.get(key)||[]),flow])
  }
  const relatedIds=new Set(inspectedId?[inspectedId,...effectiveFlows.filter(f=>f.source_id===inspectedId||f.target_id===inspectedId).flatMap(f=>[f.source_id,f.target_id])]:[])
@@ -397,12 +407,23 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
  const edges=Array.from(flowGroups.entries()).map(([pair,list])=>{
    const first=list[0]
    const protocolLabel=[first.protocol,first.port].filter(Boolean).join(':')
-   return {id:'flow-pair:'+pair,source:first.source_id,target:first.target_id,type:'obstacle-aware',animated:false,
+   const anchor=portsForFlow(first)
+   const selectedId=selectedExistingFlowId||selectedDraftFlowId
+   const selectedForReattach=selectedId&&list.some(flow=>flow.id===selectedId)&&selectedEdgeFlowIds.some(id=>list.some(flow=>flow.id===id))
+   return {id:'flow-pair:'+pair,source:first.source_id,target:first.target_id,
+     sourceHandle:anchor.source_handle,targetHandle:anchor.target_handle,
+     type:'obstacle-aware',animated:false,
      style:{stroke:list.some(f=>changes.some(c=>c.id===f.id&&(c.action==='create_flow'||c.action==='update_flow')))?'#176bc1':'#369279',strokeWidth:selectedEdgeFlowIds.some(id=>list.some(f=>f.id===id))?3.2:inspectedId&&(first.source_id===inspectedId||first.target_id===inspectedId)?3:1.8,opacity:focusDependencies&&inspectedId&&first.source_id!==inspectedId&&first.target_id!==inspectedId?0.16:1},
      markerEnd:{type:MarkerType.ArrowClosed,width:13,height:13},
      label:list.length>1?flowCountLabel(list.length):protocolLabel||'Поток',
      labelStyle:{fontSize:11,fontWeight:600},labelBgStyle:{fill:'#ffffff',fillOpacity:0.95},labelBgPadding:[7,4] as [number,number],
-     data:{reciprocal:flowGroups.has(first.target_id+'|'+first.source_id),flowIds:list.map(f=>f.id),caption:list.length>1?flowCountLabel(list.length):protocolLabel||'Поток'}
+     data:{reciprocal:effectiveFlows.some(f=>f.source_id===first.target_id&&f.target_id===first.source_id),
+       flowIds:list.map(f=>f.id),caption:list.length>1?flowCountLabel(list.length):protocolLabel||'Поток',
+       ...(selectedForReattach?{endpointEditor:{
+         onBegin:(end:FlowEnd,event:React.PointerEvent<HTMLButtonElement>)=>beginReattach(selectedId,end,event),
+         onMove:(event:React.PointerEvent<HTMLButtonElement>)=>moveReattach(event),
+         onEnd:(event:React.PointerEvent<HTMLButtonElement>)=>endReattach(event)
+       }}:{})}
    }
  })
  const addChange=(c:Change)=>{setChanges(previous=>[...previous,c]);setPreview(null);setError('')}

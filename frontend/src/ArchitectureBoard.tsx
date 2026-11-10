@@ -2,6 +2,7 @@ import React, {useEffect, useMemo, useRef, useState} from 'react'
 import './board.css'
 import {DiagramNodeLabel,diagramCardStyle} from './DiagramVisual'
 import MonitoringPanel from './MonitoringPanel'
+import ExistingFlowEditor, {type FlowValues} from './ExistingFlowEditor'
 import {AutoFit} from './WorkspaceUI'
 import {MousePointer2, Monitor, GitBranch, SquareDashed, Maximize2, Save, History, ClipboardCheck} from 'lucide-react'
 import {ReactFlow, ReactFlowProvider, Background, Controls, Handle, NodeResizer, useNodesState, useReactFlow, MarkerType, Position, type Node, type NodeChange, type NodeProps} from '@xyflow/react'
@@ -12,8 +13,8 @@ import {ObstacleAwareEdge} from './ObstacleAwareEdge'
 type VM = {id:string;system_id:string;kind:string;name:string;description?:string;details:Record<string,unknown>}
 type Network = {id:string;name:string;kind:string}
 type NIC = {id:string;item_id:string;name:string;zone_id:string|null;vlan_id:string|null;vrf_id:string|null}
-type Flow = {id:string;source_id:string;target_id:string;name:string;protocol:string;port:string}
-type Change = {action:'create_vm'|'create_network'|'create_flow'|'create_interface'|'move_interface'|'update_vm';id?:string;system_id?:string;name?:string;kind?:string;description?:string;source_id?:string;target_id?:string;protocol?:string;port?:string;security?:string;data_description?:string;interface_id?:string;item_id?:string;interface_name?:string;network_id?:string|null;previous_network_id?:string|null;previous_name?:string;previous_description?:string;details_patch?:Record<string,string>;previous_details?:Record<string,unknown>;network_field?:'zone_id'|'vlan_id'|'vrf_id'}
+type Flow = {id:string;source_id:string;target_id:string;name:string;protocol:string;port:string;security:string;data_description:string;schedule:string;verification:string}
+type Change = {action:'create_vm'|'create_network'|'create_flow'|'update_flow'|'create_interface'|'move_interface'|'update_vm';id?:string;system_id?:string;name?:string;kind?:string;description?:string;source_id?:string;target_id?:string;protocol?:string;port?:string;security?:string;data_description?:string;interface_id?:string;item_id?:string;interface_name?:string;network_id?:string|null;previous_network_id?:string|null;previous_name?:string;previous_description?:string;previous_flow?:FlowValues;details_patch?:Record<string,string>;previous_details?:Record<string,unknown>;network_field?:'zone_id'|'vlan_id'|'vrf_id'}
 type Preview = {changes:Array<{action:string;id:string;before:unknown;after:unknown;field?:string}>;count:number}
 type Props = {systemId:string;ownerName?:string;ownerBySystemId?:Record<string,string>;items:VM[];networks:Network[];interfaces:NIC[];flows:Flow[];savedPositions?:Record<string,{x:number;y:number}>;onPositionChange?:(node:Node)=>void;request:<T>(url:string,init?:RequestInit)=>Promise<T>;onCommitted:()=>Promise<void>;onEditNetwork?:(id:string)=>void;onDraftStateChange?:(pending:boolean)=>void}
 type Tool = 'move'|'vm'|'flow'|'network'
@@ -105,6 +106,8 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
  const [kind,setKind]=useState<'zone'|'vlan'|'vrf'>('zone')
  const [from,setFrom]=useState('')
  const [selectedDraftFlowId,setSelectedDraftFlowId]=useState('')
+ const [selectedExistingFlowId,setSelectedExistingFlowId]=useState('')
+ const [selectedEdgeFlowIds,setSelectedEdgeFlowIds]=useState<string[]>([])
  const [to,setTo]=useState('')
  const [direction,setDirection]=useState<'forward'|'reverse'|'both'>('forward')
  const [protocol,setProtocol]=useState('') // Unknown until an architect confirms the transport.
@@ -315,14 +318,20 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
  const backgroundNodes:Node[]=visibleRects.map(r=>({id:'network:'+r.id,type:'boardNetwork',position:{x:r.x,y:r.y},width:r.width,height:r.height,measured:{width:r.width,height:r.height},draggable:false,selectable:true,connectable:false,data:{onPointerDown:(event:React.PointerEvent<HTMLDivElement>)=>beginManualNetworkDrag(r.id,event),onPointerMove:(event:React.PointerEvent<HTMLDivElement>)=>moveManualNetworkDrag(r.id,event),onPointerUp:(event:React.PointerEvent<HTMLDivElement>)=>finishManualNetworkDrag(r.id,event),onPointerCancel:(event:React.PointerEvent<HTMLDivElement>)=>cancelManualNetworkDrag(r.id,event),resizable:tool==='move',onResize:(size:{x:number;y:number;width:number;height:number})=>updateNetworkSize(r.id,size),label:<div className="boardNetworkLabel"><strong>{r.name} · {r.kind.toUpperCase()}</strong><small>{draftNetworks.has(r.id)?'Черновик · ещё не сохранён':parents['network:'+r.id]?'В группе: '+(allNetworks.find(n=>'network:'+n.id===parents['network:'+r.id])?.name||'сеть'):'Свободная зона'} · {tool==='move'?'Тяните край для изменения размера':''}</small></div>},style:{width:r.width,height:r.height,background:draftNetworks.has(r.id)?'#fff7ed29':'#dbeafe15',border:draftNetworks.has(r.id)?'2px dashed #d97706':'2px dashed #2563eb',borderRadius:9,zIndex:10+(()=>{let depth=0,p=parents['network:'+r.id];while(p&&depth<10){depth++;p=parents[p]}return depth})(),pointerEvents:'none',textAlign:'left',padding:12,fontSize:13,color:'#1e40af'}}))
  const graphNodes=[...backgroundNodes,...nodes]
  // A pair of machines has one readable connection; its technical flows stay separate records.
- const pendingFlows=changes.filter(c=>c.action==='create_flow').map(c=>({id:c.id!,source_id:c.source_id!,target_id:c.target_id!,protocol:c.protocol||'',port:c.port||'',name:c.name||''}))
- const flowGroups=new Map<string,Array<{id:string;source_id:string;target_id:string;name:string;protocol:string;port:string}>>()
- for(const flow of [...flows,...pendingFlows]){
+ const pendingFlows=changes.filter(c=>c.action==='create_flow').map(c=>({id:c.id!,source_id:c.source_id!,target_id:c.target_id!,protocol:c.protocol||'',port:c.port||'',name:c.name||'',security:c.security||'unknown',data_description:c.data_description||'',schedule:'',verification:'draft'}))
+ const effectiveSavedFlows=flows.map(flow=>{
+   const edit=changes.find(c=>c.action==='update_flow'&&c.id===flow.id)
+   return edit?{...flow,name:edit.name??flow.name,protocol:edit.protocol??flow.protocol,port:edit.port??flow.port,security:edit.security??flow.security,
+     data_description:edit.data_description??flow.data_description,schedule:edit.schedule??flow.schedule,verification:edit.verification??flow.verification}:flow
+ })
+ const effectiveFlows=[...effectiveSavedFlows,...pendingFlows]
+ const flowGroups=new Map<string,Flow[]>()
+ for(const flow of effectiveFlows){
    if(!allVMs.some(v=>v.id===flow.source_id)||!allVMs.some(v=>v.id===flow.target_id))continue
    const key=flow.source_id+'|'+flow.target_id
    flowGroups.set(key,[...(flowGroups.get(key)||[]),flow])
  }
- const relatedIds=new Set(inspectedId?[inspectedId,...[...flows,...pendingFlows].filter(f=>f.source_id===inspectedId||f.target_id===inspectedId).flatMap(f=>[f.source_id,f.target_id])]:[])
+ const relatedIds=new Set(inspectedId?[inspectedId,...effectiveFlows].filter(f=>f.source_id===inspectedId||f.target_id===inspectedId).flatMap(f=>[f.source_id,f.target_id])]:[])
  const canvasPoint=(x:number,y:number)=>{
    const box=boardCanvasRef.current?.getBoundingClientRect()
    return {x:x-(box?.left||0),y:y-(box?.top||0)}
@@ -384,12 +393,12 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
  const openPassport=(id:string)=>{const vm=allVMs.find(v=>v.id===id);if(!vm)return;setInspectedId(id);setEditingPassport(false);setPassportDraft({name:vm.name,description:vm.description||'',purpose:String(vm.details?.purpose||''),environment:String(vm.details?.environment||'')})}
  const stagePassport=()=>{if(!inspectedVM||!passportDraft.name.trim())return;const details_patch:Record<string,string>={purpose:passportDraft.purpose,environment:passportDraft.environment};const previous_details:Record<string,unknown>={purpose:inspectedVM.details?.purpose??null,environment:inspectedVM.details?.environment??null};addChange({action:'update_vm',id:inspectedVM.id,system_id:systemId,name:passportDraft.name.trim(),description:passportDraft.description,previous_name:inspectedVM.name,previous_description:inspectedVM.description||'',details_patch,previous_details});setEditingPassport(false);setInspectedId(null);setFocusDependencies(false);setReviewOpen(true)}
 
- const inspectedFlows=[...flows,...pendingFlows].filter(f=>f.source_id===inspectedId||f.target_id===inspectedId)
+ const inspectedFlows=effectiveFlows.filter(f=>f.source_id===inspectedId||f.target_id===inspectedId)
  const edges=Array.from(flowGroups.entries()).map(([pair,list])=>{
    const first=list[0]
    const protocolLabel=[first.protocol,first.port].filter(Boolean).join(':')
    return {id:'flow-pair:'+pair,source:first.source_id,target:first.target_id,type:'obstacle-aware',animated:false,
-     style:{stroke:list.some(f=>pendingFlows.some(c=>c.id===f.id))?'#176bc1':'#369279',strokeWidth:inspectedId&&(first.source_id===inspectedId||first.target_id===inspectedId)?3:1.8,opacity:focusDependencies&&inspectedId&&first.source_id!==inspectedId&&first.target_id!==inspectedId?0.16:1},
+     style:{stroke:list.some(f=>changes.some(c=>c.id===f.id&&(c.action==='create_flow'||c.action==='update_flow')))?'#176bc1':'#369279',strokeWidth:selectedEdgeFlowIds.some(id=>list.some(f=>f.id===id))?3.2:inspectedId&&(first.source_id===inspectedId||first.target_id===inspectedId)?3:1.8,opacity:focusDependencies&&inspectedId&&first.source_id!==inspectedId&&first.target_id!==inspectedId?0.16:1},
      markerEnd:{type:MarkerType.ArrowClosed,width:13,height:13},
      label:list.length>1?flowCountLabel(list.length):protocolLabel||'Поток',
      labelStyle:{fontSize:11,fontWeight:600},labelBgStyle:{fill:'#ffffff',fillOpacity:0.95},labelBgPadding:[7,4] as [number,number],

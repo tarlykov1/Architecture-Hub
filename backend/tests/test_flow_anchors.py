@@ -3,7 +3,7 @@ from uuid import uuid4
 
 from fastapi.testclient import TestClient
 from app.main import app
-from .test_board import ADMIN, create_system_and_vm
+from test_board import ADMIN, create_system_and_vm
 
 
 def test_saved_flow_anchors_survive_reload_and_are_audited():

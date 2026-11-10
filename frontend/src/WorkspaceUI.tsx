@@ -2,7 +2,7 @@ import React, {useEffect,useRef,type ReactNode} from 'react'
 import {useNodes,useNodesInitialized,useReactFlow} from '@xyflow/react'
 
 /** Refit measured graphs on membership/layout changes and actual canvas resize. */
-export function AutoFit({layoutKey='',maxFitZoom=1,groupParentsOnly=false,focusIds=[],suspended=false}:{layoutKey?:string;maxFitZoom?:number;groupParentsOnly?:boolean;focusIds?:string[];suspended?:boolean}){
+export function AutoFit({layoutKey='',maxFitZoom=1,groupParentsOnly=false,focusIds=[],suspended=false,settleDelayMs=300}:{layoutKey?:string;maxFitZoom?:number;groupParentsOnly?:boolean;focusIds?:string[];suspended?:boolean;settleDelayMs?:number}){
  const anchor=useRef<HTMLSpanElement>(null)
  const {fitView}=useReactFlow()
  const initialized=useNodesInitialized()
@@ -28,7 +28,7 @@ export function AutoFit({layoutKey='',maxFitZoom=1,groupParentsOnly=false,focusI
    // Repeat once when the final dimensions are known rather than keeping the
    // viewport fitted to stale measurements.
    window.clearTimeout(settle)
-   settle=window.setTimeout(fit,300)
+   if(settleDelayMs>0)settle=window.setTimeout(fit,settleDelayMs)
   }
   const observer=new ResizeObserver(entries=>{
    const rect=entries[0].contentRect
@@ -45,7 +45,7 @@ export function AutoFit({layoutKey='',maxFitZoom=1,groupParentsOnly=false,focusI
    window.clearTimeout(settle)
    cancelAnimationFrame(frame);cancelAnimationFrame(inner)
   }
- },[fitView,initialized,ids,topLevelIds,visibleFocusIds,layoutKey,maxFitZoom,groupParentsOnly,suspended])
+ },[fitView,initialized,ids,topLevelIds,visibleFocusIds,layoutKey,maxFitZoom,groupParentsOnly,suspended,settleDelayMs])
  return <span ref={anchor} hidden/>
 }
 

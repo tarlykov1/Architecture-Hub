@@ -1,0 +1,13 @@
+/* Nonmodal flow catalog inspectors: leave the architecture canvas interactive. */
+.flowCatalogInspectorLayer { position: fixed; inset: 0; z-index: 90; pointer-events: none; }
+.flowCatalogInspectorLayer > .architectureDrawer {
+  position: absolute; top: 0; right: 0; bottom: 0;
+  width: min(640px, 48vw); max-width: 100%; height: 100%;
+  overflow-y: auto; box-sizing: border-box;
+  background: var(--surface, #fff);
+  box-shadow: -8px 0 28px rgba(20, 36, 58, .14);
+  pointer-events: auto;
+}
+@media (max-width: 700px) {
+  .flowCatalogInspectorLayer > .architectureDrawer { width: min(420px, 100vw); }
+}

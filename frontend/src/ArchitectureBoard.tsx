@@ -331,7 +331,7 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
    const key=flow.source_id+'|'+flow.target_id
    flowGroups.set(key,[...(flowGroups.get(key)||[]),flow])
  }
- const relatedIds=new Set(inspectedId?[inspectedId,...effectiveFlows].filter(f=>f.source_id===inspectedId||f.target_id===inspectedId).flatMap(f=>[f.source_id,f.target_id])]:[])
+ const relatedIds=new Set(inspectedId?[inspectedId,...effectiveFlows.filter(f=>f.source_id===inspectedId||f.target_id===inspectedId).flatMap(f=>[f.source_id,f.target_id])]:[])
  const canvasPoint=(x:number,y:number)=>{
    const box=boardCanvasRef.current?.getBoundingClientRect()
    return {x:x-(box?.left||0),y:y-(box?.top||0)}

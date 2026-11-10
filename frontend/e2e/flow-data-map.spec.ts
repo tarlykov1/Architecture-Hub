@@ -51,6 +51,8 @@ test('saved flow shows distinct attribute sets for each business process and con
  await board.locator('.react-flow__node').filter({hasText:'Mapping source '+marker}).click()
  const inspector=board.getByRole('dialog',{name:'Паспорт компонента Mapping source '+marker})
  await inspector.getByRole('button',{name:'Открыть параметры потока'}).click()
+ // Two keyed dock widgets must not clone the same edit form on React rerenders.
+ await expect(board.getByRole('form',{name:'Редактирование существующего потока'})).toHaveCount(1)
  const metadata=board.getByRole('region',{name:'Атрибуты данных потока'})
  await expect(metadata.getByText('Состав передаваемых данных')).toBeVisible()
  await expect(metadata.getByText('Employee identifier '+marker)).toBeVisible()

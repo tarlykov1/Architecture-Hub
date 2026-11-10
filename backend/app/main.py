@@ -2155,7 +2155,7 @@ def save_board_layout(system_id: UUID, payload: BoardLayoutInput,
         for key in sorted(set(previous_anchors) | set(anchors))
         if previous_anchors.get(key) != anchors.get(key)
     ]
-    db.add(BoardAudit(reason="Сохранены расположение и точки подключения потоков",
+    db.add(BoardAudit(reason="Сохранено расположение элементов схемы и точек подключения потоков",
                       actor=board_actor(request), changes=layout_changes))
     db.commit()
     return {"system_id": str(system_id), "positions": positions, "flow_anchors": anchors}

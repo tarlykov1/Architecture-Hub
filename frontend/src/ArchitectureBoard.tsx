@@ -442,6 +442,95 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
    if(event.currentTarget.hasPointerCapture(event.pointerId))event.currentTarget.releasePointerCapture(event.pointerId)
    finishReattachAt({x:event.clientX,y:event.clientY})
  }
+
+ // React Flow's pane, the handle and the edge label can each take pointer
+ // capture. A document-level listener guarantees mouseup is observed even
+ // when it lands on another handle or outside the original React component.
+ // Capture the start before React Flow receives pointerdown, too.
+ const suppressFlowClickUntil=useRef(0)
+ useEffect(()=>{
+   if(tool!=='flow')return
+   const canvas=boardCanvasRef.current
+   if(!canvas)return
+   const center=(element:HTMLElement)=>{
+     const rect=element.getBoundingClientRect()
+     return {x:rect.left+rect.width/2,y:rect.top+rect.height/2}
+   }
+   const nearest=(selector:string,point:{x:number;y:number})=>
+     [...canvas.querySelectorAll<HTMLElement>(selector)]
+       .map(el=>({el,distance:Math.hypot(center(el).x-point.x,center(el).y-point.y)}))
+       .sort((a,b)=>a.distance-b.distance)[0]
+   const active=()=>Boolean(flowGesture.current||retargetGesture.current)
+   const onDown=(event:PointerEvent)=>{
+     if(event.button!==0||active())return
+     const bounds=canvas.getBoundingClientRect()
+     const at={x:event.clientX,y:event.clientY}
+     if(at.x<bounds.left||at.x>bounds.right||at.y<bounds.top||at.y>bounds.bottom)return
+     const selected=selectedExistingFlowId||selectedDraftFlowId
+     if(selected){
+       const grip=nearest('.boardEndpointGrip',at)
+       const end=grip?.el.dataset.flowEnd
+       const flow=effectiveFlows.find(f=>f.id===selected)
+       if(grip&&grip.distance<=21&&flow&&(end==='source'||end==='target')){
+         event.preventDefault();event.stopPropagation()
+         const nodeId=end==='source'?flow.source_id:flow.target_id
+         retargetGesture.current={flowId:selected,end,nodeId}
+         setCanvasInteracted(true)
+         const point=center(grip.el)
+         setFlowGhost({start:canvasPoint(point.x,point.y),end:canvasPoint(point.x,point.y)})
+         return
+       }
+     }
+     const source=nearest('.react-flow__node-boardComponent .flowPortSource.boardConnectionHandleActive',at)
+     const node=source?.el.closest<HTMLElement>('.react-flow__node-boardComponent')
+     const anchor=source?.el.dataset.anchor
+     if(!source||source.distance>21||!node?.dataset.id||!anchor)return
+     event.preventDefault();event.stopPropagation()
+     const point=center(source.el)
+     flowGesture.current={sourceId:node.dataset.id,sourceHandle:anchor,start:canvasPoint(point.x,point.y)}
+     setPreferredSourceHandle(anchor);setCanvasInteracted(true)
+     setFlowGhost({start:canvasPoint(point.x,point.y),end:canvasPoint(point.x,point.y)})
+   }
+   const onMove=(event:PointerEvent|MouseEvent)=>{
+     if(!active())return
+     event.preventDefault();event.stopPropagation()
+     setFlowGhost(previous=>previous?{...previous,end:canvasPoint(event.clientX,event.clientY)}:null)
+   }
+   const onUp=(event:PointerEvent|MouseEvent)=>{
+     if(!active())return
+     event.preventDefault();event.stopPropagation()
+     // Do not turn the synthetic click following a drag into a new source selection.
+     suppressFlowClickUntil.current=Date.now()+300
+     const at={x:event.clientX,y:event.clientY}
+     if(retargetGesture.current)finishReattachAt(at)
+     else finishFlowAt(at)
+   }
+   const onCancel=()=>{
+     if(!active())return
+     flowGesture.current=null;retargetGesture.current=null;setFlowGhost(null)
+     setLayoutMessage('Жест подключения прерван. Повторите перетаскивание.')
+   }
+   const onClick=(event:MouseEvent)=>{
+     if(Date.now()>suppressFlowClickUntil.current)return
+     if(canvas.contains(event.target as Node)){event.preventDefault();event.stopPropagation()}
+   }
+   document.addEventListener('pointerdown',onDown,true)
+   document.addEventListener('pointermove',onMove,true)
+   document.addEventListener('pointerup',onUp,true)
+   document.addEventListener('pointercancel',onCancel,true)
+   document.addEventListener('mousemove',onMove,true)
+   document.addEventListener('mouseup',onUp,true)
+   document.addEventListener('click',onClick,true)
+   return ()=>{
+     document.removeEventListener('pointerdown',onDown,true)
+     document.removeEventListener('pointermove',onMove,true)
+     document.removeEventListener('pointerup',onUp,true)
+     document.removeEventListener('pointercancel',onCancel,true)
+     document.removeEventListener('mousemove',onMove,true)
+     document.removeEventListener('mouseup',onUp,true)
+     document.removeEventListener('click',onClick,true)
+   }
+ },[tool,systemId,selectedExistingFlowId,selectedDraftFlowId,flows,changes,flowAnchors])
  const selectFlowComponent=(id:string)=>{
    setInspectedId(null);setInspectedNetworkId(null);setFocusDependencies(false)
    if(!from||to||from===id){

@@ -2021,9 +2021,31 @@ class BoardPoint(BaseModel):
     parent_id: str | None = Field(default=None, pattern=r"^network:[0-9a-fA-F-]{36}$")
 
 
+# Eight reusable anchors per component: two on each side. These identify
+# presentation geometry only, never infrastructure interfaces or network ports.
+SOURCE_ANCHORS = {f"out-{side}-{index}" for side in ("top", "right", "bottom", "left") for index in (1, 2)}
+TARGET_ANCHORS = {f"in-{side}-{index}" for side in ("top", "right", "bottom", "left") for index in (1, 2)}
+
+
+class BoardFlowAnchor(BaseModel):
+    source_handle: str = Field(min_length=5, max_length=20)
+    target_handle: str = Field(min_length=5, max_length=20)
+
+
 class BoardLayoutInput(BaseModel):
     # Network rectangles are stored as "network:<segment UUID>".
     positions: dict[str, BoardPoint] = Field(default_factory=dict, max_length=1000)
+    # An omitted field preserves the previously saved anchor choices for older clients.
+    flow_anchors: dict[str, BoardFlowAnchor] | None = Field(default=None, max_length=1000)
+
+
+def unpack_board_layout(raw: dict[str, Any] | None) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Read legacy position maps and the v2 layout envelope without DB migrations."""
+    if not isinstance(raw, dict):
+        return {}, {}
+    if raw.get("_layout_schema") == 2:
+        return dict(raw.get("positions") or {}), dict(raw.get("flow_anchors") or {})
+    return dict(raw), {}
 
 
 @app.get("/api/board/layout/{system_id}")
@@ -2031,7 +2053,8 @@ def read_board_layout(system_id: UUID, db: Session = Depends(db_session)):
     if db.get(ArchitectureObject, system_id) is None:
         raise HTTPException(404, "System not found")
     stored = db.get(BoardLayout, system_id)
-    return {"system_id": str(system_id), "positions": stored.positions if stored else {}}
+    positions, anchors = unpack_board_layout(stored.positions if stored else None)
+    return {"system_id": str(system_id), "positions": positions, "flow_anchors": anchors}
 
 
 @app.put("/api/board/layout/{system_id}")
@@ -2093,25 +2116,49 @@ def save_board_layout(system_id: UUID, payload: BoardLayoutInput,
             ancestor = payload.positions[ancestor].parent_id
     positions = {key: point.model_dump(exclude_none=True) for key, point in payload.positions.items()}
     stored = db.get(BoardLayout, system_id)
-    before = dict(stored.positions or {}) if stored else {}
-    if before == positions:
-        return {"system_id": str(system_id), "positions": positions}
+    before, previous_anchors = unpack_board_layout(stored.positions if stored else None)
+    anchors = previous_anchors.copy() if payload.flow_anchors is None else {
+        key: item.model_dump() for key, item in payload.flow_anchors.items()
+    }
+    # Do not accept imaginary flow IDs or arbitrary port names. The selected
+    # flow is already committed to the registry before saving its endpoints.
+    flow_ids: list[UUID] = []
+    for key, anchor in anchors.items():
+        try:
+            flow_id = UUID(key)
+        except ValueError:
+            raise HTTPException(422, "Invalid flow id in layout") from None
+        if anchor["source_handle"] not in SOURCE_ANCHORS or anchor["target_handle"] not in TARGET_ANCHORS:
+            raise HTTPException(422, "Invalid source or target anchor")
+        flow_ids.append(flow_id)
+    if flow_ids:
+        present = set(db.scalars(select(DataFlow.id).where(DataFlow.id.in_(flow_ids))).all())
+        if len(present) != len(set(flow_ids)):
+            raise HTTPException(422, "Unknown flow in layout")
+    if before == positions and previous_anchors == anchors:
+        return {"system_id": str(system_id), "positions": positions, "flow_anchors": anchors}
+    # Reuse existing JSON column without an incompatible SQLite migration.
+    encoded = {"_layout_schema": 2, "positions": positions, "flow_anchors": anchors}
     if stored is None:
-        stored = BoardLayout(system_id=system_id, positions=positions)
+        stored = BoardLayout(system_id=system_id, positions=encoded)
         db.add(stored)
     else:
-        stored.positions = positions
+        stored.positions = encoded
         stored.updated_at = datetime.now(timezone.utc)
-    # The layout and its audit event commit atomically. Draft actions do not enter history.
     layout_changes = [
-        {"action": "update_layout", "id":key, "before":before.get(key), "after":positions.get(key)}
+        {"action": "update_layout", "id": key, "before": before.get(key), "after": positions.get(key)}
         for key in sorted(set(before) | set(positions))
         if before.get(key) != positions.get(key)
+    ] + [
+        {"action": "update_flow_anchor", "id": key,
+         "before": previous_anchors.get(key), "after": anchors.get(key)}
+        for key in sorted(set(previous_anchors) | set(anchors))
+        if previous_anchors.get(key) != anchors.get(key)
     ]
-    db.add(BoardAudit(reason="Сохранено расположение элементов схемы",
+    db.add(BoardAudit(reason="Сохранены расположение и точки подключения потоков",
                       actor=board_actor(request), changes=layout_changes))
     db.commit()
-    return {"system_id": str(system_id), "positions": positions}
+    return {"system_id": str(system_id), "positions": positions, "flow_anchors": anchors}
 
 
 class BoardBatch(BaseModel):

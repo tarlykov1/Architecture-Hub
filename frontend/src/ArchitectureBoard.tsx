@@ -378,12 +378,10 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
    event.stopPropagation()
    setFlowGhost({start:gesture.start,end:canvasPoint(event.clientX,event.clientY)})
  }
- const endFlowPointer=(event:React.PointerEvent<HTMLDivElement>)=>{
+ const finishFlowAt=(at:{x:number;y:number})=>{
    const gesture=flowGesture.current
    if(!gesture)return
-   event.stopPropagation()
-   const result=findDropTarget({x:event.clientX,y:event.clientY},gesture.sourceId)
-   if(event.currentTarget.hasPointerCapture(event.pointerId))event.currentTarget.releasePointerCapture(event.pointerId)
+   const result=findDropTarget(at,gesture.sourceId)
    flowGesture.current=null;setFlowGhost(null)
    if(result){
      stageDirectedFlow(gesture.sourceId,result.targetId,{source_handle:gesture.sourceHandle,target_handle:result.targetHandle})
@@ -391,6 +389,12 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
      setFrom(gesture.sourceId);setTo('')
      setLayoutMessage('Точка выхода выбрана. Нажмите на другую ВМ или протяните стрелку к одной из её восьми точек.')
    }
+ }
+ const endFlowPointer=(event:React.PointerEvent<HTMLDivElement>)=>{
+   if(!flowGesture.current)return
+   event.stopPropagation()
+   if(event.currentTarget.hasPointerCapture(event.pointerId))event.currentTarget.releasePointerCapture(event.pointerId)
+   finishFlowAt({x:event.clientX,y:event.clientY})
  }
  const beginReattach=(flowId:string,end:FlowEnd,event:React.PointerEvent<HTMLElement>)=>{
    if(event.button!==0)return
@@ -411,15 +415,12 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
    event.stopPropagation()
    setFlowGhost(previous=>previous?{...previous,end:canvasPoint(event.clientX,event.clientY)}:null)
  }
- const endReattach=(event:React.PointerEvent<HTMLElement>)=>{
+ const finishReattachAt=(at:{x:number;y:number})=>{
    const gesture=retargetGesture.current
    if(!gesture)return
-   event.stopPropagation()
-   if(event.currentTarget.hasPointerCapture(event.pointerId))event.currentTarget.releasePointerCapture(event.pointerId)
    retargetGesture.current=null;setFlowGhost(null)
    const node=vmElement(gesture.nodeId)
    if(!node){setError('Компонент потока больше не отображается на схеме.');return}
-   const at={x:event.clientX,y:event.clientY}
    const bounds=node.getBoundingClientRect()
    const within=at.x>=bounds.left-30&&at.x<=bounds.right+30&&at.y>=bounds.top-30&&at.y<=bounds.bottom+30
    if(!within){setLayoutMessage('Конец стрелки можно перенести на другую точку той же ВМ. Для смены ВМ создайте новый поток.');return}
@@ -434,6 +435,12 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
    setLayoutDirty(true)
    setLayoutMessage('Точка подключения стрелки изменена. Нажмите «Сохранить», чтобы сохранить расположение концов в схеме.')
    setError('')
+ }
+ const endReattach=(event:React.PointerEvent<HTMLElement>)=>{
+   if(!retargetGesture.current)return
+   event.stopPropagation()
+   if(event.currentTarget.hasPointerCapture(event.pointerId))event.currentTarget.releasePointerCapture(event.pointerId)
+   finishReattachAt({x:event.clientX,y:event.clientY})
  }
  const selectFlowComponent=(id:string)=>{
    setInspectedId(null);setInspectedNetworkId(null);setFocusDependencies(false)

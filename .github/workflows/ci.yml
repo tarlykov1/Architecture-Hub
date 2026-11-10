@@ -59,8 +59,12 @@ jobs:
 
   browser:
     name: Browser smoke tests (Chromium)
-    # Match the OS supported by the lockfile-pinned Playwright browser build.
     runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    # Avoid apt-get against flaky Ubuntu mirrors on the hosted runner.
+    # This image includes Chromium and system libraries; match the npm lockfile.
+    container:
+      image: mcr.microsoft.com/playwright:v1.56.1-noble
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -76,7 +80,7 @@ jobs:
           python -m pip install -r backend/requirements.txt
           cd frontend
           npm ci --no-audit --no-fund
-          npx playwright install --with-deps chromium
+          # Chromium and its OS dependencies are baked into the pinned image.
       - name: Start isolated services
         env:
           DATABASE_URL: sqlite:///${{ runner.temp }}/browser_ci.db

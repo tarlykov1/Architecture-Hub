@@ -363,7 +363,10 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
    if(tool!=='flow'||event.button!==0)return
    event.stopPropagation();event.preventDefault()
    setCanvasInteracted(true);setPreferredSourceHandle(handle)
-   const bounds=event.currentTarget.getBoundingClientRect()
+   // Use the true port location, even if the pointer is intercepted by the
+   // canvas hit-test layer (React Flow's pane can sit over narrow top handles).
+   const port=vmElement(id)?.querySelector<HTMLElement>('[data-anchor="'+handle+'"]')
+   const bounds=(port||event.currentTarget).getBoundingClientRect()
    const point=canvasPoint(bounds.x+bounds.width/2,bounds.y+bounds.height/2)
    flowGesture.current={sourceId:id,sourceHandle:handle,start:point}
    setFlowGhost({start:point,end:point})
@@ -807,7 +810,35 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
  }
  return <section className="boardWorkspace" aria-label="Редактор архитектурной схемы">
    <div className="boardEditorStage">
-        <div ref={boardCanvasRef} className="boardCanvas" data-active-graph="infrastructure-editor" onPointerMoveCapture={()=>setCanvasInteracted(true)} onPointerDownCapture={()=>setCanvasInteracted(true)}><ReactFlow nodes={displayedNodes} edges={edges} nodeTypes={boardNodeTypes} edgeTypes={{reciprocal:ReciprocalEdge,'obstacle-aware':ObstacleAwareEdge}} onNodesChange={(updates:NodeChange[])=>{
+        <div ref={boardCanvasRef} className="boardCanvas" data-active-graph="infrastructure-editor"
+          onPointerDownCapture={event=>{
+            setCanvasInteracted(true)
+            if(tool!=='flow'||event.button!==0)return
+            // The top/side handles are on the card boundary. Their visible
+            // circles can be obscured by React Flow's panning layer even when
+            // a click appears to land on the port. Hit-test them by coordinates
+            // before the pane handles pointerdown and starts dragging canvas.
+            const at={x:event.clientX,y:event.clientY}
+            const targets=[...(boardCanvasRef.current?.querySelectorAll<HTMLElement>('.react-flow__node-boardComponent .flowPortSource.boardConnectionHandleActive')||[])]
+              .map(el=>{const b=el.getBoundingClientRect();return {el,distance:Math.hypot(at.x-b.left-b.width/2,at.y-b.top-b.height/2)}})
+              .sort((a,b)=>a.distance-b.distance)
+            const closest=targets[0]
+            const node=closest?.el.closest<HTMLElement>('.react-flow__node-boardComponent')
+            const anchor=closest?.el.dataset.anchor
+            if(closest&&closest.distance<=18&&node?.dataset.id&&anchor){
+              beginFlowPointer(node.dataset.id,anchor,event)
+            }
+          }}
+          onPointerMoveCapture={event=>{
+            setCanvasInteracted(true)
+            if(flowGesture.current)moveFlowPointer(event)
+          }}
+          onPointerUpCapture={event=>{
+            if(flowGesture.current)endFlowPointer(event)
+          }}
+          onPointerCancelCapture={event=>{
+            if(flowGesture.current)endFlowPointer(event)
+          }}><ReactFlow nodes={displayedNodes} edges={edges} nodeTypes={boardNodeTypes} edgeTypes={{reciprocal:ReciprocalEdge,'obstacle-aware':ObstacleAwareEdge}} onNodesChange={(updates:NodeChange[])=>{
   // React Flow is controlled: update rectangle geometry during the drag,
   // not only on drop, otherwise VRF/VLAN boxes appear stuck in place.
   const moved=new Map<string,{x:number;y:number}>()

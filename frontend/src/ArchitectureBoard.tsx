@@ -347,11 +347,20 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
    const gesture=flowGesture.current
    if(!gesture)return
    event.stopPropagation()
-   const under=document.elementFromPoint(event.clientX,event.clientY)
-   const target=(under?.closest('.react-flow__node-boardComponent') as HTMLElement|null)?.dataset.id
+   // A React Flow target Handle sits half outside its parent card. During
+   // pointer capture, elementFromPoint may see the background (or overlay)
+   // instead of the target node; use actual handle geometry first.
+   const candidates=[...(boardCanvasRef.current?.querySelectorAll<HTMLElement>('.react-flow__node-boardComponent')||[])]
+     .filter(node=>node.dataset.id&&node.dataset.id!==gesture.sourceId)
+   const near=(rect:DOMRect,margin:number)=>event.clientX>=rect.left-margin&&event.clientX<=rect.right+margin&&
+     event.clientY>=rect.top-margin&&event.clientY<=rect.bottom+margin
+   const byHandle=candidates.find(node=>[...node.querySelectorAll<HTMLElement>('.boardConnectionHandle.target')]
+     .some(handle=>near(handle.getBoundingClientRect(),12)))
+   const byCard=candidates.find(node=>near(node.getBoundingClientRect(),8))
+   const target=(byHandle||byCard)?.dataset.id
    if(event.currentTarget.hasPointerCapture(event.pointerId))event.currentTarget.releasePointerCapture(event.pointerId)
    flowGesture.current=null;setFlowGhost(null)
-   if(target&&target!==gesture.sourceId)stageDirectedFlow(gesture.sourceId,target)
+   if(target)stageDirectedFlow(gesture.sourceId,target)
  }
  const selectFlowComponent=(id:string)=>{
    setInspectedId(null);setInspectedNetworkId(null);setFocusDependencies(false)

@@ -9,6 +9,7 @@ import {ReactFlow, ReactFlowProvider, Background, Controls, Handle, NodeResizer,
 import {compactComponentLayout,flowCountLabel} from './graphLayout'
 import {ReciprocalEdge} from './ReciprocalEdge'
 import {ObstacleAwareEdge} from './ObstacleAwareEdge'
+import {FlowPortHandles, autoFlowPorts, closestVisiblePort, type FlowPortPair, type FlowEnd} from './flowPorts'
 
 type VM = {id:string;system_id:string;kind:string;name:string;description?:string;details:Record<string,unknown>}
 type Network = {id:string;name:string;kind:string}
@@ -18,23 +19,18 @@ type Change = {action:'create_vm'|'create_network'|'create_flow'|'update_flow'|'
 type Preview = {changes:Array<{action:string;id:string;before:unknown;after:unknown;field?:string}>;count:number}
 type Props = {systemId:string;ownerName?:string;ownerBySystemId?:Record<string,string>;items:VM[];networks:Network[];interfaces:NIC[];flows:Flow[];savedPositions?:Record<string,{x:number;y:number}>;onPositionChange?:(node:Node)=>void;request:<T>(url:string,init?:RequestInit)=>Promise<T>;onCommitted:()=>Promise<void>;onEditNetwork?:(id:string)=>void;onDraftStateChange?:(pending:boolean)=>void}
 type Tool = 'move'|'vm'|'flow'|'network'
-// Visible connection ports make drawing on the canvas discoverable. Four
-// dedicated ports work in React Flow's strict source-to-target mode.
+// Eight geometrically independent handles per VM, each usable for outgoing
+// and incoming data flows. Target handles are invisible but stay measurable.
 function BoardComponentNode({data}:NodeProps){
  const drawing=Boolean(data.flowMode)
- const props=data as {label:React.ReactNode;flowMode?:boolean;onDirectClick?:()=>void;onStartFlow?:(event:React.PointerEvent<HTMLDivElement>)=>void;onMoveFlow?:(event:React.PointerEvent<HTMLDivElement>)=>void;onFinishFlow?:(event:React.PointerEvent<HTMLDivElement>)=>void}
- const start=(event:React.PointerEvent<HTMLDivElement>)=>{if(!drawing)return;event.stopPropagation();event.preventDefault();props.onStartFlow?.(event)}
- const move=(event:React.PointerEvent<HTMLDivElement>)=>props.onMoveFlow?.(event)
- const end=(event:React.PointerEvent<HTMLDivElement>)=>props.onFinishFlow?.(event)
- const swallowHandleClick=(event:React.MouseEvent<HTMLDivElement>)=>{event.preventDefault();event.stopPropagation()}
- const sourceProps={onPointerDown:start,onPointerMove:move,onPointerUp:end,onPointerCancel:end,
-   onMouseDown:(event:React.MouseEvent<HTMLDivElement>)=>{event.preventDefault();event.stopPropagation()},onClick:swallowHandleClick}
+ const props=data as {label:React.ReactNode;flowMode?:boolean;onDirectClick?:()=>void;
+  onStartFlow?:(handle:string,event:React.PointerEvent<HTMLDivElement>)=>void;
+  onMoveFlow?:(event:React.PointerEvent<HTMLDivElement>)=>void;
+  onFinishFlow?:(event:React.PointerEvent<HTMLDivElement>)=>void}
  return <>
   <div className="boardComponentClickArea" onClick={event=>{if(drawing){event.stopPropagation();props.onDirectClick?.()}}}>{props.label}</div>
-  <Handle type="source" id="out-right" position={Position.Right} isConnectable={false} className={'boardConnectionHandle'+(drawing?' boardConnectionHandleActive':'')} {...sourceProps}/>
-  <Handle type="source" id="out-bottom" position={Position.Bottom} isConnectable={false} className={'boardConnectionHandle'+(drawing?' boardConnectionHandleActive':'')} {...sourceProps}/>
-  <Handle type="target" id="in-left" position={Position.Left} isConnectable={false} className={'boardConnectionHandle'+(drawing?' boardConnectionHandleActive':'')} onClick={swallowHandleClick}/>
-  <Handle type="target" id="in-top" position={Position.Top} isConnectable={false} className={'boardConnectionHandle'+(drawing?' boardConnectionHandleActive':'')} onClick={swallowHandleClick}/>
+  <FlowPortHandles visible={drawing} sourcePointerDown={props.onStartFlow}
+    sourcePointerMove={props.onMoveFlow} sourcePointerUp={props.onFinishFlow}/>
  </>
 }
 function BoardNetworkNode({data}:NodeProps){
@@ -66,7 +62,7 @@ const descendants=(root:string,parents:Record<string,string>):Set<string>=>{
 const fieldForKind=(kind:string):'zone_id'|'vlan_id'|'vrf_id'=>kind==='vlan'?'vlan_id':kind==='vrf'?'vrf_id':'zone_id'
 // Save uncommitted UI work across navigating away from the editor in the same tab.
 // This is a local draft only: the API registry is changed by /api/board/commit.
-type StoredBoardDraft={changes:Change[];rectangles:Rect[];positions:Record<string,{x:number;y:number}>;parents?:Record<string,string>;reason:string}
+type StoredBoardDraft={changes:Change[];rectangles:Rect[];positions:Record<string,{x:number;y:number}>;parents?:Record<string,string>;flowAnchors?:Record<string,FlowPortPair>;reason:string}
 const draftKey=(systemId:string)=>'architecture-hub:board-draft:v1:'+systemId
 function readBoardDraft(systemId:string):StoredBoardDraft|null{
  try{
@@ -74,7 +70,7 @@ function readBoardDraft(systemId:string):StoredBoardDraft|null{
   if(!raw)return null
   const value=JSON.parse(raw) as Partial<StoredBoardDraft>
   if(!Array.isArray(value.changes)||!Array.isArray(value.rectangles)||!value.changes.length)return null
-  return {changes:value.changes.filter(c=>c&&typeof c.action==='string'),rectangles:value.rectangles.filter(r=>r&&typeof r.id==='string'),positions:value.positions&&typeof value.positions==='object'?value.positions:{},parents:value.parents&&typeof value.parents==='object'?value.parents:{},reason:typeof value.reason==='string'?value.reason:''}
+  return {changes:value.changes.filter(c=>c&&typeof c.action==='string'),rectangles:value.rectangles.filter(r=>r&&typeof r.id==='string'),positions:value.positions&&typeof value.positions==='object'?value.positions:{},parents:value.parents&&typeof value.parents==='object'?value.parents:{},flowAnchors:value.flowAnchors&&typeof value.flowAnchors==='object'?value.flowAnchors:{},reason:typeof value.reason==='string'?value.reason:''}
  }catch{return null}
 }
 
@@ -85,7 +81,9 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
  const [draggingNode,setDraggingNode]=useState(false)
  const [canvasInteracted,setCanvasInteracted]=useState(false)
  const boardCanvasRef=useRef<HTMLDivElement>(null)
- const flowGesture=useRef<{sourceId:string;start:{x:number;y:number}}|null>(null)
+ const flowGesture=useRef<{sourceId:string;sourceHandle:string;start:{x:number;y:number}}|null>(null)
+ const retargetGesture=useRef<{flowId:string;end:FlowEnd;nodeId:string}|null>(null)
+ const [preferredSourceHandle,setPreferredSourceHandle]=useState('')
  const [flowGhost,setFlowGhost]=useState<{start:{x:number;y:number};end:{x:number;y:number}}|null>(null)
  const [inspectedId,setInspectedId]=useState<string|null>(null)
  const [inspectedNetworkId,setInspectedNetworkId]=useState<string|null>(null)
@@ -122,6 +120,8 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
  const [networkPreview,setNetworkPreview]=useState<{x:number;y:number;width:number;height:number}|null>(null)
  const [reviewOpen,setReviewOpen]=useState(Boolean(restoredDraft?.changes.length))
  const [parents,setParents]=useState<Record<string,string>>(restoredDraft?.parents||{})
+ const [flowAnchors,setFlowAnchors]=useState<Record<string,FlowPortPair>>(restoredDraft?.flowAnchors||{})
+ const persistedFlowAnchors=useRef<Record<string,FlowPortPair>>({})
  const persistedParents=useRef<Record<string,string>>({})
  const [pendingGrouping,setPendingGrouping]=useState<null|{id:string;name:string;from:string|null;to:string|null;newlyCreated?:boolean;snapshot?:{rects:Rect[];nodes:Node[];dirty:boolean}}>(null)
  const [nicForGrouping,setNicForGrouping]=useState('')
@@ -285,11 +285,11 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
   try{
    if(!changes.length){sessionStorage.removeItem(draftKey(systemId));return}
    sessionStorage.setItem(draftKey(systemId),JSON.stringify({
-    changes,rectangles,parents,reason,
+    changes,rectangles,parents,flowAnchors,reason,
     positions:Object.fromEntries(nodes.map(n=>[n.id,{x:n.position.x,y:n.position.y}]))
    } satisfies StoredBoardDraft))
   }catch{/* Storage might be unavailable: the visible draft remains in memory. */}
- },[changes,rectangles,parents,reason,nodes,systemId])
+ },[changes,rectangles,parents,flowAnchors,reason,nodes,systemId])
  useEffect(()=>{
   if(!changes.length)return
   const preventClose=(event:BeforeUnloadEvent)=>{event.preventDefault();event.returnValue=''}

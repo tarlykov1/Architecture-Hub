@@ -30,9 +30,9 @@ function BoardComponentNode({data}:NodeProps){
  </>
 }
 function BoardNetworkNode({data}:NodeProps){
- const options=data as {label:React.ReactNode;resizable?:boolean;onResize?:(size:{x:number;y:number;width:number;height:number})=>void}
+ const options=data as {label:React.ReactNode;resizable?:boolean;onResize?:(size:{x:number;y:number;width:number;height:number})=>void;onPointerDown?:(event:React.PointerEvent<HTMLDivElement>)=>void;onPointerMove?:(event:React.PointerEvent<HTMLDivElement>)=>void;onPointerUp?:(event:React.PointerEvent<HTMLDivElement>)=>void;onPointerCancel?:(event:React.PointerEvent<HTMLDivElement>)=>void}
  return <>
-  {options.label}
+  <div className="boardNetworkDragArea" onPointerDown={options.onPointerDown} onPointerMove={options.onPointerMove} onPointerUp={options.onPointerUp} onPointerCancel={options.onPointerCancel}>{options.label}</div>
   <NodeResizer isVisible={Boolean(options.resizable)} minWidth={140} minHeight={90}
    lineStyle={{borderColor:'#2563eb'}} handleStyle={{width:9,height:9,border:'1px solid #fff',borderRadius:2,background:'#2563eb'}}
    onResize={(_,params)=>options.onResize?.({x:params.x,y:params.y,width:params.width,height:params.height})}/>
@@ -75,6 +75,7 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
  const [tool,setTool]=useState<Tool>('move')
  const [drawingConnection,setDrawingConnection]=useState(false)
  const [draggingNode,setDraggingNode]=useState(false)
+ const [canvasInteracted,setCanvasInteracted]=useState(false)
  const [inspectedId,setInspectedId]=useState<string|null>(null)
  const [inspectedNetworkId,setInspectedNetworkId]=useState<string|null>(null)
  const [focusDependencies,setFocusDependencies]=useState(false)
@@ -149,6 +150,7 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
   }))]
  const [nodes,setNodes,onNodesChange]=useNodesState<Node>(restoredNodes)
  const visualGroupDrag=useRef<{id:string;origin:{x:number;y:number};rects:Rect[];members:Node[]}|null>(null)
+ const manualNetworkDrag=useRef<{id:string;startPointer:{x:number;y:number};startPosition:{x:number;y:number};lastPosition:{x:number;y:number};moved:boolean}|null>(null)
  const startVisualGroupDrag=(node:Node)=>{
    dragSnapshot.current={rects:rectangles.map(r=>({...r})),nodes:nodes.map(n=>({...n,position:{...n.position}})),dirty:layoutDirty}
    if(!node.id.startsWith('network:')){visualGroupDrag.current=null;return}
@@ -195,6 +197,57 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
      setInspectedId(null);setInspectedNetworkId(null)
    }
    dragSnapshot.current=null
+ }
+ // Network containers are manipulated through a dedicated pointer-captured
+ // title bar. React Flow's controlled node updates can otherwise lose a drag
+ // when network geometry is represented by rectangles instead of useNodesState.
+ const beginManualNetworkDrag=(id:string,event:React.PointerEvent<HTMLDivElement>)=>{
+   if(tool!=='move'||event.button!==0)return
+   const rect=rectangles.find(r=>r.id===id)
+   if(!rect)return
+   event.stopPropagation();event.preventDefault()
+   setCanvasInteracted(true)
+   const origin=screenToFlowPosition({x:event.clientX,y:event.clientY})
+   manualNetworkDrag.current={id,startPointer:origin,startPosition:{x:rect.x,y:rect.y},lastPosition:{x:rect.x,y:rect.y},moved:false}
+   startVisualGroupDrag({id:'network:'+id,position:{x:rect.x,y:rect.y}} as Node)
+   event.currentTarget.setPointerCapture(event.pointerId)
+ }
+ const moveManualNetworkDrag=(id:string,event:React.PointerEvent<HTMLDivElement>)=>{
+   const drag=manualNetworkDrag.current
+   if(!drag||drag.id!==id)return
+   event.stopPropagation()
+   const pointer=screenToFlowPosition({x:event.clientX,y:event.clientY})
+   const position={x:drag.startPosition.x+pointer.x-drag.startPointer.x,y:drag.startPosition.y+pointer.y-drag.startPointer.y}
+   drag.lastPosition=position
+   if(Math.hypot(position.x-drag.startPosition.x,position.y-drag.startPosition.y)<3&&!drag.moved)return
+   drag.moved=true
+   setDraggingNode(true)
+   setRectangles(previous=>previous.map(rect=>rect.id===id?{...rect,...position}:rect))
+   updateVisualGroupDrag({id:'network:'+id,position} as Node)
+ }
+ const finishManualNetworkDrag=(id:string,event:React.PointerEvent<HTMLDivElement>)=>{
+   const drag=manualNetworkDrag.current
+   if(!drag||drag.id!==id)return
+   event.stopPropagation()
+   if(event.currentTarget.hasPointerCapture(event.pointerId))event.currentTarget.releasePointerCapture(event.pointerId)
+   manualNetworkDrag.current=null
+   setDraggingNode(false)
+   if(drag.moved){
+     const node={id:'network:'+id,position:drag.lastPosition} as Node
+     finishVisualDrop(node);moveNode(node)
+   }else{
+     visualGroupDrag.current=null;dragSnapshot.current=null
+     setInspectedNetworkId(id);setInspectedId(null);setFocusDependencies(false)
+   }
+ }
+ const cancelManualNetworkDrag=(id:string,event:React.PointerEvent<HTMLDivElement>)=>{
+   const drag=manualNetworkDrag.current
+   if(!drag||drag.id!==id)return
+   event.stopPropagation()
+   if(event.currentTarget.hasPointerCapture(event.pointerId))event.currentTarget.releasePointerCapture(event.pointerId)
+   manualNetworkDrag.current=null;visualGroupDrag.current=null
+   if(drag.moved)cancelGrouping()
+   setDraggingNode(false)
  }
  const updateNetworkSize=(id:string,size:{x:number;y:number;width:number;height:number})=>{
    const current=rectangles.find(r=>r.id===id)
@@ -249,7 +302,7 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
  const allNetworks=[...networks,...changes.filter(c=>c.action==='create_network').map(c=>({id:c.id!,name:c.name!,kind:c.kind!}))]
  const visibleRects=rectangles.filter(r=>allNetworks.some(n=>n.id===r.id))
  const draftNetworks=new Set(changes.filter(c=>c.action==='create_network').map(c=>c.id))
- const backgroundNodes:Node[]=visibleRects.map(r=>({id:'network:'+r.id,type:'boardNetwork',dragHandle:'.boardNetworkLabel',position:{x:r.x,y:r.y},width:r.width,height:r.height,measured:{width:r.width,height:r.height},draggable:tool==='move',selectable:true,connectable:false,data:{resizable:tool==='move',onResize:(size:{x:number;y:number;width:number;height:number})=>updateNetworkSize(r.id,size),label:<div className="boardNetworkLabel"><strong>{r.name} · {r.kind.toUpperCase()}</strong><small>{draftNetworks.has(r.id)?'Черновик · ещё не сохранён':parents['network:'+r.id]?'В группе: '+(allNetworks.find(n=>'network:'+n.id===parents['network:'+r.id])?.name||'сеть'):'Свободная зона'} · {tool==='move'?'Тяните край для изменения размера':''}</small></div>},style:{width:r.width,height:r.height,background:draftNetworks.has(r.id)?'#fff7edaa':'#dbeafe77',border:draftNetworks.has(r.id)?'2px dashed #d97706':'2px dashed #2563eb',borderRadius:9,zIndex:1+(()=>{let depth=0,p=parents['network:'+r.id];while(p&&depth<10){depth++;p=parents[p]}return depth})(),pointerEvents:'auto',textAlign:'left',padding:12,fontSize:13,color:'#1e40af'}}))
+ const backgroundNodes:Node[]=visibleRects.map(r=>({id:'network:'+r.id,type:'boardNetwork',position:{x:r.x,y:r.y},width:r.width,height:r.height,measured:{width:r.width,height:r.height},draggable:false,selectable:true,connectable:false,data:{onPointerDown:(event:React.PointerEvent<HTMLDivElement>)=>beginManualNetworkDrag(r.id,event),onPointerMove:(event:React.PointerEvent<HTMLDivElement>)=>moveManualNetworkDrag(r.id,event),onPointerUp:(event:React.PointerEvent<HTMLDivElement>)=>finishManualNetworkDrag(r.id,event),onPointerCancel:(event:React.PointerEvent<HTMLDivElement>)=>cancelManualNetworkDrag(r.id,event),resizable:tool==='move',onResize:(size:{x:number;y:number;width:number;height:number})=>updateNetworkSize(r.id,size),label:<div className="boardNetworkLabel"><strong>{r.name} · {r.kind.toUpperCase()}</strong><small>{draftNetworks.has(r.id)?'Черновик · ещё не сохранён':parents['network:'+r.id]?'В группе: '+(allNetworks.find(n=>'network:'+n.id===parents['network:'+r.id])?.name||'сеть'):'Свободная зона'} · {tool==='move'?'Тяните край для изменения размера':''}</small></div>},style:{width:r.width,height:r.height,background:draftNetworks.has(r.id)?'#fff7edaa':'#dbeafe77',border:draftNetworks.has(r.id)?'2px dashed #d97706':'2px dashed #2563eb',borderRadius:9,zIndex:1+(()=>{let depth=0,p=parents['network:'+r.id];while(p&&depth<10){depth++;p=parents[p]}return depth})(),pointerEvents:'auto',textAlign:'left',padding:12,fontSize:13,color:'#1e40af'}}))
  const graphNodes=[...backgroundNodes,...nodes]
  // A pair of machines has one readable connection; its technical flows stay separate records.
  const pendingFlows=changes.filter(c=>c.action==='create_flow').map(c=>({id:c.id!,source_id:c.source_id!,target_id:c.target_id!,protocol:c.protocol||'',port:c.port||'',name:c.name||''}))
@@ -554,7 +607,7 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
  }
  return <section className="boardWorkspace" aria-label="Редактор архитектурной схемы">
    <div className="boardEditorStage">
-        <div className="boardCanvas" data-active-graph="infrastructure-editor"><ReactFlow nodes={displayedNodes} edges={edges} nodeTypes={boardNodeTypes} edgeTypes={{reciprocal:ReciprocalEdge,'obstacle-aware':ObstacleAwareEdge}} onNodesChange={(updates:NodeChange[])=>{
+        <div className="boardCanvas" data-active-graph="infrastructure-editor" onPointerDownCapture={()=>setCanvasInteracted(true)}><ReactFlow nodes={displayedNodes} edges={edges} nodeTypes={boardNodeTypes} edgeTypes={{reciprocal:ReciprocalEdge,'obstacle-aware':ObstacleAwareEdge}} onNodesChange={(updates:NodeChange[])=>{
   // React Flow is controlled: update rectangle geometry during the drag,
   // not only on drop, otherwise VRF/VLAN boxes appear stuck in place.
   const moved=new Map<string,{x:number;y:number}>()
@@ -582,7 +635,7 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
    if(!from||to||from===node.id){setFrom(node.id);setTo('');setSelectedDraftFlowId('');setLayoutMessage('Источник выбран. Нажмите на целевой компонент или протяните стрелку от порта.')}
    else stageDirectedFlow(from,node.id)
  }else if(tool==='move'){openPassport(node.id);setFocusDependencies(false)}
-}} onNodeDragStart={(_,node)=>{setDraggingNode(true);startVisualGroupDrag(node)}} onNodeDrag={(_,node)=>updateVisualGroupDrag(node)} onNodeDragStop={(_,node)=>{finishVisualDrop(node);moveNode(node);setDraggingNode(false)} } onPaneClick={handlePaneClick} minZoom={0.08} fitView fitViewOptions={{padding:0.2,maxZoom:0.9}}><AutoFit layoutKey={systemId+':'+items.length+':'+flows.length} maxFitZoom={0.9} suspended={drawingConnection||draggingNode}/><Background gap={20}/><Controls showInteractive={false}/></ReactFlow>
+}} onNodeDragStart={(_,node)=>{setDraggingNode(true);startVisualGroupDrag(node)}} onNodeDrag={(_,node)=>updateVisualGroupDrag(node)} onNodeDragStop={(_,node)=>{finishVisualDrop(node);moveNode(node);setDraggingNode(false)} } onPaneClick={handlePaneClick} minZoom={0.08} fitView fitViewOptions={{padding:0.2,maxZoom:0.9}}><AutoFit layoutKey={systemId+':'+items.length+':'+flows.length} maxFitZoom={0.9} suspended={canvasInteracted||drawingConnection||draggingNode}/><Background gap={20}/><Controls showInteractive={false}/></ReactFlow>
      {tool==='network'&&<div className="boardNetworkDrawLayer" role="region" aria-label="Поле рисования контейнера"
        onPointerDown={beginNetworkDrag} onPointerMove={moveNetworkDrag} onPointerUp={finishNetworkDrag}
        onPointerCancel={cancelNetworkDrag} onContextMenu={event=>event.preventDefault()}>

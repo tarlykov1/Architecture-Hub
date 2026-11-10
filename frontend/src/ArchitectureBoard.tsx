@@ -3,6 +3,7 @@ import './board.css'
 import {DiagramNodeLabel,diagramCardStyle} from './DiagramVisual'
 import MonitoringPanel from './MonitoringPanel'
 import ExistingFlowEditor, {type FlowValues} from './ExistingFlowEditor'
+import FlowAttributeMap from './FlowAttributeMap'
 import {AutoFit} from './WorkspaceUI'
 import {MousePointer2, Monitor, GitBranch, SquareDashed, Maximize2, Save, History, ClipboardCheck} from 'lucide-react'
 import {ReactFlow, ReactFlowProvider, Background, Controls, Handle, NodeResizer, useNodesState, useReactFlow, MarkerType, Position, type Node, type NodeChange, type NodeProps} from '@xyflow/react'
@@ -1061,6 +1062,8 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
      staged={Boolean(selectedExistingChange)}
      onStage={stageExistingFlowEdit} onUndo={discardExistingFlowEdit}
      onClose={()=>{setSelectedExistingFlowId('');setSelectedEdgeFlowIds([])}}/>}
+   {tool==='flow'&&selectedExistingFlow&&
+     <FlowAttributeMap key={selectedExistingFlow.id} flowId={selectedExistingFlow.id} request={request}/>}
    {(tool==='network'||(tool==='move'&&inspectedVM))&&<div className="boardToolFields"><p>Вложенность на схеме подтверждается после перетаскивания. При размещении ВМ в VLAN можно отдельно выбрать существующий интерфейс или создать новый. Перемещение VRF/VLAN само по себе не настраивает маршруты и шлюзы.</p></div>}
 
        {tool==='move'&&inspectedNetwork&&<section className="boardToolFields" aria-label="Свойства контейнера"><h3>{inspectedNetwork.name} · {inspectedNetwork.kind.toUpperCase()}</h3><p>Перемещение группы переносит все подтверждённые вложенные VLAN, зоны и ВМ. Размер границ меняется мышью за маркеры на рамке.</p><p>Связанных вложенных объектов: {descendants('network:'+inspectedNetwork.id,parents).size}. При переносе в другую зону или на свободное поле потребуется подтверждение новой архитектурной связи. Реальная маршрутизация автоматически не меняется.</p>{onEditNetwork&&networks.some(n=>n.id===inspectedNetwork.id)&&<button type="button" onClick={()=>onEditNetwork(inspectedNetwork.id)}>Редактировать параметры сети</button>}<button type="button" onClick={()=>setInspectedNetworkId(null)}>Вернуться к схеме</button></section>}

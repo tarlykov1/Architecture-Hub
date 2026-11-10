@@ -479,6 +479,7 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
    setName('');setTool('move');setReviewOpen(true)
  }
  const stageDirectedFlow=(source:string,target:string)=>{
+   setSelectedEdgeFlowIds([]);setSelectedExistingFlowId('')
    if(!source||!target||source===target){setError('Выберите два разных компонента для направления потока.');return}
    if(!allVMs.some(vm=>vm.id===source)||!allVMs.some(vm=>vm.id===target)){setError('Источник или получатель отсутствует на схеме.');return}
    const id=makeId()
@@ -493,6 +494,51 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
    const source=direction==='reverse'?to:from,target=direction==='reverse'?from:to
    stageDirectedFlow(source,target)
    if(direction==='both')stageDirectedFlow(target,source)
+ }
+ const flowValues=(flow:Flow):FlowValues=>({
+   name:flow.name,protocol:flow.protocol,port:flow.port,security:flow.security,
+   data_description:flow.data_description,schedule:flow.schedule,verification:flow.verification
+ })
+ const selectedExistingFlow=flows.find(f=>f.id===selectedExistingFlowId)
+ const selectedExistingChange=changes.find(c=>c.action==='update_flow'&&c.id===selectedExistingFlowId)
+ const selectedExistingCurrent=selectedExistingFlow?{
+   ...flowValues(selectedExistingFlow),
+   ...(selectedExistingChange?{
+     name:selectedExistingChange.name??selectedExistingFlow.name,
+     protocol:selectedExistingChange.protocol??selectedExistingFlow.protocol,
+     port:selectedExistingChange.port??selectedExistingFlow.port,
+     security:selectedExistingChange.security??selectedExistingFlow.security,
+     data_description:selectedExistingChange.data_description??selectedExistingFlow.data_description,
+     schedule:selectedExistingChange.schedule??selectedExistingFlow.schedule,
+     verification:selectedExistingChange.verification??selectedExistingFlow.verification
+   }:{})
+ }:null
+ const selectFlowInDock=(id:string)=>{
+   const draft=changes.find(c=>c.action==='create_flow'&&c.id===id)
+   const stored=flows.find(f=>f.id===id)
+   if(!draft&&!stored){setError('Поток больше не найден. Обновите схему.');return}
+   setTool('flow');setError('');setInspectedId(null);setInspectedNetworkId(null);setFocusDependencies(false)
+   if(draft){setSelectedDraftFlowId(id);setSelectedExistingFlowId('')}
+   else{setSelectedExistingFlowId(id);setSelectedDraftFlowId('')}
+   const flow=draft||stored!
+   setFrom(flow.source_id||'');setTo(flow.target_id||'')
+ }
+ const stageExistingFlowEdit=(next:FlowValues)=>{
+   if(!selectedExistingFlow)return
+   const before=flowValues(selectedExistingFlow)
+   setChanges(previous=>[...previous.filter(c=>!(c.action==='update_flow'&&c.id===selectedExistingFlow.id)),{
+     action:'update_flow',id:selectedExistingFlow.id,
+     source_id:selectedExistingFlow.source_id,target_id:selectedExistingFlow.target_id,
+     ...next,previous_flow:before
+   }])
+   setPreview(null);setError('');setReviewOpen(true)
+   setLayoutMessage('Изменения потока добавлены в черновик. Укажите причину и подтвердите запись в журнал.')
+ }
+ const discardExistingFlowEdit=()=>{
+   if(!selectedExistingFlowId)return
+   setChanges(previous=>previous.filter(c=>!(c.action==='update_flow'&&c.id===selectedExistingFlowId)))
+   setPreview(null);setReviewOpen(changes.some(c=>!(c.action==='update_flow'&&c.id===selectedExistingFlowId)))
+   setLayoutMessage('Правка потока удалена из черновика.')
  }
  const selectedDraftFlow=changes.find(c=>c.action==='create_flow'&&c.id===selectedDraftFlowId)
  const updateSelectedDraftFlow=(patch:Partial<Change>)=>{
@@ -633,7 +679,7 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
    const stagedNetworks=new Set(changes.filter(c=>c.action==='create_network').map(c=>c.id))
    setNodes(previous=>previous.filter(node=>!stagedVMs.has(node.id)))
    setRectangles(previous=>previous.filter(rect=>!stagedNetworks.has(rect.id)))
-   setChanges([]);setSelectedDraftFlowId('');setPreview(null);setError('');setReviewOpen(false)
+   setChanges([]);setSelectedDraftFlowId('');setSelectedExistingFlowId('');setSelectedEdgeFlowIds([]);setPreview(null);setError('');setReviewOpen(false)
    setParents(persistedParents.current)
    setPendingGrouping(null)
    setLayoutDirty(false)
@@ -669,7 +715,7 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
        setLayoutDirty(true)
      }
      try{await onCommitted()}catch(e){warning+=' Не удалось обновить данные: '+String(e)}
-     setChanges([]);setSelectedDraftFlowId('');setPreview(null);setReason('');setDrawing(null);setReviewOpen(false)
+     setChanges([]);setSelectedDraftFlowId('');setSelectedExistingFlowId('');setSelectedEdgeFlowIds([]);setPreview(null);setReason('');setDrawing(null);setReviewOpen(false)
      setError('ВМ, сети и связи сохранены в реестре и журнале.'+warning)
      if(showHistory)void openHistory()
    }catch(e){setPreview(null);setError('Сохранение отклонено: '+String(e)+'. Обновите предварительный просмотр.')}
@@ -691,7 +737,7 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
     return position?{...rect,x:position.x,y:position.y}:rect
   }))
   onNodesChange(updates.filter(change=>!('id' in change)||!change.id.startsWith('network:')))
- }} nodesDraggable={tool==='move'} snapToGrid={snapToGrid} snapGrid={[20,20]} nodesConnectable={tool==='flow'} onConnectStart={()=>setDrawingConnection(true)} onConnectEnd={()=>setDrawingConnection(false)} onConnect={connection=>{if(tool==='flow'&&connection.source&&connection.target){stageDirectedFlow(connection.source,connection.target);setInspectedId(null)}}} onEdgeClick={(_,edge)=>{setInspectedId(null);setFocusDependencies(false);setTool('flow');const draft=changes.find(c=>c.action==='create_flow'&&c.source_id===edge.source&&c.target_id===edge.target);if(draft?.id)setSelectedDraftFlowId(draft.id);else{setSelectedDraftFlowId('');setFrom(edge.source);setTo(edge.target)}}} onNodeClick={(event,node)=>{
+ }} nodesDraggable={tool==='move'} snapToGrid={snapToGrid} snapGrid={[20,20]} nodesConnectable={tool==='flow'} onConnectStart={()=>setDrawingConnection(true)} onConnectEnd={()=>setDrawingConnection(false)} onConnect={connection=>{if(tool==='flow'&&connection.source&&connection.target){stageDirectedFlow(connection.source,connection.target);setInspectedId(null)}}} onEdgeClick={(_,edge)=>{setInspectedId(null);setFocusDependencies(false);setTool('flow');setFrom(edge.source);setTo(edge.target);const ids=(edge.data?.flowIds as string[]|undefined)||[];setSelectedEdgeFlowIds(ids);if(ids.length===1)selectFlowInDock(ids[0]);else{setSelectedDraftFlowId('');setSelectedExistingFlowId('')}}} onNodeClick={(event,node)=>{
  // Network rectangles occupy their whole area; a click on one is not a pane
  // click. The VM tool must still allow placing a VM inside that container.
  if(tool==='vm'&&node.id.startsWith('network:')){

@@ -36,7 +36,7 @@ def test_password_exchange_returns_session_not_password(monkeypatch):
     with TestClient(app) as client:
         wrong = client.post("/api/auth/login", json={"password": "wrong password"})
         assert wrong.status_code == 401
-        assert wrong.json()["detail"] == "Неверный пароль"
+        assert wrong.json()["detail"] == "Неверный логин или пароль"
         assert wrong.headers["cache-control"] == "no-store"
 
         logged = client.post("/api/auth/login", json={"password": CI_PASSWORD})

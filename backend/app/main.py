@@ -13,7 +13,7 @@ from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 from fastapi.encoders import jsonable_encoder
 from .access import access_middleware, configured_keys, ROLE_ACCESS
-from .password_auth import configured_password_auth, check_password, issue_session, login_allowed, record_login_attempt, SESSION_SECONDS
+from .password_auth import configured_password_auth, check_password, issue_session, issue_user_session, login_allowed, record_login_attempt, SESSION_SECONDS, make_password_hash
 from .cmdb import ci_graph, potential_impact, CI_CLASSES, LIFECYCLE_STATES, LIFECYCLE_TRANSITIONS, CRITICALITY_LEVELS, VERIFICATION_STATES
 from .cmdb_catalog import validate_class_schema, validate_custom_values, missing_required, assess_relation, RELATION_KINDS
 from fastapi.middleware.cors import CORSMiddleware
@@ -29,6 +29,20 @@ SessionLocal = sessionmaker(bind=engine)
 
 class Base(DeclarativeBase):
     pass
+
+
+class AuthUser(Base):
+    """Named Architecture Hub account; hashed verifier only, never plaintext."""
+    __tablename__ = "auth_users"
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    username: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
+    display_name: Mapped[str] = mapped_column(String(120), default="")
+    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    role: Mapped[str] = mapped_column(String(32), nullable=False, default="viewer")
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    session_version: Mapped[int] = mapped_column(nullable=False, default=1)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
 
 class ArchitectureObject(Base):
@@ -1022,28 +1036,174 @@ def cmdb_quality(stale_days: int = Query(default=90, ge=1, le=3650),
 
 
 class PasswordLoginInput(BaseModel):
+    username: str = Field(default="", max_length=64)
     password: str = Field(min_length=1, max_length=256)
 
 
+AUTH_ROLES = ("admin", "architect", "engineer", "security", "business_owner", "viewer")
+
+
+def _safe_account(user: AuthUser) -> dict[str, Any]:
+    return {"id": str(user.id), "username": user.username,
+            "display_name": user.display_name, "role": user.role,
+            "enabled": user.enabled, "created_at": user.created_at.isoformat() if user.created_at else None}
+
+
+def _require_auth_admin(request: Request) -> None:
+    # The legacy shared-password admin may bootstrap the first named user.
+    if getattr(request.state, "role", None) != "admin":
+        raise HTTPException(403, "Administrator privileges required")
+
+
+def _prevent_last_admin(db: Session, account: AuthUser) -> None:
+    if account.role != "admin" or not account.enabled:
+        return
+    others = db.scalars(select(AuthUser).where(
+        AuthUser.role == "admin", AuthUser.enabled.is_(True),
+        AuthUser.id != account.id)).first()
+    if others is None:
+        raise HTTPException(409, "Нельзя отключить или понизить роль последнего администратора")
+
+
+class AuthUserCreate(BaseModel):
+    username: str = Field(min_length=3, max_length=64,
+                          pattern=r"^[a-z][a-z0-9._-]{2,63}$")
+    display_name: str = Field(default="", max_length=120)
+    password: str = Field(min_length=12, max_length=256)
+    role: Literal["admin", "architect", "engineer", "security", "business_owner", "viewer"] = "viewer"
+
+
+class AuthUserUpdate(BaseModel):
+    display_name: str | None = Field(default=None, max_length=120)
+    role: Literal["admin", "architect", "engineer", "security", "business_owner", "viewer"] | None = None
+    enabled: bool | None = None
+
+
+class AuthPasswordChange(BaseModel):
+    password: str = Field(min_length=12, max_length=256)
+
+
+class OwnPasswordChange(BaseModel):
+    current_password: str = Field(min_length=1, max_length=256)
+    new_password: str = Field(min_length=12, max_length=256)
+
+
 @app.post("/api/auth/login")
-def password_login(payload: PasswordLoginInput, request: Request):
-    """Exchange a password for a short-lived session; no password is stored in the browser."""
+def password_login(payload: PasswordLoginInput, request: Request,
+                   db: Session = Depends(db_session)):
+    """Exchange credentials for signed short-lived session; never return password hashes."""
     config = request.app.state.arch_hub_password_auth
     if config is None:
-        raise HTTPException(status_code=503, detail="Вход по паролю ещё не настроен администратором")
-    # Never accept an arbitrary X-Forwarded-For as a trusted client identity.
+        raise HTTPException(503, "Вход по паролю ещё не настроен администратором")
     address = request.client.host if request.client else "unknown"
     if not login_allowed(address):
-        raise HTTPException(status_code=429, detail="Слишком много попыток. Повторите позже.",
+        raise HTTPException(429, "Слишком много попыток. Повторите позже.",
                             headers={"Retry-After": "120", "Cache-Control": "no-store"})
-    valid = check_password(payload.password, config)
+    username = payload.username.strip().lower()
+    user = db.scalar(select(AuthUser).where(AuthUser.username == username)) if username else None
+    if username:
+        valid = bool(user and user.enabled and check_password(payload.password,
+                     type(config)(password_hash=user.password_hash,
+                                  signing_secret=config.signing_secret)))
+    else:
+        # Backwards-compatible entry point while team members migrate to accounts.
+        valid = check_password(payload.password, config)
     record_login_attempt(address, success=valid)
     if not valid:
-        raise HTTPException(status_code=401, detail="Неверный пароль",
+        raise HTTPException(401, "Неверный логин или пароль",
                             headers={"Cache-Control": "no-store"})
-    return JSONResponse({"access_token": issue_session(config), "token_type": "bearer",
+    token = (issue_user_session(config, str(user.id), user.session_version)
+             if username and user else issue_session(config))
+    return JSONResponse({"access_token": token, "token_type": "bearer",
                          "expires_in": SESSION_SECONDS},
                         headers={"Cache-Control": "no-store", "Pragma": "no-cache"})
+
+
+@app.get("/api/auth/me")
+def auth_profile(request: Request):
+    role = getattr(request.state, "role", "development")
+    return {"id": getattr(request.state, "user_id", None),
+            "username": getattr(request.state, "username", None),
+            "display_name": getattr(request.state, "display_name", None),
+            "role": role, "auth_kind": getattr(request.state, "auth_kind", "development")}
+
+
+@app.get("/api/auth/users")
+def list_auth_users(request: Request, db: Session = Depends(db_session)):
+    _require_auth_admin(request)
+    return [_safe_account(u) for u in db.scalars(select(AuthUser).order_by(AuthUser.username)).all()]
+
+
+@app.post("/api/auth/users", status_code=201)
+def add_auth_user(payload: AuthUserCreate, request: Request, db: Session = Depends(db_session)):
+    _require_auth_admin(request)
+    if db.scalar(select(AuthUser.id).where(AuthUser.username == payload.username)):
+        raise HTTPException(409, "Такой логин уже существует")
+    user = AuthUser(username=payload.username, display_name=payload.display_name.strip(),
+                    password_hash=make_password_hash(payload.password),
+                    role=payload.role, enabled=True, session_version=1)
+    db.add(user)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(409, "Такой логин уже существует")
+    db.refresh(user)
+    return _safe_account(user)
+
+
+@app.patch("/api/auth/users/{user_id}")
+def update_auth_user(user_id: UUID, payload: AuthUserUpdate,
+                     request: Request, db: Session = Depends(db_session)):
+    _require_auth_admin(request)
+    user = db.get(AuthUser, user_id)
+    if user is None:
+        raise HTTPException(404, "Пользователь не найден")
+    next_role = payload.role if payload.role is not None else user.role
+    next_enabled = payload.enabled if payload.enabled is not None else user.enabled
+    if user.role == "admin" and user.enabled and (next_role != "admin" or not next_enabled):
+        _prevent_last_admin(db, user)
+    if payload.display_name is not None:
+        user.display_name = payload.display_name.strip()
+    if next_role != user.role or next_enabled != user.enabled:
+        user.session_version += 1  # Invalidates previously issued sessions immediately.
+    user.role = next_role
+    user.enabled = next_enabled
+    db.commit()
+    db.refresh(user)
+    return _safe_account(user)
+
+
+@app.post("/api/auth/users/{user_id}/reset-password")
+def reset_auth_user_password(user_id: UUID, payload: AuthPasswordChange,
+                             request: Request, db: Session = Depends(db_session)):
+    _require_auth_admin(request)
+    user = db.get(AuthUser, user_id)
+    if user is None:
+        raise HTTPException(404, "Пользователь не найден")
+    user.password_hash = make_password_hash(payload.password)
+    user.session_version += 1
+    db.commit()
+    return {"status": "ok", "sessions_revoked": True}
+
+
+@app.post("/api/auth/change-password")
+def change_own_password(payload: OwnPasswordChange, request: Request,
+                        db: Session = Depends(db_session)):
+    uid = getattr(request.state, "user_id", None)
+    if uid is None:
+        raise HTTPException(403, "Изменение пароля доступно только личным учётным записям")
+    user = db.get(AuthUser, UUID(uid))
+    if user is None or not user.enabled:
+        raise HTTPException(401, "Сеанс недействителен")
+    if not check_password(payload.current_password, type(request.app.state.arch_hub_password_auth)(
+            password_hash=user.password_hash,
+            signing_secret=request.app.state.arch_hub_password_auth.signing_secret)):
+        raise HTTPException(401, "Текущий пароль неверен")
+    user.password_hash = make_password_hash(payload.new_password)
+    user.session_version += 1
+    db.commit()
+    return {"status": "ok", "sessions_revoked": True}
 
 
 @app.get("/api/health")
@@ -2353,6 +2513,9 @@ def board_actor(request: Request) -> str:
     role = getattr(request.state, 'role', None)
     if role is None:
         return 'local-development'
+    actor = getattr(request.state, 'actor', None)
+    if actor:
+        return actor
     token = request.headers.get('authorization', '').removeprefix('Bearer ')
     return role + ':' + hashlib.sha256(token.encode('utf-8')).hexdigest()[:16]
 

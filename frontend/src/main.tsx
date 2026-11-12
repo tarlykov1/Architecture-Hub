@@ -13,6 +13,7 @@ import Incidents from './Incidents'
 import ArchitectureHome from './ArchitectureHome'
 import ArchitectureBoard from './ArchitectureBoard'
 import MonitoringPanel from './MonitoringPanel'
+import UserManagement,{ChangePasswordDialog,roleLabel,type AuthProfile} from './UserManagement'
 import CmdbImpact from './CmdbImpact'
 import CmdbRecord from './CmdbRecord'
 import {DiagramNodeLabel,diagramCardStyle} from './DiagramVisual'
@@ -66,13 +67,13 @@ function saveAccessToken(value: string): void {
     else sessionStorage.removeItem(ACCESS_TOKEN_STORAGE_KEY)
   } catch { /* Private browsing can disable session storage. */ }
 }
-async function signInWithPassword(password:string):Promise<string>{
+async function signInWithPassword(password:string,username=''):Promise<string>{
  const response=await fetch('/api/auth/login',{
-  method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password}),
+  method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password,username:username.trim().toLowerCase()}),
   cache:'no-store',credentials:'omit',
  })
  if(!response.ok){
-  if(response.status===401)throw new Error('Неверный пароль.')
+  if(response.status===401)throw new Error('Неверный логин или пароль.')
   if(response.status===429)throw new Error('Слишком много попыток. Повторите позже.')
   if(response.status===503)throw new Error('Вход по паролю ещё не настроен на сервере. Обратитесь к администратору.')
   throw new Error('Не удалось выполнить вход. Проверьте подключение и повторите попытку.')
@@ -81,6 +82,7 @@ async function signInWithPassword(password:string):Promise<string>{
  if(typeof result.access_token!=='string'||!result.access_token)throw new Error('Сервер вернул некорректную сессию.')
  return result.access_token
 }
+class ApiForbiddenError extends Error {}
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   if (!accessToken) {
     if ((init?.method || 'GET').toUpperCase() !== 'GET') throw new Error('Демонстрационный режим: изменения запрещены. Для редактирования войдите по паролю.')
@@ -90,12 +92,17 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
   if (!response.ok) {
     const detail = await response.text()
     if(response.status===401)throw new Error('Сеанс завершился или ключ недействителен. Войдите снова.')
-    if(response.status===403)throw new Error('Недостаточно прав для этого действия.')
+    if(response.status===403)throw new ApiForbiddenError('Недостаточно прав для этого действия.')
     throw new Error(detail || 'Ошибка обращения к API')
   }
   return response.status === 204 ? undefined as T : response.json()
 }
 
+/** A role may lack a collection; hide only those resources, not login errors. */
+async function permittedCollection<T>(url:string):Promise<T[]>{
+ try{return await request<T[]>(url)}
+ catch(error){if(error instanceof ApiForbiddenError)return [];throw error}
+}
 function App() {
   useWorkspaceKeyboard()
   const [componentGroupMode,setComponentGroupMode]=useState<'auto'|'environment'|'zone'|'components'>('auto')
@@ -116,6 +123,10 @@ function App() {
   },[flowView])
   const [authOpen,setAuthOpen]=useState(false)
   const [authDraft,setAuthDraft]=useState('')
+  const [authUsername,setAuthUsername]=useState('')
+  const [authProfile,setAuthProfile]=useState<AuthProfile|null>(null)
+  const [userManagerOpen,setUserManagerOpen]=useState(false)
+  const [changePasswordOpen,setChangePasswordOpen]=useState(false)
   const [authMode,setAuthMode]=useState<'password'|'key'>('password')
   const [authError,setAuthError]=useState('')
   const [authBusy,setAuthBusy]=useState(false)
@@ -539,6 +550,14 @@ function App() {
   const [error, setError] = useState('')
   const [notice,setNotice] = useState('')
   const [tokenReady, setTokenReady] = useState(Boolean(accessToken))
+  useEffect(()=>{
+    if(!tokenReady){setAuthProfile(null);return}
+    let active=true
+    request<AuthProfile>('/api/auth/me')
+      .then(profile=>{if(active)setAuthProfile(profile)})
+      .catch(()=>{if(active)setAuthProfile(null)})
+    return()=>{active=false}
+  },[tokenReady])
   const [wikiConfigured,setWikiConfigured]=useState(false)
   const [wikiStatus,setWikiStatus]=useState<'checking'|'connected'|'unconfigured'|'unavailable'>('checking')
   const [wikiPublicUrl,setWikiPublicUrl]=useState('')
@@ -562,12 +581,12 @@ function App() {
 
   const refresh = useCallback(async () => {
     const [o, r, d] = await Promise.all([
-      request<Obj[]>('/api/objects'),
-      request<Rel[]>('/api/relations'),
-      request<Diagram[]>('/api/diagrams'),
+      permittedCollection<Obj>('/api/objects'),
+      permittedCollection<Rel>('/api/relations'),
+      permittedCollection<Diagram>('/api/diagrams'),
     ])
     setObjects(o); setRelations(r); setDiagrams(d)
-    const [i,f] = await Promise.all([request<Infra[]>('/api/infra'),request<Flow[]>('/api/flows')]); setInfra(i);setFlows(f); const [net,interfaces]=await Promise.all([request<Segment[]>('/api/networks'),request<Nic[]>('/api/network-interfaces')]);setSegments(net);setNics(interfaces);const [cat,proc,links]=await Promise.all([request<Category[]>('/api/business/categories'),request<BusinessProcess[]>('/api/business/processes'),request<BusinessLink[]>('/api/business/system-links')]);setCategories(cat);setProcesses(proc);setBusinessLinks(links)
+    const [i,f] = await Promise.all([permittedCollection<Infra>('/api/infra'),permittedCollection<Flow>('/api/flows')]); setInfra(i);setFlows(f); const [net,interfaces]=await Promise.all([permittedCollection<Segment>('/api/networks'),permittedCollection<Nic>('/api/network-interfaces')]);setSegments(net);setNics(interfaces);const [cat,proc,links]=await Promise.all([permittedCollection<Category>('/api/business/categories'),permittedCollection<BusinessProcess>('/api/business/processes'),permittedCollection<BusinessLink>('/api/business/system-links')]);setCategories(cat);setProcesses(proc);setBusinessLinks(links)
     if (d.length && !diagramId) {
       setDiagramId(d[0].id)
       setPositions(d[0].positions || {})
@@ -1038,7 +1057,7 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
   })
   const renderedDrillNodes=isComponentGroupOverview?groupedDrillNodes:isComponentGroupDetail?drillNodes.filter(n=>groupMemberIds.has(n.id)):[...viewNetworkNodes,...drillNodes]
   const renderedDrillEdges=isComponentGroupOverview?groupedDrillEdges:isComponentGroupDetail?drillEdges.filter(e=>groupMemberIds.has(e.source)&&groupMemberIds.has(e.target)):drillEdges
-  const modalOpen=authOpen||kisOpen||Boolean(passportEditId)||Boolean(componentInspectId)||createObjectOpen||Boolean(registryOpen)
+  const modalOpen=authOpen||userManagerOpen||changePasswordOpen||kisOpen||Boolean(passportEditId)||Boolean(componentInspectId)||createObjectOpen||Boolean(registryOpen)
   useEffect(()=>{
     if(!modalOpen)return
     setViewsMenuOpen(false)
@@ -1078,7 +1097,10 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
         </details></div>
       </nav>
       <div className="topActions">
-        {tokenReady ? <button type="button" title="Завершить текущий сеанс в этой вкладке" onClick={()=>{saveAccessToken('');setTokenReady(false);setObjects([]);setRelations([]);setDiagrams([]);setInfra([]);setFlows([]);setSegments([]);setNics([]);setCategories([]);setProcesses([]);setBusinessLinks([]);setSelected('');setSelectedFlow('');setError('');setNotice('Демонстрационный режим – только вымышленные данные.');void refresh()}}>Выйти</button> : <button type="button" onClick={()=>setAuthOpen(true)}>Войти для редактирования</button>}
+        {tokenReady ? <button type="button" title="Выйти из текущего сеанса в этой вкладке" onClick={()=>{saveAccessToken('');setTokenReady(false);setObjects([]);setRelations([]);setDiagrams([]);setInfra([]);setFlows([]);setSegments([]);setNics([]);setCategories([]);setProcesses([]);setBusinessLinks([]);setSelected('');setSelectedFlow('');setError('');setNotice('Демонстрационный режим – только вымышленные данные.');setAuthProfile(null);setUserManagerOpen(false);setChangePasswordOpen(false);void refresh()}}>Выйти</button> : <button type="button" onClick={()=>setAuthOpen(true)}>Войти для редактирования</button>}
+        {tokenReady&&authProfile?.role==='admin'&&<button type="button" className="accountTopAction" onClick={()=>setUserManagerOpen(true)}>Пользователи</button>}
+        {tokenReady&&authProfile?.auth_kind==='named_user'&&<button type="button" className="accountTopAction" onClick={()=>setChangePasswordOpen(true)}>Сменить пароль</button>}
+        {tokenReady&&authProfile?.username&&<span title={'Роль: '+roleLabel(authProfile.role)} className="accountTopAction">{authProfile.display_name||authProfile.username} · {roleLabel(authProfile.role)}</span>}
         {layer==='systems'&&<><select aria-label="Схема" value={diagramId} onChange={e => selectDiagram(e.target.value)}>
           {!diagrams.length && <option value="">Основная карта</option>}
           {diagrams.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
@@ -1089,7 +1111,9 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
 <div className="globalHeaderActions"><span className="globalHeaderSection">РАБОЧЕЕ ПРОСТРАНСТВО</span>{import.meta.env.VITE_WIKI_URL&&<a href={import.meta.env.VITE_WIKI_URL} target="_blank" rel="noopener noreferrer">Wiki.js <span aria-hidden="true">↗</span></a>}</div>
     </header>
     {!tokenReady&&<div role="status" style={{padding:"10px 16px",background:"#fff4d9",color:"#714600",fontWeight:600}}>Демонстрационный режим – только вымышленные данные. Для просмотра реальной архитектуры и редактирования войдите по паролю.</div>}
-    {authOpen&&<div className="editorBackdrop"><section className="editorDialog" role="dialog" aria-modal="true" aria-label="Вход в Architecture Hub"><div className="dialogHead"><h2>{authMode==='password'?'Вход по паролю':'Служебный вход'}</h2><button type="button" aria-label="Закрыть вход" onClick={()=>{setAuthOpen(false);setAuthDraft('');setAuthError('');setAuthMode('password')}}>×</button></div><p>{authMode==='password'?'Введите пароль Architecture Hub. Пароль не сохраняется в браузере.':'Временный вход по техническому ключу для администраторов и интеграций.'}</p><button type="button" className="authAlternateMode" onClick={()=>{setAuthMode(authMode==='password'?'key':'password');setAuthDraft('');setAuthError('')}}>{authMode==='password'?'Служебный вход по ключу':'← Вернуться ко входу по паролю'}</button><form className="detailForm" onSubmit={async e=>{e.preventDefault();setAuthBusy(true);setAuthError('');try{const token=authMode==='password'?await signInWithPassword(authDraft):authDraft.trim();saveAccessToken(token);await refresh();setTokenReady(true);setAuthOpen(false);setAuthDraft('');setAuthMode('password');setError('')}catch(err){saveAccessToken('');setTokenReady(false);setAuthError((err as Error).message)}finally{setAuthBusy(false)}}}><label>{authMode==='password'?'Пароль':'Технический ключ'}<input type="password" autoComplete={authMode==='password'?'current-password':'off'} required value={authDraft} onChange={e=>setAuthDraft(e.target.value)} disabled={authBusy}/></label>{authError&&<p role="alert" className="authLoginError">{authError}</p>}<button className="primary" disabled={authBusy||!authDraft.trim()}>{authBusy?'Проверка…':'Войти'}</button></form></section></div>}
+    {userManagerOpen&&authProfile?.role==='admin'&&<UserManagement request={request} onClose={()=>setUserManagerOpen(false)}/>}
+    {changePasswordOpen&&authProfile?.auth_kind==='named_user'&&<ChangePasswordDialog request={request} onClose={()=>setChangePasswordOpen(false)} onChanged={()=>{saveAccessToken('');setTokenReady(false);setChangePasswordOpen(false);setNotice('Пароль изменён. Войдите повторно с новым паролем.');void refresh()}}/>}
+    {authOpen&&<div className="editorBackdrop"><section className="editorDialog" role="dialog" aria-modal="true" aria-label="Вход в Architecture Hub"><div className="dialogHead"><h2>{authMode==='password'?'Вход по паролю':'Служебный вход'}</h2><button type="button" aria-label="Закрыть вход" onClick={()=>{setAuthOpen(false);setAuthDraft('');setAuthUsername('');setAuthError('');setAuthMode('password')}}>×</button></div><p>{authMode==='password'?'Введите логин и личный пароль. Для прежнего общего пароля оставьте логин пустым. Пароль не сохраняется в браузере.':'Временный вход по техническому ключу для администраторов и интеграций.'}</p><button type="button" className="authAlternateMode" onClick={()=>{setAuthMode(authMode==='password'?'key':'password');setAuthDraft('');setAuthUsername('');setAuthError('')}}>{authMode==='password'?'Служебный вход по ключу':'← Вернуться ко входу по паролю'}</button><form className="detailForm" onSubmit={async e=>{e.preventDefault();setAuthBusy(true);setAuthError('');try{const token=authMode==='password'?await signInWithPassword(authDraft,authUsername):authDraft.trim();saveAccessToken(token);await refresh();setTokenReady(true);setAuthOpen(false);setAuthDraft('');setAuthUsername('');setAuthMode('password');setError('')}catch(err){saveAccessToken('');setTokenReady(false);setAuthError((err as Error).message)}finally{setAuthBusy(false)}}}>{authMode==='password'&&<label>Логин (для персонального доступа)<input type="text" autoComplete="username" placeholder="Пусто – вход по прежнему общему паролю" value={authUsername} onChange={e=>setAuthUsername(e.target.value)} disabled={authBusy}/></label>}<label>{authMode==='password'?'Пароль':'Технический ключ'}<input type="password" autoComplete={authMode==='password'?'current-password':'off'} required value={authDraft} onChange={e=>setAuthDraft(e.target.value)} disabled={authBusy}/></label>{authError&&<p role="alert" className="authLoginError">{authError}</p>}<button className="primary" disabled={authBusy||!authDraft.trim()}>{authBusy?'Проверка…':'Войти'}</button></form></section></div>}
     <main className="main">
       {notice && <div className="notice" role="status">{notice}<button onClick={()=>setNotice('')}>×</button></div>}
       {error && <div className="error" role="alert">{error}<button onClick={() => setError('')}>×</button></div>}

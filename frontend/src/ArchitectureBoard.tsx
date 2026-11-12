@@ -687,7 +687,9 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
    const targetName=allVMs.find(vm=>vm.id===target)?.name||'Получатель'
    addChange({action:'create_flow',id,source_id:source,target_id:target,
      name:sourceName+' → '+targetName,protocol:protocol.trim(),port:port.trim(),security})
-   setSelectedDraftFlowId(id);setFrom(source);setTo(target);setReviewOpen(true);setLayoutMessage('Стрелка '+sourceName+' → '+targetName+' добавлена в черновик. При необходимости уточните протокол, порт и защиту справа.')
+   // A new draft must be selectable exactly like an existing registry flow.
+   // Without this, selectedFlow stays undefined and no endpoint grips render.
+   setSelectedEdgeFlowIds([id]);setSelectedDraftFlowId(id);setFrom(source);setTo(target);setReviewOpen(true);setLayoutMessage('Стрелка '+sourceName+' → '+targetName+' добавлена в черновик. При необходимости уточните протокол, порт и защиту справа.')
  }
  const addFlow=()=>{
    if(!from||!to||from===to)return setError('Выберите разные исходный и целевой компоненты.')
@@ -707,6 +709,9 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
    const stored=effectiveSavedFlows.find(f=>f.id===id)
    if(!draft&&!stored){setError('Поток больше не найден. Обновите схему.');return}
    setTool('flow');setError('');setInspectedId(null);setInspectedNetworkId(null);setFocusDependencies(false)
+   // Always synchronize the selected record with the painted edge, including
+   // selection from grouped-flow lists and the VM inspector.
+   setSelectedEdgeFlowIds([id])
    if(draft){setSelectedDraftFlowId(id);setSelectedExistingFlowId('')}
    else{setSelectedExistingFlowId(id);setSelectedDraftFlowId('')}
    const flow=draft||stored!
@@ -1074,7 +1079,7 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
    {tool==='flow'&&<div className="boardToolFields"><p><strong>8 точек подключения на каждой ВМ.</strong> Начните стрелку от любой точки по периметру и отпустите на нужной точке другой ВМ. Можно нажать на две карточки по очереди. Чтобы изменить подключение, выберите поток и перетащите жёлтый маркер на нужную точку текущей или другой ВМ.</p><div className="boardFlowHint">Сначала источник → затем получатель. Сохранение в реестр – через «Сохранить всё».</div><label>Откуда <select aria-label="Откуда" value={from} onChange={e=>setFrom(e.target.value)}><option value="">Выберите</option>{allVMs.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}</select></label><label>Куда <select aria-label="Куда" value={to} onChange={e=>setTo(e.target.value)}><option value="">Выберите</option>{allVMs.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}</select></label><label>Направление (при выборе вручную) <select value={direction} onChange={e=>setDirection(e.target.value as typeof direction)}><option value="forward">→</option><option value="reverse">←</option><option value="both">↔ (два потока)</option></select></label><label>Протокол <input value={protocol} onChange={e=>setProtocol(e.target.value)}/></label><label>Порт <input value={port} onChange={e=>setPort(e.target.value)}/></label><label>Защита <input value={security} onChange={e=>setSecurity(e.target.value)}/></label><button onClick={()=>{addFlow()}}>Добавить поток по выбранным компонентам</button>{selectedDraftFlow&&<section className="boardFlowDraftEditor" aria-label="Параметры нарисованного потока"><h4>Нарисованный поток · черновик</h4><p>{allVMs.find(v=>v.id===selectedDraftFlow.source_id)?.name||'Источник'} → {allVMs.find(v=>v.id===selectedDraftFlow.target_id)?.name||'Получатель'}</p><label>Название <input value={selectedDraftFlow.name||''} onChange={e=>updateSelectedDraftFlow({name:e.target.value})}/></label><label>Протокол <input value={selectedDraftFlow.protocol||''} onChange={e=>updateSelectedDraftFlow({protocol:e.target.value})}/></label><label>Порт <input value={selectedDraftFlow.port||''} onChange={e=>updateSelectedDraftFlow({port:e.target.value})} placeholder="Необязательно"/></label><label>Защита <input value={selectedDraftFlow.security||''} onChange={e=>updateSelectedDraftFlow({security:e.target.value})}/></label><button type="button" onClick={()=>{setChanges(p=>p.filter(c=>c.id!==selectedDraftFlowId));setFlowAnchors(p=>{const copy={...p};delete copy[selectedDraftFlowId];return copy});setSelectedDraftFlowId('');setPreview(null)}}>Удалить стрелку из черновика</button></section>}</div>}
    {tool==='flow'&&activeEdgeFlowIds.length>0&&<section className="boardFlowEdgeList" aria-label="Потоки выбранной стрелки">
      <h4>Связи на стрелке ({activeEdgeFlowIds.length})</h4>
-     <p>На одной стрелке могут находиться разные потоки между одинаковыми компонентами. Выберите конкретную запись для редактирования.</p>
+     <p>{activeEdgeFlowIds.length>1&&!selectedFlow?'На одной стрелке находятся '+activeEdgeFlowIds.length+' отдельных потока. Сначала выберите нужную запись ниже – появятся оранжевые маркеры для переноса её начала или конца.': 'Чтобы изменить подключение выбранного потока, перетащите оранжевый маркер на другую точку этой или другой ВМ.'}</p>
      {activeEdgeFlowIds.map(id=>{
        const flow=effectiveFlows.find(f=>f.id===id)
        if(!flow)return null

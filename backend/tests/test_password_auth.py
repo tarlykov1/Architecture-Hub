@@ -16,7 +16,7 @@ CI_SIGNING_SECRET = b"development-testing-session-signing-secret-do-not-deploy"
 
 def configured(monkeypatch):
     config = PasswordAuthConfig(make_password_hash(CI_PASSWORD), CI_SIGNING_SECRET)
-    monkeypatch.setattr(app.state, "arch_hub_password_auth", config)
+    monkeypatch.setitem(app.state._state, "arch_hub_password_auth", config)
     _failures.clear()
     return config
 
@@ -69,7 +69,7 @@ def test_session_signature_expiry_and_wrong_signing_key(monkeypatch):
 
 def test_login_disabled_safely_until_server_configured(monkeypatch):
     configured(monkeypatch)
-    monkeypatch.setattr(app.state, "arch_hub_password_auth", None)
+    monkeypatch.setitem(app.state._state, "arch_hub_password_auth", None)
     with TestClient(app) as client:
         response = client.post("/api/auth/login", json={"password": CI_PASSWORD})
         assert response.status_code == 503

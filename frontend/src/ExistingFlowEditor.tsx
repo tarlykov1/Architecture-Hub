@@ -1,6 +1,6 @@
 import {useState, type FormEvent} from 'react'
 
-/** Technical attributes of one persisted directed flow; endpoints stay immutable. */
+/** Technical attributes edited in the flow form. */
 export type FlowValues = {
  name:string
  protocol:string
@@ -37,7 +37,7 @@ export default function ExistingFlowEditor({original,current,sourceName,targetNa
  }
  return <form className="boardExistingFlowEditor" aria-label="Редактирование существующего потока" onSubmit={submit}>
   <div className="boardExistingFlowHeading"><div><strong>Паспорт сохранённого потока</strong><small>{sourceName} → {targetName}</small></div><button type="button" onClick={onClose} aria-label="Закрыть редактирование потока">✕</button></div>
-  <p>Изменения не применяются сразу. Они попадут в черновик и журнал только после подтверждения. Чтобы поменять источник или получателя, создайте новый поток.</p>
+  <p>Чтобы изменить подключение, перетащите маркер на конце стрелки. Для смены компонента подтвердите изменения в черновике.</p>
   {staged&&<p className="boardExistingFlowStaged" role="status">Изменение этого потока уже добавлено в черновик.</p>}
   <label>Название потока<input required maxLength={250} value={values.name} onChange={e=>set('name',e.target.value)}/></label>
   <div className="boardExistingFlowFields">

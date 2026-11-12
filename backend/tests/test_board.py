@@ -420,3 +420,39 @@ def test_existing_flow_review_rejects_invalid_or_unauthorized_edits():
                                   "name": "Updated"}]}).status_code == 409
         assert client.post("/api/board/commit", headers=ADMIN, json={
             **batch, "changes": [{**change, "name": "Updated"}]}).status_code == 200
+
+
+def test_reviewed_flow_reconnect_preserves_id_and_rejects_stale_endpoints():
+    with TestClient(app) as client:
+        _, source = create_system_and_vm(client)
+        _, target = create_system_and_vm(client)
+        _, replacement = create_system_and_vm(client)
+        created = client.post("/api/flows", headers=ADMIN, json={
+            "source_id": source, "target_id": target, "name": "Endpoint change",
+            "protocol": "HTTPS", "port": "443",
+        })
+        assert created.status_code == 201, created.text
+        flow = created.json()
+        values = {key: flow[key] for key in (
+            "name", "protocol", "port", "security", "data_description", "schedule", "verification",
+        )}
+        reconnect = {
+            "action": "update_flow", "id": flow["id"], "source_id": replacement, "target_id": target,
+            "previous_source_id": source, "previous_target_id": target, "previous_flow": values, **values,
+        }
+        batch = {"reason": "Move export to a new source", "changes": [reconnect]}
+        invalid = {**batch, "changes": [{**reconnect, "source_id": target}]}
+        assert client.post("/api/board/preview", headers=ADMIN, json=invalid).status_code == 422
+
+        preview = client.post("/api/board/preview", headers=ADMIN, json=batch)
+        assert preview.status_code == 200, preview.text
+        change = preview.json()["changes"][0]
+        assert change["endpoints"] == {"before": [source, target], "after": [replacement, target]}
+        assert flow in client.get("/api/flows", headers=ADMIN).json()
+
+        committed = client.post("/api/board/commit", headers=ADMIN, json=batch)
+        assert committed.status_code == 200, committed.text
+        assert {**flow, "source_id": replacement} in client.get("/api/flows", headers=ADMIN).json()
+        assert client.post("/api/board/commit", headers=ADMIN, json=batch).status_code == 409
+        audit = client.get("/api/board/audit", headers=ADMIN).json()
+        assert any(row["id"] == committed.json()["audit_id"] and row["changes"] == [change] for row in audit)

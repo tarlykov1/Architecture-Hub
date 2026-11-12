@@ -137,7 +137,7 @@ export function ObstacleAwareEdge({id,source,target,sourceX,sourceY,targetX,targ
  const grip=(end:'source'|'target',x:number,y:number)=>endpointEditor&&<button key={end}
    type="button" className="boardEndpointGrip nodrag nopan" data-flow-end={end}
    aria-label={end==='source'?'Перенести начало стрелки':'Перенести конец стрелки'}
-   title={end==='source'?'Перетащить начало в другую точку той же ВМ':'Перетащить конец в другую точку той же ВМ'}
+   title={end==='source'?'Перетащить начало к нужной точке подключения':'Перетащить конец к нужной точке подключения'}
    style={{position:'absolute',left:0,top:0,transform:`translate(-50%,-50%) translate(${x}px,${y}px)`}}
    onPointerDown={event=>{event.preventDefault();event.stopPropagation();endpointEditor.onBegin(end,event)}}
    onPointerMove={event=>endpointEditor.onMove(event)}

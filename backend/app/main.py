@@ -2125,6 +2125,8 @@ class BoardChange(BaseModel):
     schedule: str = Field(default="", max_length=160)
     verification: str = Field(default="draft", max_length=30)
     previous_flow: PreviousFlowValues | None = None
+    previous_source_id: UUID | None = None
+    previous_target_id: UUID | None = None
     interface_id: UUID | None = None
     item_id: UUID | None = None
     interface_name: str = Field(default="eth0", min_length=1, max_length=100)
@@ -2415,8 +2417,23 @@ def apply_board_changes(payload: BoardBatch, db: Session) -> list[dict[str, Any]
                 raise HTTPException(404, "Flow not found")
             if change.previous_flow is None:
                 raise HTTPException(422, "Previous flow values are required")
-            if change.source_id != flow.source_id or change.target_id != flow.target_id:
-                raise HTTPException(409, "Flow endpoints changed; redraw the connection explicitly")
+            previous_source = change.previous_source_id
+            previous_target = change.previous_target_id
+            if (previous_source is None) != (previous_target is None):
+                raise HTTPException(422, "Both previous flow endpoints are required")
+            expected_endpoints = (previous_source or change.source_id, previous_target or change.target_id)
+            if expected_endpoints != (flow.source_id, flow.target_id):
+                raise HTTPException(409, "Flow endpoints changed since the flow was opened; refresh and review")
+            endpoints_changed = (change.source_id, change.target_id) != expected_endpoints
+            if endpoints_changed:
+                if not change.source_id or not change.target_id or change.source_id == change.target_id:
+                    raise HTTPException(422, "Flow requires two different components")
+                db.flush()
+                source = db.get(InfrastructureItem, change.source_id)
+                target = db.get(InfrastructureItem, change.target_id)
+                if not source or not target:
+                    raise HTTPException(422, "Flow endpoints not found")
+                _check_relation_allowed(db, "supplies_data_to", source.kind, target.kind)
             if not change.name.strip():
                 raise HTTPException(422, "Flow name is required")
             fields = ("name", "protocol", "port", "security",
@@ -2426,13 +2443,23 @@ def apply_board_changes(payload: BoardBatch, db: Session) -> list[dict[str, Any]
                 raise HTTPException(409, "Flow changed since it was opened; refresh and review")
             after = {field: change.name.strip() if field == "name"
                      else getattr(change, field) for field in fields}
-            if before == after:
+            if before == after and not endpoints_changed:
                 raise HTTPException(422, "No flow parameters changed")
             for field, value in after.items():
                 setattr(flow, field, value)
-            output.append({"action": "update_flow", "id": str(flow.id),
-                           "source_id": str(flow.source_id), "target_id": str(flow.target_id),
-                           "before": before, "after": after})
+            if endpoints_changed:
+                before.update(source_id=str(flow.source_id), target_id=str(flow.target_id))
+                flow.source_id, flow.target_id = change.source_id, change.target_id
+                after.update(source_id=str(flow.source_id), target_id=str(flow.target_id))
+            result = {"action": "update_flow", "id": str(flow.id),
+                      "source_id": str(flow.source_id), "target_id": str(flow.target_id),
+                      "before": before, "after": after}
+            if endpoints_changed:
+                result["endpoints"] = {
+                    "before": [before["source_id"], before["target_id"]],
+                    "after": [after["source_id"], after["target_id"]],
+                }
+            output.append(result)
         elif change.action == "create_interface":
             if change.item_id is None or change.network_id is None:
                 raise HTTPException(422, "New interface requires VM and network")

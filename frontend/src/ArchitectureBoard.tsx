@@ -575,6 +575,11 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
  const stagePassport=()=>{if(!inspectedVM||!passportDraft.name.trim())return;const details_patch:Record<string,string>={purpose:passportDraft.purpose,environment:passportDraft.environment};const previous_details:Record<string,unknown>={purpose:inspectedVM.details?.purpose??null,environment:inspectedVM.details?.environment??null};addChange({action:'update_vm',id:inspectedVM.id,system_id:systemId,name:passportDraft.name.trim(),description:passportDraft.description,previous_name:inspectedVM.name,previous_description:inspectedVM.description||'',details_patch,previous_details});setEditingPassport(false);setInspectedId(null);setFocusDependencies(false);setReviewOpen(true)}
 
  const inspectedFlows=effectiveFlows.filter(f=>f.source_id===inspectedId||f.target_id===inspectedId)
+ const selectCanvasEdge=(source:string,target:string,ids:string[])=>{
+   setInspectedId(null);setInspectedNetworkId(null);setFocusDependencies(false)
+   setTool('flow');setFrom(source);setTo(target);setSelectedEdgeFlowIds(ids)
+   if(ids.length===1)selectFlowInDock(ids[0]);else{setSelectedDraftFlowId('');setSelectedExistingFlowId('')}
+ }
  const edges=Array.from(flowGroups.entries()).map(([pair,list])=>{
    const first=list[0]
    const protocolLabel=[first.protocol,first.port].filter(Boolean).join(':')
@@ -589,6 +594,7 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
      labelStyle:{fontSize:11,fontWeight:600},labelBgStyle:{fill:'#ffffff',fillOpacity:0.95},labelBgPadding:[7,4] as [number,number],
      data:{reciprocal:effectiveFlows.some(f=>f.source_id===first.target_id&&f.target_id===first.source_id),
        flowIds:list.map(f=>f.id),caption:list.length>1?flowCountLabel(list.length):protocolLabel||'Поток',
+       onSelect:()=>selectCanvasEdge(first.source_id,first.target_id,list.map(f=>f.id)),
        ...(selectedForReattach?{endpointEditor:{
          onBegin:(end:FlowEnd,event:React.PointerEvent<HTMLButtonElement>)=>beginReattach(selectedFlow.id,end,event),
          onMove:(event:React.PointerEvent<HTMLButtonElement>)=>moveReattach(event),
@@ -1015,7 +1021,7 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
     return position?{...rect,x:position.x,y:position.y}:rect
   }))
   onNodesChange(updates.filter(change=>!('id' in change)||!change.id.startsWith('network:')))
- }} nodesDraggable={tool==='move'} snapToGrid={snapToGrid} snapGrid={[20,20]} nodesConnectable={tool==='flow'} onConnectStart={()=>setDrawingConnection(true)} onConnectEnd={()=>setDrawingConnection(false)} onConnect={connection=>{if(tool==='flow'&&connection.source&&connection.target){stageDirectedFlow(connection.source,connection.target);setInspectedId(null)}}} onEdgeClick={(_,edge)=>{setInspectedId(null);setFocusDependencies(false);setTool('flow');setFrom(edge.source);setTo(edge.target);const ids=(edge.data?.flowIds as string[]|undefined)||[];setSelectedEdgeFlowIds(ids);if(ids.length===1)selectFlowInDock(ids[0]);else{setSelectedDraftFlowId('');setSelectedExistingFlowId('')}}} onNodeClick={(event,node)=>{
+ }} nodesDraggable={tool==='move'} snapToGrid={snapToGrid} snapGrid={[20,20]} nodesConnectable={tool==='flow'} onConnectStart={()=>setDrawingConnection(true)} onConnectEnd={()=>setDrawingConnection(false)} onConnect={connection=>{if(tool==='flow'&&connection.source&&connection.target){stageDirectedFlow(connection.source,connection.target);setInspectedId(null)}}} onEdgeClick={(_,edge)=>selectCanvasEdge(edge.source,edge.target,(edge.data?.flowIds as string[]|undefined)||[])} onNodeClick={(event,node)=>{
  // Network rectangles occupy their whole area; a click on one is not a pane
  // click. The VM tool must still allow placing a VM inside that container.
  if(tool==='vm'&&node.id.startsWith('network:')){

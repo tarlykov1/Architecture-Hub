@@ -347,7 +347,9 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
    flowGroups.set(key,[...(flowGroups.get(key)||[]),flow])
  }
  const selectedFlowId=selectedExistingFlowId||selectedDraftFlowId
- const selectedFlow=effectiveFlows.find(flow=>flow.id===selectedFlowId&&selectedEdgeFlowIds.includes(flow.id))
+ // The selected record is authoritative; visual edge grouping is derived
+ // separately. Do not require a second list to unlock endpoint editing.
+ const selectedFlow=effectiveFlows.find(flow=>flow.id===selectedFlowId)
  const activeEdgeFlowIds=selectedFlow
    ? (flowGroups.get(flowGroupKey(selectedFlow))||[]).map(flow=>flow.id)
    : selectedEdgeFlowIds
@@ -584,7 +586,7 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
    const first=list[0]
    const protocolLabel=[first.protocol,first.port].filter(Boolean).join(':')
    const anchor=portsForFlow(first)
-   const selectedForReattach=selectedFlow&&list.some(flow=>flow.id===selectedFlow.id)
+   const selectedForReattach=tool==='flow'&&selectedFlow&&list.some(flow=>flow.id===selectedFlow.id)
    return {id:'flow-pair:'+pair,source:first.source_id,target:first.target_id,
      sourceHandle:anchor.source_handle,targetHandle:anchor.target_handle,
      type:'obstacle-aware',animated:false,

@@ -41,6 +41,12 @@ const data:Record<string,unknown>={
 export function publicDemoResponse(url:string):unknown{
  const pathname=url.split('?')[0]
  if(pathname==='/api/health')return {status:'ok'}
+ // The network path endpoint returns an object, never an array. Demo paths
+ // are intentionally unconfigured, but the drawer must remain usable.
+ if(/^\/api\/flows\/[^/]+\/network-path$/.test(pathname))return {
+   flow_id:pathname.split('/')[3],declared_only:true,hops:[]
+ }
+ if(pathname==='/api/network-paths/usage')return []
  if(pathname in data)return data[pathname]
  // Never fall through to the real API while browsing anonymously.
  return []

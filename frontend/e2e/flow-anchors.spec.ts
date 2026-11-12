@@ -140,3 +140,108 @@ test('top to top and right to left drag each create exactly one flow',async({pag
  await expect(editor.locator('.react-flow__edge')).toHaveCount(2)
  await expect(editor.getByRole('button',{name:'Проверить изменения (2)'})).toBeVisible()
 })
+
+test('reconnect a saved flow to another VM and keep the chosen port after reopening',async({page})=>{
+ const {system,source,target}=await seed(page)
+ const replacement=await page.request.post('http://127.0.0.1:8001/api/infra',{
+  data:{system_id:system,name:'Replacement receiver',kind:'vm'}
+ })
+ expect(replacement.status()).toBe(201)
+ const replacementId=(await replacement.json()).id as string
+ const created=await page.request.post('http://127.0.0.1:8001/api/flows',{
+  data:{source_id:source.id,target_id:target.id,name:'Existing export',protocol:'HTTPS',port:'443'}
+ })
+ expect(created.status()).toBe(201)
+ const flowId=(await created.json()).id as string
+ const readFlows=async()=>(await (await page.request.get('http://127.0.0.1:8001/api/flows')).json()) as
+  Array<{id:string;source_id:string;target_id:string;protocol:string;port:string}>
+ const editor=await openBoard(page,system)
+ await editor.locator('.react-flow__edge').first().click()
+ const replacementNode=editor.locator('.react-flow__node[data-id="'+replacementId+'"]')
+ const grip=editor.getByRole('button',{name:'Перенести конец стрелки'})
+ await expect(grip).toBeVisible()
+ await drag(page,grip,replacementNode.locator('[data-anchor="in-top-2"]'))
+ const dock=editor.getByRole('complementary',{name:'Свойства и изменения схемы'})
+ await expect(dock.getByRole('form',{name:'Редактирование существующего потока'}))
+  .toContainText('Replacement receiver')
+ expect((await readFlows()).find(f=>f.id===flowId)?.target_id).toBe(target.id)
+
+ const reason=dock.getByPlaceholder('Например: актуализация схемы ИС после изменения сети')
+ await reason.fill('Transfer export to replacement receiver')
+ await dock.getByRole('button',{name:'Проверить изменения (1)'}).click()
+ const review=editor.getByRole('dialog',{name:'Подтверждение изменений архитектуры'})
+ await expect(review.getByText('Было: '+source.name+' → '+target.name,{exact:true})).toBeVisible()
+ await expect(review.getByText('Станет: '+source.name+' → Replacement receiver',{exact:true})).toBeVisible()
+ await review.getByRole('button',{name:'Подтвердить и записать в журнал'}).click()
+ await expect(review).toHaveCount(0)
+ const saved=await readFlows()
+ expect(saved.filter(f=>f.source_id===source.id)).toEqual([
+  expect.objectContaining({id:flowId,target_id:replacementId,protocol:'HTTPS',port:'443'})
+ ])
+ const layout=await page.request.get('http://127.0.0.1:8001/api/board/layout/'+system)
+ expect((await layout.json()).flow_anchors[flowId].target_handle).toBe('in-top-2')
+ const reopened=await openBoard(page,system)
+ const edge=reopened.locator('.react-flow__edge')
+ await expect(edge).toHaveCount(1)
+ await expect(edge).toHaveAttribute('data-id',new RegExp(replacementId))
+})
+
+test('reconnecting one flow on a shared arrow preserves the other flow',async({page})=>{
+ const {system,source,target}=await seed(page)
+ const replacementResponse=await page.request.post('http://127.0.0.1:8001/api/infra',{
+  data:{system_id:system,name:'Replacement sender',kind:'vm'}
+ })
+ expect(replacementResponse.status()).toBe(201)
+ const replacement=(await replacementResponse.json()) as {id:string;name:string}
+ const savedFlows=[]
+ for(const name of ['Transfer this flow','Keep this flow']){
+  const response=await page.request.post('http://127.0.0.1:8001/api/flows',{
+   data:{source_id:source.id,target_id:target.id,name,protocol:'HTTPS',port:'443'}
+  })
+  expect(response.status()).toBe(201)
+  savedFlows.push(await response.json())
+ }
+ const [moved,retained]=savedFlows
+
+ const editor=await openBoard(page,system)
+ const edges=editor.locator('.react-flow__edge')
+ const dock=editor.getByRole('complementary',{name:'Свойства и изменения схемы'})
+ const pickFlow=async()=>{
+  await expect(edges).toHaveCount(1)
+  await edges.click()
+  const choices=dock.getByRole('region',{name:'Потоки выбранной стрелки'})
+  await expect(choices.getByRole('button')).toHaveCount(2)
+  await choices.getByRole('button',{name:/Transfer this flow/}).click()
+ }
+ const reconnect=async()=>{
+  const grip=editor.getByRole('button',{name:'Перенести начало стрелки'})
+  await expect(grip).toBeVisible()
+  const port=editor.locator('.react-flow__node[data-id="'+replacement.id+'"] [data-anchor="out-bottom-2"]')
+  await drag(page,grip,port)
+  await expect(edges).toHaveCount(2)
+ }
+ await pickFlow()
+ await reconnect()
+ await dock.getByRole('button',{name:'Отменить правку потока'}).click()
+ await expect(dock.getByRole('button',{name:/Проверить изменения/})).toHaveCount(0)
+ await expect(edges).toHaveCount(1)
+ const restoredChoices=dock.getByRole('region',{name:'Потоки выбранной стрелки'})
+ await expect(restoredChoices.getByRole('button')).toHaveCount(2)
+ await expect(restoredChoices.getByRole('button',{name:/Keep this flow/})).toBeVisible()
+ await reconnect()
+
+ await dock.getByPlaceholder('Например: актуализация схемы ИС после изменения сети')
+  .fill('Move only the selected flow')
+ await dock.getByRole('button',{name:'Проверить изменения (1)'}).click()
+ const review=editor.getByRole('dialog',{name:'Подтверждение изменений архитектуры'})
+ await expect(review.getByText('Станет: '+replacement.name+' → '+target.name,{exact:true})).toBeVisible()
+ await review.getByRole('button',{name:'Подтвердить и записать в журнал'}).click()
+ await expect(review).toHaveCount(0)
+
+ const response=await page.request.get('http://127.0.0.1:8001/api/flows')
+ const flows=(await response.json()) as Array<{id:string}>
+ expect(flows.find(flow=>flow.id===moved.id)).toEqual({...moved,source_id:replacement.id})
+ expect(flows.find(flow=>flow.id===retained.id)).toEqual(retained)
+ const layout=await page.request.get('http://127.0.0.1:8001/api/board/layout/'+system)
+ expect((await layout.json()).flow_anchors[moved.id].source_handle).toBe('out-bottom-2')
+})

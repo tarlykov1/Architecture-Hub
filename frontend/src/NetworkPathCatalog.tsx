@@ -44,7 +44,12 @@ export default function NetworkPathCatalog({request,flows,components,interfaces,
     let active=true
     setLoading(true)
     request<FlowPath>('/api/flows/'+flowId+'/network-path')
-      .then(path=>{if(active){setHops(path.hops);setDirty(false);setError('')}})
+      .then(path=>{if(active){
+        if(!path||!Array.isArray(path.hops)){
+          setHops([]);setError('Маршрут пока недоступен: сервер вернул неожиданный формат данных.');return
+        }
+        setHops(path.hops);setDirty(false);setError('')
+      }})
       .catch(e=>{if(active){setError('Не удалось загрузить маршрут: '+String(e));setHops([])}})
       .finally(()=>{if(active)setLoading(false)})
     return()=>{active=false}

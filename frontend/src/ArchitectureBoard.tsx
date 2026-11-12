@@ -16,8 +16,8 @@ type VM = {id:string;system_id:string;kind:string;name:string;description?:strin
 type Network = {id:string;name:string;kind:string}
 type NIC = {id:string;item_id:string;name:string;zone_id:string|null;vlan_id:string|null;vrf_id:string|null}
 type Flow = {id:string;source_id:string;target_id:string;name:string;protocol:string;port:string;security:string;data_description:string;schedule:string;verification:string}
-type Change = {action:'create_vm'|'create_network'|'create_flow'|'update_flow'|'create_interface'|'move_interface'|'update_vm';id?:string;system_id?:string;name?:string;kind?:string;description?:string;source_id?:string;target_id?:string;protocol?:string;port?:string;security?:string;data_description?:string;schedule?:string;verification?:string;interface_id?:string;item_id?:string;interface_name?:string;network_id?:string|null;previous_network_id?:string|null;previous_name?:string;previous_description?:string;previous_flow?:FlowValues;details_patch?:Record<string,string>;previous_details?:Record<string,unknown>;network_field?:'zone_id'|'vlan_id'|'vrf_id'}
-type Preview = {changes:Array<{action:string;id:string;before:unknown;after:unknown;field?:string}>;count:number}
+type Change = {action:'create_vm'|'create_network'|'create_flow'|'update_flow'|'create_interface'|'move_interface'|'update_vm';id?:string;system_id?:string;name?:string;kind?:string;description?:string;source_id?:string;target_id?:string;protocol?:string;port?:string;security?:string;data_description?:string;schedule?:string;verification?:string;interface_id?:string;item_id?:string;interface_name?:string;network_id?:string|null;previous_network_id?:string|null;previous_name?:string;previous_description?:string;previous_flow?:FlowValues;previous_source_id?:string;previous_target_id?:string;details_patch?:Record<string,string>;previous_details?:Record<string,unknown>;network_field?:'zone_id'|'vlan_id'|'vrf_id'}
+type Preview = {changes:Array<{action:string;id:string;before:unknown;after:unknown;field?:string;endpoints?:{before:[string,string];after:[string,string]}}>;count:number}
 type Props = {systemId:string;ownerName?:string;ownerBySystemId?:Record<string,string>;items:VM[];networks:Network[];interfaces:NIC[];flows:Flow[];savedPositions?:Record<string,{x:number;y:number}>;onPositionChange?:(node:Node)=>void;request:<T>(url:string,init?:RequestInit)=>Promise<T>;onCommitted:()=>Promise<void>;onEditNetwork?:(id:string)=>void;onDraftStateChange?:(pending:boolean)=>void}
 type Tool = 'move'|'vm'|'flow'|'network'
 // Eight geometrically independent handles per VM, each usable for outgoing
@@ -83,7 +83,7 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
  const [canvasInteracted,setCanvasInteracted]=useState(false)
  const boardCanvasRef=useRef<HTMLDivElement>(null)
  const flowGesture=useRef<{sourceId:string;sourceHandle:string;start:{x:number;y:number}}|null>(null)
- const retargetGesture=useRef<{flowId:string;end:FlowEnd;nodeId:string}|null>(null)
+ const retargetGesture=useRef<{flowId:string;end:FlowEnd}|null>(null)
  const [preferredSourceHandle,setPreferredSourceHandle]=useState('')
  const [flowGhost,setFlowGhost]=useState<{start:{x:number;y:number};end:{x:number;y:number}}|null>(null)
  const [inspectedId,setInspectedId]=useState<string|null>(null)
@@ -313,6 +313,7 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
  },[initialNodes,changes,setNodes,tool])
  const {screenToFlowPosition,fitView}=useReactFlow()
  const allVMs=useMemo<VM[]>(()=>[...items,...changes.filter(c=>c.action==='create_vm').map(c=>({id:c.id!,name:c.name!,system_id:systemId,kind:'vm',description:'',details:{} as Record<string,unknown>}))],[items,changes,systemId])
+ const flowEndpointLabel=(ids:[string,string])=>ids.map(id=>allVMs.find(vm=>vm.id===id)?.name||id).join(' → ')
  const allNetworks=[...networks,...changes.filter(c=>c.action==='create_network').map(c=>({id:c.id!,name:c.name!,kind:c.kind!}))]
  const visibleRects=rectangles.filter(r=>allNetworks.some(n=>n.id===r.id))
  const draftNetworks=new Set(changes.filter(c=>c.action==='create_network').map(c=>c.id))
@@ -322,7 +323,7 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
  const pendingFlows=changes.filter(c=>c.action==='create_flow').map(c=>({id:c.id!,source_id:c.source_id!,target_id:c.target_id!,protocol:c.protocol||'',port:c.port||'',name:c.name||'',security:c.security||'unknown',data_description:c.data_description||'',schedule:'',verification:'draft'}))
  const effectiveSavedFlows=flows.map(flow=>{
    const edit=changes.find(c=>c.action==='update_flow'&&c.id===flow.id)
-   return edit?{...flow,name:edit.name??flow.name,protocol:edit.protocol??flow.protocol,port:edit.port??flow.port,security:edit.security??flow.security,
+   return edit?{...flow,source_id:edit.source_id??flow.source_id,target_id:edit.target_id??flow.target_id,name:edit.name??flow.name,protocol:edit.protocol??flow.protocol,port:edit.port??flow.port,security:edit.security??flow.security,
      data_description:edit.data_description??flow.data_description,schedule:edit.schedule??flow.schedule,verification:edit.verification??flow.verification}:flow
  })
  const effectiveFlows=[...effectiveSavedFlows,...pendingFlows]
@@ -335,13 +336,21 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
  }
  const portsForFlow=(flow:Flow):FlowPortPair=>flowAnchors[flow.id]||automaticPorts(flow.source_id,flow.target_id)
  // Two flows share a painted arrow only if both actual endpoint handles match.
+ const flowGroupKey=(flow:Flow)=>{
+   const anchors=portsForFlow(flow)
+   return [flow.source_id,flow.target_id,anchors.source_handle,anchors.target_handle].join('|')
+ }
  const flowGroups=new Map<string,Flow[]>()
  for(const flow of effectiveFlows){
    if(!allVMs.some(v=>v.id===flow.source_id)||!allVMs.some(v=>v.id===flow.target_id))continue
-   const anchors=portsForFlow(flow)
-   const key=[flow.source_id,flow.target_id,anchors.source_handle,anchors.target_handle].join('|')
+   const key=flowGroupKey(flow)
    flowGroups.set(key,[...(flowGroups.get(key)||[]),flow])
  }
+ const selectedFlowId=selectedExistingFlowId||selectedDraftFlowId
+ const selectedFlow=effectiveFlows.find(flow=>flow.id===selectedFlowId&&selectedEdgeFlowIds.includes(flow.id))
+ const activeEdgeFlowIds=selectedFlow
+   ? (flowGroups.get(flowGroupKey(selectedFlow))||[]).map(flow=>flow.id)
+   : selectedEdgeFlowIds
  const relatedIds=new Set(inspectedId?[inspectedId,...effectiveFlows.filter(f=>f.source_id===inspectedId||f.target_id===inspectedId).flatMap(f=>[f.source_id,f.target_id])]:[])
  const canvasPoint=(x:number,y:number)=>{
    const box=boardCanvasRef.current?.getBoundingClientRect()
@@ -349,15 +358,15 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
  }
  const vmElement=(id:string)=>[...(boardCanvasRef.current?.querySelectorAll<HTMLElement>('.react-flow__node-boardComponent')||[])]
    .find(node=>node.dataset.id===id)
- const findDropTarget=(at:{x:number;y:number},exclude:string)=>{
+ const findDropTarget=(at:{x:number;y:number},exclude:string, end:FlowEnd='target')=>{
    const candidates=[...(boardCanvasRef.current?.querySelectorAll<HTMLElement>('.react-flow__node-boardComponent')||[])]
      .filter(node=>node.dataset.id&&node.dataset.id!==exclude)
    const near=(rect:DOMRect,margin:number)=>at.x>=rect.left-margin&&at.x<=rect.right+margin&&at.y>=rect.top-margin&&at.y<=rect.bottom+margin
-   const byHandle=candidates.map(node=>({node,nearest:closestVisiblePort(node,at,'target',28)}))
+   const byHandle=candidates.map(node=>({node,nearest:closestVisiblePort(node,at,end,28)}))
      .filter(x=>x.nearest).sort((a,b)=>a.nearest!.distance-b.nearest!.distance)[0]
    const target=byHandle?.node||candidates.find(node=>near(node.getBoundingClientRect(),8))
    if(!target||!target.dataset.id)return null
-   const nearest=closestVisiblePort(target,at,'target')
+   const nearest=closestVisiblePort(target,at,end)
    return nearest?{targetId:target.dataset.id,targetHandle:nearest.id}:null
  }
  const beginFlowPointer=(id:string,handle:string,event:React.PointerEvent<HTMLDivElement>)=>{
@@ -402,8 +411,7 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
    const flow=effectiveFlows.find(f=>f.id===flowId)
    if(!flow)return
    event.stopPropagation();event.preventDefault()
-   const nodeId=end==='source'?flow.source_id:flow.target_id
-   retargetGesture.current={flowId,end,nodeId}
+   retargetGesture.current={flowId,end}
    setCanvasInteracted(true)
    const grip=boardCanvasRef.current?.querySelector<HTMLElement>('.boardEndpointGrip[data-flow-end="'+end+'"]')
    const box=(grip||event.currentTarget).getBoundingClientRect()
@@ -420,21 +428,34 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
    const gesture=retargetGesture.current
    if(!gesture)return
    retargetGesture.current=null;setFlowGhost(null)
-   const node=vmElement(gesture.nodeId)
-   if(!node){setError('Компонент потока больше не отображается на схеме.');return}
-   const bounds=node.getBoundingClientRect()
-   const within=at.x>=bounds.left-30&&at.x<=bounds.right+30&&at.y>=bounds.top-30&&at.y<=bounds.bottom+30
-   if(!within){setLayoutMessage('Конец стрелки можно перенести на другую точку той же ВМ. Для смены ВМ создайте новый поток.');return}
-   const next=closestVisiblePort(node,at,gesture.end)
-   if(!next)return
    const flow=effectiveFlows.find(f=>f.id===gesture.flowId)
    if(!flow)return
+   const drop=findDropTarget(at,'',gesture.end)
+   if(!drop){setLayoutMessage('Перетащите маркер на точку подключения компонента.');return}
+   const movingSource=gesture.end==='source'
+   const sourceId=movingSource?drop.targetId:flow.source_id
+   const targetId=movingSource?flow.target_id:drop.targetId
+   if(sourceId===targetId){setLayoutMessage('У потока должны быть разные источник и получатель.');return}
    const current=portsForFlow(flow)
-   const pair={...current,[gesture.end==='source'?'source_handle':'target_handle']:next.id}
-   if(pair.source_handle===current.source_handle&&pair.target_handle===current.target_handle)return
+   const pair={...current,[movingSource?'source_handle':'target_handle']:drop.targetHandle}
+   const endpointsChanged=sourceId!==flow.source_id||targetId!==flow.target_id
+   if(endpointsChanged){
+     const draft=changes.find(c=>c.action==='create_flow'&&c.id===flow.id)
+     if(draft){
+       setChanges(previous=>[...previous.filter(c=>c!==draft),{...draft,source_id:sourceId,target_id:targetId}])
+       setPreview(null);setReviewOpen(true)
+     }else{
+       const original=flows.find(f=>f.id===flow.id)
+       if(!original)return
+       stageExistingFlowEdit(original,flowValues(flow),sourceId,targetId)
+     }
+     setFrom(sourceId);setTo(targetId)
+   }else if(pair.source_handle===current.source_handle&&pair.target_handle===current.target_handle)return
    setFlowAnchors(previous=>({...previous,[gesture.flowId]:pair}))
    setLayoutDirty(true)
-   setLayoutMessage('Точка подключения стрелки изменена. Нажмите «Сохранить», чтобы сохранить расположение концов в схеме.')
+   setLayoutMessage(endpointsChanged
+     ?'Подключение изменено на схеме. Проверьте и подтвердите черновик.'
+     :'Точка подключения стрелки изменена. Нажмите «Сохранить», чтобы сохранить расположение концов в схеме.')
    setError('')
  }
  const endReattach=(event:React.PointerEvent<HTMLElement>)=>{
@@ -474,8 +495,7 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
        const flow=effectiveFlows.find(f=>f.id===selected)
        if(grip&&grip.distance<=21&&flow&&(end==='source'||end==='target')){
          event.preventDefault();event.stopPropagation()
-         const nodeId=end==='source'?flow.source_id:flow.target_id
-         retargetGesture.current={flowId:selected,end,nodeId}
+         retargetGesture.current={flowId:selected,end}
          setCanvasInteracted(true)
          const point=center(grip.el)
          setFlowGhost({start:canvasPoint(point.x,point.y),end:canvasPoint(point.x,point.y)})
@@ -555,23 +575,28 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
  const stagePassport=()=>{if(!inspectedVM||!passportDraft.name.trim())return;const details_patch:Record<string,string>={purpose:passportDraft.purpose,environment:passportDraft.environment};const previous_details:Record<string,unknown>={purpose:inspectedVM.details?.purpose??null,environment:inspectedVM.details?.environment??null};addChange({action:'update_vm',id:inspectedVM.id,system_id:systemId,name:passportDraft.name.trim(),description:passportDraft.description,previous_name:inspectedVM.name,previous_description:inspectedVM.description||'',details_patch,previous_details});setEditingPassport(false);setInspectedId(null);setFocusDependencies(false);setReviewOpen(true)}
 
  const inspectedFlows=effectiveFlows.filter(f=>f.source_id===inspectedId||f.target_id===inspectedId)
+ const selectCanvasEdge=(source:string,target:string,ids:string[])=>{
+   setInspectedId(null);setInspectedNetworkId(null);setFocusDependencies(false)
+   setTool('flow');setFrom(source);setTo(target);setSelectedEdgeFlowIds(ids)
+   if(ids.length===1)selectFlowInDock(ids[0]);else{setSelectedDraftFlowId('');setSelectedExistingFlowId('')}
+ }
  const edges=Array.from(flowGroups.entries()).map(([pair,list])=>{
    const first=list[0]
    const protocolLabel=[first.protocol,first.port].filter(Boolean).join(':')
    const anchor=portsForFlow(first)
-   const selectedId=selectedExistingFlowId||selectedDraftFlowId
-   const selectedForReattach=selectedId&&list.some(flow=>flow.id===selectedId)&&selectedEdgeFlowIds.some(id=>list.some(flow=>flow.id===id))
+   const selectedForReattach=selectedFlow&&list.some(flow=>flow.id===selectedFlow.id)
    return {id:'flow-pair:'+pair,source:first.source_id,target:first.target_id,
      sourceHandle:anchor.source_handle,targetHandle:anchor.target_handle,
      type:'obstacle-aware',animated:false,
-     style:{stroke:list.some(f=>changes.some(c=>c.id===f.id&&(c.action==='create_flow'||c.action==='update_flow')))?'#176bc1':'#369279',strokeWidth:selectedEdgeFlowIds.some(id=>list.some(f=>f.id===id))?3.2:inspectedId&&(first.source_id===inspectedId||first.target_id===inspectedId)?3:1.8,opacity:focusDependencies&&inspectedId&&first.source_id!==inspectedId&&first.target_id!==inspectedId?0.16:1},
+     style:{stroke:list.some(f=>changes.some(c=>c.id===f.id&&(c.action==='create_flow'||c.action==='update_flow')))?'#176bc1':'#369279',strokeWidth:activeEdgeFlowIds.some(id=>list.some(f=>f.id===id))?3.2:inspectedId&&(first.source_id===inspectedId||first.target_id===inspectedId)?3:1.8,opacity:focusDependencies&&inspectedId&&first.source_id!==inspectedId&&first.target_id!==inspectedId?0.16:1},
      markerEnd:{type:MarkerType.ArrowClosed,width:13,height:13},
      label:list.length>1?flowCountLabel(list.length):protocolLabel||'Поток',
      labelStyle:{fontSize:11,fontWeight:600},labelBgStyle:{fill:'#ffffff',fillOpacity:0.95},labelBgPadding:[7,4] as [number,number],
      data:{reciprocal:effectiveFlows.some(f=>f.source_id===first.target_id&&f.target_id===first.source_id),
        flowIds:list.map(f=>f.id),caption:list.length>1?flowCountLabel(list.length):protocolLabel||'Поток',
+       onSelect:()=>selectCanvasEdge(first.source_id,first.target_id,list.map(f=>f.id)),
        ...(selectedForReattach?{endpointEditor:{
-         onBegin:(end:FlowEnd,event:React.PointerEvent<HTMLButtonElement>)=>beginReattach(selectedId,end,event),
+         onBegin:(end:FlowEnd,event:React.PointerEvent<HTMLButtonElement>)=>beginReattach(selectedFlow.id,end,event),
          onMove:(event:React.PointerEvent<HTMLButtonElement>)=>moveReattach(event),
          onEnd:(event:React.PointerEvent<HTMLButtonElement>)=>endReattach(event)
        }}:{})}
@@ -675,22 +700,11 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
    data_description:flow.data_description,schedule:flow.schedule,verification:flow.verification
  })
  const selectedExistingFlow=flows.find(f=>f.id===selectedExistingFlowId)
+ const selectedEffectiveFlow=effectiveSavedFlows.find(f=>f.id===selectedExistingFlowId)
  const selectedExistingChange=changes.find(c=>c.action==='update_flow'&&c.id===selectedExistingFlowId)
- const selectedExistingCurrent=selectedExistingFlow?{
-   ...flowValues(selectedExistingFlow),
-   ...(selectedExistingChange?{
-     name:selectedExistingChange.name??selectedExistingFlow.name,
-     protocol:selectedExistingChange.protocol??selectedExistingFlow.protocol,
-     port:selectedExistingChange.port??selectedExistingFlow.port,
-     security:selectedExistingChange.security??selectedExistingFlow.security,
-     data_description:selectedExistingChange.data_description??selectedExistingFlow.data_description,
-     schedule:selectedExistingChange.schedule??selectedExistingFlow.schedule,
-     verification:selectedExistingChange.verification??selectedExistingFlow.verification
-   }:{})
- }:null
  const selectFlowInDock=(id:string)=>{
    const draft=changes.find(c=>c.action==='create_flow'&&c.id===id)
-   const stored=flows.find(f=>f.id===id)
+   const stored=effectiveSavedFlows.find(f=>f.id===id)
    if(!draft&&!stored){setError('Поток больше не найден. Обновите схему.');return}
    setTool('flow');setError('');setInspectedId(null);setInspectedNetworkId(null);setFocusDependencies(false)
    if(draft){setSelectedDraftFlowId(id);setSelectedExistingFlowId('')}
@@ -698,21 +712,34 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
    const flow=draft||stored!
    setFrom(flow.source_id||'');setTo(flow.target_id||'')
  }
- const stageExistingFlowEdit=(next:FlowValues)=>{
-   if(!selectedExistingFlow)return
-   const before=flowValues(selectedExistingFlow)
-   setChanges(previous=>[...previous.filter(c=>!(c.action==='update_flow'&&c.id===selectedExistingFlow.id)),{
-     action:'update_flow',id:selectedExistingFlow.id,
-     source_id:selectedExistingFlow.source_id,target_id:selectedExistingFlow.target_id,
+ const stageExistingFlowEdit=(original:Flow,next:FlowValues,sourceId:string,targetId:string)=>{
+   const before=flowValues(original)
+   const endpointsChanged=sourceId!==original.source_id||targetId!==original.target_id
+   const hasChanges=endpointsChanged||Object.keys(before).some(key=>before[key as keyof FlowValues]!==next[key as keyof FlowValues])
+   const remaining=changes.filter(c=>!(c.action==='update_flow'&&c.id===original.id))
+   setChanges(hasChanges?[...remaining,{
+     action:'update_flow',id:original.id,source_id:sourceId,target_id:targetId,
+     previous_source_id:original.source_id,previous_target_id:original.target_id,
      ...next,previous_flow:before
-   }])
-   setPreview(null);setError('');setReviewOpen(true)
-   setLayoutMessage('Изменения потока добавлены в черновик. Укажите причину и подтвердите запись в журнал.')
+   }]:remaining)
+   setPreview(null);setError('');setReviewOpen(hasChanges||remaining.length>0)
+   setLayoutMessage('Проверьте изменения потока и подтвердите запись в журнал.')
  }
  const discardExistingFlowEdit=()=>{
-   if(!selectedExistingFlowId)return
-   setChanges(previous=>previous.filter(c=>!(c.action==='update_flow'&&c.id===selectedExistingFlowId)))
-   setPreview(null);setReviewOpen(changes.some(c=>!(c.action==='update_flow'&&c.id===selectedExistingFlowId)))
+   if(!selectedExistingFlow)return
+   const id=selectedExistingFlow.id
+   if(selectedEffectiveFlow&&(selectedExistingFlow.source_id!==selectedEffectiveFlow.source_id||selectedExistingFlow.target_id!==selectedEffectiveFlow.target_id)){
+     setFlowAnchors(previous=>{
+       const next={...previous}
+       const saved=persistedFlowAnchors.current[id]
+       if(saved)next[id]=saved
+       else delete next[id]
+       return next
+     })
+     setFrom(selectedExistingFlow.source_id);setTo(selectedExistingFlow.target_id)
+   }
+   const remaining=changes.filter(c=>!(c.action==='update_flow'&&c.id===id))
+   setChanges(remaining);setPreview(null);setReviewOpen(remaining.length>0)
    setLayoutMessage('Правка потока удалена из черновика.')
  }
  const selectedDraftFlow=changes.find(c=>c.action==='create_flow'&&c.id===selectedDraftFlowId)
@@ -994,7 +1021,7 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
     return position?{...rect,x:position.x,y:position.y}:rect
   }))
   onNodesChange(updates.filter(change=>!('id' in change)||!change.id.startsWith('network:')))
- }} nodesDraggable={tool==='move'} snapToGrid={snapToGrid} snapGrid={[20,20]} nodesConnectable={tool==='flow'} onConnectStart={()=>setDrawingConnection(true)} onConnectEnd={()=>setDrawingConnection(false)} onConnect={connection=>{if(tool==='flow'&&connection.source&&connection.target){stageDirectedFlow(connection.source,connection.target);setInspectedId(null)}}} onEdgeClick={(_,edge)=>{setInspectedId(null);setFocusDependencies(false);setTool('flow');setFrom(edge.source);setTo(edge.target);const ids=(edge.data?.flowIds as string[]|undefined)||[];setSelectedEdgeFlowIds(ids);if(ids.length===1)selectFlowInDock(ids[0]);else{setSelectedDraftFlowId('');setSelectedExistingFlowId('')}}} onNodeClick={(event,node)=>{
+ }} nodesDraggable={tool==='move'} snapToGrid={snapToGrid} snapGrid={[20,20]} nodesConnectable={tool==='flow'} onConnectStart={()=>setDrawingConnection(true)} onConnectEnd={()=>setDrawingConnection(false)} onConnect={connection=>{if(tool==='flow'&&connection.source&&connection.target){stageDirectedFlow(connection.source,connection.target);setInspectedId(null)}}} onEdgeClick={(_,edge)=>selectCanvasEdge(edge.source,edge.target,(edge.data?.flowIds as string[]|undefined)||[])} onNodeClick={(event,node)=>{
  // Network rectangles occupy their whole area; a click on one is not a pane
  // click. The VM tool must still allow placing a VM inside that container.
  if(tool==='vm'&&node.id.startsWith('network:')){
@@ -1044,11 +1071,11 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
        {tool!=='move'&&<div className="boardPropertiesHeader"><div><small>ИНСТРУМЕНТ</small><h3>{tool==='vm'?'Виртуальная машина':tool==='flow'?'Поток данных':'Сеть / контейнер'}</h3></div><button type="button" aria-label="Закрыть настройки инструмента" onClick={()=>{setTool('move');setDrawing(null);setError('');setLayoutMessage('');setReviewOpen(false);cancelNetworkDrag()}}>✕</button></div>}
           {tool==='vm'&&<div className="boardToolFields"><p>Введите название и нажмите на холст для размещения ВМ.</p><label>Имя ВМ <input value={name} onChange={e=>setName(e.target.value)} placeholder="Новая ВМ"/></label><button onClick={()=>addVM()}>Разместить на схеме</button></div>}
    {tool==='network'&&<div className="boardToolFields"><label>Название сети * <input ref={networkNameInput} required aria-required="true" aria-invalid={!name.trim()} value={name} onChange={e=>{setName(e.target.value);if(e.target.value.trim())setError('')}} placeholder="Название VRF / VLAN / зоны"/></label>{!name.trim()&&<p className="boardRequiredHint" role="alert">Обязательное поле: сначала укажите название, затем нарисуйте контейнер.</p>}<label>Тип <select value={kind} onChange={e=>setKind(e.target.value as typeof kind)}><option value="zone">Зона</option><option value="vlan">VLAN</option><option value="vrf">VRF</option></select></label><p role="status">{drawing?'Продолжайте тянуть – контур контейнера виден на схеме':'Нажмите на холст – появится стандартный контейнер 540 × 340. Или протяните прямоугольник нужного размера. Затем подтвердите изменения в черновике.'}</p></div>}
-   {tool==='flow'&&<div className="boardToolFields"><p><strong>8 точек подключения на каждой ВМ.</strong> Начните стрелку от любой точки по периметру и отпустите на нужной точке другой ВМ. Можно нажать на две карточки по очереди. Чтобы перенести уже созданный конец стрелки, выберите поток и перетащите жёлтый маркер на другую точку той же ВМ.</p><div className="boardFlowHint">Сначала источник → затем получатель. Сохранение в реестр – через «Сохранить всё».</div><label>Откуда <select aria-label="Откуда" value={from} onChange={e=>setFrom(e.target.value)}><option value="">Выберите</option>{allVMs.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}</select></label><label>Куда <select aria-label="Куда" value={to} onChange={e=>setTo(e.target.value)}><option value="">Выберите</option>{allVMs.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}</select></label><label>Направление (при выборе вручную) <select value={direction} onChange={e=>setDirection(e.target.value as typeof direction)}><option value="forward">→</option><option value="reverse">←</option><option value="both">↔ (два потока)</option></select></label><label>Протокол <input value={protocol} onChange={e=>setProtocol(e.target.value)}/></label><label>Порт <input value={port} onChange={e=>setPort(e.target.value)}/></label><label>Защита <input value={security} onChange={e=>setSecurity(e.target.value)}/></label><button onClick={()=>{addFlow()}}>Добавить поток по выбранным компонентам</button>{selectedDraftFlow&&<section className="boardFlowDraftEditor" aria-label="Параметры нарисованного потока"><h4>Нарисованный поток · черновик</h4><p>{allVMs.find(v=>v.id===selectedDraftFlow.source_id)?.name||'Источник'} → {allVMs.find(v=>v.id===selectedDraftFlow.target_id)?.name||'Получатель'}</p><label>Название <input value={selectedDraftFlow.name||''} onChange={e=>updateSelectedDraftFlow({name:e.target.value})}/></label><label>Протокол <input value={selectedDraftFlow.protocol||''} onChange={e=>updateSelectedDraftFlow({protocol:e.target.value})}/></label><label>Порт <input value={selectedDraftFlow.port||''} onChange={e=>updateSelectedDraftFlow({port:e.target.value})} placeholder="Необязательно"/></label><label>Защита <input value={selectedDraftFlow.security||''} onChange={e=>updateSelectedDraftFlow({security:e.target.value})}/></label><button type="button" onClick={()=>{setChanges(p=>p.filter(c=>c.id!==selectedDraftFlowId));setFlowAnchors(p=>{const copy={...p};delete copy[selectedDraftFlowId];return copy});setSelectedDraftFlowId('');setPreview(null)}}>Удалить стрелку из черновика</button></section>}</div>}
-   {tool==='flow'&&selectedEdgeFlowIds.length>0&&<section className="boardFlowEdgeList" aria-label="Потоки выбранной стрелки">
-     <h4>Связи на стрелке ({selectedEdgeFlowIds.length})</h4>
+   {tool==='flow'&&<div className="boardToolFields"><p><strong>8 точек подключения на каждой ВМ.</strong> Начните стрелку от любой точки по периметру и отпустите на нужной точке другой ВМ. Можно нажать на две карточки по очереди. Чтобы изменить подключение, выберите поток и перетащите жёлтый маркер на нужную точку текущей или другой ВМ.</p><div className="boardFlowHint">Сначала источник → затем получатель. Сохранение в реестр – через «Сохранить всё».</div><label>Откуда <select aria-label="Откуда" value={from} onChange={e=>setFrom(e.target.value)}><option value="">Выберите</option>{allVMs.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}</select></label><label>Куда <select aria-label="Куда" value={to} onChange={e=>setTo(e.target.value)}><option value="">Выберите</option>{allVMs.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}</select></label><label>Направление (при выборе вручную) <select value={direction} onChange={e=>setDirection(e.target.value as typeof direction)}><option value="forward">→</option><option value="reverse">←</option><option value="both">↔ (два потока)</option></select></label><label>Протокол <input value={protocol} onChange={e=>setProtocol(e.target.value)}/></label><label>Порт <input value={port} onChange={e=>setPort(e.target.value)}/></label><label>Защита <input value={security} onChange={e=>setSecurity(e.target.value)}/></label><button onClick={()=>{addFlow()}}>Добавить поток по выбранным компонентам</button>{selectedDraftFlow&&<section className="boardFlowDraftEditor" aria-label="Параметры нарисованного потока"><h4>Нарисованный поток · черновик</h4><p>{allVMs.find(v=>v.id===selectedDraftFlow.source_id)?.name||'Источник'} → {allVMs.find(v=>v.id===selectedDraftFlow.target_id)?.name||'Получатель'}</p><label>Название <input value={selectedDraftFlow.name||''} onChange={e=>updateSelectedDraftFlow({name:e.target.value})}/></label><label>Протокол <input value={selectedDraftFlow.protocol||''} onChange={e=>updateSelectedDraftFlow({protocol:e.target.value})}/></label><label>Порт <input value={selectedDraftFlow.port||''} onChange={e=>updateSelectedDraftFlow({port:e.target.value})} placeholder="Необязательно"/></label><label>Защита <input value={selectedDraftFlow.security||''} onChange={e=>updateSelectedDraftFlow({security:e.target.value})}/></label><button type="button" onClick={()=>{setChanges(p=>p.filter(c=>c.id!==selectedDraftFlowId));setFlowAnchors(p=>{const copy={...p};delete copy[selectedDraftFlowId];return copy});setSelectedDraftFlowId('');setPreview(null)}}>Удалить стрелку из черновика</button></section>}</div>}
+   {tool==='flow'&&activeEdgeFlowIds.length>0&&<section className="boardFlowEdgeList" aria-label="Потоки выбранной стрелки">
+     <h4>Связи на стрелке ({activeEdgeFlowIds.length})</h4>
      <p>На одной стрелке могут находиться разные потоки между одинаковыми компонентами. Выберите конкретную запись для редактирования.</p>
-     {selectedEdgeFlowIds.map(id=>{
+     {activeEdgeFlowIds.map(id=>{
        const flow=effectiveFlows.find(f=>f.id===id)
        if(!flow)return null
        return <button type="button" className={selectedExistingFlowId===id||selectedDraftFlowId===id?'boardFlowSelected':''} key={id} onClick={()=>selectFlowInDock(id)}>
@@ -1056,11 +1083,11 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
        </button>
      })}
    </section>}
-   {tool==='flow'&&selectedExistingFlow&&selectedExistingCurrent&&<ExistingFlowEditor key={'flow-editor:'+selectedExistingFlow.id} original={flowValues(selectedExistingFlow)} current={selectedExistingCurrent}
-     sourceName={allVMs.find(v=>v.id===selectedExistingFlow.source_id)?.name||selectedExistingFlow.source_id}
-     targetName={allVMs.find(v=>v.id===selectedExistingFlow.target_id)?.name||selectedExistingFlow.target_id}
+   {tool==='flow'&&selectedExistingFlow&&selectedEffectiveFlow&&<ExistingFlowEditor key={'flow-editor:'+selectedExistingFlow.id} original={flowValues(selectedExistingFlow)} current={flowValues(selectedEffectiveFlow)}
+     sourceName={allVMs.find(v=>v.id===selectedEffectiveFlow.source_id)?.name||selectedEffectiveFlow.source_id}
+     targetName={allVMs.find(v=>v.id===selectedEffectiveFlow.target_id)?.name||selectedEffectiveFlow.target_id}
      staged={Boolean(selectedExistingChange)}
-     onStage={stageExistingFlowEdit} onUndo={discardExistingFlowEdit}
+     onStage={values=>stageExistingFlowEdit(selectedExistingFlow,values,selectedEffectiveFlow.source_id,selectedEffectiveFlow.target_id)} onUndo={discardExistingFlowEdit}
      onClose={()=>{setSelectedExistingFlowId('');setSelectedEdgeFlowIds([])}}/>}
    {tool==='flow'&&selectedExistingFlow&&
      <FlowAttributeMap key={'flow-data-map:'+selectedExistingFlow.id} flowId={selectedExistingFlow.id} request={request}/>}
@@ -1113,7 +1140,10 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
      </div>
    </div>}
    {showHistory&&<div className="boardConfirm" role="dialog" aria-modal="true" aria-label="Журнал изменений архитектуры"><div className="boardConfirmInner"><h3>Журнал изменений схемы</h3><p>Последние подтверждённые пакеты операций.</p><ol>{history.map(entry=><li key={entry.id}><strong>{entry.timestamp}</strong> – {entry.reason} · {entry.changes.length} операций<details><summary>Посмотреть состав</summary><pre>{JSON.stringify(entry.changes,null,2)}</pre></details></li>)}</ol>{!history.length&&<p>Записей пока нет.</p>}<button type="button" onClick={()=>{setShowHistory(false);setTool('move');setReviewOpen(changes.length>0)}}>Вернуться к редактированию</button></div></div>}
-   {preview&&<div className="boardConfirm" role="dialog" aria-modal="true" aria-label="Подтверждение изменений архитектуры"><div className="boardConfirmInner"><h3>Подтверждение изменений</h3><p>Причина: {reason}. Будет сохранено {preview.count} операций. Для существующих интерфейсов сверяется прежняя сеть.</p><ol>{preview.changes.map((c,i)=><li key={i}><strong>{c.action}</strong> · {c.id}<pre>{JSON.stringify({before:c.before,after:c.after},null,2)}</pre></li>)}</ol><div><button disabled={busy} onClick={()=>{setPreview(null);setReviewOpen(true);setTool('move')}}>Вернуться к редактированию</button><button disabled={busy} className="primary" onClick={commit}>Подтвердить и записать в журнал</button></div></div></div>}
+   {preview&&<div className="boardConfirm" role="dialog" aria-modal="true" aria-label="Подтверждение изменений архитектуры"><div className="boardConfirmInner"><h3>Подтверждение изменений</h3><p>Причина: {reason}. Будет сохранено {preview.count} операций. Для существующих интерфейсов сверяется прежняя сеть.</p><ol>{preview.changes.map((c,i)=><li key={i}><strong>{c.endpoints?'Переподключение потока':c.action}</strong> · {c.id}
+     {c.endpoints&&<div><div>Было: {flowEndpointLabel(c.endpoints.before)}</div>
+       <div>Станет: {flowEndpointLabel(c.endpoints.after)}</div></div>}
+     <pre>{JSON.stringify({before:c.before,after:c.after},null,2)}</pre></li>)}</ol><div><button disabled={busy} onClick={()=>{setPreview(null);setReviewOpen(true);setTool('move')}}>Вернуться к редактированию</button><button disabled={busy} className="primary" onClick={commit}>Подтвердить и записать в журнал</button></div></div></div>}
  </section>
 }
 

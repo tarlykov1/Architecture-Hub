@@ -129,6 +129,7 @@ export function ObstacleAwareEdge({id,source,target,sourceX,sourceY,targetX,targ
    return {path:pathString(points),label:midpoint(points)}
  },[nodes,source,target,sourceX,sourceY,targetX,targetY,sourcePosition,targetPosition,data?.reciprocal])
  const caption=typeof data?.caption==='string'?data.caption:''
+ const onSelect=data?.onSelect as undefined|(()=>void)
  const endpointEditor=data?.endpointEditor as undefined|{
    onBegin:(end:'source'|'target',event:React.PointerEvent<HTMLButtonElement>)=>void
    onMove:(event:React.PointerEvent<HTMLButtonElement>)=>void
@@ -137,7 +138,7 @@ export function ObstacleAwareEdge({id,source,target,sourceX,sourceY,targetX,targ
  const grip=(end:'source'|'target',x:number,y:number)=>endpointEditor&&<button key={end}
    type="button" className="boardEndpointGrip nodrag nopan" data-flow-end={end}
    aria-label={end==='source'?'Перенести начало стрелки':'Перенести конец стрелки'}
-   title={end==='source'?'Перетащить начало в другую точку той же ВМ':'Перетащить конец в другую точку той же ВМ'}
+   title={end==='source'?'Перетащить начало к нужной точке подключения':'Перетащить конец к нужной точке подключения'}
    style={{position:'absolute',left:0,top:0,transform:`translate(-50%,-50%) translate(${x}px,${y}px)`}}
    onPointerDown={event=>{event.preventDefault();event.stopPropagation();endpointEditor.onBegin(end,event)}}
    onPointerMove={event=>endpointEditor.onMove(event)}
@@ -147,7 +148,7 @@ export function ObstacleAwareEdge({id,source,target,sourceX,sourceY,targetX,targ
  return <>
    <BaseEdge id={id} path={path} markerEnd={markerEnd} style={style} interactionWidth={18}/>
    {(caption||endpointEditor)&&<EdgeLabelRenderer>
-     {caption&&<div className="reciprocalEdgeLabel" style={{position:'absolute',transform:`translate(-50%,-50%) translate(${label.x}px,${label.y}px)`,pointerEvents:'none',opacity:style?.opacity??1}}>{caption}</div>}
+     {caption&&(onSelect?<button type="button" className="reciprocalEdgeLabel boardSelectableEdgeLabel nodrag nopan" aria-label={'Выбрать поток '+caption} onClick={event=>{event.preventDefault();event.stopPropagation();onSelect()}} style={{position:'absolute',transform:`translate(-50%,-50%) translate(${label.x}px,${label.y-26}px)`,pointerEvents:'auto',opacity:style?.opacity??1}}>{caption}</button>:<div className="reciprocalEdgeLabel" style={{position:'absolute',transform:`translate(-50%,-50%) translate(${label.x}px,${label.y}px)`,pointerEvents:'none',opacity:style?.opacity??1}}>{caption}</div>)}
      {endpointEditor&&grip('source',sourceX,sourceY)}
      {endpointEditor&&grip('target',targetX,targetY)}
    </EdgeLabelRenderer>}

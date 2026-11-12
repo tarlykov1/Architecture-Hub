@@ -5,6 +5,10 @@
 .boardCanvas .react-flow__node.dragging{cursor:grabbing}
 .boardCanvas .react-flow__edge-text{font-size:11px;font-weight:600}
 
+/* Flow captions are direct interactive targets, independent of network containers. */
+.boardCanvas .boardSelectableEdgeLabel{z-index:60;cursor:pointer;pointer-events:auto;border:1px solid #9bb8d2;font-size:11px;font-weight:600;line-height:1.35;box-shadow:0 2px 7px #0f172a25}
+.boardCanvas .boardSelectableEdgeLabel:hover,.boardCanvas .boardSelectableEdgeLabel:focus-visible{outline:2px solid #2563eb;outline-offset:2px;background:#eff6ff;color:#1e40af}
+
 /* Component inspector stays in a predictable right-side drawer, never below the canvas. */
 .boardInspectorBackdrop{position:fixed;inset:0;background:#0d1b2b55;z-index:89}
 .boardInspector{position:fixed;right:0;top:0;bottom:0;width:min(430px,100vw);z-index:90;display:flex;flex-direction:column;background:#fff;box-shadow:-12px 0 40px #08172735;color:#1b2b40}

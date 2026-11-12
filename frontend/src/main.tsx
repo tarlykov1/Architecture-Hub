@@ -1416,9 +1416,10 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
             <label>Достоверность<select value={flowVerification} onChange={e=>setFlowVerification(e.target.value)}><option value="draft">Черновик</option><option value="assumed">Предположение</option><option value="verified">Подтверждено</option></select></label>
           </>}
           {registryError&&<p role="alert" className="kisError">{registryError}</p>}
+          {!accessToken&&<p className="hint demoWriteNotice" role="status">Демонстрационный режим – изменения нельзя сохранить. Для сохранения введите ключ доступа и откройте форму повторно.</p>}
           <div className="registryFormActions">
-            <button className="primary" disabled={registryBusy}>{registryBusy?'Сохранение…':'Сохранить'}</button>
-            {(registryOpen==='flow'?Boolean(flowEditId):Boolean(networkEditId))&&<button type="button" className="dangerAction" disabled={registryBusy} onClick={()=>void deleteRegistryEntry()}>Удалить {registryOpen==='flow'?'поток':'сеть'}</button>}
+            <button className="primary" disabled={registryBusy||!accessToken}>{registryBusy?'Сохранение…':'Сохранить'}</button>
+            {(registryOpen==='flow'?Boolean(flowEditId):Boolean(networkEditId))&&<button type="button" className="dangerAction" disabled={registryBusy||!accessToken} onClick={()=>void deleteRegistryEntry()}>Удалить {registryOpen==='flow'?'поток':'сеть'}</button>}
           </div>
         </form>
       </div>

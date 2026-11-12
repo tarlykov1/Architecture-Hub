@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import os
 import hashlib
+import json
 from contextlib import asynccontextmanager
 import re
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID, uuid4
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
@@ -1396,6 +1397,7 @@ def flow_data_map(flow_id: UUID, db: Session = Depends(db_session)):
         ArchitectureObject.id.in_([row.consumer_system_id for row in rows if row.consumer_system_id]))).all()} if rows else {}
     return {
         "flow_id": flow.id, "source_id": flow.source_id, "target_id": flow.target_id,
+        "revision": _flow_map_revision(rows),
         "attributes": [
             {"id": row.id, "attribute_id": row.attribute_id,
              "code": attributes[row.attribute_id].code,
@@ -1410,6 +1412,130 @@ def flow_data_map(flow_id: UUID, db: Session = Depends(db_session)):
             for row in rows
         ],
     }
+
+
+# Reviewed changes to the metadata catalog of a saved data flow.
+# This is separate from canvas/layout revisions; both use the same audit journal.
+class FlowMapEdit(BaseModel):
+    action: Literal["add", "update", "remove"]
+    id: UUID | None = None
+    attribute_id: UUID | None = None
+    process_id: UUID | None = None
+    consumer_system_id: UUID | None = None
+    purpose: str = Field(default="", max_length=2000)
+    verification: Literal["draft", "assumed", "verified"] = "draft"
+
+
+class FlowMapEditBatch(BaseModel):
+    expected_revision: str = Field(pattern=r"^[a-f0-9]{64}$")
+    reason: str = Field(min_length=3, max_length=1000)
+    operations: list[FlowMapEdit] = Field(min_length=1, max_length=50)
+
+
+def _flow_map_details(row: FlowDataUse) -> dict[str, Any]:
+    return {
+        "attribute_id": str(row.attribute_id),
+        "process_id": str(row.process_id) if row.process_id else None,
+        "consumer_system_id": str(row.consumer_system_id) if row.consumer_system_id else None,
+        "purpose": row.purpose,
+        "verification": row.verification,
+    }
+
+
+def _flow_map_revision(rows: list[FlowDataUse]) -> str:
+    """Deterministic optimistic token: direct/legacy edits also invalidate drafts."""
+    payload = [
+        {"id": str(row.id), **_flow_map_details(row)}
+        for row in sorted(rows, key=lambda row: str(row.id))
+    ]
+    return hashlib.sha256(json.dumps(payload, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()
+
+
+def _apply_flow_map_edit(flow_id: UUID, payload: FlowMapEditBatch, db: Session) -> list[dict[str, Any]]:
+    if db.get(DataFlow, flow_id) is None:
+        raise HTTPException(404, "Flow not found")
+    rows = db.scalars(select(FlowDataUse).where(FlowDataUse.flow_id == flow_id)).all()
+    if _flow_map_revision(rows) != payload.expected_revision:
+        raise HTTPException(409, "Flow data map changed. Reload and review the changes again")
+    present = {row.id: row for row in rows}
+    changes: list[dict[str, Any]] = []
+    for operation in payload.operations:
+        if operation.action == "remove":
+            if operation.id is None or operation.id not in present:
+                raise HTTPException(422, "Mapping to remove must belong to this flow")
+            row = present.pop(operation.id)
+            before = _flow_map_details(row)
+            db.delete(row)
+            changes.append({"action": "remove_flow_attribute", "id": str(row.id),
+                            "before": before, "after": None})
+            continue
+
+        if operation.attribute_id is None:
+            raise HTTPException(422, "Attribute is required for add/update")
+        if db.get(DataAttribute, operation.attribute_id) is None:
+            raise HTTPException(422, "Unknown attribute")
+        if operation.process_id is not None and db.get(BusinessProcess, operation.process_id) is None:
+            raise HTTPException(422, "Unknown business process")
+        if operation.consumer_system_id is not None and db.get(ArchitectureObject, operation.consumer_system_id) is None:
+            raise HTTPException(422, "Unknown consuming system")
+        identity = (operation.attribute_id, operation.process_id, operation.consumer_system_id)
+        if any((r.attribute_id, r.process_id, r.consumer_system_id) == identity
+               for r in present.values() if r.id != operation.id):
+            raise HTTPException(409, "Attribute already mapped in this business/process context")
+        values = {
+            "attribute_id": operation.attribute_id,
+            "process_id": operation.process_id,
+            "consumer_system_id": operation.consumer_system_id,
+            "purpose": operation.purpose.strip(),
+            "verification": operation.verification,
+        }
+        if operation.action == "add":
+            if operation.id is not None:
+                raise HTTPException(422, "New mapping must not specify an id")
+            row = FlowDataUse(flow_id=flow_id, **values)
+            db.add(row)
+            db.flush()
+            present[row.id] = row
+            changes.append({"action": "add_flow_attribute", "id": str(row.id),
+                            "before": None, "after": _flow_map_details(row)})
+        else:
+            if operation.id is None or operation.id not in present:
+                raise HTTPException(422, "Mapping to update must belong to this flow")
+            row = present[operation.id]
+            before = _flow_map_details(row)
+            for field, value in values.items():
+                setattr(row, field, value)
+            after = _flow_map_details(row)
+            if before == after:
+                raise HTTPException(422, "Mapping has no changes")
+            changes.append({"action": "update_flow_attribute", "id": str(row.id),
+                            "before": before, "after": after})
+    db.flush()
+    return changes
+
+
+@app.post("/api/flows/{flow_id}/data-map/preview")
+def preview_flow_data_edit(flow_id: UUID, payload: FlowMapEditBatch,
+                           db: Session = Depends(db_session)):
+    try:
+        changes = _apply_flow_map_edit(flow_id, payload, db)
+        return {"changes": changes, "count": len(changes), "review_required": True}
+    finally:
+        db.rollback()
+
+
+@app.post("/api/flows/{flow_id}/data-map/commit")
+def commit_flow_data_edit(flow_id: UUID, payload: FlowMapEditBatch, request: Request,
+                          db: Session = Depends(db_session)):
+    try:
+        changes = _apply_flow_map_edit(flow_id, payload, db)
+        audit = BoardAudit(reason=payload.reason.strip(), actor=board_actor(request), changes=changes)
+        db.add(audit)
+        db.commit()
+        return {"audit_id": str(audit.id), "count": len(changes), "changes": changes}
+    except Exception:
+        db.rollback()
+        raise
 
 
 @app.get("/api/flows", response_model=list[FlowOutput])

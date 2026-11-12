@@ -1,0 +1,19 @@
+.monitoringPanel{margin:16px 0;padding:14px;border:1px solid #dbe3ed;border-radius:10px;background:#fafdff;display:grid;gap:12px;color:#243449}
+.monitoringPanelHeading{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:5px}
+.monitoringPanelHeading h3{font-size:15px;margin:0}
+.monitoringPanelHeading small,.monitoringHint{font-size:12px;color:#64748b;line-height:1.5}
+.monitoringHint{margin:0}
+.monitoringLink{border:1px solid #dbe3ed;background:#fff;border-radius:8px;padding:10px;display:grid;gap:6px;overflow-wrap:anywhere}
+.monitoringLink>div:first-child{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:4px 8px}
+.monitoringLink small{font-size:11px;color:#64748b}
+.monitoringLinkActions,.monitoringActions{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.monitoringLinkActions a{color:#176bc1;text-decoration:underline;font-size:12px}
+.monitoringPanel button{border:1px solid #bfd0e4;background:#fff;border-radius:7px;color:#176bc1;font-size:12px;cursor:pointer;padding:7px 10px}
+.monitoringPanel button.primary{background:#176bc1;color:#fff;border-color:#176bc1}
+.monitoringPanel button:disabled{opacity:.55;cursor:not-allowed}
+.monitoringForm{display:grid;gap:10px;padding:12px;background:#fff;border:1px solid #dbe3ed;border-radius:8px}
+.monitoringForm label{display:grid;gap:5px;font-size:12px;color:#46566a}
+.monitoringForm input,.monitoringForm select,.monitoringForm textarea{width:100%;max-width:100%;box-sizing:border-box;min-height:34px;border:1px solid #cbd5e1;border-radius:6px;padding:7px;background:#fff;color:#182b41;font-size:13px}
+.monitoringForm textarea{min-height:62px;resize:vertical}
+.monitoringError{color:#b91c1c;font-size:12px;overflow-wrap:anywhere}
+.monitoringNotice{color:#166534;font-size:12px}

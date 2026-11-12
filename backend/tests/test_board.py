@@ -250,3 +250,173 @@ def test_board_rejects_invalid_network_geometry_without_overwriting_layout():
             response = client.put(url, headers=ADMIN, json={"positions": broken})
             assert response.status_code == 422, response.text
             assert client.get(url, headers=ADMIN).json()["positions"] == baseline
+
+
+def test_empty_vrf_vlan_and_vm_survive_reviewed_commit():
+    """Visual nesting must not require a NIC; new CI and empty networks persist independently."""
+    with TestClient(app) as client:
+        system_id, _ = create_system_and_vm(client)
+        vm_id, vlan_id, vrf_id = str(uuid4()), str(uuid4()), str(uuid4())
+        batch = {
+            "reason": "Add unconnected VM and independent VRF/VLAN",
+            "changes": [
+                {"action": "create_vm", "id": vm_id, "system_id": system_id,
+                 "name": "Standalone VM " + vm_id[:8], "kind": "vm"},
+                {"action": "create_network", "id": vlan_id,
+                 "name": "Standalone VLAN " + vlan_id[:8], "kind": "vlan"},
+                {"action": "create_network", "id": vrf_id,
+                 "name": "Standalone VRF " + vrf_id[:8], "kind": "vrf"},
+            ]
+        }
+
+        preview = client.post("/api/board/preview", headers=ADMIN, json=batch)
+        assert preview.status_code == 200, preview.text
+        assert preview.json()["count"] == 3
+        assert vm_id not in {r["id"] for r in client.get("/api/infra", headers=ADMIN).json()}
+        assert vrf_id not in {r["id"] for r in client.get("/api/networks", headers=ADMIN).json()}
+
+        committed = client.post("/api/board/commit", headers=ADMIN, json=batch)
+        assert committed.status_code == 200, committed.text
+        assert committed.json()["count"] == 3
+        infra = {r["id"]: r for r in client.get("/api/infra", headers=ADMIN).json()}
+        networks = {r["id"]: r for r in client.get("/api/networks", headers=ADMIN).json()}
+        assert infra[vm_id]["system_id"] == system_id
+        assert networks[vlan_id]["kind"] == "vlan"
+        assert networks[vrf_id]["kind"] == "vrf"
+        assert not any(n["item_id"] == vm_id for n in client.get("/api/network-interfaces", headers=ADMIN).json())
+
+        positions = {
+            vm_id: {"x": 330, "y": 170},
+            "network:" + vrf_id: {"x": 60, "y": 50, "width": 1000, "height": 600},
+            "network:" + vlan_id: {"x": 130, "y": 110, "width": 550, "height": 350},
+        }
+        stored = client.put("/api/board/layout/" + system_id, headers=ADMIN,
+                            json={"positions": positions})
+        assert stored.status_code == 200, stored.text
+        assert client.get("/api/board/layout/" + system_id, headers=ADMIN).json()["positions"] == positions
+        audits = client.get("/api/board/audit", headers=ADMIN).json()
+        assert any(row["id"] == committed.json()["audit_id"] and len(row["changes"]) == 3 for row in audits)
+
+
+def test_explicit_network_hierarchy_validates_and_round_trips():
+    with TestClient(app) as client:
+        system_id, vm_id = create_system_and_vm(client)
+        vrf_ids=[]
+        for kind in ("vrf", "vrf", "vlan"):
+            response=client.post("/api/networks", headers=ADMIN,
+                                 json={"name": "Hierarchy " + kind + " " + str(uuid4()), "kind": kind})
+            assert response.status_code == 201, response.text
+            vrf_ids.append(response.json()["id"])
+        vrf_one, vrf_two, vlan=vrf_ids
+        data={
+            "network:"+vrf_one:{"x":0,"y":0,"width":1100,"height":700},
+            "network:"+vrf_two:{"x":1150,"y":0,"width":1100,"height":700},
+            "network:"+vlan:{"x":100,"y":100,"width":600,"height":350,"parent_id":"network:"+vrf_one},
+            vm_id:{"x":180,"y":150,"parent_id":"network:"+vlan},
+        }
+        result=client.put("/api/board/layout/"+system_id,headers=ADMIN,json={"positions":data})
+        assert result.status_code == 200,result.text
+        restored=client.get("/api/board/layout/"+system_id,headers=ADMIN).json()["positions"]
+        assert restored["network:"+vlan]["parent_id"] == "network:"+vrf_one
+        assert restored[vm_id]["parent_id"] == "network:"+vlan
+        assert not [n for n in client.get("/api/network-interfaces",headers=ADMIN).json() if n["item_id"] == vm_id]
+
+        transfer={**data,"network:"+vlan:{**data["network:"+vlan],"parent_id":"network:"+vrf_two}}
+        result=client.put("/api/board/layout/"+system_id,headers=ADMIN,json={"positions":transfer})
+        assert result.status_code == 200,result.text
+        assert result.json()["positions"]["network:"+vlan]["parent_id"] == "network:"+vrf_two
+        detached={**transfer,"network:"+vlan:{k:v for k,v in transfer["network:"+vlan].items() if k!="parent_id"}}
+        result=client.put("/api/board/layout/"+system_id,headers=ADMIN,json={"positions":detached})
+        assert result.status_code == 200,result.text
+        assert "parent_id" not in result.json()["positions"]["network:"+vlan]
+
+        nested_vrf={**data,"network:"+vrf_two:{**data["network:"+vrf_two],"parent_id":"network:"+vrf_one}}
+        assert client.put("/api/board/layout/"+system_id,headers=ADMIN,json={"positions":nested_vrf}).status_code == 422
+        cycle={**data,"network:"+vrf_one:{**data["network:"+vrf_one],"parent_id":"network:"+vlan}}
+        assert client.put("/api/board/layout/"+system_id,headers=ADMIN,json={"positions":cycle}).status_code == 422
+        bad_parent={**data,vm_id:{**data[vm_id],"parent_id":"network:"+str(uuid4())}}
+        assert client.put("/api/board/layout/"+system_id,headers=ADMIN,json={"positions":bad_parent}).status_code == 422
+        assert client.get("/api/board/layout/"+system_id,headers=ADMIN).json()["positions"] == result.json()["positions"]
+
+
+def test_existing_flow_edit_requires_review_and_writes_audited_parameters():
+    """Edits never mutate storage on preview, and include original values in audit."""
+    with TestClient(app) as client:
+        _, source = create_system_and_vm(client)
+        _, target = create_system_and_vm(client)
+        flow_id = str(uuid4())
+        created = client.post("/api/flows", headers=ADMIN, json={
+            "source_id": source, "target_id": target, "name": "HR export",
+            "protocol": "TCP", "port": "443", "security": "unknown",
+            "data_description": "employee id", "schedule": "daily", "verification": "draft"
+        })
+        assert created.status_code == 201, created.text
+        flow_id = created.json()["id"]
+        before = {key: created.json()[key] for key in (
+            "name", "protocol", "port", "security", "data_description", "schedule", "verification")}
+        item = {
+            "action": "update_flow", "id": flow_id,
+            "source_id": source, "target_id": target,
+            **{**before, "name": "HR employee export", "protocol": "HTTPS",
+               "port": "8443", "security": "TLS",
+               "data_description": "employee id and work location",
+               "schedule": "hourly", "verification": "verified"},
+            "previous_flow": before
+        }
+        batch = {"reason": "Validated integration protocol", "changes": [item]}
+        preview = client.post("/api/board/preview", headers=ADMIN, json=batch)
+        assert preview.status_code == 200, preview.text
+        diff = preview.json()["changes"][0]
+        assert diff["action"] == "update_flow"
+        assert diff["before"] == before
+        assert diff["after"]["protocol"] == "HTTPS"
+        flow = next(f for f in client.get("/api/flows", headers=ADMIN).json()
+                    if f["id"] == flow_id)
+        assert flow["protocol"] == "TCP"
+        commit = client.post("/api/board/commit", headers=ADMIN, json=batch)
+        assert commit.status_code == 200, commit.text
+        updated = next(f for f in client.get("/api/flows", headers=ADMIN).json()
+                       if f["id"] == flow_id)
+        assert updated["name"] == "HR employee export"
+        assert updated["port"] == "8443"
+        assert updated["security"] == "TLS"
+        assert updated["data_description"] == "employee id and work location"
+        assert updated["schedule"] == "hourly"
+        assert updated["verification"] == "verified"
+        history = client.get("/api/board/audit", headers=ADMIN).json()
+        assert any(h["id"] == commit.json()["audit_id"] and
+                   h["changes"][0]["before"] == before and
+                   h["changes"][0]["after"]["verification"] == "verified"
+                   for h in history)
+        # The stale original revision can never overwrite newer data.
+        assert client.post("/api/board/commit", headers=ADMIN, json=batch).status_code == 409
+
+
+def test_existing_flow_review_rejects_invalid_or_unauthorized_edits():
+    with TestClient(app) as client:
+        _, source = create_system_and_vm(client)
+        _, target = create_system_and_vm(client)
+        created = client.post("/api/flows", headers=ADMIN, json={
+            "source_id": source, "target_id": target, "name": "Flow original"})
+        assert created.status_code == 201, created.text
+        before = {key: created.json()[key] for key in (
+            "name", "protocol", "port", "security", "data_description", "schedule", "verification")}
+        change = {"action": "update_flow", "id": created.json()["id"],
+                  "source_id": source, "target_id": target,
+                  "previous_flow": before, **before}
+        batch = {"reason": "Edit flow permissions and revision", "changes": [
+            {**change, "name": "Updated"}]}
+        assert client.post("/api/board/preview", headers=VIEWER, json=batch).status_code == 403
+        assert client.post("/api/board/commit", headers=VIEWER, json=batch).status_code == 403
+        assert client.post("/api/board/commit", headers=ADMIN, json={
+            **batch, "changes": [{k:v for k,v in batch["changes"][0].items()
+                                  if k != "previous_flow"}]}).status_code == 422
+        assert client.post("/api/board/preview", headers=ADMIN, json={
+            **batch, "changes": [change]}).status_code == 422
+        assert client.post("/api/board/preview", headers=ADMIN, json={
+            **batch, "changes": [{**change, "source_id": target, "name": "Updated"}]}).status_code == 409
+        assert client.post("/api/board/preview", headers=ADMIN, json={
+            **batch, "changes": [{**change, "previous_flow": {**before, "port": "999"},
+                                  "name": "Updated"}]}).status_code == 409
+        assert client.post("/api/board/commit", headers=ADMIN, json={
+            **batch, "changes": [{**change, "name": "Updated"}]}).status_code == 200

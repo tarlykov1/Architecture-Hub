@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import os
 import hashlib
+import json
 from contextlib import asynccontextmanager
 import re
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID, uuid4
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
@@ -1396,6 +1397,7 @@ def flow_data_map(flow_id: UUID, db: Session = Depends(db_session)):
         ArchitectureObject.id.in_([row.consumer_system_id for row in rows if row.consumer_system_id]))).all()} if rows else {}
     return {
         "flow_id": flow.id, "source_id": flow.source_id, "target_id": flow.target_id,
+        "revision": _flow_map_revision(rows),
         "attributes": [
             {"id": row.id, "attribute_id": row.attribute_id,
              "code": attributes[row.attribute_id].code,
@@ -1410,6 +1412,130 @@ def flow_data_map(flow_id: UUID, db: Session = Depends(db_session)):
             for row in rows
         ],
     }
+
+
+# Reviewed changes to the metadata catalog of a saved data flow.
+# This is separate from canvas/layout revisions; both use the same audit journal.
+class FlowMapEdit(BaseModel):
+    action: Literal["add", "update", "remove"]
+    id: UUID | None = None
+    attribute_id: UUID | None = None
+    process_id: UUID | None = None
+    consumer_system_id: UUID | None = None
+    purpose: str = Field(default="", max_length=2000)
+    verification: Literal["draft", "assumed", "verified"] = "draft"
+
+
+class FlowMapEditBatch(BaseModel):
+    expected_revision: str = Field(pattern=r"^[a-f0-9]{64}$")
+    reason: str = Field(min_length=3, max_length=1000)
+    operations: list[FlowMapEdit] = Field(min_length=1, max_length=50)
+
+
+def _flow_map_details(row: FlowDataUse) -> dict[str, Any]:
+    return {
+        "attribute_id": str(row.attribute_id),
+        "process_id": str(row.process_id) if row.process_id else None,
+        "consumer_system_id": str(row.consumer_system_id) if row.consumer_system_id else None,
+        "purpose": row.purpose,
+        "verification": row.verification,
+    }
+
+
+def _flow_map_revision(rows: list[FlowDataUse]) -> str:
+    """Deterministic optimistic token: direct/legacy edits also invalidate drafts."""
+    payload = [
+        {"id": str(row.id), **_flow_map_details(row)}
+        for row in sorted(rows, key=lambda row: str(row.id))
+    ]
+    return hashlib.sha256(json.dumps(payload, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()
+
+
+def _apply_flow_map_edit(flow_id: UUID, payload: FlowMapEditBatch, db: Session) -> list[dict[str, Any]]:
+    if db.get(DataFlow, flow_id) is None:
+        raise HTTPException(404, "Flow not found")
+    rows = db.scalars(select(FlowDataUse).where(FlowDataUse.flow_id == flow_id)).all()
+    if _flow_map_revision(rows) != payload.expected_revision:
+        raise HTTPException(409, "Flow data map changed. Reload and review the changes again")
+    present = {row.id: row for row in rows}
+    changes: list[dict[str, Any]] = []
+    for operation in payload.operations:
+        if operation.action == "remove":
+            if operation.id is None or operation.id not in present:
+                raise HTTPException(422, "Mapping to remove must belong to this flow")
+            row = present.pop(operation.id)
+            before = _flow_map_details(row)
+            db.delete(row)
+            changes.append({"action": "remove_flow_attribute", "id": str(row.id),
+                            "before": before, "after": None})
+            continue
+
+        if operation.attribute_id is None:
+            raise HTTPException(422, "Attribute is required for add/update")
+        if db.get(DataAttribute, operation.attribute_id) is None:
+            raise HTTPException(422, "Unknown attribute")
+        if operation.process_id is not None and db.get(BusinessProcess, operation.process_id) is None:
+            raise HTTPException(422, "Unknown business process")
+        if operation.consumer_system_id is not None and db.get(ArchitectureObject, operation.consumer_system_id) is None:
+            raise HTTPException(422, "Unknown consuming system")
+        identity = (operation.attribute_id, operation.process_id, operation.consumer_system_id)
+        if any((r.attribute_id, r.process_id, r.consumer_system_id) == identity
+               for r in present.values() if r.id != operation.id):
+            raise HTTPException(409, "Attribute already mapped in this business/process context")
+        values = {
+            "attribute_id": operation.attribute_id,
+            "process_id": operation.process_id,
+            "consumer_system_id": operation.consumer_system_id,
+            "purpose": operation.purpose.strip(),
+            "verification": operation.verification,
+        }
+        if operation.action == "add":
+            if operation.id is not None:
+                raise HTTPException(422, "New mapping must not specify an id")
+            row = FlowDataUse(flow_id=flow_id, **values)
+            db.add(row)
+            db.flush()
+            present[row.id] = row
+            changes.append({"action": "add_flow_attribute", "id": str(row.id),
+                            "before": None, "after": _flow_map_details(row)})
+        else:
+            if operation.id is None or operation.id not in present:
+                raise HTTPException(422, "Mapping to update must belong to this flow")
+            row = present[operation.id]
+            before = _flow_map_details(row)
+            for field, value in values.items():
+                setattr(row, field, value)
+            after = _flow_map_details(row)
+            if before == after:
+                raise HTTPException(422, "Mapping has no changes")
+            changes.append({"action": "update_flow_attribute", "id": str(row.id),
+                            "before": before, "after": after})
+    db.flush()
+    return changes
+
+
+@app.post("/api/flows/{flow_id}/data-map/preview")
+def preview_flow_data_edit(flow_id: UUID, payload: FlowMapEditBatch,
+                           db: Session = Depends(db_session)):
+    try:
+        changes = _apply_flow_map_edit(flow_id, payload, db)
+        return {"changes": changes, "count": len(changes), "review_required": True}
+    finally:
+        db.rollback()
+
+
+@app.post("/api/flows/{flow_id}/data-map/commit")
+def commit_flow_data_edit(flow_id: UUID, payload: FlowMapEditBatch, request: Request,
+                          db: Session = Depends(db_session)):
+    try:
+        changes = _apply_flow_map_edit(flow_id, payload, db)
+        audit = BoardAudit(reason=payload.reason.strip(), actor=board_actor(request), changes=changes)
+        db.add(audit)
+        db.commit()
+        return {"audit_id": str(audit.id), "count": len(changes), "changes": changes}
+    except Exception:
+        db.rollback()
+        raise
 
 
 @app.get("/api/flows", response_model=list[FlowOutput])
@@ -1972,9 +2098,19 @@ app.include_router(views_router)
 
 
 # Board edits are applied as a single reviewed transaction. For existing interface
-# assignments the client supplies the expected previous value (optimistic check).
+# assignments and flows the client supplies previous values (optimistic check).
+class PreviousFlowValues(BaseModel):
+    name: str
+    protocol: str
+    port: str
+    security: str
+    data_description: str
+    schedule: str
+    verification: str
+
+
 class BoardChange(BaseModel):
-    action: str = Field(pattern="^(create_vm|create_network|create_flow|create_interface|move_interface|update_vm)$")
+    action: str = Field(pattern="^(create_vm|create_network|create_flow|update_flow|create_interface|move_interface|update_vm)$")
     id: UUID | None = None
     system_id: UUID | None = None
     name: str = Field(default="", max_length=250)
@@ -1988,6 +2124,7 @@ class BoardChange(BaseModel):
     data_description: str = Field(default="", max_length=4000)
     schedule: str = Field(default="", max_length=160)
     verification: str = Field(default="draft", max_length=30)
+    previous_flow: PreviousFlowValues | None = None
     interface_id: UUID | None = None
     item_id: UUID | None = None
     interface_name: str = Field(default="eth0", min_length=1, max_length=100)
@@ -2005,11 +2142,36 @@ class BoardPoint(BaseModel):
     # Only network rectangle entries carry dimensions. VM positions keep x/y.
     width: float | None = Field(default=None, ge=140, le=100000, allow_inf_nan=False)
     height: float | None = Field(default=None, ge=90, le=100000, allow_inf_nan=False)
+    # Explicit, confirmed architectural containment. This is NOT a routed SVI,
+    # VLAN membership or a VM network-interface assignment.
+    parent_id: str | None = Field(default=None, pattern=r"^network:[0-9a-fA-F-]{36}$")
+
+
+# Eight reusable anchors per component: two on each side. These identify
+# presentation geometry only, never infrastructure interfaces or network ports.
+SOURCE_ANCHORS = {f"out-{side}-{index}" for side in ("top", "right", "bottom", "left") for index in (1, 2)}
+TARGET_ANCHORS = {f"in-{side}-{index}" for side in ("top", "right", "bottom", "left") for index in (1, 2)}
+
+
+class BoardFlowAnchor(BaseModel):
+    source_handle: str = Field(min_length=5, max_length=20)
+    target_handle: str = Field(min_length=5, max_length=20)
 
 
 class BoardLayoutInput(BaseModel):
     # Network rectangles are stored as "network:<segment UUID>".
     positions: dict[str, BoardPoint] = Field(default_factory=dict, max_length=1000)
+    # An omitted field preserves the previously saved anchor choices for older clients.
+    flow_anchors: dict[str, BoardFlowAnchor] | None = Field(default=None, max_length=1000)
+
+
+def unpack_board_layout(raw: dict[str, Any] | None) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Read legacy position maps and the v2 layout envelope without DB migrations."""
+    if not isinstance(raw, dict):
+        return {}, {}
+    if raw.get("_layout_schema") == 2:
+        return dict(raw.get("positions") or {}), dict(raw.get("flow_anchors") or {})
+    return dict(raw), {}
 
 
 @app.get("/api/board/layout/{system_id}")
@@ -2017,7 +2179,8 @@ def read_board_layout(system_id: UUID, db: Session = Depends(db_session)):
     if db.get(ArchitectureObject, system_id) is None:
         raise HTTPException(404, "System not found")
     stored = db.get(BoardLayout, system_id)
-    return {"system_id": str(system_id), "positions": stored.positions if stored else {}}
+    positions, anchors = unpack_board_layout(stored.positions if stored else None)
+    return {"system_id": str(system_id), "positions": positions, "flow_anchors": anchors}
 
 
 @app.put("/api/board/layout/{system_id}")
@@ -2050,27 +2213,78 @@ def save_board_layout(system_id: UUID, payload: BoardLayoutInput,
         known = set(db.scalars(select(NetworkSegment.id).where(NetworkSegment.id.in_(network_ids))).all())
         if len(known) != len(set(network_ids)):
             raise HTTPException(422, "Unknown network in layout")
+    # Validate the typed architectural hierarchy independently of displayed
+    # rectangle overlaps: a move into a container is confirmed by the user,
+    # not inferred by the API from coordinates.
+    network_kinds = {str(row.id): row.kind for row in db.scalars(
+        select(NetworkSegment).where(NetworkSegment.id.in_(network_ids))).all()} if network_ids else {}
+    for key, point in payload.positions.items():
+        if not point.parent_id:
+            continue
+        if point.parent_id == key or point.parent_id not in payload.positions or not point.parent_id.startswith("network:"):
+            raise HTTPException(422, "Parent network must be on the same diagram")
+        child_kind = network_kinds.get(key.removeprefix("network:")) if key.startswith("network:") else None
+        parent_kind = network_kinds.get(point.parent_id.removeprefix("network:"))
+        if parent_kind is None:
+            raise HTTPException(422, "Parent must be a known network")
+        if child_kind == "vrf" and parent_kind != "zone":
+            raise HTTPException(422, "VRF can be nested in a zone, not in VRF/VLAN")
+        if child_kind == "vlan" and parent_kind not in ("vrf", "zone"):
+            raise HTTPException(422, "VLAN can be nested in VRF/zone, not another VLAN")
+        if child_kind == "zone" and parent_kind != "zone":
+            raise HTTPException(422, "Zone can only be nested in a zone")
+        visited = {key}
+        ancestor = point.parent_id
+        while ancestor:
+            if ancestor in visited:
+                raise HTTPException(422, "Cyclic architectural containment is not allowed")
+            visited.add(ancestor)
+            ancestor = payload.positions[ancestor].parent_id
     positions = {key: point.model_dump(exclude_none=True) for key, point in payload.positions.items()}
     stored = db.get(BoardLayout, system_id)
-    before = dict(stored.positions or {}) if stored else {}
-    if before == positions:
-        return {"system_id": str(system_id), "positions": positions}
+    before, previous_anchors = unpack_board_layout(stored.positions if stored else None)
+    anchors = previous_anchors.copy() if payload.flow_anchors is None else {
+        key: item.model_dump() for key, item in payload.flow_anchors.items()
+    }
+    # Do not accept imaginary flow IDs or arbitrary port names. The selected
+    # flow is already committed to the registry before saving its endpoints.
+    flow_ids: list[UUID] = []
+    for key, anchor in anchors.items():
+        try:
+            flow_id = UUID(key)
+        except ValueError:
+            raise HTTPException(422, "Invalid flow id in layout") from None
+        if anchor["source_handle"] not in SOURCE_ANCHORS or anchor["target_handle"] not in TARGET_ANCHORS:
+            raise HTTPException(422, "Invalid source or target anchor")
+        flow_ids.append(flow_id)
+    if flow_ids:
+        present = set(db.scalars(select(DataFlow.id).where(DataFlow.id.in_(flow_ids))).all())
+        if len(present) != len(set(flow_ids)):
+            raise HTTPException(422, "Unknown flow in layout")
+    if before == positions and previous_anchors == anchors:
+        return {"system_id": str(system_id), "positions": positions, "flow_anchors": anchors}
+    # Reuse existing JSON column without an incompatible SQLite migration.
+    encoded = {"_layout_schema": 2, "positions": positions, "flow_anchors": anchors}
     if stored is None:
-        stored = BoardLayout(system_id=system_id, positions=positions)
+        stored = BoardLayout(system_id=system_id, positions=encoded)
         db.add(stored)
     else:
-        stored.positions = positions
+        stored.positions = encoded
         stored.updated_at = datetime.now(timezone.utc)
-    # The layout and its audit event commit atomically. Draft actions do not enter history.
     layout_changes = [
-        {"action": "update_layout", "id":key, "before":before.get(key), "after":positions.get(key)}
+        {"action": "update_layout", "id": key, "before": before.get(key), "after": positions.get(key)}
         for key in sorted(set(before) | set(positions))
         if before.get(key) != positions.get(key)
+    ] + [
+        {"action": "update_flow_anchor", "id": key,
+         "before": previous_anchors.get(key), "after": anchors.get(key)}
+        for key in sorted(set(previous_anchors) | set(anchors))
+        if previous_anchors.get(key) != anchors.get(key)
     ]
-    db.add(BoardAudit(reason="Сохранено расположение элементов схемы",
+    db.add(BoardAudit(reason="Сохранено расположение элементов схемы и точек подключения потоков",
                       actor=board_actor(request), changes=layout_changes))
     db.commit()
-    return {"system_id": str(system_id), "positions": positions}
+    return {"system_id": str(system_id), "positions": positions, "flow_anchors": anchors}
 
 
 class BoardBatch(BaseModel):
@@ -2101,7 +2315,7 @@ def authorize_board(payload: BoardBatch, request: Request) -> None:
         return
     grants = ROLE_ACCESS[role]
     for change in payload.changes:
-        layer = 'networks' if change.action in ('create_network', 'create_interface', 'move_interface') else ('flows' if change.action == 'create_flow' else 'infrastructure')
+        layer = 'networks' if change.action in ('create_network', 'create_interface', 'move_interface') else ('flows' if change.action in ('create_flow', 'update_flow') else 'infrastructure')
         if grants.get(layer) != 'write':
             raise HTTPException(403, f'Insufficient permission to modify {layer}')
 
@@ -2193,6 +2407,32 @@ def apply_board_changes(payload: BoardBatch, db: Session) -> list[dict[str, Any]
             output.append({"action": "create_flow", "id": str(flow.id), "before": None,
                            "after": {"source_id": str(flow.source_id), "target_id": str(flow.target_id),
                                      "name": flow.name, "protocol": flow.protocol, "port": flow.port, "security": flow.security}})
+        elif change.action == "update_flow":
+            if change.id is None:
+                raise HTTPException(422, "Flow id is required")
+            flow = db.get(DataFlow, change.id)
+            if flow is None:
+                raise HTTPException(404, "Flow not found")
+            if change.previous_flow is None:
+                raise HTTPException(422, "Previous flow values are required")
+            if change.source_id != flow.source_id or change.target_id != flow.target_id:
+                raise HTTPException(409, "Flow endpoints changed; redraw the connection explicitly")
+            if not change.name.strip():
+                raise HTTPException(422, "Flow name is required")
+            fields = ("name", "protocol", "port", "security",
+                      "data_description", "schedule", "verification")
+            before = {field: getattr(flow, field) for field in fields}
+            if before != change.previous_flow.model_dump():
+                raise HTTPException(409, "Flow changed since it was opened; refresh and review")
+            after = {field: change.name.strip() if field == "name"
+                     else getattr(change, field) for field in fields}
+            if before == after:
+                raise HTTPException(422, "No flow parameters changed")
+            for field, value in after.items():
+                setattr(flow, field, value)
+            output.append({"action": "update_flow", "id": str(flow.id),
+                           "source_id": str(flow.source_id), "target_id": str(flow.target_id),
+                           "before": before, "after": after})
         elif change.action == "create_interface":
             if change.item_id is None or change.network_id is None:
                 raise HTTPException(422, "New interface requires VM and network")
@@ -2267,3 +2507,9 @@ def list_board_audit(limit: int = 50, db: Session = Depends(db_session)):
     rows = db.scalars(select(BoardAudit).order_by(BoardAudit.timestamp.desc()).limit(max(1, min(limit, 200)))).all()
     return [{"id": str(row.id), "timestamp": row.timestamp.isoformat(),
              "reason": row.reason, "actor": row.actor, "changes": row.changes} for row in rows]
+
+
+# Stage-one monitoring registry and optional CI-to-dashboard links.
+# Module registration happens after BoardAudit and CI models are defined.
+from .monitoring import router as monitoring_router
+app.include_router(monitoring_router)

@@ -189,3 +189,133 @@
 .boardNetworkLabel small{font-size:11px;color:#36648e}
 .boardEditorStage .boardToolFields .boardRequiredHint{font-size:12px;color:#b42318;font-weight:600}
 .boardEditorStage .boardToolFields input[aria-invalid="true"]{border-color:#d92d20;box-shadow:0 0 0 1px #d92d2033}
+
+/* Unsaved topology objects are not database records until the reviewed commit. */
+.boardPendingBanner{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;padding:10px 13px;border:1px solid #dfba83;border-radius:9px;background:#fff8ec;color:#684316;font-size:12px}
+.boardPendingBanner strong{font-weight:700}
+.boardPendingBanner span{flex:1;min-width:210px}
+.boardPendingBanner button{border:1px solid #c48a37;background:#fff;border-radius:6px;padding:7px 10px;color:#684316;font-weight:600;cursor:pointer}
+.boardPendingBanner button:hover{background:#fff0d7}
+
+/* Direct flow drawing, with ports visible only when the flow tool is selected. */
+.boardCanvas .react-flow__node-boardComponent .boardConnectionHandle{
+ width:13px;height:13px;border-radius:50%;background:#176bc1;
+ border:2px solid #fff;box-shadow:0 0 0 2px #176bc1;
+ cursor:crosshair;z-index:9;opacity:0;pointer-events:none;
+}
+.boardCanvas .react-flow__node-boardComponent .boardConnectionHandleActive{
+ opacity:1;pointer-events:all;
+}
+.boardCanvas .react-flow__node-boardComponent .boardConnectionHandle:hover{
+ width:17px;height:17px;background:#0c4a91;
+}
+.boardCanvas .react-flow__connection-path{stroke:#176bc1;stroke-width:2.5;stroke-dasharray:6 3}
+.boardFlowHint{border-left:3px solid #176bc1;background:#eff6ff;padding:9px 11px;font-size:12px;line-height:1.5;color:#1e40af;border-radius:5px}
+.boardFlowDraftEditor{display:grid;gap:10px;padding:14px 0 0;border-top:1px solid #e2e8f0}
+.boardFlowDraftEditor h4{margin:0;font-size:13px}
+.boardFlowDraftEditor label{display:grid}
+.boardEditorStage .boardToolFields .boardFlowDraftEditor button{background:#fff;color:#9a3412;border-color:#fed7aa}
+
+/* Persistent architectural nesting and explicit drop confirmation. */
+.boardGroupingConfirm{width:min(580px,100%);display:grid;gap:10px}
+.boardGroupingConfirm>p{margin:0;color:#475569;font-size:13px;line-height:1.55}
+.boardGroupingConfirm>p:first-of-type{font-size:15px;color:#12233b}
+.boardGroupingNote{background:#f3f7fd;border-left:3px solid #2563eb;padding:10px 12px;border-radius:6px}
+.boardGroupingNic{display:grid;gap:10px;padding:12px;border:1px solid #d5e1f0;border-radius:9px}
+.boardGroupingNic label{display:grid;gap:6px;font-size:12px;font-weight:600;color:#334155}
+.boardGroupingNic select,.boardGroupingNic input{width:100%;min-height:38px;padding:8px;border:1px solid #94a3b8;border-radius:7px;background:white}
+.boardGroupingNic small{font-size:12px;color:#64748b}
+.boardGroupingConfirm .boardGroupingActions{display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap}
+.boardGroupingConfirm .boardGroupingActions button{padding:10px 14px;border-radius:7px;cursor:pointer}
+.boardCanvas .react-flow__resize-control.handle{z-index:11;touch-action:none}
+.boardCanvas .react-flow__node-boardNetwork{user-select:none}
+.boardCanvas .react-flow__node-boardNetwork .boardNetworkLabel{
+ pointer-events:auto;cursor:grab;user-select:none;
+ position:absolute;left:0;right:0;top:0;min-height:46px;
+ padding:9px 12px;background:transparent;
+}
+.boardCanvas .react-flow__node-boardNetwork.dragging .boardNetworkLabel{cursor:grabbing}
+
+/* A network's title/resize grips are interactive above VM cards; the rest of
+   the network is click-through so it never steals VM selections or flow drops. */
+.boardCanvas .react-flow__node-boardNetwork{pointer-events:none}
+.boardCanvas .react-flow__node-boardNetwork .boardNetworkDragArea{
+ pointer-events:auto;position:absolute;left:0;right:0;top:0;height:49px;
+ z-index:3;cursor:grab;touch-action:none
+}
+.boardCanvas .react-flow__node-boardNetwork .boardNetworkDragArea:active{cursor:grabbing}
+.boardCanvas .react-flow__node-boardNetwork .boardNetworkLabel{pointer-events:auto;cursor:inherit}
+.boardCanvas .react-flow__node-boardNetwork .react-flow__resize-control.handle{pointer-events:auto}
+.boardComponentClickArea{cursor:pointer}
+.boardFlowGesturePreview{
+ position:absolute;inset:0;z-index:15;
+ pointer-events:none;overflow:visible
+}
+
+/* Editing an existing CMDB flow must remain in the right-hand dock, not on canvas. */
+.boardFlowEdgeList,.boardExistingFlowEditor{
+ display:grid;gap:10px;padding:12px;border:1px solid #dce5ef;border-radius:9px;
+ background:#fbfdff;color:#243449;min-width:0
+}
+.boardFlowEdgeList h4,.boardExistingFlowEditor strong{margin:0;font-size:14px}
+.boardFlowEdgeList p,.boardExistingFlowEditor p{font-size:12px;color:#5b6980;line-height:1.5;margin:0}
+.boardFlowEdgeList>button{display:grid;gap:5px;justify-items:start;text-align:left;background:#fff;
+ padding:10px;border:1px solid #d8e3ef;border-radius:7px;cursor:pointer;color:#243449}
+.boardFlowEdgeList>button.boardFlowSelected{border:2px solid #2563eb;background:#eff6ff}
+.boardFlowEdgeList>button strong{font-size:12px;overflow-wrap:anywhere}
+.boardFlowEdgeList>button small,.boardExistingFlowHeading small{font-size:11px;color:#64748b}
+.boardExistingFlowHeading{display:flex;align-items:start;justify-content:space-between;gap:10px}
+.boardExistingFlowHeading>div{display:grid;gap:3px}
+.boardExistingFlowHeading>button{border:0;background:transparent;cursor:pointer}
+.boardExistingFlowEditor label{display:grid;gap:5px;font-size:12px;font-weight:600;color:#46566a}
+.boardExistingFlowEditor input,.boardExistingFlowEditor select,.boardExistingFlowEditor textarea{
+ width:100%;min-width:0;box-sizing:border-box;border:1px solid #cbd5e1;
+ border-radius:6px;padding:8px;background:#fff;color:#243449;font:inherit;font-weight:400
+}
+.boardExistingFlowFields{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px}
+.boardExistingFlowActions{display:flex;gap:8px;flex-wrap:wrap}
+.boardExistingFlowActions button{border:1px solid #a8c4e4;border-radius:7px;padding:8px 10px;cursor:pointer}
+.boardExistingFlowActions button[type=submit]{background:#176bc1;color:white;border-color:#176bc1}
+.boardExistingFlowStaged{border-left:3px solid #176bc1;background:#eff6ff;padding:8px}
+.boardFlowValidation{color:#b91c1c!important}
+
+/* Per-process data dictionary, with descriptions only (no sensitive values). */
+.boardFlowDataMap{display:grid;gap:11px;padding:12px;border:1px solid #dce5ef;border-radius:9px;background:#fbfdff}
+.boardFlowDataMapHeader{display:flex;justify-content:space-between;align-items:start;gap:8px}
+.boardFlowDataMapHeader>div{display:grid;gap:4px}
+.boardFlowDataMapHeader strong{font-size:14px;color:#233347}
+.boardFlowDataMapHeader small,.boardFlowDataMapCount{color:#64748b;font-size:11px}
+.boardFlowDataMapHeader button{border:1px solid #b6c8db;border-radius:6px;padding:6px 9px;background:#fff;color:#176bc1;cursor:pointer}
+.boardFlowDataMap>p{font-size:12px;color:#64748b;line-height:1.5;margin:0}
+.boardFlowDataMap>p[role=alert]{color:#b91c1c}
+.boardFlowDataMapFilters{display:grid;gap:8px}
+.boardFlowDataMapFilters label{display:grid;gap:4px;font-size:12px;font-weight:600;color:#334155}
+.boardFlowDataMapFilters select{width:100%;min-width:0;border:1px solid #cbd5e1;background:#fff;color:#243449;padding:7px 9px;border-radius:6px}
+.boardFlowDataMapList{display:grid;gap:7px;max-height:400px;overflow-y:auto}
+.boardFlowDataMapList article{display:grid;gap:5px;border:1px solid #e2e8f0;border-radius:7px;padding:10px;background:white;min-width:0}
+.boardFlowDataMapList article strong{font-size:12px;color:#1e293b;overflow-wrap:anywhere}
+.boardFlowDataMapList article code{font-size:11px;color:#176bc1;overflow-wrap:anywhere}
+.boardFlowDataMapList article div{display:flex;gap:5px;flex-wrap:wrap}
+.boardFlowDataMapList article span{font-size:10px;background:#f1f5f9;border-radius:4px;padding:3px 5px}
+.boardFlowDataMapList article small{font-size:11px;color:#475569;overflow-wrap:anywhere}
+.boardFlowDataMapList article p{font-size:11px;color:#64748b;line-height:1.45;margin:0}
+.boardFlowDataMapEmpty{padding:10px;border:1px dashed #cbd5e1;border-radius:7px}
+
+/* Reviewed editing of flow metadata – confirmation is separate from canvas drafts. */
+.boardFlowDataAdd{justify-self:start;border:1px solid #176bc1;border-radius:7px;background:#eff6ff;color:#155aa0;padding:8px 11px;cursor:pointer;font-weight:600}
+.boardFlowDataActions{display:flex;gap:8px;flex-wrap:wrap;margin-top:4px}
+.boardFlowDataActions button{border:1px solid #cbd5e1;border-radius:6px;background:#fff;padding:6px 9px;color:#334155;cursor:pointer}
+.boardFlowDataNotice{color:#047857!important;font-weight:600}
+.boardFlowReview{display:grid;gap:12px;max-width:680px}
+.boardFlowReview>p{margin:0;color:#475569;font-size:13px;line-height:1.5}
+.boardFlowReviewFields{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
+.boardFlowReviewFields label,.boardFlowReviewReason{display:grid;gap:5px;font-size:12px;color:#334155;font-weight:600}
+.boardFlowReviewFields input,.boardFlowReviewFields select,.boardFlowReviewFields textarea,.boardFlowReviewReason textarea{width:100%;min-width:0;border:1px solid #cbd5e1;border-radius:7px;background:#fff;color:#1e293b;padding:9px;font:inherit;font-weight:400}
+.boardFlowReviewFields textarea{min-height:80px;resize:vertical}
+.boardFlowReviewReason textarea{min-height:65px;resize:vertical}
+.boardFlowReviewError{color:#b91c1c;font-size:12px}
+.boardFlowReviewPreview{display:grid;gap:9px;padding:12px;border:1px solid #a5b4fc;background:#f8fafc;border-radius:7px;max-height:40vh;overflow-y:auto}
+.boardFlowReviewPreview small{font-size:11px;color:#64748b}
+.boardFlowReviewPreview pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:11px}
+.boardFlowReviewActions{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap}
+@media(max-width:700px){.boardFlowReview{width:100%}.boardFlowReviewFields{grid-template-columns:1fr}}

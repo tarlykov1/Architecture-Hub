@@ -2,7 +2,7 @@ import React, {useEffect,useRef,type ReactNode} from 'react'
 import {useNodes,useNodesInitialized,useReactFlow} from '@xyflow/react'
 
 /** Refit measured graphs on membership/layout changes and actual canvas resize. */
-export function AutoFit({layoutKey='',maxFitZoom=1,groupParentsOnly=false,focusIds=[]}:{layoutKey?:string;maxFitZoom?:number;groupParentsOnly?:boolean;focusIds?:string[]}){
+export function AutoFit({layoutKey='',maxFitZoom=1,groupParentsOnly=false,focusIds=[],suspended=false,settleDelayMs=300}:{layoutKey?:string;maxFitZoom?:number;groupParentsOnly?:boolean;focusIds?:string[];suspended?:boolean;settleDelayMs?:number}){
  const anchor=useRef<HTMLSpanElement>(null)
  const {fitView}=useReactFlow()
  const initialized=useNodesInitialized()
@@ -12,7 +12,9 @@ export function AutoFit({layoutKey='',maxFitZoom=1,groupParentsOnly=false,focusI
  const visibleFocusIds=focusIds.filter(id=>graphNodes.some(node=>node.id===id)).sort().join('|')
  useEffect(()=>{
   const canvas=anchor.current?.closest('.react-flow')
-  if(!initialized||!ids||!canvas)return
+  // A delayed resize refit during an active React Flow connection would move
+  // both handles away from the pointer and cancel the drawn edge.
+  if(suspended||!initialized||!ids||!canvas)return
   let frame=0,inner=0,settle=0,width=0,height=0
   const fit=()=>{
    cancelAnimationFrame(frame);cancelAnimationFrame(inner)
@@ -26,7 +28,7 @@ export function AutoFit({layoutKey='',maxFitZoom=1,groupParentsOnly=false,focusI
    // Repeat once when the final dimensions are known rather than keeping the
    // viewport fitted to stale measurements.
    window.clearTimeout(settle)
-   settle=window.setTimeout(fit,300)
+   if(settleDelayMs>0)settle=window.setTimeout(fit,settleDelayMs)
   }
   const observer=new ResizeObserver(entries=>{
    const rect=entries[0].contentRect
@@ -43,7 +45,7 @@ export function AutoFit({layoutKey='',maxFitZoom=1,groupParentsOnly=false,focusI
    window.clearTimeout(settle)
    cancelAnimationFrame(frame);cancelAnimationFrame(inner)
   }
- },[fitView,initialized,ids,topLevelIds,visibleFocusIds,layoutKey,maxFitZoom,groupParentsOnly])
+ },[fitView,initialized,ids,topLevelIds,visibleFocusIds,layoutKey,maxFitZoom,groupParentsOnly,suspended,settleDelayMs])
  return <span ref={anchor} hidden/>
 }
 

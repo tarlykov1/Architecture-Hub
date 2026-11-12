@@ -59,8 +59,12 @@ jobs:
 
   browser:
     name: Browser smoke tests (Chromium)
-    # Match the OS supported by the lockfile-pinned Playwright browser build.
     runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    # Avoid apt-get against flaky Ubuntu mirrors on the hosted runner.
+    # This image includes Chromium and system libraries; match the npm lockfile.
+    container:
+      image: mcr.microsoft.com/playwright:v1.56.1-noble
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -76,13 +80,15 @@ jobs:
           python -m pip install -r backend/requirements.txt
           cd frontend
           npm ci --no-audit --no-fund
-          npx playwright install --with-deps chromium
+          # Chromium and its OS dependencies are baked into the pinned image.
       - name: Start isolated services
         env:
-          DATABASE_URL: sqlite:///${{ runner.temp }}/browser_ci.db
+          DATABASE_URL: sqlite:////tmp/architecture_hub_browser_ci.db
           PYTHONPATH: backend
           VITE_API_TARGET: http://127.0.0.1:8001
         run: |
+          # GitHub's checkout may be host-owned inside this container.
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
           python -m uvicorn app.main:app --host 127.0.0.1 --port 8001 > /tmp/arch-api.log 2>&1 &
           cd frontend
           npm run dev -- --host 127.0.0.1 --port 5174 --strictPort > /tmp/arch-vite.log 2>&1 &

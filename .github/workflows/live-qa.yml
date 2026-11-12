@@ -14,6 +14,10 @@ jobs:
     if: github.event_name != 'workflow_run' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main')
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    # Same prebuilt Chromium + OS libraries as the main browser CI.
+    # Avoid apt-get failures when Ubuntu mirrors/DNS are unavailable.
+    container:
+      image: mcr.microsoft.com/playwright:v1.56.1-noble
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -21,11 +25,9 @@ jobs:
           node-version: '22'
           cache: npm
           cache-dependency-path: frontend/package.json
-      - name: Install browser
+      - name: Install frontend dependencies
         working-directory: frontend
-        run: |
-          npm ci --no-audit --no-fund
-          npx playwright install --with-deps chromium
+        run: npm ci --no-audit --no-fund
       - name: Test deployed website
         id: live_test
         working-directory: frontend

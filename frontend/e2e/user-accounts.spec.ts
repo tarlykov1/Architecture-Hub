@@ -56,3 +56,46 @@ test('viewer signs in and the interface handles forbidden collections gracefully
  await page.reload()
  await expect(page.getByText('QA Viewer · Наблюдатель')).toBeVisible()
 })
+
+
+test('viewer sees read-only sections without unavailable create and edit controls',async({page})=>{
+ await page.route('**/api/auth/me',async route=>route.fulfill({
+  status:200,contentType:'application/json',
+  body:JSON.stringify({id:'123e4567-e89b-42d3-a456-426614174000',
+   username:'limited.viewer',display_name:'Limited Viewer',role:'viewer',auth_kind:'named_user',
+   permissions:{systems:'read',business:'read',diagrams:'read',incidents:'read',views:'read',board:'read'}})
+ }))
+ await page.addInitScript(()=>sessionStorage.setItem('architecture-hub:access-token:session','browser-ci-development-token'))
+ await page.goto('/systems')
+ const nav=page.getByRole('navigation',{name:'Разделы архитектуры'})
+ await expect(page.getByText('Limited Viewer · Наблюдатель')).toBeVisible()
+ await expect(nav.getByRole('button',{name:'Компоненты',exact:true})).toHaveCount(0)
+ await expect(nav.getByRole('button',{name:'Потоки',exact:true})).toHaveCount(0)
+ await expect(page.getByRole('button',{name:'+ Создать ИС'})).toHaveCount(0)
+ await expect(page.getByRole('button',{name:'Создать схему'})).toHaveCount(0)
+ await expect(page.getByRole('status').filter({hasText:'только для просмотра'})).toBeVisible()
+ // A bookmarked restricted URL may not bypass the navigation policy.
+ await page.goto('/networks')
+ await expect(page.getByRole('button',{name:'Обзор',exact:true})).toBeVisible()
+ await expect.poll(()=>new URL(page.url()).pathname).toBe('/')
+})
+
+test('revoked personal session clears protected data and returns to demo',async({page})=>{
+ let revoked=false
+ await page.route('**/api/auth/me',async route=>route.fulfill({
+  status:revoked?401:200,contentType:'application/json',
+  body:revoked?'{"detail":"Authentication required"}':JSON.stringify({
+   id:'123e4567-e89b-42d3-a456-426614174000',username:'qa.viewer',
+   display_name:'QA Viewer',role:'viewer',auth_kind:'named_user',
+   permissions:{systems:'read',business:'read',diagrams:'read',incidents:'read',views:'read',board:'read'}})
+ }))
+ await page.addInitScript(()=>sessionStorage.setItem('architecture-hub:access-token:session','mock-individual-session'))
+ await page.goto('/')
+ await expect(page.getByRole('button',{name:'Выйти'})).toBeVisible()
+ revoked=true
+ await page.reload()
+ await expect(page.getByRole('button',{name:'Войти для редактирования'})).toBeVisible()
+ await expect(page.getByRole('status').filter({hasText:'Демонстрационный режим'})).toBeVisible()
+ expect(await page.evaluate(()=>sessionStorage.getItem('architecture-hub:access-token:session'))).toBeNull()
+ await expect(page.getByRole('status').filter({hasText:'Сеанс завершился'})).toBeVisible()
+})

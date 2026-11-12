@@ -1,7 +1,7 @@
 import React,{useEffect,useState} from 'react'
 
 export type AccountRole='admin'|'architect'|'engineer'|'security'|'business_owner'|'viewer'
-export type AuthProfile={id:string|null;username:string|null;display_name:string|null;role:AccountRole;auth_kind:string}
+export type AuthProfile={id:string|null;username:string|null;display_name:string|null;role:AccountRole;auth_kind:string;permissions?:Record<string,'read'|'write'>}
 type AuthAccount={id:string;username:string;display_name:string;role:AccountRole;enabled:boolean;created_at:string|null}
 type Api=<T>(url:string,init?:RequestInit)=>Promise<T>
 const options:{value:AccountRole;label:string}[]=[

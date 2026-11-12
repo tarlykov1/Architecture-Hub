@@ -201,6 +201,23 @@
 .boardPendingBanner button{border:1px solid #c48a37;background:#fff;border-radius:6px;padding:7px 10px;color:#684316;font-weight:600;cursor:pointer}
 .boardPendingBanner button:hover{background:#fff0d7}
 
+/* Draft notices are overlays, not grid items. The previous auto-placed
+   grid row consumed a large part of the architecture canvas whenever one
+   unsaved change existed. Keep the alert compact and inside the canvas. */
+.boardEditorStage>.boardPendingBanner{
+ position:absolute;z-index:6;left:115px;right:14px;bottom:12px;
+ max-width:780px;box-sizing:border-box;min-width:0;
+ box-shadow:0 4px 18px #6843161a;
+}
+.boardEditorStage:has(>.boardDock)>.boardPendingBanner{right:340px}
+@media(max-width:880px){
+ .boardEditorStage:has(>.boardDock)>.boardPendingBanner{display:none}
+ .boardEditorStage>.boardPendingBanner span{display:none}
+}
+@media(max-width:650px){
+ .boardEditorStage>.boardPendingBanner{left:8px;right:8px;bottom:8px}
+}
+
 /* Direct flow drawing, with ports visible only when the flow tool is selected. */
 .boardCanvas .react-flow__node-boardComponent .boardConnectionHandle{
  width:13px;height:13px;border-radius:50%;background:#176bc1;

@@ -94,7 +94,8 @@ async def access_middleware(request: Request, call_next):
     role = next((role for key, role in (keys or {}).items() if hmac.compare_digest(key, token)), None)
     if role:
         request.state.auth_kind = "service_key"
-        request.state.actor = "service:" + role
+        # Keep the existing board-audit actor format for service keys. The
+        # board_actor fallback hashes the bearer token to distinguish keys.
     if not role:
         role = verify_session(token, password_auth)
         if role:

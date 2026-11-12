@@ -13,7 +13,7 @@ import os
 
 from fastapi import Request
 from starlette.responses import JSONResponse
-from .password_auth import verify_session
+from .password_auth import verify_session, verify_user_session
 
 # Permissions are enforced at API level, not by hiding frontend tabs.
 # 'read' and 'write' map to layers; no access is the default.
@@ -92,10 +92,39 @@ async def access_middleware(request: Request, call_next):
     auth = request.headers.get("authorization", "")
     token = auth[7:] if auth.startswith("Bearer ") else ""
     role = next((role for key, role in (keys or {}).items() if hmac.compare_digest(key, token)), None)
+    if role:
+        request.state.auth_kind = "service_key"
+        request.state.actor = "service:" + role
     if not role:
         role = verify_session(token, password_auth)
+        if role:
+            request.state.auth_kind = "shared_password"
+            request.state.actor = "legacy-admin"
+    if not role and password_auth is not None:
+        principal = verify_user_session(token, password_auth)
+        if principal:
+            from uuid import UUID
+            # Delayed import avoids a main/access initialization cycle.
+            from .main import AuthUser, SessionLocal
+            with SessionLocal() as db:
+                user = db.get(AuthUser, UUID(principal[0]))
+                if user is not None and user.enabled and user.session_version == principal[1]:
+                    role = user.role
+                    request.state.user_id = str(user.id)
+                    request.state.username = user.username
+                    request.state.display_name = user.display_name
+                    request.state.auth_kind = "named_user"
+                    request.state.actor = "user:" + str(user.id)
     if not role:
         return JSONResponse({"detail":"Authentication required"}, status_code=401, headers={"WWW-Authenticate":"Bearer"})
+    # The identity, account directory and password actions are authenticated APIs.
+    if path.startswith("/api/auth/"):
+        if path.startswith("/api/auth/users") and role != "admin":
+            return JSONResponse({"detail": "Only admins may manage accounts"}, status_code=403)
+        if path not in ("/api/auth/me", "/api/auth/change-password") and not path.startswith("/api/auth/users"):
+            return JSONResponse({"detail": "Unknown authentication endpoint"}, status_code=403)
+        request.state.role = role
+        return await call_next(request)
     # Changing the global CI schema or strict relation policies is an admin-only
     # operation. All authenticated system readers may inspect them.
     protected_schema = path.startswith("/api/cmdb/classes/") or path.startswith(

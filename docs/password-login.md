@@ -1,17 +1,19 @@
 # Вход по паролю без Keycloak
 
-Architecture Hub supports a **single shared administrator password** as a simple
-interim login for the test stand. Users see a password form rather than an API key.
-This is **not yet individual user accounts or SSO**: password sessions use the
-`admin` role; use distinct accounts/SSO before production.
+Architecture Hub supports a shared administrator password for **initial setup** and now
+supports **named individual accounts** with role-based API access. Leave the username
+blank to sign in with the transitional shared password; enter a username to use a
+personal account. See [user-accounts.md](user-accounts.md) for setup, roles and limits.
+This is **not SSO or MFA**.
 
 ## How it works
 
 1. Browser sends the entered password via **POST /api/auth/login** over HTTPS.
 2. Backend checks a 600,000-round PBKDF2-SHA256 verifier with a random salt.
    Only the verifier and a different session signing secret live on the server.
-3. Backend issues a signed **8-hour** bearer session. JavaScript keeps this
-   session token in `sessionStorage` (per tab), **not** the password or verifier.
+3. Backend issues a signed **8-hour** bearer session. For named users the
+   server checks current role, account status and session revision on every request.
+   JavaScript keeps the session in `sessionStorage` (per tab), not the password.
 4. The existing API authorization and roles still apply. Logging out clears
    the browser session; a previously copied session token remains valid until
    expiry unless the signing secret is rotated.
@@ -79,9 +81,10 @@ all previously signed password sessions; restart the backend.
 
 ## Security scope
 
-This remains a test-stand stopgap, not a production identity system.
-Administrator password is shared: API audit cannot distinguish individual
-people, there is no MFA, and sessionStorage bearer tokens are accessible to
+This remains a test-stand identity system, not a production SSO solution.
+Named-user actions have stable account identities, but the legacy shared
+administrator password cannot distinguish individual people. There is no MFA,
+and sessionStorage bearer tokens are accessible to
 scripts running in the same origin. For production, use per-user identity
 (SSO/Keycloak or another identity provider), HTTP-only sessions, CSRF
 protection and centrally enforced rate limiting.

@@ -148,7 +148,7 @@ export function ObstacleAwareEdge({id,source,target,sourceX,sourceY,targetX,targ
  return <>
    <BaseEdge id={id} path={path} markerEnd={markerEnd} style={style} interactionWidth={18}/>
    {(caption||endpointEditor)&&<EdgeLabelRenderer>
-     {caption&&(onSelect?<button type="button" className="reciprocalEdgeLabel boardSelectableEdgeLabel nodrag nopan" aria-label={'Выбрать поток '+caption} onClick={event=>{event.preventDefault();event.stopPropagation();onSelect()}} style={{position:'absolute',transform:`translate(-50%,-50%) translate(${label.x}px,${label.y}px)`,pointerEvents:'auto',opacity:style?.opacity??1}}>{caption}</button>:<div className="reciprocalEdgeLabel" style={{position:'absolute',transform:`translate(-50%,-50%) translate(${label.x}px,${label.y}px)`,pointerEvents:'none',opacity:style?.opacity??1}}>{caption}</div>)}
+     {caption&&(onSelect?<button type="button" className="reciprocalEdgeLabel boardSelectableEdgeLabel nodrag nopan" aria-label={'Выбрать поток '+caption} onClick={event=>{event.preventDefault();event.stopPropagation();onSelect()}} style={{position:'absolute',transform:`translate(-50%,-50%) translate(${label.x}px,${label.y-26}px)`,pointerEvents:'auto',opacity:style?.opacity??1}}>{caption}</button>:<div className="reciprocalEdgeLabel" style={{position:'absolute',transform:`translate(-50%,-50%) translate(${label.x}px,${label.y}px)`,pointerEvents:'none',opacity:style?.opacity??1}}>{caption}</div>)}
      {endpointEditor&&grip('source',sourceX,sourceY)}
      {endpointEditor&&grip('target',targetX,targetY)}
    </EdgeLabelRenderer>}

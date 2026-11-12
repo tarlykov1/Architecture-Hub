@@ -67,6 +67,11 @@ def test_individual_viewer_can_log_in_without_permissions_escalation(accounts):
         assert profile.json()["username"] == viewer["username"]
         assert profile.json()["role"] == "viewer"
         assert profile.json()["auth_kind"] == "named_user"
+        assert profile.json()["permissions"]["systems"] == "read"
+        assert profile.json()["permissions"]["diagrams"] == "read"
+        assert profile.json()["permissions"].get("infrastructure") is None
+        assert profile.json()["permissions"].get("flows") is None
+        assert profile.json()["permissions"].get("board") == "read"
         assert client.get("/api/objects", headers=bearer).status_code == 200
         assert client.get("/api/infra", headers=bearer).status_code == 403
         assert client.get("/api/auth/users", headers=bearer).status_code == 403

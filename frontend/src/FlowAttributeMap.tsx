@@ -1,4 +1,5 @@
 import {useEffect,useRef,useState} from 'react'
+import FlowAttributeReview from './FlowAttributeReview'
 
 export type FlowDataMapEntry={
  id:string
@@ -16,6 +17,7 @@ export type FlowDataMapEntry={
 }
 export type FlowDataMapResponse={
  flow_id:string
+ revision:string
  source_id:string
  target_id:string
  attributes:FlowDataMapEntry[]
@@ -45,6 +47,8 @@ export default function FlowAttributeMap({flowId,request}:Props){
  const [revision,setRevision]=useState(0)
  const [processFilter,setProcessFilter]=useState('all')
  const [consumerFilter,setConsumerFilter]=useState('all')
+ const [editing,setEditing]=useState<{action:'add'|'update'|'remove';entry?:FlowDataMapEntry}|null>(null)
+ const [notice,setNotice]=useState('')
  useEffect(()=>{
   let active=true
   setLoading(true);setData(null);setError('')
@@ -62,9 +66,11 @@ export default function FlowAttributeMap({flowId,request}:Props){
  return <section className="boardFlowDataMap" aria-label="Атрибуты данных потока">
   <div className="boardFlowDataMapHeader">
    <div><strong>Состав передаваемых данных</strong><small>По бизнес-процессам и системам-потребителям</small></div>
-   <button type="button" aria-label="Обновить состав данных" onClick={()=>setRevision(n=>n+1)}>Обновить</button>
+   <button type="button" aria-label="Обновить состав данных" onClick={()=>{setNotice('');setRevision(n=>n+1)}}>Обновить</button>
   </div>
   <p>Показываются определения атрибутов, а не значения данных. Для одного потока разные процессы и системы могут использовать разные наборы полей.</p>
+  {!loading&&!error&&<button type="button" className="boardFlowDataAdd" onClick={()=>setEditing({action:'add'})}>Добавить атрибут потока</button>}
+  {notice&&<p role="status" className="boardFlowDataNotice">{notice}</p>}
   {loading&&<p role="status">Загрузка состава данных…</p>}
   {!loading&&error&&<p role="alert">Не удалось загрузить состав данных: {error}</p>}
   {!loading&&!error&&<>
@@ -92,8 +98,14 @@ export default function FlowAttributeMap({flowId,request}:Props){
       <small>Процесс: {row.process_name||'Не указан'}</small>
       <small>Потребитель: {row.consumer_system_name||'Не указан'}</small>
       {row.purpose&&<p>Назначение: {row.purpose}</p>}
+      <div className="boardFlowDataActions"><button type="button" aria-label={'Изменить привязку '+row.name} onClick={()=>setEditing({action:'update',entry:row})}>Изменить</button><button type="button" aria-label={'Удалить привязку '+row.name} onClick={()=>setEditing({action:'remove',entry:row})}>Убрать</button></div>
      </article>)}
     </div>}
   </>}
+  {editing&&data&&<FlowAttributeReview
+   key={flowId+':'+editing.action+':'+(editing.entry?.id||'new')}
+   flowId={flowId} revision={data.revision} action={editing.action} entry={editing.entry}
+   request={api.current} onCancel={()=>setEditing(null)}
+   onSaved={()=>{setEditing(null);setNotice('Изменение сохранено в реестре и журнале аудита.');setRevision(n=>n+1)}}/>}
  </section>
 }

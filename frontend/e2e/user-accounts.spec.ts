@@ -99,3 +99,20 @@ test('revoked personal session clears protected data and returns to demo',async(
  expect(await page.evaluate(()=>sessionStorage.getItem('architecture-hub:access-token:session'))).toBeNull()
  await expect(page.getByRole('status').filter({hasText:'Сеанс завершился'})).toBeVisible()
 })
+
+
+test('security role can edit networks in topology but not data flows',async({page})=>{
+ await page.route('**/api/auth/me',async route=>route.fulfill({
+  status:200,contentType:'application/json',
+  body:JSON.stringify({id:'123e4567-e89b-42d3-a456-426614174001',
+   username:'security.user',display_name:'Security User',role:'security',auth_kind:'named_user',
+   permissions:{systems:'read',infrastructure:'read',networks:'write',flows:'read',diagrams:'read',views:'read',board:'read'}})
+ }))
+ await page.addInitScript(()=>sessionStorage.setItem('architecture-hub:access-token:session','browser-ci-development-token'))
+ await page.goto('/topology')
+ await expect(page.getByText('Security User · ИБ')).toBeVisible()
+ await page.getByRole('button',{name:'Редактировать топологию'}).click()
+ await expect(page.getByRole('button',{name:'+ Создать сеть'})).toBeVisible()
+ await expect(page.getByRole('button',{name:'+ Создать поток'})).toHaveCount(0)
+ await expect(page.getByRole('button',{name:'Редактировать паспорт'})).toHaveCount(0)
+})

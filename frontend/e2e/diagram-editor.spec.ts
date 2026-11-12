@@ -27,7 +27,6 @@ test('components expose the real palette even when no system is selected or grou
   await page.goto('/')
   await page.getByRole('navigation',{name:'Разделы архитектуры'}).getByRole('button',{name:'Компоненты',exact:true}).click()
   await page.getByRole('group',{name:'Представление компонентов'}).getByRole('button',{name:'Схема',exact:true}).click()
-  await page.getByRole('combobox',{name:'Группировка компонентов'}).selectOption('environment')
   await page.getByRole('button',{name:'Редактировать схему'}).click()
   const chooser=page.getByRole('region',{name:'Выбор информационной системы для редактора'})
   await expect(chooser).toBeVisible()
@@ -44,6 +43,13 @@ test('components expose the real palette even when no system is selected or grou
   await expect(editor.getByRole('button',{name:'Добавить поток'})).toBeVisible()
   await page.getByRole('button',{name:'Завершить редактирование'}).click()
   await expect(editor).toHaveCount(0)
+  const grouping=page.getByRole('combobox',{name:'Группировка компонентов'})
+  await grouping.selectOption('environment')
+  await page.getByRole('button',{name:'Редактировать схему',exact:true}).click()
+  await expect(editor).toBeVisible()
+  await expect(grouping).toHaveCount(0)
+  await page.getByRole('button',{name:'Завершить редактирование'}).click()
+  await expect(grouping).toHaveValue('environment')
 })
 
 test('flows expose the shared architecture toolbar and use overview card styling',async({page})=>{
@@ -195,10 +201,15 @@ test('dragged node coordinates are saved to backend without committing network d
   const editor=page.getByRole('region',{name:'Редактор архитектурной схемы'})
   const tools=editor.getByRole('toolbar',{name:'Инструменты архитектуры'})
   const source=editor.locator('.react-flow__node').filter({hasText:'Editor source'})
+  // Hover waits for a stable, hittable card after the initial canvas fit.
+  const grip={x:100,y:24}
+  await source.hover({position:grip})
   const bounds=await source.boundingBox()
   expect(bounds).not.toBeNull()
-  const start={x:bounds!.x+bounds!.width/2,y:bounds!.y+24}
-  await page.mouse.move(start.x,start.y)
+  const start={x:bounds!.x+grip.x,y:bounds!.y+grip.y}
+  const sourceId=await source.getAttribute('data-id')
+  expect(sourceId).toBeTruthy()
+  const originalX=await source.evaluate(node=>new DOMMatrix(getComputedStyle(node).transform).e)
   await page.mouse.down()
   await page.mouse.move(start.x+115,start.y+90,{steps:8})
   await page.mouse.up()
@@ -209,7 +220,7 @@ test('dragged node coordinates are saved to backend without committing network d
   expect(result.ok()).toBeTruthy()
   const saved=await result.json()
   expect(Object.keys(saved.positions).length).toBe(2)
-  expect(saved.positions[Object.keys(saved.positions)[0]]).toHaveProperty('x')
+  expect(saved.positions[sourceId!].x).toBeGreaterThan(originalX)
 })
 
 test('closing KIS passport editor keeps the selected system card open',async({page})=>{
@@ -627,4 +638,46 @@ test('one grouped arrow exposes its separate saved flow records',async({page})=>
   const form=editor.getByRole('form',{name:'Редактирование существующего потока'})
   await expect(form.getByRole('textbox',{name:'Название потока'})).toHaveValue('Payroll')
   await expect(form.getByRole('textbox',{name:'Протокол'})).toHaveValue('HTTPS')
+})
+
+test('dense all-systems component diagrams start with readable IS cards and allow full detail',async({page})=>{
+  const ids:string[]=[],vmIds:string[]=[]
+  const suffix=Date.now().toString()
+  for(const name of ['Readable overview A','Readable overview B']){
+    const created=await page.request.post('http://127.0.0.1:8001/api/objects',{
+      data:{name:name+' '+suffix,kind:'system'}
+    })
+    expect(created.status()).toBe(201)
+    ids.push((await created.json()).id as string)
+  }
+  for(let i=0;i<20;i++){
+    const vm=await page.request.post('http://127.0.0.1:8001/api/infra',{
+      data:{system_id:ids[i%2],name:'Readable node '+suffix+' '+i,kind:'vm'}
+    })
+    expect(vm.status()).toBe(201)
+    vmIds.push((await vm.json()).id as string)
+  }
+  await page.goto('/')
+  await page.getByRole('navigation',{name:'Разделы архитектуры'})
+    .getByRole('button',{name:'Компоненты',exact:true}).click()
+  await page.getByRole('group',{name:'Представление компонентов'})
+    .getByRole('button',{name:'Схема',exact:true}).click()
+  const detail=page.getByRole('combobox',{name:'Детализация схемы компонентов'})
+  const graph=page.locator('[data-active-graph="infrastructure"]')
+  await expect(detail).toHaveValue('auto')
+  await expect(page.getByText(/Обзор по информационным системам/)).toBeVisible()
+  await expect(graph.locator('.react-flow__node[data-id="'+ids[0]+'"]')).toHaveCount(1)
+  await expect(graph.locator('.react-flow__node[data-id="'+vmIds[0]+'"]')).toHaveCount(0)
+  await detail.selectOption('components')
+  await expect(graph.locator('.react-flow__node[data-id="'+vmIds[0]+'"]')).toHaveCount(1)
+  await detail.selectOption('systems')
+  await expect(graph.locator('.react-flow__node[data-id="'+ids[0]+'"]')).toHaveCount(1)
+  await graph.locator('.react-flow__node[data-id="'+ids[0]+'"]').click()
+  await expect(page.getByRole('combobox',{name:'Система компонентов'})).toHaveValue(ids[0])
+  await expect(page.getByText(/Компоненты текущей ИС:/)).toBeVisible()
+  await expect(graph.locator('.react-flow__node[data-id="'+vmIds[0]+'"]')).toHaveCount(1)
+  await expect(detail).toHaveCount(0)
+  await page.getByRole('combobox',{name:'Система компонентов'}).selectOption('')
+  await expect(detail).toHaveValue('systems')
+  await expect(graph.locator('.react-flow__node[data-id="'+ids[0]+'"]')).toHaveCount(1)
 })

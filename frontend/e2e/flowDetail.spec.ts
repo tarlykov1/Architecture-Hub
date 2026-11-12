@@ -14,3 +14,10 @@ test('explicit detail preferences override auto aggregation without dropping dat
  expect(shouldShowSystemsOverview(records,3,true,true,'systems')).toBe(true)
  expect(shouldShowSystemsOverview(records,3,false,false,'auto',true)).toBe(true)
 })
+
+test('many parallel flows show an IS overview even with fewer than 20 component endpoints',()=>{
+ const repeat=Array.from({length:29},(_,index)=>({source_id:'frontend-'+index%4,target_id:'backend-'+index%4}))
+ expect(shouldShowSystemsOverview(repeat,3,false,false,'auto')).toBe(true)
+ expect(shouldShowSystemsOverview(repeat.slice(0,23),3,false,false,'auto')).toBe(false)
+ expect(shouldShowSystemsOverview(repeat,3,false,false,'components')).toBe(false)
+})

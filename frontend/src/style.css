@@ -879,3 +879,28 @@ button:disabled{cursor:not-allowed;opacity:.55}
 .authAlternateMode{margin:0 0 14px;padding:4px 0;border:0;background:transparent;color:#245ca6;cursor:pointer;font-size:12px;text-decoration:underline;text-underline-offset:3px;text-align:left}
 .authAlternateMode:hover,.authAlternateMode:focus-visible{color:#1e40af}
 .authLoginError{margin:0;color:#b91c1c;font-size:13px;line-height:1.5}
+
+
+/* Administrative user directory: a readable overlay, not an oversized sidebar. */
+.accountBackdrop{z-index:180;display:flex;align-items:center;justify-content:center;padding:20px}
+.accountDialog{width:min(1060px,100%);max-height:94vh;overflow-y:auto;background:#fff;color:#25364a;border-radius:14px;box-shadow:0 20px 80px #12243f50;padding:22px}
+.accountDialog>header{display:flex;align-items:start;justify-content:space-between;gap:16px;border-bottom:1px solid #e2e8f0;padding-bottom:14px}
+.accountDialog h2{font-size:22px;margin:0 0 6px}.accountDialog h3{font-size:16px;margin:4px 0 13px}
+.accountDialog>header p{font-size:13px;color:#64748b;margin:0;line-height:1.5}
+.accountDialog>header button{border:0;background:transparent;font-size:24px;color:#475569;cursor:pointer}
+.accountCreateForm{padding:18px 0;border-bottom:1px solid #e2e8f0}
+.accountFormGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-bottom:13px}
+.accountCreateForm label,.accountRow label{display:grid;gap:5px;font-size:12px;font-weight:600;color:#475569}
+.accountDialog input:not([type=checkbox]),.accountDialog select{width:100%;min-width:0;box-sizing:border-box;padding:9px 10px;border:1px solid #cbd5e1;border-radius:7px;background:#fff;color:#1e293b;font:inherit;font-weight:400}
+.accountDialog button{cursor:pointer}.accountDialog button:disabled{cursor:not-allowed;opacity:.5}
+.accountCreateForm>button{padding:10px 15px}
+.accountList{padding-top:16px}.accountRow{padding:16px 0;border-top:1px solid #e2e8f0;display:grid;gap:12px}
+.accountRowIdentity{display:flex;align-items:center;gap:12px}.accountRowIdentity strong{font-size:15px}.accountRowIdentity small{font-size:11px;color:#64748b}
+.accountRowFields{display:grid;grid-template-columns:minmax(170px,1fr) 180px 100px auto;align-items:end;gap:10px}
+.accountRowFields>button,.accountPasswordReset button{height:38px;background:#eff6ff;color:#175d9e;border:1px solid #bfdbfe;border-radius:7px;padding:7px 10px;white-space:nowrap}
+.accountRow .accountCheckbox{display:flex;align-items:center;justify-content:center;gap:7px;padding-bottom:10px}
+.accountPasswordReset{display:flex;align-items:end;gap:10px;flex-wrap:wrap}
+.accountPasswordReset label{flex:1;min-width:220px}.accountSuccess{font-size:12px;color:#047857;margin:5px 0}.accountError{font-size:12px;color:#b91c1c;margin:5px 0}
+.accountTopAction{white-space:nowrap;font-size:12px!important}
+@media(max-width:760px){.accountBackdrop{padding:8px}.accountDialog{padding:14px;max-height:98vh}.accountFormGrid,.accountRowFields{grid-template-columns:1fr 1fr}.accountRowFields>button{grid-column:span 2}.accountRow .accountCheckbox{justify-content:flex-start}}
+@media(max-width:480px){.accountFormGrid,.accountRowFields{grid-template-columns:1fr}.accountRowFields>button{grid-column:auto}.accountRow .accountCheckbox{justify-content:flex-start}}

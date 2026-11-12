@@ -201,10 +201,15 @@ test('dragged node coordinates are saved to backend without committing network d
   const editor=page.getByRole('region',{name:'Редактор архитектурной схемы'})
   const tools=editor.getByRole('toolbar',{name:'Инструменты архитектуры'})
   const source=editor.locator('.react-flow__node').filter({hasText:'Editor source'})
+  // Hover waits for a stable, hittable card after the initial canvas fit.
+  const grip={x:100,y:24}
+  await source.hover({position:grip})
   const bounds=await source.boundingBox()
   expect(bounds).not.toBeNull()
-  const start={x:bounds!.x+bounds!.width/2,y:bounds!.y+24}
-  await page.mouse.move(start.x,start.y)
+  const start={x:bounds!.x+grip.x,y:bounds!.y+grip.y}
+  const sourceId=await source.getAttribute('data-id')
+  expect(sourceId).toBeTruthy()
+  const originalX=await source.evaluate(node=>new DOMMatrix(getComputedStyle(node).transform).e)
   await page.mouse.down()
   await page.mouse.move(start.x+115,start.y+90,{steps:8})
   await page.mouse.up()
@@ -215,7 +220,7 @@ test('dragged node coordinates are saved to backend without committing network d
   expect(result.ok()).toBeTruthy()
   const saved=await result.json()
   expect(Object.keys(saved.positions).length).toBe(2)
-  expect(saved.positions[Object.keys(saved.positions)[0]]).toHaveProperty('x')
+  expect(saved.positions[sourceId!].x).toBeGreaterThan(originalX)
 })
 
 test('closing KIS passport editor keeps the selected system card open',async({page})=>{

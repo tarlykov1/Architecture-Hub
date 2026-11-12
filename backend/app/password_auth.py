@@ -122,6 +122,51 @@ def verify_session(token: str, config: PasswordAuthConfig | None,
         return None
 
 
+def issue_user_session(config: PasswordAuthConfig, user_id: str, version: int,
+                       now: int | None = None) -> str:
+    """Issue a signed named-account session with no embedded role authority."""
+    issued = int(time.time()) if now is None else now
+    payload = {"v": 2, "uid": user_id, "sv": version, "iat": issued,
+               "exp": issued + SESSION_SECONDS, "nonce": secrets.token_hex(16)}
+    body = _b64(json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8"))
+    signature = hmac.new(config.signing_secret, b"archhub-user.v2." + body.encode("ascii"),
+                         hashlib.sha256).digest()
+    return f"ah2.{body}.{_b64(signature)}"
+
+
+def verify_user_session(token: str, config: PasswordAuthConfig | None,
+                        now: int | None = None) -> tuple[str, int] | None:
+    """Validate the signature/expiry. Caller MUST recheck active user and role in DB."""
+    if config is None or not token.startswith("ah2.") or len(token) > 2048:
+        return None
+    try:
+        from uuid import UUID
+        version, body, signed = token.split(".")
+        if version != "ah2":
+            return None
+        expected = hmac.new(config.signing_secret, b"archhub-user.v2." + body.encode("ascii"),
+                            hashlib.sha256).digest()
+        if not hmac.compare_digest(_decode(signed), expected):
+            return None
+        payload = json.loads(_decode(body))
+        current = int(time.time()) if now is None else now
+        if not isinstance(payload, dict) or payload.get("v") != 2:
+            return None
+        issued, expires, revision = payload.get("iat"), payload.get("exp"), payload.get("sv")
+        uid = payload.get("uid")
+        if type(issued) is not int or type(expires) is not int or type(revision) is not int or revision < 1:
+            return None
+        if issued > current + 60 or expires <= current or expires - issued != SESSION_SECONDS:
+            return None
+        if not isinstance(uid, str) or str(UUID(uid)) != uid:
+            return None
+        if not isinstance(payload.get("nonce"), str) or len(payload["nonce"]) != 32:
+            return None
+        return uid, revision
+    except (ValueError, TypeError, UnicodeDecodeError, base64.binascii.Error, KeyError):
+        return None
+
+
 # Best-effort per-process throttle. Reverse proxy rate-limits should also be
 # enabled for multi-worker environments, because this state is not distributed.
 _failures: dict[str, list[float]] = defaultdict(list)

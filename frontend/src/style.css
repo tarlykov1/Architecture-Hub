@@ -904,3 +904,12 @@ button:disabled{cursor:not-allowed;opacity:.55}
 .accountTopAction{white-space:nowrap;font-size:12px!important}
 @media(max-width:760px){.accountBackdrop{padding:8px}.accountDialog{padding:14px;max-height:98vh}.accountFormGrid,.accountRowFields{grid-template-columns:1fr 1fr}.accountRowFields>button{grid-column:span 2}.accountRow .accountCheckbox{justify-content:flex-start}}
 @media(max-width:480px){.accountFormGrid,.accountRowFields{grid-template-columns:1fr}.accountRowFields>button{grid-column:auto}.accountRow .accountCheckbox{justify-content:flex-start}}
+
+
+/* Role-aware viewer status; unobtrusive text, no oversized canvas overlay. */
+.roleReadOnlyNotice{
+ padding:8px 16px;border-bottom:1px solid #d5dce7;
+ background:#f8fafc;color:#475569;
+ font-size:12px;line-height:1.5;
+}
+@media(max-width:700px){.roleReadOnlyNotice{padding:8px 11px}}

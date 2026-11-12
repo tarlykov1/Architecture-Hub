@@ -10,8 +10,10 @@ from typing import Any, Literal
 from uuid import UUID, uuid4
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
+from fastapi.responses import JSONResponse
 from fastapi.encoders import jsonable_encoder
 from .access import access_middleware, configured_keys, ROLE_ACCESS
+from .password_auth import configured_password_auth, check_password, issue_session, login_allowed, record_login_attempt, SESSION_SECONDS
 from .cmdb import ci_graph, potential_impact, CI_CLASSES, LIFECYCLE_STATES, LIFECYCLE_TRANSITIONS, CRITICALITY_LEVELS, VERIFICATION_STATES
 from .cmdb_catalog import validate_class_schema, validate_custom_values, missing_required, assess_relation, RELATION_KINDS
 from fastapi.middleware.cors import CORSMiddleware
@@ -512,6 +514,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Architecture Hub API", version="0.7.0", lifespan=lifespan)
 app.state.arch_hub_keys = configured_keys()
+app.state.arch_hub_password_auth = configured_password_auth()
 app.middleware("http")(access_middleware)
 app.add_middleware(
     CORSMiddleware,
@@ -1016,6 +1019,31 @@ def cmdb_quality(stale_days: int = Query(default=90, ge=1, le=3650),
         "stale_days": stale_days,
         "items": items,
     }
+
+
+class PasswordLoginInput(BaseModel):
+    password: str = Field(min_length=1, max_length=256)
+
+
+@app.post("/api/auth/login")
+def password_login(payload: PasswordLoginInput, request: Request):
+    """Exchange a password for a short-lived session; no password is stored in the browser."""
+    config = request.app.state.arch_hub_password_auth
+    if config is None:
+        raise HTTPException(status_code=503, detail="Вход по паролю ещё не настроен администратором")
+    # Never accept an arbitrary X-Forwarded-For as a trusted client identity.
+    address = request.client.host if request.client else "unknown"
+    if not login_allowed(address):
+        raise HTTPException(status_code=429, detail="Слишком много попыток. Повторите позже.",
+                            headers={"Retry-After": "120", "Cache-Control": "no-store"})
+    valid = check_password(payload.password, config)
+    record_login_attempt(address, success=valid)
+    if not valid:
+        raise HTTPException(status_code=401, detail="Неверный пароль",
+                            headers={"Cache-Control": "no-store"})
+    return JSONResponse({"access_token": issue_session(config), "token_type": "bearer",
+                         "expires_in": SESSION_SECONDS},
+                        headers={"Cache-Control": "no-store", "Pragma": "no-cache"})
 
 
 @app.get("/api/health")

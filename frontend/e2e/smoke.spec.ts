@@ -638,14 +638,14 @@ test('component view choice survives a reload',async({page})=>{
   await expect(page.getByRole('group',{name:'Представление компонентов'}).getByRole('button',{name:'Карточки',exact:true})).toHaveAttribute('aria-pressed','true')
 })
 
-test('access dialog masks the key, contains focus and returns focus on Escape',async({page})=>{
+test('access dialog masks the password, contains focus and returns focus on Escape',async({page})=>{
   await page.goto('/')
   const trigger=page.getByRole('button',{name:'Войти для редактирования',exact:true})
   await trigger.click()
   const dialog=page.getByRole('dialog',{name:'Вход в Architecture Hub'})
-  const key=dialog.getByLabel('Ключ',{exact:true})
+  const key=dialog.getByLabel('Пароль',{exact:true})
   await expect(key).toHaveAttribute('type','password')
-  await key.fill('UX-TEST-unsent-key')
+  await key.fill('UX-TEST-unsent-password')
   await dialog.getByRole('button',{name:'Войти',exact:true}).focus()
   await page.keyboard.press('Tab')
   await expect(dialog.getByRole('button',{name:'Закрыть вход'})).toBeFocused()

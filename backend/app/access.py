@@ -13,6 +13,7 @@ import os
 
 from fastapi import Request
 from starlette.responses import JSONResponse
+from .password_auth import verify_session
 
 # Permissions are enforced at API level, not by hiding frontend tabs.
 # 'read' and 'write' map to layers; no access is the default.
@@ -81,15 +82,18 @@ def configured_keys() -> dict[str, str] | None:
 async def access_middleware(request: Request, call_next):
     path = request.url.path
     keys = request.app.state.arch_hub_keys
-    if keys is None:
+    password_auth = request.app.state.arch_hub_password_auth
+    if keys is None and password_auth is None:
         return await call_next(request)
-    if request.method.upper() == "OPTIONS" or path in ("/api/health", "/openapi.json", "/docs", "/docs/oauth2-redirect", "/redoc"):
+    if request.method.upper() == "OPTIONS" or path in ("/api/health", "/api/auth/login", "/openapi.json", "/docs", "/docs/oauth2-redirect", "/redoc"):
         return await call_next(request)
     if not path.startswith("/api/"):
         return await call_next(request)
     auth = request.headers.get("authorization", "")
     token = auth[7:] if auth.startswith("Bearer ") else ""
-    role = next((role for key, role in keys.items() if hmac.compare_digest(key, token)), None)
+    role = next((role for key, role in (keys or {}).items() if hmac.compare_digest(key, token)), None)
+    if not role:
+        role = verify_session(token, password_auth)
     if not role:
         return JSONResponse({"detail":"Authentication required"}, status_code=401, headers={"WWW-Authenticate":"Bearer"})
     # Changing the global CI schema or strict relation policies is an admin-only

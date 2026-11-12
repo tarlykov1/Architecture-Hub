@@ -116,6 +116,27 @@ function App() {
   const [flowFocusOnly,setFlowFocusOnly] = useState(false)
   const [groupFlowEdges,setGroupFlowEdges] = useState(true)
   const [expandedFlowPair,setExpandedFlowPair] = useState('')
+  // Flow direction details are non-modal. Close on clicks outside the panel,
+  // except on graph edges/nodes that can immediately select another flow.
+  useEffect(()=>{
+    if(!expandedFlowPair)return
+    const dismiss=(event:PointerEvent)=>{
+      const target=event.target
+      if(!(target instanceof Element))return
+      if(target.closest('.expandedFlowPanel, .react-flow__edge, .react-flow__node'))return
+      setExpandedFlowPair('')
+    }
+    const escape=(event:KeyboardEvent)=>{
+      if(event.key==='Escape')setExpandedFlowPair('')
+    }
+    document.addEventListener('pointerdown',dismiss,true)
+    document.addEventListener('keydown',escape)
+    return()=>{
+      document.removeEventListener('pointerdown',dismiss,true)
+      document.removeEventListener('keydown',escape)
+    }
+  },[expandedFlowPair])
+
   const [flowDirection,setFlowDirection] = useState<'both'|'incoming'|'outgoing'>('both')
   const [flowComponentQuery,setFlowComponentQuery] = useState('')
   const [flowComponentFocus,setFlowComponentFocus] = useState('')

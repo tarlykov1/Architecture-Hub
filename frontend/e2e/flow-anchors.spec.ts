@@ -245,3 +245,60 @@ test('reconnecting one flow on a shared arrow preserves the other flow',async({p
  const layout=await page.request.get('http://127.0.0.1:8001/api/board/layout/'+system)
  expect((await layout.json()).flow_anchors[moved.id].source_handle).toBe('out-bottom-2')
 })
+
+
+test('newly created unsaved flow exposes movable endpoints immediately',async({page})=>{
+ const {system,source,target}=await seed(page)
+ const editor=await openBoard(page,system)
+ const tools=editor.getByRole('toolbar',{name:'Инструменты архитектуры'})
+ await tools.getByRole('button',{name:'→ Поток'}).click()
+ const origin=editor.locator('.react-flow__node[data-id="'+source.id+'"]')
+ const destination=editor.locator('.react-flow__node[data-id="'+target.id+'"]')
+ await drag(page,origin.locator('[data-anchor="out-bottom-2"]'),
+  destination.locator('[data-anchor="in-top-1"]'))
+ const edges=editor.locator('.react-flow__edge')
+ await expect(edges).toHaveCount(1)
+ // Before the fix, this freshly staged edge was missing from
+ // selectedEdgeFlowIds and therefore had no orange draggable grips.
+ await expect(editor.getByRole('button',{name:'Перенести начало стрелки'})).toBeVisible()
+ const end=editor.getByRole('button',{name:'Перенести конец стрелки'})
+ await expect(end).toBeVisible()
+ await drag(page,end,destination.locator('[data-anchor="in-bottom-2"]'))
+ await expect(edges).toHaveCount(1)
+ await expect(edges.first()).toHaveAttribute('data-id',/in-bottom-2/)
+ await expect(editor.getByRole('button',{name:'Проверить изменения (1)'})).toBeVisible()
+ await expect(editor.getByRole('button',{name:'Перенести конец стрелки'})).toBeVisible()
+ // A draft endpoint move may never create a second persisted API flow.
+ const persisted=(await (await page.request.get('http://127.0.0.1:8001/api/flows')).json()) as Array<{source_id:string;target_id:string}>
+ expect(persisted.filter(f=>f.source_id===source.id&&f.target_id===target.id)).toHaveLength(0)
+})
+
+test('three grouped saved flows require a specific record then allow its endpoint drag',async({page})=>{
+ const {system,source,target}=await seed(page)
+ const extraResponse=await page.request.post('http://127.0.0.1:8001/api/infra',{
+  data:{system_id:system,name:'Alternative VM',kind:'vm'}
+ })
+ expect(extraResponse.status()).toBe(201)
+ const extra=(await extraResponse.json()) as {id:string}
+ for(const name of ['Flow A','Flow B','Flow C']){
+  const response=await page.request.post('http://127.0.0.1:8001/api/flows',{
+   data:{source_id:source.id,target_id:target.id,name,protocol:'HTTPS',port:'443'}
+  })
+  expect(response.status()).toBe(201)
+ }
+ const editor=await openBoard(page,system)
+ await expect(editor.locator('.react-flow__edge')).toHaveCount(1)
+ await editor.getByRole('button',{name:'Выбрать поток 3 потока'}).click()
+ const dock=editor.getByRole('complementary',{name:'Свойства и изменения схемы'})
+ const choices=dock.getByRole('region',{name:'Потоки выбранной стрелки'})
+ await expect(choices.getByRole('button')).toHaveCount(3)
+ await expect(choices).toContainText('Сначала выберите нужную запись')
+ await expect(editor.getByRole('button',{name:'Перенести конец стрелки'})).toHaveCount(0)
+ await choices.getByRole('button',{name:/Flow B/}).click()
+ const grip=editor.getByRole('button',{name:'Перенести конец стрелки'})
+ await expect(grip).toBeVisible()
+ await drag(page,grip,editor.locator('.react-flow__node[data-id="'+extra.id+'"] [data-anchor="in-bottom-2"]'))
+ await expect(editor.locator('.react-flow__edge')).toHaveCount(2)
+ await expect(editor.getByRole('button',{name:'Проверить изменения (1)'})).toBeVisible()
+ await expect(editor.getByRole('button',{name:'Перенести конец стрелки'})).toBeVisible()
+})

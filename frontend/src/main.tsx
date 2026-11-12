@@ -552,6 +552,16 @@ function App() {
   const [notice,setNotice] = useState('')
   const [tokenReady, setTokenReady] = useState(Boolean(accessToken))
   useEffect(()=>{
+    if(!tokenReady||!authProfile)return
+    // Links from bookmarks and old tabs must not open a workspace outside
+    // this account's grants; server checks still enforce the real boundary.
+    if(!canOpenSection(authProfile,true,layer)){
+      setLayer('home');setViewSystem('');setInspectorOpen(false);setInspectorExpanded(false)
+    }
+    if(!canAccess(authProfile,true,'diagrams','write'))setDiagramEditMode(false)
+    if(!canAccess(authProfile,true,'flows','write'))setFlowEditMode(false)
+  },[tokenReady,authProfile,layer])
+  useEffect(()=>{
     if(!tokenReady){setAuthProfile(null);return}
     let active=true
     request<AuthProfile>('/api/auth/me')

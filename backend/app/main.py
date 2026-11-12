@@ -1122,10 +1122,18 @@ def password_login(payload: PasswordLoginInput, request: Request,
 @app.get("/api/auth/me")
 def auth_profile(request: Request):
     role = getattr(request.state, "role", "development")
+    # The browser renders role-aware controls from this map, but authorization
+    # remains enforced independently on every API request by access_middleware.
+    permissions = dict(ROLE_ACCESS.get(role, ROLE_ACCESS["admin"] if role == "development" else {}))
+    if role in ("admin", "architect"):
+        permissions["board"] = "write"
+    elif role in ("engineer", "security", "viewer"):
+        permissions["board"] = "read"
     return {"id": getattr(request.state, "user_id", None),
             "username": getattr(request.state, "username", None),
             "display_name": getattr(request.state, "display_name", None),
-            "role": role, "auth_kind": getattr(request.state, "auth_kind", "development")}
+            "role": role, "auth_kind": getattr(request.state, "auth_kind", "development"),
+            "permissions": permissions}
 
 
 @app.get("/api/auth/users")

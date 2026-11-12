@@ -89,12 +89,26 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
     if ((init?.method || 'GET').toUpperCase() !== 'GET') throw new Error('Демонстрационный режим: изменения запрещены. Для редактирования войдите по паролю.')
     return publicDemoResponse(url) as T
   }
-  const response = await fetch(url, { ...init, headers: { 'Content-Type': 'application/json', ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}), ...init?.headers } })
+  const requestToken=accessToken
+  const response = await fetch(url, { ...init, headers: { 'Content-Type': 'application/json', ...(requestToken ? { Authorization: `Bearer ${requestToken}` } : {}), ...init?.headers } })
   if (!response.ok) {
-    const detail = await response.text()
-    if(response.status===401)throw new Error('Сеанс завершился или ключ недействителен. Войдите снова.')
+    if(response.status===401){
+      // A revoked or expired account must not continue displaying protected
+      // data just because a stale token remains in sessionStorage.
+      if(accessToken===requestToken){
+        saveAccessToken('')
+        window.dispatchEvent(new Event('architecture-hub:session-expired'))
+      }
+      throw new Error('Сеанс завершился или ключ недействителен. Войдите снова.')
+    }
     if(response.status===403)throw new ApiForbiddenError('Недостаточно прав для этого действия.')
-    throw new Error(detail || 'Ошибка обращения к API')
+    const detail=await response.text()
+    let message=detail
+    try{
+      const payload=JSON.parse(detail) as {detail?:unknown}
+      if(typeof payload.detail==='string')message=payload.detail
+    }catch{/* Non-JSON API response. */}
+    throw new Error(message || 'Ошибка обращения к API')
   }
   return response.status === 204 ? undefined as T : response.json()
 }
@@ -605,6 +619,20 @@ function App() {
   }, [diagramId])
 
   useEffect(() => { refresh().catch(e => setError(e.message)) }, []) // initial load
+  useEffect(()=>{
+    const expired=()=>{
+      setTokenReady(false);setAuthProfile(null)
+      setUserManagerOpen(false);setChangePasswordOpen(false)
+      setInspectorOpen(false);setInspectorExpanded(false)
+      setLayer('home');setViewSystem('');setSelected('');setSelectedFlow('')
+      setObjects([]);setRelations([]);setDiagrams([]);setInfra([]);setFlows([])
+      setSegments([]);setNics([]);setCategories([]);setProcesses([]);setBusinessLinks([])
+      setError('');setNotice('Сеанс завершился или доступ был изменён. Войдите повторно.')
+      void refresh().catch(e=>setError((e as Error).message))
+    }
+    window.addEventListener('architecture-hub:session-expired',expired)
+    return()=>window.removeEventListener('architecture-hub:session-expired',expired)
+  },[refresh])
   useEffect(()=>{
     if(panelTab!=='knowledge'||!selected)return
     request<{id:string;title:string;url:string;relation_type:string}[]>('/api/knowledge/links?entity_type=system&entity_id='+encodeURIComponent(selected))

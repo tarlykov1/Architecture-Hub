@@ -38,7 +38,7 @@ test('wrong password reports error inside dialog and does not leave a session',a
  const dialog=page.getByRole('dialog',{name:'Вход в Architecture Hub'})
  await dialog.getByLabel('Пароль',{exact:true}).fill('wrong-password')
  await dialog.getByRole('button',{name:'Войти',exact:true}).click()
- await expect(dialog.getByRole('alert')).toContainText('Неверный пароль')
+ await expect(dialog.getByRole('alert')).toContainText('Неверный логин или пароль')
  await expect(page.getByRole('button',{name:'Выйти'})).toHaveCount(0)
  expect(await page.evaluate(()=>sessionStorage.getItem('architecture-hub:access-token:session'))).toBeNull()
 })

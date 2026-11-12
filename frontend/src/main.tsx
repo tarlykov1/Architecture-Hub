@@ -66,15 +66,30 @@ function saveAccessToken(value: string): void {
     else sessionStorage.removeItem(ACCESS_TOKEN_STORAGE_KEY)
   } catch { /* Private browsing can disable session storage. */ }
 }
+async function signInWithPassword(password:string):Promise<string>{
+ const response=await fetch('/api/auth/login',{
+  method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password}),
+  cache:'no-store',credentials:'omit',
+ })
+ if(!response.ok){
+  if(response.status===401)throw new Error('Неверный пароль.')
+  if(response.status===429)throw new Error('Слишком много попыток. Повторите позже.')
+  if(response.status===503)throw new Error('Вход по паролю ещё не настроен на сервере. Обратитесь к администратору.')
+  throw new Error('Не удалось выполнить вход. Проверьте подключение и повторите попытку.')
+ }
+ const result=await response.json() as {access_token?:unknown}
+ if(typeof result.access_token!=='string'||!result.access_token)throw new Error('Сервер вернул некорректную сессию.')
+ return result.access_token
+}
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   if (!accessToken) {
-    if ((init?.method || 'GET').toUpperCase() !== 'GET') throw new Error('Демонстрационный режим: изменения запрещены. Для редактирования введите ключ доступа.')
+    if ((init?.method || 'GET').toUpperCase() !== 'GET') throw new Error('Демонстрационный режим: изменения запрещены. Для редактирования войдите по паролю.')
     return publicDemoResponse(url) as T
   }
   const response = await fetch(url, { ...init, headers: { 'Content-Type': 'application/json', ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}), ...init?.headers } })
   if (!response.ok) {
     const detail = await response.text()
-    if(response.status===401)throw new Error('Ключ доступа недействителен или срок его действия истёк.')
+    if(response.status===401)throw new Error('Сеанс завершился или ключ недействителен. Войдите снова.')
     if(response.status===403)throw new Error('Недостаточно прав для этого действия.')
     throw new Error(detail || 'Ошибка обращения к API')
   }
@@ -101,6 +116,8 @@ function App() {
   },[flowView])
   const [authOpen,setAuthOpen]=useState(false)
   const [authDraft,setAuthDraft]=useState('')
+  const [authMode,setAuthMode]=useState<'password'|'key'>('password')
+  const [authError,setAuthError]=useState('')
   const [authBusy,setAuthBusy]=useState(false)
   const [categories,setCategories] = useState<Category[]>([])
   const [processes,setProcesses] = useState<BusinessProcess[]>([])
@@ -1061,7 +1078,7 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
         </details></div>
       </nav>
       <div className="topActions">
-        {tokenReady ? <button type="button" title="Завершить сеанс и удалить ключ доступа из вкладки" onClick={()=>{saveAccessToken('');setTokenReady(false);setObjects([]);setRelations([]);setDiagrams([]);setInfra([]);setFlows([]);setSegments([]);setNics([]);setCategories([]);setProcesses([]);setBusinessLinks([]);setSelected('');setSelectedFlow('');setError('');setNotice('Демонстрационный режим – только вымышленные данные.');void refresh()}}>Выйти</button> : <button type="button" onClick={()=>setAuthOpen(true)}>Войти для редактирования</button>}
+        {tokenReady ? <button type="button" title="Завершить текущий сеанс в этой вкладке" onClick={()=>{saveAccessToken('');setTokenReady(false);setObjects([]);setRelations([]);setDiagrams([]);setInfra([]);setFlows([]);setSegments([]);setNics([]);setCategories([]);setProcesses([]);setBusinessLinks([]);setSelected('');setSelectedFlow('');setError('');setNotice('Демонстрационный режим – только вымышленные данные.');void refresh()}}>Выйти</button> : <button type="button" onClick={()=>setAuthOpen(true)}>Войти для редактирования</button>}
         {layer==='systems'&&<><select aria-label="Схема" value={diagramId} onChange={e => selectDiagram(e.target.value)}>
           {!diagrams.length && <option value="">Основная карта</option>}
           {diagrams.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
@@ -1071,8 +1088,8 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
       </div>
 <div className="globalHeaderActions"><span className="globalHeaderSection">РАБОЧЕЕ ПРОСТРАНСТВО</span>{import.meta.env.VITE_WIKI_URL&&<a href={import.meta.env.VITE_WIKI_URL} target="_blank" rel="noopener noreferrer">Wiki.js <span aria-hidden="true">↗</span></a>}</div>
     </header>
-    {!tokenReady&&<div role="status" style={{padding:"10px 16px",background:"#fff4d9",color:"#714600",fontWeight:600}}>Демонстрационный режим – только вымышленные данные. Для просмотра реальной архитектуры и редактирования войдите по ключу.</div>}
-    {authOpen&&<div className="editorBackdrop"><section className="editorDialog" role="dialog" aria-modal="true" aria-label="Вход в Architecture Hub"><div className="dialogHead"><h2>Ключ доступа</h2><button aria-label="Закрыть вход" onClick={()=>{setAuthOpen(false);setAuthDraft('')}}>×</button></div><p>Ключ хранится только в текущей вкладке до завершения сеанса.</p><form className="detailForm" onSubmit={async e=>{e.preventDefault();setAuthBusy(true);saveAccessToken(authDraft);try{await refresh();setTokenReady(true);setAuthOpen(false);setAuthDraft('');setError('')}catch(err){saveAccessToken('');setTokenReady(false);setError((err as Error).message)}finally{setAuthBusy(false)}}}><label>Ключ<input type="password" autoComplete="off" required value={authDraft} onChange={e=>setAuthDraft(e.target.value)}/></label><button className="primary" disabled={authBusy}>{authBusy?'Проверка…':'Войти'}</button></form></section></div>}
+    {!tokenReady&&<div role="status" style={{padding:"10px 16px",background:"#fff4d9",color:"#714600",fontWeight:600}}>Демонстрационный режим – только вымышленные данные. Для просмотра реальной архитектуры и редактирования войдите по паролю.</div>}
+    {authOpen&&<div className="editorBackdrop"><section className="editorDialog" role="dialog" aria-modal="true" aria-label="Вход в Architecture Hub"><div className="dialogHead"><h2>{authMode==='password'?'Вход по паролю':'Служебный вход'}</h2><button type="button" aria-label="Закрыть вход" onClick={()=>{setAuthOpen(false);setAuthDraft('');setAuthError('');setAuthMode('password')}}>×</button></div><p>{authMode==='password'?'Введите пароль Architecture Hub. Пароль не сохраняется в браузере.':'Временный вход по техническому ключу для администраторов и интеграций.'}</p><button type="button" className="authAlternateMode" onClick={()=>{setAuthMode(authMode==='password'?'key':'password');setAuthDraft('');setAuthError('')}}>{authMode==='password'?'Служебный вход по ключу':'← Вернуться ко входу по паролю'}</button><form className="detailForm" onSubmit={async e=>{e.preventDefault();setAuthBusy(true);setAuthError('');try{const token=authMode==='password'?await signInWithPassword(authDraft):authDraft.trim();saveAccessToken(token);await refresh();setTokenReady(true);setAuthOpen(false);setAuthDraft('');setAuthMode('password');setError('')}catch(err){saveAccessToken('');setTokenReady(false);setAuthError((err as Error).message)}finally{setAuthBusy(false)}}}><label>{authMode==='password'?'Пароль':'Технический ключ'}<input type="password" autoComplete={authMode==='password'?'current-password':'off'} required value={authDraft} onChange={e=>setAuthDraft(e.target.value)} disabled={authBusy}/></label>{authError&&<p role="alert" className="authLoginError">{authError}</p>}<button className="primary" disabled={authBusy||!authDraft.trim()}>{authBusy?'Проверка…':'Войти'}</button></form></section></div>}
     <main className="main">
       {notice && <div className="notice" role="status">{notice}<button onClick={()=>setNotice('')}>×</button></div>}
       {error && <div className="error" role="alert">{error}<button onClick={() => setError('')}>×</button></div>}
@@ -1416,7 +1433,7 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
             <label>Достоверность<select value={flowVerification} onChange={e=>setFlowVerification(e.target.value)}><option value="draft">Черновик</option><option value="assumed">Предположение</option><option value="verified">Подтверждено</option></select></label>
           </>}
           {registryError&&<p role="alert" className="kisError">{registryError}</p>}
-          {!accessToken&&<p className="hint demoWriteNotice" role="status">Демонстрационный режим – изменения нельзя сохранить. Для сохранения введите ключ доступа и откройте форму повторно.</p>}
+          {!accessToken&&<p className="hint demoWriteNotice" role="status">Демонстрационный режим – изменения нельзя сохранить. Для сохранения войдите по паролю и откройте форму повторно.</p>}
           <div className="registryFormActions">
             <button className="primary" disabled={registryBusy||!accessToken}>{registryBusy?'Сохранение…':'Сохранить'}</button>
             {(registryOpen==='flow'?Boolean(flowEditId):Boolean(networkEditId))&&<button type="button" className="dangerAction" disabled={registryBusy||!accessToken} onClick={()=>void deleteRegistryEntry()}>Удалить {registryOpen==='flow'?'поток':'сеть'}</button>}

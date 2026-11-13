@@ -179,6 +179,7 @@ test('Architecture overlay layers overlap without moving system and VM nodes',as
  await expect(toolbar.getByRole('checkbox',{name:'Сети и зоны'})).toBeChecked()
  // The view can gain or lose translucent group nodes, but base coordinates stay fixed.
  expect(await getPosition()).toBe(initial)
+ await map.getByText('Фильтры и слои',{exact:true}).click()
  await map.getByRole('checkbox',{name:'Компоненты'}).check()
  const componentPositions=await map.locator('.react-flow__node').filter({hasText:'DEMO-WEB-01'}).first().getAttribute('style')
  await layers.nth(0).uncheck()

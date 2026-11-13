@@ -129,13 +129,18 @@ export default function ArchitectureHome({systems,components,flows,processes,cat
  const palette=['#a78bfa','#f59e0b','#10b981','#60a5fa','#f472b6','#22d3ee','#f97316','#84cc16']
  const groupColor=(group:OverlayGroup)=>layerDrafts[group.id]?.color||savedRegions[group.id]?.color||overlayColors[group.id]||palette[Math.max(0,overlayGroups.findIndex(item=>item.id===group.id))%palette.length]
  const membersFor=(group:OverlayGroup)=>layerDrafts[group.id]?.members||savedRegions[group.id]?.members||[...group.members]
+ const defaultDraftFor=(group:OverlayGroup):LayerDraft=>{
+  const memberIds=membersFor(group)
+  const points=memberIds.map(id=>positions[id]).filter(Boolean)
+  return {x:points.length?Math.min(...points.map(p=>p.x))-26:20,
+    y:points.length?Math.min(...points.map(p=>p.y))-42:20,
+    width:points.length?Math.max(...points.map(p=>p.x))-Math.min(...points.map(p=>p.x))+330:340,
+    height:points.length?Math.max(...points.map(p=>p.y))-Math.min(...points.map(p=>p.y))+Math.max(110,100+componentRows*43)+42:190,
+    color:groupColor(group),members:memberIds}
+ }
  const areaNodes=overlayGroups.filter(group=>activeOverlays[group.type]&&!hiddenOverlayGroups.includes(group.id)).map(group=>{
-   const memberIds=membersFor(group)
-   const points=memberIds.map(id=>positions[id]).filter(Boolean)
-   const bounds={x:points.length?Math.min(...points.map(p=>p.x))-26:20,y:points.length?Math.min(...points.map(p=>p.y))-42:20,
-     width:points.length?Math.max(...points.map(p=>p.x))-Math.min(...points.map(p=>p.x))+330:340,
-     height:points.length?Math.max(...points.map(p=>p.y))-Math.min(...points.map(p=>p.y))+Math.max(110,100+componentRows*43)+42:190}
-   const initial:LayerDraft={...bounds,color:groupColor(group),members:memberIds}
+   const initial=defaultDraftFor(group)
+   const memberIds=initial.members
    const area=layerDrafts[group.id]||savedRegions[group.id]||initial
    const color=groupColor(group)
    return {id:'overlay:'+group.id,type:'layerRegion',position:{x:area.x,y:area.y},width:area.width,height:area.height,
@@ -195,7 +200,7 @@ export default function ArchitectureHome({systems,components,flows,processes,cat
    <label className="homeLayerOpacity">Прозрачность заливки <input aria-label="Насыщенность слоёв" type="range" min="5" max="55" value={overlayOpacity} onChange={e=>setOverlayOpacity(Number(e.target.value))}/></label>
    <details open className="homeLayerCatalog"><summary>Категории и области</summary><div className="homeLayerColorList">{overlayGroups.map(group=><label key={group.id}>
     <input type="checkbox" aria-label={'Показать область '+group.name} checked={!hiddenOverlayGroups.includes(group.id)} onChange={e=>setHiddenOverlayGroups(old=>e.target.checked?old.filter(id=>id!==group.id):[...old,group.id])}/>
-    <input aria-label={'Цвет слоя '+group.name} type="color" value={groupColor(group)} onChange={e=>editingLayers&&canEditLayers?updateDraft(group.id,{color:e.target.value},layerDrafts[group.id]||savedRegions[group.id]||{x:20,y:20,width:340,height:190,color:groupColor(group),members:membersFor(group)}):setOverlayColors(old=>({...old,[group.id]:e.target.value}))}/><button type="button" aria-pressed={selectedOverlayGroup===group.id} onClick={()=>{setSelectedOverlayGroup(old=>old===group.id?'':group.id);setActiveOverlays(old=>({...old,[group.type]:true}))}}>{group.name}</button><small>{membersFor(group).length} ИС · {group.type==='business'?'Бизнес':'Сети'}</small>
+    <input aria-label={'Цвет слоя '+group.name} type="color" value={groupColor(group)} onChange={e=>editingLayers&&canEditLayers?updateDraft(group.id,{color:e.target.value},layerDrafts[group.id]||savedRegions[group.id]||defaultDraftFor(group)):setOverlayColors(old=>({...old,[group.id]:e.target.value}))}/><button type="button" aria-pressed={selectedOverlayGroup===group.id} onClick={()=>{setSelectedOverlayGroup(old=>old===group.id?'':group.id);setActiveOverlays(old=>({...old,[group.type]:true}))}}>{group.name}</button><small>{membersFor(group).length} ИС · {group.type==='business'?'Бизнес':'Сети'}</small>
    </label>)}</div></details>
   </div>
   <div className="homeMapTools"><input aria-label="Поиск на карте" value={query} onChange={e=>setQuery(e.target.value)} placeholder="Найти ИС или компонент…"/><Disclosure label="Фильтры и слои"><select aria-label="Контур карты" value={environment} onChange={e=>setEnvironment(e.target.value)}><option value="all">Все контуры</option>{environments.map(e=><option key={e} value={e}>{e}</option>)}</select><select aria-label="Фокус на ИС" value={focus} onChange={e=>setFocus(e.target.value)}><option value="">Все системы</option>{systems.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select>

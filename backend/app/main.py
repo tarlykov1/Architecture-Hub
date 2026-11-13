@@ -16,7 +16,7 @@ from .access import access_middleware, configured_keys, ROLE_ACCESS
 from .password_auth import configured_password_auth, check_password, issue_session, issue_user_session, login_allowed, record_login_attempt, SESSION_SECONDS, make_password_hash
 from .cmdb import ci_graph, potential_impact, CI_CLASSES, LIFECYCLE_STATES, LIFECYCLE_TRANSITIONS, CRITICALITY_LEVELS, VERIFICATION_STATES
 from .cmdb_catalog import validate_class_schema, validate_custom_values, missing_required, assess_relation, RELATION_KINDS
-from .architecture_metamodel import get_logical_relation_types, logical_relation_validation_error
+from .architecture_metamodel import get_logical_relation_types, logical_relation_validation_error, summarize_legacy_relations
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import DateTime, ForeignKey, JSON, String, Uuid, Index, Boolean, UniqueConstraint, create_engine, select, update, text as sql_text
@@ -1288,6 +1288,21 @@ def delete_object(object_id: UUID, db: Session = Depends(db_session)):
 def list_logical_relation_types():
     """Machine-readable contract for links on the logical IS architecture map."""
     return get_logical_relation_types()
+
+
+@app.get("/api/metamodel/relation-audit")
+def audit_legacy_relations(db: Session = Depends(db_session)):
+    """Read-only inventory of legacy link kinds, duplicates and invalid endpoints.
+
+    This endpoint does not migrate or modify source records.
+    """
+    kinds = {str(obj.id): obj.kind for obj in db.scalars(select(ArchitectureObject)).all()}
+    rows = [
+        {"id": str(row.id), "source_id": str(row.source_id),
+         "target_id": str(row.target_id), "kind": row.kind}
+        for row in db.scalars(select(Relation)).all()
+    ]
+    return summarize_legacy_relations(kinds, rows)
 
 
 @app.get("/api/relations", response_model=list[RelationOut])

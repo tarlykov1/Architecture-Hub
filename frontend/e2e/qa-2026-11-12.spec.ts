@@ -10,8 +10,7 @@ test('AH-01: public demo network route shows an empty state without a white scre
  const exceptions:string[]=[]
  page.on('pageerror',error=>exceptions.push(error.message))
  await navigate(page,'Потоки')
- await page.getByRole('group',{name:'Представление потоков'})
-  .getByRole('button',{name:'Карточки'}).click()
+ await expect(page.getByRole('region',{name:'Реестр технических потоков'})).toBeVisible()
  await page.getByRole('button',{name:'Сетевой маршрут',exact:true}).first().click()
  const drawer=page.getByRole('dialog',{name:'Технический маршрут потока'})
  await expect(drawer).toBeVisible()
@@ -25,8 +24,7 @@ test('AH-01: public demo network route shows an empty state without a white scre
 
 test('AH-04: save restriction is visible before editing a demo flow',async({page})=>{
  await navigate(page,'Потоки')
- await page.getByRole('group',{name:'Представление потоков'})
-  .getByRole('button',{name:'Карточки'}).click()
+ await expect(page.getByRole('region',{name:'Реестр технических потоков'})).toBeVisible()
  await page.getByRole('button',{name:'Редактировать',exact:true}).first().click()
  const drawer=page.getByRole('dialog',{name:'Редактор потока'})
  await expect(drawer).toBeVisible()
@@ -125,7 +123,7 @@ test('AH-QA-003/004: passport link survives reload and empty search can be reset
 test('AH-QA-005/006: opening a flow fits both endpoints and a guest can discard local edits',async({page})=>{
  await page.setViewportSize({width:1363,height:936})
  await page.goto('/flows?system='+demoSystem)
- await page.getByRole('button',{name:'Редактор схемы',exact:true}).click()
+ await page.getByRole('button',{name:'Редактор потоков',exact:true}).click()
  const editor=page.getByRole('region',{name:'Редактор архитектурной схемы'})
  await editor.getByRole('button',{name:'Выбрать поток HTTPS:443'}).click()
  const dock=editor.getByRole('complementary',{name:'Свойства и изменения схемы'})
@@ -147,4 +145,22 @@ test('AH-QA-005/006: opening a flow fits both endpoints and a guest can discard 
  page.once('dialog',dialog=>dialog.accept())
  await dock.getByRole('button',{name:'Отменить черновик'}).click()
  await expect(editor.getByRole('button',{name:'Черновик: 0 изменений'})).toBeDisabled()
+})
+
+test('Unified overview changes relation semantics without duplicating the flow graph',async({page})=>{
+ await page.goto('/')
+ const map=page.getByRole('region',{name:'Главная карта архитектуры'})
+ const mode=map.getByRole('group',{name:'Тип связей на архитектурной карте'})
+ await expect(mode.getByRole('button',{name:'Потоки данных'})).toHaveAttribute('aria-pressed','true')
+ await expect(map.locator('.react-flow')).toHaveCount(1)
+ await mode.getByRole('button',{name:'Бизнес-связи'}).click()
+ await expect(mode.getByRole('button',{name:'Бизнес-связи'})).toHaveAttribute('aria-pressed','true')
+ await expect(map.getByText(/не направление передачи данных/)).toBeVisible()
+ await mode.getByRole('button',{name:'Сети и зоны'}).click()
+ await expect(map.getByText(/не означает наличие разрешённого маршрута/)).toBeVisible()
+ await navigate(page,'Потоки')
+ await expect(page.getByRole('region',{name:'Реестр технических потоков'})).toBeVisible()
+ await expect(page.locator('[data-active-graph="flows"]')).toHaveCount(0)
+ await page.getByRole('button',{name:'Общая карта связей'}).click()
+ await expect(map).toBeVisible()
 })

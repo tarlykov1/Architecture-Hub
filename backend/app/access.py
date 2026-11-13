@@ -27,6 +27,8 @@ ROLE_ACCESS = {
 }
 
 def classify(path: str) -> str | None:
+    if path == "/api/metamodel/relation-types":
+        return "systems"  # Read-only typed link contract; no mutation endpoint.
     if path.startswith("/api/cmdb/"):
         return "systems"  # Same read permissions as the underlying system register.
     if path.startswith("/api/board/"):

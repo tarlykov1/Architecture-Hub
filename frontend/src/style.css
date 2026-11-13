@@ -913,3 +913,13 @@ button:disabled{cursor:not-allowed;opacity:.55}
  font-size:12px;line-height:1.5;
 }
 @media(max-width:700px){.roleReadOnlyNotice{padding:8px 11px}}
+
+/* Unified architecture canvas: modes change relation semantics, not node positions. */
+.homeMap{grid-template-rows:none;grid-auto-rows:auto}
+.homeMapMode{display:inline-flex;align-items:center;gap:3px;flex-wrap:wrap;padding:3px;background:#e8eef6;border:1px solid #d6e1ee;border-radius:10px;width:max-content;max-width:100%}
+.homeMapMode>button{border:0;border-radius:7px;background:transparent;color:#44566e;font-size:13px;font-weight:600;padding:9px 14px;cursor:pointer}
+.homeMapMode>button.current,.homeMapMode>button[aria-pressed="true"]{background:#fff;color:#1d4ed8;box-shadow:0 1px 3px #172b4d25}
+.homeMapMode>button:focus-visible{outline:2px solid #2563eb;outline-offset:2px}
+.homeMapModeHint{font-size:12px;color:#64748b;margin:0}
+.homeMapGraph{height:clamp(360px,65vh,760px);min-height:360px}
+@media(max-width:650px){.homeMapMode{width:100%;display:grid;grid-template-columns:repeat(3,minmax(0,1fr))}.homeMapMode>button{font-size:11px;padding:9px 4px;white-space:normal}.homeMapGraph{height:60vh;min-height:330px}}

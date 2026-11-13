@@ -34,11 +34,13 @@ export default function ArchitectureHome({systems,components,flows,processes,cat
  const [editingLayers,setEditingLayers]=useState(false)
  const [layerBusy,setLayerBusy]=useState(false)
  const [layerError,setLayerError]=useState('')
+ const [layerApiReady,setLayerApiReady]=useState(false)
  useEffect(()=>{
-  if(!request){setSavedRegions({});setLayerDrafts({});setEditingLayers(false);return}
+  if(!request){setSavedRegions({});setLayerDrafts({});setEditingLayers(false);setLayerApiReady(false);return}
+  setLayerApiReady(false)
   let cancelled=false
   void request<LayerRegion[]>('/api/diagrams/layer-regions').then(rows=>{
-   if(!cancelled)setSavedRegions(Object.fromEntries(rows.map(row=>[row.group_key,row])))
+   if(!cancelled){setSavedRegions(Object.fromEntries(rows.map(row=>[row.group_key,row])));setLayerApiReady(true);setLayerError('')}
   }).catch(err=>{if(!cancelled)setLayerError((err as Error).message)})
   return()=>{cancelled=true}
  },[request])
@@ -188,7 +190,7 @@ export default function ArchitectureHome({systems,components,flows,processes,cat
     <button type="button" aria-pressed={!activeOverlays.business&&!activeOverlays.network} onClick={()=>setActiveOverlays({business:false,network:false})}>Без областей</button>
    </div>
    <strong>Области на схеме</strong>
-   {canEditLayers&&<div className="homeLayerEditActions">
+   {canEditLayers&&layerApiReady&&<div className="homeLayerEditActions">
     {!editingLayers?<button type="button" onClick={()=>{setEditingLayers(true);setLayerError('')}}>Редактировать области</button>:<>
      <button type="button" className="primary" disabled={layerBusy||!Object.keys(layerDrafts).length} onClick={()=>void saveLayerChanges()}>{layerBusy?'Сохранение…':'Сохранить области'}</button>
      <button type="button" disabled={layerBusy} onClick={cancelLayerChanges}>Отменить</button>

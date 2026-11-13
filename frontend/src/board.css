@@ -342,3 +342,14 @@
 .boardFlowReviewPreview pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:11px}
 .boardFlowReviewActions{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap}
 @media(max-width:700px){.boardFlowReview{width:100%}.boardFlowReviewFields{grid-template-columns:1fr}}
+
+/* All-flow picker remains available even when the edge is hidden by overlapping routes. */
+.boardFlowCatalog{display:grid;gap:9px;border:1px solid #d9e4f2;border-radius:9px;padding:10px;background:#f8fbff;min-width:0}
+.boardFlowCatalog>label{display:grid;gap:5px;font-size:12px;font-weight:650;color:#334155;min-width:0}
+.boardFlowCatalog select{max-width:100%;width:100%;min-width:0;min-height:36px;border:1px solid #b9cbe1;border-radius:7px;background:#fff;padding:7px 8px;color:#172b48;font-size:12px}
+.boardFlowScopeHint{margin:0;font-size:11px;color:#64748b;line-height:1.4}
+.boardFlowReassign{display:grid;gap:7px;border-top:1px solid #d9e4f2;padding-top:9px}
+.boardFlowReassign strong{font-size:12px;color:#1e40af;overflow-wrap:anywhere}
+.boardFlowReassign p{margin:0;font-size:11px;line-height:1.45;color:#52657e}
+.boardFlowReassign button{width:100%;max-width:100%;padding:9px 10px;border:1px solid #176bc1;border-radius:7px;color:#fff;background:#176bc1;font-size:12px;font-weight:600;cursor:pointer}
+.boardFlowReassign button:disabled{color:#70869f;background:#e8eef6;border-color:#d9e4f2;cursor:not-allowed}

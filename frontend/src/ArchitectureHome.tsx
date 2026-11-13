@@ -68,7 +68,7 @@ export default function ArchitectureHome({systems,components,flows,processes,cat
  const basePositions=overviewGridPositions(systems.map(s=>s.id))
  const positions=Object.fromEntries(systems.map((sys,index)=>{
    const original=basePositions[sys.id]||{x:(index%3)*320,y:Math.floor(index/3)*190}
-   return [sys.id,{x:original.x/320*410,y:original.y/190*330}]
+   return [sys.id,{x:original.x/310*410,y:original.y/170*330}]
  }))
  const overlayGroups:OverlayGroup[]=[]
  for(const cat of categories){

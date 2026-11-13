@@ -1,7 +1,7 @@
 import React, {useEffect,useMemo,useState} from 'react'
 import {architectureIcon,DiagramNodeLabel,diagramCardStyle} from './DiagramVisual'
 export {architectureIcon} from './DiagramVisual'
-import {ReactFlow,Background,Controls,MarkerType,useNodesInitialized,useReactFlow} from '@xyflow/react'
+import {ReactFlow,Background,Controls,MarkerType,NodeResizer,type NodeProps} from '@xyflow/react'
 
 type System={id:string;name:string;kind:string}
 type Component={id:string;system_id:string;name:string;kind:string;details:Record<string,unknown>}
@@ -9,6 +9,14 @@ type Flow={id:string;source_id:string;target_id:string}
 type Process={id:string;name:string;category_id?:string}
 type Category={id:string;name:string}
 type OverlayGroup={id:string;name:string;type:'business'|'network';members:Set<string>}
+type LayerRegion={group_key:string;x:number;y:number;width:number;height:number;color:string;members:string[]}
+type LayerDraft=Omit<LayerRegion,'group_key'>
+type LayerRegionNodeData={name:string;count:number;editing:boolean;resize:(bounds:{x:number;y:number;width:number;height:number})=>void}
+function LayerRegionNode({data,selected}:NodeProps){
+ const region=data as unknown as LayerRegionNodeData
+ return <div className="homeEditableRegion"><NodeResizer isVisible={region.editing&&selected} minWidth={140} minHeight={80} onResizeEnd={(_,bounds)=>region.resize(bounds)}/><div className="homeLayerRegionLabel"><strong>{region.name}</strong><small>{region.count} ИС</small></div></div>
+}
+const homeNodeTypes={layerRegion:LayerRegionNode}
 type Link={process_id:string;system_id:string}
 type Network={id:string;name:string;kind:string}
 type Interface={item_id:string;zone_id:string|null;vlan_id:string|null;vrf_id:string|null}
@@ -16,11 +24,40 @@ type Interface={item_id:string;zone_id:string|null;vlan_id:string|null;vrf_id:st
 import {AutoFit,Disclosure} from './WorkspaceUI'
 import {overviewGridPositions} from './graphLayout'
 
-export default function ArchitectureHome({systems,components,flows,processes,categories,links,networks,interfaces,onOpenSystem,onCloseSystem,inspectorOpen,onOpenComponents,onOpenComponent,onOpenFlows,onOpenNetworks,focusSystemId=''}:{systems:System[];components:Component[];flows:Flow[];processes:Process[];categories:Category[];links:Link[];networks:Network[];interfaces:Interface[];onOpenSystem:(id:string)=>void;onCloseSystem:()=>void;inspectorOpen:boolean;onOpenComponents:(id:string)=>void;onOpenComponent:(id:string)=>void;onOpenFlows:()=>void;onOpenNetworks:()=>void;focusSystemId?:string}){
+export default function ArchitectureHome({systems,components,flows,processes,categories,links,networks,interfaces,onOpenSystem,onCloseSystem,inspectorOpen,onOpenComponents,onOpenComponent,onOpenFlows,onOpenNetworks,focusSystemId='',request,canEditLayers=false}:{systems:System[];components:Component[];flows:Flow[];processes:Process[];categories:Category[];links:Link[];networks:Network[];interfaces:Interface[];onOpenSystem:(id:string)=>void;onCloseSystem:()=>void;inspectorOpen:boolean;onOpenComponents:(id:string)=>void;onOpenComponent:(id:string)=>void;onOpenFlows:()=>void;onOpenNetworks:()=>void;focusSystemId?:string;request?:<T>(url:string,init?:RequestInit)=>Promise<T>;canEditLayers?:boolean}){
  const [layers,setLayers]=useState({systems:true,components:false,flows:false,business:false,networks:false})
  const [mapMode,setMapMode]=useState<'business'|'flows'|'networks'>('flows')
  const [activeOverlays,setActiveOverlays]=useState({business:true,network:false})
  const [selectedOverlayGroup,setSelectedOverlayGroup]=useState('')
+ const [savedRegions,setSavedRegions]=useState<Record<string,LayerRegion>>({})
+ const [layerDrafts,setLayerDrafts]=useState<Record<string,LayerDraft>>({})
+ const [editingLayers,setEditingLayers]=useState(false)
+ const [layerBusy,setLayerBusy]=useState(false)
+ const [layerError,setLayerError]=useState('')
+ useEffect(()=>{
+  if(!request){setSavedRegions({});setLayerDrafts({});setEditingLayers(false);return}
+  let cancelled=false
+  void request<LayerRegion[]>('/api/diagrams/layer-regions').then(rows=>{
+   if(!cancelled)setSavedRegions(Object.fromEntries(rows.map(row=>[row.group_key,row])))
+  }).catch(err=>{if(!cancelled)setLayerError((err as Error).message)})
+  return()=>{cancelled=true}
+ },[request])
+ const updateDraft=(id:string,update:Partial<LayerDraft>,base:LayerDraft)=>{
+  setLayerDrafts(old=>({...old,[id]:{...(old[id]||base),...update}}))
+ }
+ const cancelLayerChanges=()=>{setLayerDrafts({});setEditingLayers(false);setLayerError('')}
+ const saveLayerChanges=async()=>{
+  if(!request||!canEditLayers)return
+  setLayerBusy(true);setLayerError('')
+  try{
+   const updated={...savedRegions}
+   for(const [key,payload] of Object.entries(layerDrafts)){
+    updated[key]=await request<LayerRegion>('/api/diagrams/layer-regions/'+encodeURIComponent(key),{method:'PUT',body:JSON.stringify(payload)})
+   }
+   setSavedRegions(updated);setLayerDrafts({});setEditingLayers(false)
+  }catch(err){setLayerError((err as Error).message)}
+  finally{setLayerBusy(false)}
+ }
  const [overlayOpacity,setOverlayOpacity]=useState(22)
  const [hiddenOverlayGroups,setHiddenOverlayGroups]=useState<string[]>([])
  const [overlayColors,setOverlayColors]=useState<Record<string,string>>(()=>{
@@ -78,26 +115,33 @@ export default function ArchitectureHome({systems,components,flows,processes,cat
  for(const cat of categories){
    const ids=new Set(processes.filter(p=>p.category_id===cat.id).map(p=>p.id))
    const members=new Set(links.filter(l=>ids.has(l.process_id)&&visibleIds.has(l.system_id)).map(l=>l.system_id))
-   if(members.size)overlayGroups.push({id:'business:'+cat.id,name:cat.name,type:'business',members})
+   if(members.size||savedRegions['business:'+cat.id])overlayGroups.push({id:'business:'+cat.id,name:cat.name,type:'business',members})
  }
  // Processes without a known category retain their own visual group.
  for(const process of processes.filter(p=>!p.category_id||!categories.some(c=>c.id===p.category_id))){
    const members=new Set(links.filter(l=>l.process_id===process.id&&visibleIds.has(l.system_id)).map(l=>l.system_id))
-   if(members.size)overlayGroups.push({id:'business:process:'+process.id,name:process.name,type:'business',members})
+   if(members.size||savedRegions['business:process:'+process.id])overlayGroups.push({id:'business:process:'+process.id,name:process.name,type:'business',members})
  }
  for(const network of networks){
    const members=networkSystems.get(network.id)
-   if(members?.size)overlayGroups.push({id:'network:'+network.id,name:network.name,type:'network',members})
+   if(members?.size||savedRegions['network:'+network.id])overlayGroups.push({id:'network:'+network.id,name:network.name,type:'network',members:members||new Set()})
  }
  const palette=['#a78bfa','#f59e0b','#10b981','#60a5fa','#f472b6','#22d3ee','#f97316','#84cc16']
- const groupColor=(group:OverlayGroup)=>overlayColors[group.id]||palette[Math.max(0,overlayGroups.findIndex(item=>item.id===group.id))%palette.length]
+ const groupColor=(group:OverlayGroup)=>layerDrafts[group.id]?.color||savedRegions[group.id]?.color||overlayColors[group.id]||palette[Math.max(0,overlayGroups.findIndex(item=>item.id===group.id))%palette.length]
+ const membersFor=(group:OverlayGroup)=>layerDrafts[group.id]?.members||savedRegions[group.id]?.members||[...group.members]
  const areaNodes=overlayGroups.filter(group=>activeOverlays[group.type]&&!hiddenOverlayGroups.includes(group.id)).map(group=>{
-   const points=[...group.members].map(id=>positions[id]).filter(Boolean)
-   const minX=Math.min(...points.map(p=>p.x))-26,minY=Math.min(...points.map(p=>p.y))-42
-   const maxX=Math.max(...points.map(p=>p.x))+304,maxY=Math.max(...points.map(p=>p.y))+Math.max(110,100+componentRows*43)
+   const memberIds=membersFor(group)
+   const points=memberIds.map(id=>positions[id]).filter(Boolean)
+   const bounds={x:points.length?Math.min(...points.map(p=>p.x))-26:20,y:points.length?Math.min(...points.map(p=>p.y))-42:20,
+     width:points.length?Math.max(...points.map(p=>p.x))-Math.min(...points.map(p=>p.x))+330:340,
+     height:points.length?Math.max(...points.map(p=>p.y))-Math.min(...points.map(p=>p.y))+Math.max(110,100+componentRows*43)+42:190}
+   const initial:LayerDraft={...bounds,color:groupColor(group),members:memberIds}
+   const area=layerDrafts[group.id]||savedRegions[group.id]||initial
    const color=groupColor(group)
-   return {id:'overlay:'+group.id,position:{x:minX,y:minY},data:{label:<div className="homeLayerRegionLabel">{group.name}<small>{group.members.size} ИС</small></div>},selectable:false,draggable:false,connectable:false,zIndex:-10,
-     style:{width:maxX-minX,height:maxY-minY,backgroundColor:color+Math.round(overlayOpacity/100*255).toString(16).padStart(2,'0'),border:'2px solid '+color,borderRadius:16,pointerEvents:'none' as const,boxShadow:'none'}}
+   return {id:'overlay:'+group.id,type:'layerRegion',position:{x:area.x,y:area.y},width:area.width,height:area.height,
+     data:{name:group.name,count:memberIds.length,editing:editingLayers&&canEditLayers,resize:(value:{x:number;y:number;width:number;height:number})=>updateDraft(group.id,value,initial)},
+     draggable:editingLayers&&canEditLayers,selectable:editingLayers&&canEditLayers,connectable:false,zIndex:-10,
+     style:{width:area.width,height:area.height,backgroundColor:color+Math.round(overlayOpacity/100*255).toString(16).padStart(2,'0'),border:'2px solid '+color,borderRadius:16,pointerEvents:editingLayers?'auto' as const:'none' as const,boxShadow:'none'}}
  })
  const componentNodes=layers.components?components.filter(c=>visibleIds.has(c.system_id)).flatMap(c=>{
    const group=components.filter(item=>item.system_id===c.system_id)
@@ -114,7 +158,7 @@ export default function ArchitectureHome({systems,components,flows,processes,cat
  const selectedComponents=components.filter(c=>c.system_id===selectedSystem)
  const selectedFlowCount=crossFlows.filter(f=>f.source===selectedSystem||f.target===selectedSystem).length
  const focusedLayer=overlayGroups.find(group=>group.id===selectedOverlayGroup)
- const highlightedNodes=nodes.map(n=>({...n,zIndex:10,style:{...n.style,border:selectedSystem===n.id?'2px solid #2563eb':n.style.border,opacity:focusedLayer&&!focusedLayer.members.has(n.id)?0.2:selectedSystem&&!selectedNeighbors.has(n.id)?0.28:1}}))
+ const highlightedNodes=nodes.map(n=>({...n,zIndex:10,style:{...n.style,border:selectedSystem===n.id?'2px solid #2563eb':n.style.border,opacity:focusedLayer&&!membersFor(focusedLayer).includes(n.id)?0.2:selectedSystem&&!selectedNeighbors.has(n.id)?0.28:1}}))
  const canvasNodes=[...areaNodes,...highlightedNodes,...componentNodes]
  const connectionCounts=mapMode==='business'?businessCounts:mapMode==='flows'?flowCounts:new Map<string,number>()
  const edges=[...connectionCounts].map(([key,count])=>{
@@ -160,7 +204,7 @@ export default function ArchitectureHome({systems,components,flows,processes,cat
     </div>)}
     {filteredSystems.length>12&&<small>Показаны первые 12 систем. Уточните запрос.</small>}
   </div>}
-  {layers.systems&&<div className="homeMapGraph"><ReactFlow minZoom={0.08} nodes={canvasNodes} edges={edges} fitView fitViewOptions={{padding:0.15,minZoom:0.3,maxZoom:1}} nodesDraggable={false} nodesConnectable={false} onNodeClick={(_,node)=>{if(node.id.startsWith('component:')){onOpenComponent(node.id.slice('component:'.length));return}if(node.id.startsWith('overlay:'))return;setSelectedSystem(node.id);onOpenSystem(node.id)}} onPaneClick={()=>{setSelectedSystem('');onCloseSystem()}}><AutoFit layoutKey={inspectorOpen?'inspector-open':'inspector-closed'} focusIds={filteredSystems.map(s=>s.id)}/><Background gap={20}/><Controls showInteractive={false}/></ReactFlow></div>}
+  {layers.systems&&<div className="homeMapGraph"><ReactFlow minZoom={0.08} nodes={canvasNodes} edges={edges} nodeTypes={homeNodeTypes} nodesDraggable={editingLayers&&canEditLayers} onNodeDragStop={(_,node)=>{if(!node.id.startsWith('overlay:'))return;const key=node.id.slice(8);const region=areaNodes.find(item=>item.id===node.id);const group=overlayGroups.find(item=>item.id===key);if(region&&group)updateDraft(key,node.position,{x:region.position.x,y:region.position.y,width:region.width,height:region.height,color:groupColor(group),members:membersFor(group)})}} fitView fitViewOptions={{padding:0.15,minZoom:0.3,maxZoom:1}} nodesDraggable={false} nodesConnectable={false} onNodeClick={(_,node)=>{if(node.id.startsWith('component:')){onOpenComponent(node.id.slice('component:'.length));return}if(node.id.startsWith('overlay:'))return;setSelectedSystem(node.id);onOpenSystem(node.id)}} onPaneClick={()=>{setSelectedSystem('');onCloseSystem()}}><AutoFit layoutKey={inspectorOpen?'inspector-open':'inspector-closed'} focusIds={filteredSystems.map(s=>s.id)}/><Background gap={20}/><Controls showInteractive={false}/></ReactFlow></div>}
   {!layers.systems&&<div className="homeMapEmpty">Включите слой «Информационные системы», чтобы показать карту связей.</div>}
   {selectedOverlayGroup&&focusedLayer&&<div className="homeLayerMembers" role="status"><strong>{focusedLayer.name}</strong><span>В этой области: {[...focusedLayer.members].map(id=>systems.find(sys=>sys.id===id)?.name||id).join(', ')}</span><button type="button" onClick={()=>setSelectedOverlayGroup('')}>Снять выделение</button></div>}
   <p className="homeMapModeHint">Полупрозрачные области показывают принадлежность ИС к категориям, а не технические маршруты. Пересекающиеся рамки означают одновременное участие; для точного состава смотрите подписи и реестры.</p>

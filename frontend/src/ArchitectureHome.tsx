@@ -213,7 +213,7 @@ export default function ArchitectureHome({systems,components,flows,processes,cat
    const color=groupColor(group)
    return {id:'overlay:'+group.id,type:'layerRegion',position:{x:area.x,y:area.y},width:area.width,height:area.height,
      data:{name:group.name,count:memberIds.length,editing:editingLayers&&canEditLayers&&layerTool==='move',resize:(value:{x:number;y:number;width:number;height:number})=>updateDraft(group.id,value,initial)},
-     draggable:editingLayers&&canEditLayers&&layerTool==='move',selectable:editingLayers&&canEditLayers&&layerTool!=='draw',connectable:false,zIndex:editingLayers?0:-10,
+     draggable:editingLayers&&canEditLayers&&layerTool==='move',selectable:editingLayers&&canEditLayers&&layerTool!=='draw',selected:editingLayers&&selectedOverlayGroup===group.id,connectable:false,zIndex:editingLayers?0:-10,
      style:{width:area.width,height:area.height,backgroundColor:color+Math.round(overlayOpacity/100*255).toString(16).padStart(2,'0'),border:'2px solid '+color,borderRadius:16,pointerEvents:editingLayers?'auto' as const:'none' as const,boxShadow:'none'}}
  })
  const drawRegion=(rect:RegionRect)=>{

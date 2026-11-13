@@ -21,6 +21,7 @@ export default function ArchitectureHome({systems,components,flows,processes,cat
  const [mapMode,setMapMode]=useState<'business'|'flows'|'networks'>('flows')
  const [activeOverlays,setActiveOverlays]=useState({business:false,network:false})
  const [overlayOpacity,setOverlayOpacity]=useState(22)
+ const [hiddenOverlayGroups,setHiddenOverlayGroups]=useState<string[]>([])
  const [overlayColors,setOverlayColors]=useState<Record<string,string>>(()=>{
   try{const value=JSON.parse(localStorage.getItem('architecture-hub-layer-colors-v1')||'{}');return value&&typeof value==='object'&&!Array.isArray(value)?value:{}}catch{return {}}
  })
@@ -89,7 +90,7 @@ export default function ArchitectureHome({systems,components,flows,processes,cat
  }
  const palette=['#a78bfa','#f59e0b','#10b981','#60a5fa','#f472b6','#22d3ee','#f97316','#84cc16']
  const groupColor=(group:OverlayGroup)=>overlayColors[group.id]||palette[Math.max(0,overlayGroups.findIndex(item=>item.id===group.id))%palette.length]
- const areaNodes=overlayGroups.filter(group=>activeOverlays[group.type]).map(group=>{
+ const areaNodes=overlayGroups.filter(group=>activeOverlays[group.type]&&!hiddenOverlayGroups.includes(group.id)).map(group=>{
    const points=[...group.members].map(id=>positions[id]).filter(Boolean)
    const minX=Math.min(...points.map(p=>p.x))-26,minY=Math.min(...points.map(p=>p.y))-42
    const maxX=Math.max(...points.map(p=>p.x))+304,maxY=Math.max(...points.map(p=>p.y))+Math.max(110,100+componentRows*43)
@@ -134,7 +135,10 @@ export default function ArchitectureHome({systems,components,flows,processes,cat
    <label><input type="checkbox" checked={activeOverlays.business} onChange={e=>setActiveOverlays(old=>({...old,business:e.target.checked}))}/> Бизнес-категории</label>
    <label><input type="checkbox" checked={activeOverlays.network} onChange={e=>setActiveOverlays(old=>({...old,network:e.target.checked}))}/> Сети и зоны</label>
    <label className="homeLayerOpacity">Прозрачность заливки <input aria-label="Насыщенность слоёв" type="range" min="5" max="55" value={overlayOpacity} onChange={e=>setOverlayOpacity(Number(e.target.value))}/></label>
-   <details><summary>Цвета областей</summary><div className="homeLayerColorList">{overlayGroups.map(group=><label key={group.id}><input aria-label={'Цвет слоя '+group.name} type="color" value={groupColor(group)} onChange={e=>setOverlayColors(old=>({...old,[group.id]:e.target.value}))}/><span>{group.name}</span><small>{group.type==='business'?'Бизнес':'Сети'}</small></label>)}</div></details>
+   <details><summary>Цвета областей</summary><div className="homeLayerColorList">{overlayGroups.map(group=><label key={group.id}>
+    <input type="checkbox" aria-label={'Показать область '+group.name} checked={!hiddenOverlayGroups.includes(group.id)} onChange={e=>setHiddenOverlayGroups(old=>e.target.checked?old.filter(id=>id!==group.id):[...old,group.id])}/>
+    <input aria-label={'Цвет слоя '+group.name} type="color" value={groupColor(group)} onChange={e=>setOverlayColors(old=>({...old,[group.id]:e.target.value}))}/><span>{group.name}</span><small>{group.type==='business'?'Бизнес':'Сети'}</small>
+   </label>)}</div></details>
   </div>
   <div className="homeMapTools"><input aria-label="Поиск на карте" value={query} onChange={e=>setQuery(e.target.value)} placeholder="Найти ИС или компонент…"/><Disclosure label="Фильтры и слои"><select aria-label="Контур карты" value={environment} onChange={e=>setEnvironment(e.target.value)}><option value="all">Все контуры</option>{environments.map(e=><option key={e} value={e}>{e}</option>)}</select><select aria-label="Фокус на ИС" value={focus} onChange={e=>setFocus(e.target.value)}><option value="">Все системы</option>{systems.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select>
   <details className="homeMapLayersDisclosure"><summary>Слои карты <span aria-hidden="true">▾</span></summary><div className="homeMapLayers" aria-label="Слои карты">{([['systems','Информационные системы'],['business','Бизнес-процессы'],['networks','Сетевые объекты']] as const).map(([key,label])=><label key={key}><input type="checkbox" checked={layers[key]} onChange={e=>setLayers(old=>({...old,[key]:e.target.checked}))}/>{label}</label>)}</div></details></Disclosure></div>

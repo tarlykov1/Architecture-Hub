@@ -14,12 +14,13 @@ type Interface={item_id:string;zone_id:string|null;vlan_id:string|null;vrf_id:st
 import {AutoFit,Disclosure} from './WorkspaceUI'
 import {overviewGridPositions} from './graphLayout'
 
-export default function ArchitectureHome({systems,components,flows,processes,links,networks,interfaces,onOpenSystem,onCloseSystem,inspectorOpen,onOpenComponents,onOpenComponent,onOpenFlows,onOpenNetworks}:{systems:System[];components:Component[];flows:Flow[];processes:Process[];links:Link[];networks:Network[];interfaces:Interface[];onOpenSystem:(id:string)=>void;onCloseSystem:()=>void;inspectorOpen:boolean;onOpenComponents:(id:string)=>void;onOpenComponent:(id:string)=>void;onOpenFlows:()=>void;onOpenNetworks:()=>void}){
+export default function ArchitectureHome({systems,components,flows,processes,links,networks,interfaces,onOpenSystem,onCloseSystem,inspectorOpen,onOpenComponents,onOpenComponent,onOpenFlows,onOpenNetworks,focusSystemId=''}:{systems:System[];components:Component[];flows:Flow[];processes:Process[];links:Link[];networks:Network[];interfaces:Interface[];onOpenSystem:(id:string)=>void;onCloseSystem:()=>void;inspectorOpen:boolean;onOpenComponents:(id:string)=>void;onOpenComponent:(id:string)=>void;onOpenFlows:()=>void;onOpenNetworks:()=>void;focusSystemId?:string}){
  const [layers,setLayers]=useState({systems:true,components:false,flows:false,business:false,networks:false})
  const [mapMode,setMapMode]=useState<'business'|'flows'|'networks'>('flows')
  const [query,setQuery]=useState('')
  const [focus,setFocus]=useState('')
  const [selectedSystem,setSelectedSystem]=useState('')
+ useEffect(()=>{if(focusSystemId)setSelectedSystem(focusSystemId)},[focusSystemId])
  useEffect(()=>{if(!inspectorOpen)setSelectedSystem('')},[inspectorOpen])
  const [environment,setEnvironment]=useState('all')
  const systemByComponent=useMemo(()=>new Map(components.map(c=>[c.id,c.system_id])),[components])

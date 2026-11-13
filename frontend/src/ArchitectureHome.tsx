@@ -65,10 +65,12 @@ export default function ArchitectureHome({systems,components,flows,processes,cat
  // A three-column overview avoids microscopic nodes in long dependency chains.
  // The coordinate space is defined by the full architecture, never by
  // active overlays or search filters. Node coordinates cannot jump on layer changes.
+ const componentRows=Math.max(1,...systems.map(sys=>Math.ceil(components.filter(c=>c.system_id===sys.id).length/2)))
+ const systemRowGap=Math.max(330,120+componentRows*43)
  const basePositions=overviewGridPositions(systems.map(s=>s.id))
  const positions=Object.fromEntries(systems.map((sys,index)=>{
    const original=basePositions[sys.id]||{x:(index%3)*320,y:Math.floor(index/3)*190}
-   return [sys.id,{x:original.x/310*410,y:original.y/170*330}]
+   return [sys.id,{x:original.x/310*410,y:original.y/170*systemRowGap}]
  }))
  const overlayGroups:OverlayGroup[]=[]
  for(const cat of categories){
@@ -90,7 +92,7 @@ export default function ArchitectureHome({systems,components,flows,processes,cat
  const areaNodes=overlayGroups.filter(group=>activeOverlays[group.type]).map(group=>{
    const points=[...group.members].map(id=>positions[id]).filter(Boolean)
    const minX=Math.min(...points.map(p=>p.x))-26,minY=Math.min(...points.map(p=>p.y))-42
-   const maxX=Math.max(...points.map(p=>p.x))+304,maxY=Math.max(...points.map(p=>p.y))+110
+   const maxX=Math.max(...points.map(p=>p.x))+304,maxY=Math.max(...points.map(p=>p.y))+Math.max(110,100+componentRows*43)
    const color=groupColor(group)
    return {id:'overlay:'+group.id,position:{x:minX,y:minY},data:{label:<div className="homeLayerRegionLabel">{group.name}<small>{group.members.size} ИС</small></div>},selectable:false,draggable:false,connectable:false,zIndex:-10,
      style:{width:maxX-minX,height:maxY-minY,backgroundColor:color+Math.round(overlayOpacity/100*255).toString(16).padStart(2,'0'),border:'2px solid '+color,borderRadius:16,pointerEvents:'none' as const,boxShadow:'none'}}

@@ -73,6 +73,19 @@ class Diagram(Base):
 
 
 
+class ArchitectureLayerRegion(Base):
+    """Editable visual geometry for an existing business or network group."""
+    __tablename__ = "architecture_layer_regions"
+    group_key: Mapped[str] = mapped_column(String(130), primary_key=True)
+    x: Mapped[float] = mapped_column(nullable=False)
+    y: Mapped[float] = mapped_column(nullable=False)
+    width: Mapped[float] = mapped_column(nullable=False)
+    height: Mapped[float] = mapped_column(nullable=False)
+    color: Mapped[str] = mapped_column(String(7), nullable=False)
+    members: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
 class BoardLayout(Base):
     """Saved component coordinates for one IS, independent of technical connections."""
     __tablename__ = "board_layouts"
@@ -445,6 +458,19 @@ class RelationCreate(BaseModel):
 class RelationOut(RelationCreate):
     model_config = ConfigDict(from_attributes=True)
     id: UUID
+
+
+class LayerRegionInput(BaseModel):
+    x: float = Field(ge=-100000, le=100000)
+    y: float = Field(ge=-100000, le=100000)
+    width: float = Field(ge=140, le=100000)
+    height: float = Field(ge=80, le=100000)
+    color: str = Field(pattern=r"^#[0-9a-fA-F]{6}$")
+    members: list[UUID] = Field(max_length=500)
+
+
+class LayerRegionOutput(LayerRegionInput):
+    group_key: str
 
 
 class DiagramCreate(BaseModel):
@@ -1284,6 +1310,53 @@ def delete_relation(relation_id: UUID, db: Session = Depends(db_session)):
         raise HTTPException(status_code=404, detail="Relation not found")
     db.delete(rel)
     db.commit()
+
+
+def layer_region_output(region: ArchitectureLayerRegion) -> dict:
+    return {"group_key": region.group_key, "x": region.x, "y": region.y,
+            "width": region.width, "height": region.height, "color": region.color,
+            "members": region.members}
+
+
+@app.get("/api/diagrams/layer-regions", response_model=list[LayerRegionOutput])
+def list_layer_regions(db: Session = Depends(db_session)):
+    return [layer_region_output(region) for region in db.scalars(
+        select(ArchitectureLayerRegion).order_by(ArchitectureLayerRegion.group_key)
+    ).all()]
+
+
+@app.put("/api/diagrams/layer-regions/{group_key:path}", response_model=LayerRegionOutput)
+def save_layer_region(group_key: str, payload: LayerRegionInput, db: Session = Depends(db_session)):
+    # Visual membership never modifies business-process links or technical network data.
+    if not re.fullmatch(r"(business|network):[a-zA-Z0-9:-]{1,110}", group_key):
+        raise HTTPException(status_code=422, detail="Некорректный идентификатор слоя")
+    try:
+        if group_key.startswith("business:process:"):
+            owner = db.get(BusinessProcess, UUID(group_key.removeprefix("business:process:")))
+        elif group_key.startswith("business:"):
+            owner = db.get(BusinessCategory, UUID(group_key.removeprefix("business:")))
+        else:
+            owner = db.get(NetworkSegment, UUID(group_key.removeprefix("network:")))
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Некорректный идентификатор слоя")
+    if owner is None:
+        raise HTTPException(status_code=404, detail="Категория или сеть не найдена")
+    members = list(dict.fromkeys(payload.members))
+    if members:
+        existing = set(db.scalars(select(ArchitectureObject.id).where(ArchitectureObject.id.in_(members))).all())
+        if len(existing) != len(members):
+            raise HTTPException(status_code=422, detail="В области есть неизвестные ИС")
+    region = db.get(ArchitectureLayerRegion, group_key)
+    if region is None:
+        region = ArchitectureLayerRegion(group_key=group_key)
+        db.add(region)
+    for field_name in ("x", "y", "width", "height", "color"):
+        setattr(region, field_name, getattr(payload, field_name))
+    region.members = [str(member) for member in members]
+    region.updated_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(region)
+    return layer_region_output(region)
 
 
 @app.get("/api/diagrams", response_model=list[DiagramOut])

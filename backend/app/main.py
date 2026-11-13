@@ -1326,7 +1326,7 @@ def list_layer_regions(db: Session = Depends(db_session)):
 
 
 @app.put("/api/diagrams/layer-regions/{group_key:path}", response_model=LayerRegionOutput)
-def save_layer_region(group_key: str, payload: LayerRegionInput, db: Session = Depends(db_session)):
+def save_layer_region(group_key: str, payload: LayerRegionInput, request: Request, db: Session = Depends(db_session)):
     # Visual membership never modifies business-process links or technical network data.
     if not re.fullmatch(r"(business|network):[a-zA-Z0-9:-]{1,110}", group_key):
         raise HTTPException(status_code=422, detail="Некорректный идентификатор слоя")
@@ -1347,6 +1347,7 @@ def save_layer_region(group_key: str, payload: LayerRegionInput, db: Session = D
         if len(existing) != len(members):
             raise HTTPException(status_code=422, detail="В области есть неизвестные ИС")
     region = db.get(ArchitectureLayerRegion, group_key)
+    before = layer_region_output(region) if region is not None else None
     if region is None:
         region = ArchitectureLayerRegion(group_key=group_key)
         db.add(region)
@@ -1354,6 +1355,12 @@ def save_layer_region(group_key: str, payload: LayerRegionInput, db: Session = D
         setattr(region, field_name, getattr(payload, field_name))
     region.members = [str(member) for member in members]
     region.updated_at = datetime.now(timezone.utc)
+    db.add(BoardAudit(
+        actor=board_actor(request),
+        reason="Изменение визуальной архитектурной области",
+        changes=[{"action": "update_architecture_layer_region", "id": group_key,
+                  "before": before, "after": layer_region_output(region)}],
+    ))
     db.commit()
     db.refresh(region)
     return layer_region_output(region)

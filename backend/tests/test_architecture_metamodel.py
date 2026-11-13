@@ -2,7 +2,7 @@
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
-from app.architecture_metamodel import get_logical_relation_types, logical_relation_validation_error
+from app.architecture_metamodel import get_logical_relation_types, logical_relation_validation_error, summarize_legacy_relations
 from app.main import app
 
 ADMIN = {"Authorization": "Bearer ci-admin-token-123456789012345678901234"}
@@ -75,3 +75,34 @@ def test_relation_writes_validate_types_and_direction_without_changing_existing_
         assert sum(row["source_id"] == source and row["target_id"] == target
                    and row["kind"] == "integrates_with" for row in rows.json()) == 1
         assert client.post(url, json=base, headers=VIEWER).status_code == 403
+
+
+def test_readonly_mapping_report_distinguishes_duplicates_legacy_and_bad_endpoint_types():
+    a, b, vm = str(uuid4()), str(uuid4()), str(uuid4())
+    rows = [
+        {"id": "1", "kind": "integrates_with", "source_id": a, "target_id": b},
+        {"id": "2", "kind": "integrates_with", "source_id": a, "target_id": b},
+        {"id": "3", "kind": "data_flow", "source_id": b, "target_id": a},
+        {"id": "4", "kind": "depends_on", "source_id": vm, "target_id": b},
+        {"id": "5", "kind": "unsupported", "source_id": a, "target_id": str(uuid4())},
+    ]
+    report = summarize_legacy_relations({a: "system", b: "system", vm: "vm"}, rows)
+    assert report["read_only"] is True
+    assert report["objects"] == 3 and report["relations"] == 5
+    assert report["issues"] == {
+        "unknown_kind": 1, "invalid_endpoints": 1,
+        "orphan_endpoints": 1, "duplicate_direction": 1,
+        "deprecated_data_flow": 1,
+    }
+    assert len(report["samples"]) == 4
+    assert report["object_kinds"] == {"system": 2, "vm": 1}
+
+
+def test_readonly_relation_audit_uses_system_reader_permission():
+    with TestClient(app) as client:
+        result = client.get("/api/metamodel/relation-audit", headers=VIEWER)
+        assert result.status_code == 200, result.text
+        assert result.json()["read_only"] is True
+        assert "issues" in result.json() and "relation_kinds" in result.json()
+        assert client.get("/api/metamodel/relation-audit").status_code == 401
+        assert client.put("/api/metamodel/relation-audit", headers=ADMIN, json={}).status_code in (403, 405)

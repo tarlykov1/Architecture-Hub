@@ -300,7 +300,23 @@ export default function ArchitectureHome({systems,components,flows,processes,cat
     </div>)}
     {filteredSystems.length>12&&<small>Показаны первые 12 систем. Уточните запрос.</small>}
   </div>}
-  {layers.systems&&<div className="homeMapGraph"><ReactFlow minZoom={0.08} nodes={canvasNodes} edges={edges} nodeTypes={homeNodeTypes} nodesDraggable={editingLayers&&canEditLayers&&layerTool==='move'}
+  {layers.systems&&<div className={editingLayers?'homeLayerEditorStage editing':'homeLayerEditorStage'}>
+
+   {editingLayers&&<div className="homeLayerTools" role="toolbar" aria-label="Инструменты слоёв">
+     <button type="button" aria-label="Выбрать область" title="Выбор области и её свойств" data-tool="select" aria-pressed={layerTool==='select'} onClick={()=>setLayerTool('select')}><MousePointer2 size={19} strokeWidth={1.8}/><span>Выбрать</span></button>
+     <button type="button" aria-label="Переместить область" title="Перемещение и изменение размера выбранной области" data-tool="move" aria-pressed={layerTool==='move'} onClick={()=>setLayerTool('move')}><Move size={19} strokeWidth={1.8}/><span>Переместить</span></button>
+     <button type="button" aria-label="Нарисовать область" title="Выберите категорию справа, затем нарисуйте рамку на схеме" data-tool="draw" aria-pressed={layerTool==='draw'} disabled={!overlayGroups.length} onClick={()=>{
+       if(!selectedOverlayGroup&&overlayGroups.length)setSelectedOverlayGroup(overlayGroups[0].id)
+       setLayerTool('draw')
+     }}><SquareDashed size={19} strokeWidth={1.8}/><span>Область</span></button>
+     <div className="homeLayerToolsSeparator"/>
+     <button type="button" aria-label="Вписать системы в экран" title="Вписать все системы, не меняя их положение" onClick={()=>setFitTrigger(value=>value+1)}><Maximize2 size={19} strokeWidth={1.8}/><span>Вписать</span></button>
+     <button type="button" aria-label="Сохранить области" title="Сохранить изменённые области в базе" disabled={layerBusy||!Object.keys(layerDrafts).length} onClick={()=>void saveLayerChanges()}><Save size={19} strokeWidth={1.8}/><span>Сохранить</span></button>
+     <button type="button" aria-label="Отменить изменения областей" title="Отменить черновик и выйти из редактора" disabled={layerBusy} onClick={cancelLayerChanges}><X size={19} strokeWidth={1.8}/><span>Отменить</span></button>
+     <div className="homeLayerToolsDraft" aria-live="polite"><ClipboardList size={17}/><span>Черновик: {Object.keys(layerDrafts).length}</span></div>
+   </div>}
+
+  <div className="homeMapGraph"><ReactFlow minZoom={0.08} nodes={canvasNodes} edges={edges} nodeTypes={homeNodeTypes} nodesDraggable={editingLayers&&canEditLayers&&layerTool==='move'}
    onNodesChange={(changes:NodeChange[])=>{
     if(!editingLayers||!canEditLayers||layerTool!=='move')return
     for(const change of changes){
@@ -310,10 +326,35 @@ export default function ArchitectureHome({systems,components,flows,processes,cat
      const group=overlayGroups.find(item=>item.id===key)
      if(node&&group)updateDraft(key,change.position,{x:node.position.x,y:node.position.y,width:node.width,height:node.height,color:groupColor(group),members:membersFor(group)})
     }
-   } onNodeDragStop={(_,node)=>{if(layerTool!=='move'||!node.id.startsWith('overlay:'))return;const key=node.id.slice(8);const region=areaNodes.find(item=>item.id===node.id);const group=overlayGroups.find(item=>item.id===key);if(region&&group)updateDraft(key,node.position,{x:region.position.x,y:region.position.y,width:region.width,height:region.height,color:groupColor(group),members:membersFor(group)})}} fitView fitViewOptions={{padding:0.15,minZoom:0.3,maxZoom:1}} nodesConnectable={false} onNodeClick={(_,node)=>{if(node.id.startsWith('component:')){onOpenComponent(node.id.slice('component:'.length));return}if(node.id.startsWith('overlay:')){setSelectedOverlayGroup(node.id.slice(8));return}setSelectedSystem(node.id);onOpenSystem(node.id)}} onPaneClick={()=>{setSelectedSystem('');onCloseSystem()}}><AutoFit layoutKey={inspectorOpen?'inspector-open':'inspector-closed'} ignoreNodePrefixes="overlay:,component:" focusIds={filteredSystems.map(s=>s.id)} suspended={editingLayers}/><Background gap={20}/><Controls showInteractive={false}/></ReactFlow></div>}
-  {!layers.systems&&<div className="homeMapEmpty">Включите слой «Информационные системы», чтобы показать карту связей.</div>}
-  {selectedOverlayGroup&&focusedLayer&&<div className="homeLayerMembers" role="status"><strong>{focusedLayer.name}</strong><span>В этой области: {membersFor(focusedLayer).map(id=>systems.find(sys=>sys.id===id)?.name||id).join(', ')}</span><button type="button" onClick={()=>setSelectedOverlayGroup('')}>Снять выделение</button></div>}
-  {editingLayers&&focusedLayer&&<section className="homeLayerMemberEditor" aria-label="Состав области">
+   } onNodeDragStop={(_,node)=>{if(layerTool!=='move'||!node.id.startsWith('overlay:'))return;const key=node.id.slice(8);const region=areaNodes.find(item=>item.id===node.id);const group=overlayGroups.find(item=>item.id===key);if(region&&group)updateDraft(key,node.position,{x:region.position.x,y:region.position.y,width:region.width,height:region.height,color:groupColor(group),members:membersFor(group)})}} fitView fitViewOptions={{padding:0.15,minZoom:0.3,maxZoom:1}} nodesConnectable={false} onNodeClick={(_,node)=>{if(node.id.startsWith('component:')){onOpenComponent(node.id.slice('component:'.length));return}if(node.id.startsWith('overlay:')){setSelectedOverlayGroup(node.id.slice(8));return}setSelectedSystem(node.id);onOpenSystem(node.id)}} onPaneClick={()=>{setSelectedSystem('');onCloseSystem()}}><AutoFit layoutKey={inspectorOpen?'inspector-open':'inspector-closed'} ignoreNodePrefixes="overlay:,component:" focusIds={filteredSystems.map(s=>s.id)} suspended={editingLayers}/><Background gap={20}/><Controls showInteractive={false}/><LayerFitController trigger={fitTrigger} systemIds={filteredSystems.map(s=>s.id)}/>
+   <LayerRectangleDraw enabled={editingLayers&&layerTool==='draw'&&Boolean(selectedOverlayGroup)} onDraw={drawRegion}/>
+   </ReactFlow></div>
+
+   {editingLayers&&<aside className="homeLayerDock" role="complementary" aria-label="Свойства архитектурной области">
+     <header><strong>Свойства области</strong><span>{layerTool==='draw'?'Рисование':layerTool==='move'?'Перемещение':'Выбор'}</span></header>
+     <p className="homeLayerToolInstructions">{layerTool==='draw'?'Выберите бизнес-категорию или сеть, затем протяните прямоугольник на холсте. Одно нажатие создаст рамку стандартного размера.':layerTool==='move'?'Перетаскивайте область. Чтобы изменить размер, выделите её и потяните за маркеры.':'Выберите область на схеме или в списке.'}</p>
+     {layerError&&<p role="alert" className="homeLayerError">{layerError}</p>}
+     <label className="homeLayerGroupSelect">Область
+       <select aria-label="Выбрать архитектурную область" value={selectedOverlayGroup} onChange={event=>{
+         const id=event.target.value;setSelectedOverlayGroup(id)
+         const item=overlayGroups.find(group=>group.id===id)
+         if(item)setActiveOverlays(old=>({...old,[item.type]:true}))
+       }}>
+         <option value="">Выберите область</option>
+         <optgroup label="Бизнес-категории">{overlayGroups.filter(group=>group.type==='business').map(group=><option key={group.id} value={group.id}>{group.name}</option>)}</optgroup>
+         <optgroup label="Сети и зоны">{overlayGroups.filter(group=>group.type==='network').map(group=><option key={group.id} value={group.id}>{group.name}</option>)}</optgroup>
+       </select>
+     </label>
+     {selectedRegion&&regionDraft&&<div className="homeLayerProperties">
+       <label>Цвет области<input aria-label="Цвет выбранной области" type="color" value={groupColor(selectedRegion)} onChange={event=>updateDraft(selectedRegion.id,{color:event.target.value},regionDraft)}/></label>
+       <div className="homeLayerGeometry">
+         {([['x','X'],['y','Y'],['width','Ширина'],['height','Высота']] as const).map(([key,label])=><label key={key}>{label}
+           <input type="number" aria-label={label+' области'} value={Math.round(regionDraft[key])} step="10" min={key==='width'?140:key==='height'?80:-100000} max="100000" onChange={event=>updateRegionField(key,Number(event.target.value))}/>
+         </label>)}
+       </div>
+       <p>Прямоугольник изменяет только визуальное представление; координаты систем и ВМ остаются неизменными.</p>
+     </div>}
+       {focusedLayer&&<section className="homeLayerMemberEditor" aria-label="Состав области">
    <h3>{focusedLayer.name} – состав области</h3>
    <p>Выбор влияет только на отображение области, а не на фактические бизнес-связи или сетевые интерфейсы.</p>
    <div className="homeLayerMemberGrid">{systems.map(system=><label key={system.id}><input type="checkbox" checked={membersFor(focusedLayer).includes(system.id)} onChange={e=>{
@@ -324,6 +365,12 @@ export default function ArchitectureHome({systems,components,flows,processes,cat
      updateDraft(focusedLayer.id,{members},base)
    }}/>{system.name}</label>)}</div>
   </section>}
+   </aside>}
+
+   </div>}
+  {!layers.systems&&<div className="homeMapEmpty">Включите слой «Информационные системы», чтобы показать карту связей.</div>}
+  {selectedOverlayGroup&&focusedLayer&&<div className="homeLayerMembers" role="status"><strong>{focusedLayer.name}</strong><span>В этой области: {membersFor(focusedLayer).map(id=>systems.find(sys=>sys.id===id)?.name||id).join(', ')}</span><button type="button" onClick={()=>setSelectedOverlayGroup('')}>Снять выделение</button></div>}
+
   <p className="homeMapModeHint">Полупрозрачные области показывают принадлежность ИС к категориям, а не технические маршруты. Пересекающиеся рамки означают одновременное участие; для точного состава смотрите подписи и реестры.</p>
   <p className="homeMapModeHint">{mapMode==='business'?'Пунктир показывает участие систем в общих бизнес-процессах, а не направление передачи данных.':mapMode==='flows'?'Стрелки показывают реальные зарегистрированные потоки между компонентами разных ИС. Количество указано на связи.':'Сетевой слой показывает привязки систем к зонам, VLAN и VRF. Совпадение сети не означает наличие разрешённого маршрута.'}</p>
   <div className="homeMapDetails">

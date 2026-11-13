@@ -44,6 +44,15 @@ test('All grouped flow records can be chosen directly and one reassigned without
   await picker.selectOption(ids[2])
   await expect(editor.getByRole('group',{name:'Переподключить выбранный поток'})).toContainText('Grouped flow 3')
   await expect(editor.locator('.boardEndpointGrip')).toHaveCount(2)
-  // None of these changes should persist without confirming the reviewed batch.
+  // Confirm the same staged batch and verify only the chosen flow ID changed.
+  await editor.getByRole('button',{name:'Сохранить изменения схемы'}).click()
+  await editor.getByPlaceholder('Например: актуализация схемы ИС после изменения сети').fill('QA: move only one grouped flow to alternate VM')
+  await editor.getByRole('button',{name:/Проверить изменения/}).click()
+  await page.getByRole('dialog',{name:'Подтверждение изменений'}).getByRole('button',{name:'Подтвердить и записать в журнал'}).click()
+  await expect.poll(async()=>{
+    const response=await page.request.get(api+'/api/flows')
+    const rows=await response.json() as Array<{id:string;target_id:string}>
+    return ids.map(id=>rows.find(item=>item.id===id)?.target_id)
+  }).toEqual([originalTarget,alternative,originalTarget])
 })
 

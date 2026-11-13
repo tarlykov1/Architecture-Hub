@@ -1,7 +1,8 @@
-import React, {useEffect,useMemo,useState} from 'react'
+import React, {useEffect,useMemo,useRef,useState} from 'react'
 import {architectureIcon,DiagramNodeLabel,diagramCardStyle} from './DiagramVisual'
 export {architectureIcon} from './DiagramVisual'
-import {ReactFlow,Background,Controls,MarkerType,NodeResizer,type NodeProps,type NodeChange} from '@xyflow/react'
+import {ReactFlow,Background,Controls,MarkerType,NodeResizer,useReactFlow,type NodeProps,type NodeChange} from '@xyflow/react'
+import {MousePointer2, Move, SquareDashed, Maximize2, Save, X, ClipboardList} from 'lucide-react'
 
 type System={id:string;name:string;kind:string}
 type Component={id:string;system_id:string;name:string;kind:string;details:Record<string,unknown>}
@@ -17,6 +18,61 @@ function LayerRegionNode({data,selected}:NodeProps){
  return <div className="homeEditableRegion"><NodeResizer isVisible={region.editing&&selected} minWidth={140} minHeight={80} onResize={(_,bounds)=>region.resize(bounds)} onResizeEnd={(_,bounds)=>region.resize(bounds)}/><div className="homeLayerRegionLabel"><strong>{region.name}</strong><small>{region.count} ИС</small></div></div>
 }
 const homeNodeTypes={layerRegion:LayerRegionNode}
+type RegionRect={x:number;y:number;width:number;height:number}
+type LayerTool='select'|'move'|'draw'
+
+/** Exactly the same React Flow coordinate space as the IS and VM nodes. */
+function LayerRectangleDraw({enabled,onDraw}:{enabled:boolean;onDraw:(rect:RegionRect)=>void}){
+ const {screenToFlowPosition}=useReactFlow()
+ const start=useRef<{x:number;y:number}|null>(null)
+ const [preview,setPreview]=useState<RegionRect|null>(null)
+ useEffect(()=>{if(!enabled){start.current=null;setPreview(null)}},[enabled])
+ if(!enabled)return null
+ const screenRect=(left:number,top:number,right:number,bottom:number):RegionRect=>({
+   x:Math.min(left,right),y:Math.min(top,bottom),
+   width:Math.abs(right-left),height:Math.abs(bottom-top)
+ })
+ return <div className="homeLayerDrawSurface" role="region" aria-label="Поле рисования архитектурной области"
+  onPointerDown={event=>{
+   if(event.button!==0)return
+   event.preventDefault()
+   start.current={x:event.clientX,y:event.clientY}
+   event.currentTarget.setPointerCapture(event.pointerId)
+   setPreview({x:event.nativeEvent.offsetX,y:event.nativeEvent.offsetY,width:0,height:0})
+  }}
+  onPointerMove={event=>{
+   if(!start.current)return
+   const bounds=event.currentTarget.getBoundingClientRect()
+   setPreview(screenRect(start.current.x-bounds.left,start.current.y-bounds.top,event.clientX-bounds.left,event.clientY-bounds.top))
+  }}
+  onPointerUp={event=>{
+   const initial=start.current
+   if(!initial)return
+   start.current=null
+   if(event.currentTarget.hasPointerCapture(event.pointerId))event.currentTarget.releasePointerCapture(event.pointerId)
+   setPreview(null)
+   const a=screenToFlowPosition(initial)
+   const b=screenToFlowPosition({x:event.clientX,y:event.clientY})
+   const small=Math.hypot(event.clientX-initial.x,event.clientY-initial.y)<8
+   const x=small?a.x:Math.min(a.x,b.x),y=small?a.y:Math.min(a.y,b.y)
+   const width=small?440:Math.max(140,Math.abs(b.x-a.x))
+   const height=small?260:Math.max(80,Math.abs(b.y-a.y))
+   onDraw({x:Math.round(x),y:Math.round(y),width:Math.round(width),height:Math.round(height)})
+  }}
+  onPointerCancel={()=>{start.current=null;setPreview(null)}}>
+  {preview&&<div className="homeLayerDrawPreview" style={preview}/>}
+ </div>
+}
+
+function LayerFitController({trigger,systemIds}:{trigger:number;systemIds:string[]}){
+ const {fitView}=useReactFlow()
+ useEffect(()=>{
+   if(!trigger||!systemIds.length)return
+   void fitView({nodes:systemIds.map(id=>({id})),padding:0.2,maxZoom:1,duration:220})
+ // eslint-disable-next-line react-hooks/exhaustive-deps
+ },[trigger])
+ return null
+}
 type Link={process_id:string;system_id:string}
 type Network={id:string;name:string;kind:string}
 type Interface={item_id:string;zone_id:string|null;vlan_id:string|null;vrf_id:string|null}
@@ -32,11 +88,13 @@ export default function ArchitectureHome({systems,components,flows,processes,cat
  const [savedRegions,setSavedRegions]=useState<Record<string,LayerRegion>>({})
  const [layerDrafts,setLayerDrafts]=useState<Record<string,LayerDraft>>({})
  const [editingLayers,setEditingLayers]=useState(false)
+ const [layerTool,setLayerTool]=useState<LayerTool>('select')
+ const [fitTrigger,setFitTrigger]=useState(0)
  const [layerBusy,setLayerBusy]=useState(false)
  const [layerError,setLayerError]=useState('')
  const [layerApiReady,setLayerApiReady]=useState(false)
  useEffect(()=>{
-  if(!request){setSavedRegions({});setLayerDrafts({});setEditingLayers(false);setLayerApiReady(false);return}
+  if(!request){setSavedRegions({});setLayerDrafts({});setEditingLayers(false);setLayerTool('select');setLayerApiReady(false);return}
   setLayerApiReady(false)
   let cancelled=false
   void request<LayerRegion[]>('/api/diagrams/layer-regions').then(rows=>{
@@ -47,7 +105,7 @@ export default function ArchitectureHome({systems,components,flows,processes,cat
  const updateDraft=(id:string,update:Partial<LayerDraft>,base:LayerDraft)=>{
   setLayerDrafts(old=>({...old,[id]:{...(old[id]||base),...update}}))
  }
- const cancelLayerChanges=()=>{setLayerDrafts({});setEditingLayers(false);setLayerError('')}
+ const cancelLayerChanges=()=>{setLayerDrafts({});setEditingLayers(false);setLayerTool('select');setLayerError('')}
  const saveLayerChanges=async()=>{
   if(!request||!canEditLayers)return
   setLayerBusy(true);setLayerError('')
@@ -56,7 +114,7 @@ export default function ArchitectureHome({systems,components,flows,processes,cat
    for(const [key,payload] of Object.entries(layerDrafts)){
     updated[key]=await request<LayerRegion>('/api/diagrams/layer-regions/'+encodeURIComponent(key),{method:'PUT',body:JSON.stringify(payload)})
    }
-   setSavedRegions(updated);setLayerDrafts({});setEditingLayers(false)
+   setSavedRegions(updated);setLayerDrafts({});setEditingLayers(false);setLayerTool('select')
   }catch(err){setLayerError((err as Error).message)}
   finally{setLayerBusy(false)}
  }

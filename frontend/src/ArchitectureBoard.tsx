@@ -18,7 +18,7 @@ type NIC = {id:string;item_id:string;name:string;zone_id:string|null;vlan_id:str
 type Flow = {id:string;source_id:string;target_id:string;name:string;protocol:string;port:string;security:string;data_description:string;schedule:string;verification:string}
 type Change = {action:'create_vm'|'create_network'|'create_flow'|'update_flow'|'create_interface'|'move_interface'|'update_vm';id?:string;system_id?:string;name?:string;kind?:string;description?:string;source_id?:string;target_id?:string;protocol?:string;port?:string;security?:string;data_description?:string;schedule?:string;verification?:string;interface_id?:string;item_id?:string;interface_name?:string;network_id?:string|null;previous_network_id?:string|null;previous_name?:string;previous_description?:string;previous_flow?:FlowValues;previous_source_id?:string;previous_target_id?:string;details_patch?:Record<string,string>;previous_details?:Record<string,unknown>;network_field?:'zone_id'|'vlan_id'|'vrf_id'}
 type Preview = {changes:Array<{action:string;id:string;before:unknown;after:unknown;field?:string;endpoints?:{before:[string,string];after:[string,string]}}>;count:number}
-type Props = {systemId:string;ownerName?:string;ownerBySystemId?:Record<string,string>;items:VM[];networks:Network[];interfaces:NIC[];flows:Flow[];savedPositions?:Record<string,{x:number;y:number}>;onPositionChange?:(node:Node)=>void;request:<T>(url:string,init?:RequestInit)=>Promise<T>;onCommitted:()=>Promise<void>;onEditNetwork?:(id:string)=>void;onDraftStateChange?:(pending:boolean)=>void}
+type Props = {systemId:string;demoMode:boolean;ownerName?:string;ownerBySystemId?:Record<string,string>;items:VM[];networks:Network[];interfaces:NIC[];flows:Flow[];savedPositions?:Record<string,{x:number;y:number}>;onPositionChange?:(node:Node)=>void;request:<T>(url:string,init?:RequestInit)=>Promise<T>;onCommitted:()=>Promise<void>;onEditNetwork?:(id:string)=>void;onDraftStateChange?:(pending:boolean)=>void}
 type Tool = 'move'|'vm'|'flow'|'network'
 // Eight geometrically independent handles per VM, each usable for outgoing
 // and incoming data flows. Target handles are invisible but stay measurable.
@@ -75,7 +75,7 @@ function readBoardDraft(systemId:string):StoredBoardDraft|null{
  }catch{return null}
 }
 
-function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfaces,flows,savedPositions={},onPositionChange,request,onCommitted,onEditNetwork,onDraftStateChange}:Props){
+function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,networks,interfaces,flows,savedPositions={},onPositionChange,request,onCommitted,onEditNetwork,onDraftStateChange}:Props){
  const [restoredDraft]=useState<StoredBoardDraft|null>(()=>readBoardDraft(systemId))
  const [tool,setTool]=useState<Tool>('move')
  const [drawingConnection,setDrawingConnection]=useState(false)
@@ -350,6 +350,7 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
  // The selected record is authoritative; visual edge grouping is derived
  // separately. Do not require a second list to unlock endpoint editing.
  const selectedFlow=effectiveFlows.find(flow=>flow.id===selectedFlowId)
+ const selectedFlowEndpoints=tool==='flow'&&selectedEdgeFlowIds.length&&from&&to?[from,to]:[]
  const activeEdgeFlowIds=selectedFlow
    ? (flowGroups.get(flowGroupKey(selectedFlow))||[]).map(flow=>flow.id)
    : selectedEdgeFlowIds
@@ -730,7 +731,7 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
      ...next,previous_flow:before
    }]:remaining)
    setPreview(null);setError('');setReviewOpen(hasChanges||remaining.length>0)
-   setLayoutMessage('Проверьте изменения потока и подтвердите запись в журнал.')
+   setLayoutMessage(demoMode?'Изменение потока добавлено в локальный черновик.':'Проверьте изменения потока и подтвердите запись в журнал.')
  }
  const discardExistingFlowEdit=()=>{
    if(!selectedExistingFlow)return
@@ -875,9 +876,11 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
    if(layoutBusy)return
    if(changes.length){
      setReviewOpen(true);setTool('move')
+     if(demoMode)return
      setError('Есть несохранённые ВМ, VRF/VLAN или связи. Введите причину изменений в черновике, проверьте их и подтвердите запись в журнал. Сохранение только расположения не создаёт объекты.')
      return
    }
+   if(demoMode){setLayoutMessage('Для сохранения расположения войдите по паролю.');return}
    setLayoutBusy(true);setLayoutMessage('');setError('')
    try{
      await request('/api/board/layout/'+systemId,{method:'PUT',body:JSON.stringify({positions:collectLayout(),flow_anchors:collectFlowAnchors()})})
@@ -907,6 +910,7 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
    try{setHistory(await request<Array<{id:string;timestamp:string;reason:string;changes:Preview['changes']}>>('/api/board/audit?limit=30'));setShowHistory(true)}catch(e){setError(String(e))}
  }
  const submitPreview=async()=>{
+   if(demoMode)return
    if(!changes.length||reason.trim().length<3){setError('Добавьте изменения и укажите причину (минимум 3 символа).');return}
    setBusy(true);setError('')
    try{setPreview(await request<Preview>('/api/board/preview',{method:'POST',body:JSON.stringify({changes,reason})}))}
@@ -914,7 +918,7 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
    finally{setBusy(false)}
  }
  const commit=async()=>{
-   if(!preview)return
+   if(demoMode||!preview)return
    setBusy(true);setError('')
    try{
      await request('/api/board/commit',{method:'POST',body:JSON.stringify({changes,reason})})
@@ -1042,7 +1046,7 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
    if(!from||to||from===node.id){setFrom(node.id);setTo('');setSelectedDraftFlowId('');setLayoutMessage('Источник выбран. Нажмите на целевой компонент или протяните стрелку от порта.')}
    else stageDirectedFlow(from,node.id)
  }else if(tool==='move'){openPassport(node.id);setFocusDependencies(false)}
-}} onNodeDragStart={(_,node)=>{setDraggingNode(true);startVisualGroupDrag(node)}} onNodeDrag={(_,node)=>updateVisualGroupDrag(node)} onNodeDragStop={(_,node)=>{finishVisualDrop(node);moveNode(node);setDraggingNode(false)} } onPaneClick={handlePaneClick} minZoom={0.08} fitViewOptions={{padding:0.2,maxZoom:0.9}}><AutoFit layoutKey={systemId+':'+items.length+':'+flows.length} maxFitZoom={0.9} suspended={tool!=='move'||canvasInteracted||drawingConnection||draggingNode} settleDelayMs={0}/><Background gap={20}/><Controls showInteractive={false}/></ReactFlow>
+}} onNodeDragStart={(_,node)=>{setDraggingNode(true);startVisualGroupDrag(node)}} onNodeDrag={(_,node)=>updateVisualGroupDrag(node)} onNodeDragStop={(_,node)=>{finishVisualDrop(node);moveNode(node);setDraggingNode(false)} } onPaneClick={handlePaneClick} minZoom={0.08} fitViewOptions={{padding:0.2,maxZoom:0.9}}><AutoFit layoutKey={systemId+':'+items.length+':'+flows.length} maxFitZoom={0.9} focusIds={selectedFlowEndpoints} suspended={drawingConnection||draggingNode||(!selectedFlowEndpoints.length&&(tool!=='move'||canvasInteracted))} settleDelayMs={0}/><Background gap={20}/><Controls showInteractive={false}/></ReactFlow>
      {flowGhost&&<svg className="boardFlowGesturePreview" aria-hidden="true" width="100%" height="100%">
        <defs><marker id="board-flow-ghost-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill="#176bc1"/></marker></defs>
        <line x1={flowGhost.start.x} y1={flowGhost.start.y} x2={flowGhost.end.x} y2={flowGhost.end.y} stroke="#176bc1" strokeWidth="2.5" strokeDasharray="6 3" markerEnd="url(#board-flow-ghost-arrow)"/>
@@ -1116,7 +1120,10 @@ function Editor({systemId,ownerName='',ownerBySystemId={},items,networks,interfa
      </div>
      <div className="boardInspectorActions"><button type="button" onClick={()=>setEditingPassport(v=>!v)}>{editingPassport?"Скрыть редактирование":"Редактировать паспорт"}</button><label><input type="checkbox" checked={focusDependencies} onChange={e=>setFocusDependencies(e.target.checked)}/> Выделить зависимости</label><button type="button" onClick={()=>{setFrom(inspectedVM.id);setTo('');setTool('flow');setInspectedId(null);setFocusDependencies(false)}}>Добавить поток</button><button type="button" onClick={()=>{setInspectedId(null);setFocusDependencies(false)}}>Закрыть</button></div>
    </aside>}
-       {reviewOpen&&changes.length>0&&<div className="boardReview"><div className="boardReviewHeader"><strong>Черновик: {changes.length} изменений</strong><button type="button" onClick={()=>setReviewOpen(false)} aria-label="Закрыть черновик">✕</button></div><label>Причина изменений <input value={reason} onChange={e=>{setReason(e.target.value);setPreview(null)}} placeholder="Например: актуализация схемы ИС после изменения сети"/></label><button disabled={!changes.length||busy} onClick={submitPreview}>Проверить изменения ({changes.length})</button><button disabled={!changes.length||busy} onClick={discardDraft}>Отменить черновик</button></div>}
+       {reviewOpen&&changes.length>0&&<div className="boardReview"><div className="boardReviewHeader"><strong>Черновик: {changes.length} изменений</strong><button type="button" onClick={()=>setReviewOpen(false)} aria-label="Закрыть черновик">✕</button></div>{demoMode?<p role="status">Для проверки и сохранения изменений войдите по паролю.</p>:<>
+         <label>Причина изменений <input value={reason} onChange={e=>{setReason(e.target.value);setPreview(null)}} placeholder="Например: актуализация схемы ИС после изменения сети"/></label>
+         <button disabled={busy} onClick={submitPreview}>Проверить изменения ({changes.length})</button>
+       </>}<button disabled={!changes.length||busy} onClick={discardDraft}>Отменить черновик</button></div>}
      </aside>}
      {(Boolean(error)||Boolean(layoutMessage))&&<div className="boardCanvasToast" role="status">{error||layoutMessage}<button type="button" aria-label="Закрыть сообщение" onClick={()=>{setError('');setLayoutMessage('')}}>✕</button></div>}
    </div>

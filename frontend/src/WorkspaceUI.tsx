@@ -130,3 +130,12 @@ export function useWorkspaceKeyboard(){
   return()=>{observer.disconnect();document.removeEventListener('click',click);document.removeEventListener('keydown',key)}
  },[])
 }
+
+/** Keep a failed inspector panel from taking down the surrounding workspace. */
+export class InspectorErrorBoundary extends React.Component<{children:ReactNode},{failed:boolean}>{
+ state={failed:false}
+ static getDerivedStateFromError(){return {failed:true}}
+ render(){
+  return this.state.failed?<p role="alert">Не удалось открыть вкладку. Закройте карточку или выберите другой раздел.</p>:this.props.children
+ }
+}

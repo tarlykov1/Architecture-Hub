@@ -1,7 +1,7 @@
 import React, {useEffect,useMemo,useState} from 'react'
 import {architectureIcon,DiagramNodeLabel,diagramCardStyle} from './DiagramVisual'
 export {architectureIcon} from './DiagramVisual'
-import {ReactFlow,Background,Controls,MarkerType,NodeResizer,type NodeProps} from '@xyflow/react'
+import {ReactFlow,Background,Controls,MarkerType,NodeResizer,type NodeProps,type NodeChange} from '@xyflow/react'
 
 type System={id:string;name:string;kind:string}
 type Component={id:string;system_id:string;name:string;kind:string;details:Record<string,unknown>}
@@ -14,7 +14,7 @@ type LayerDraft=Omit<LayerRegion,'group_key'>
 type LayerRegionNodeData={name:string;count:number;editing:boolean;resize:(bounds:{x:number;y:number;width:number;height:number})=>void}
 function LayerRegionNode({data,selected}:NodeProps){
  const region=data as unknown as LayerRegionNodeData
- return <div className="homeEditableRegion"><NodeResizer isVisible={region.editing&&selected} minWidth={140} minHeight={80} onResizeEnd={(_,bounds)=>region.resize(bounds)}/><div className="homeLayerRegionLabel"><strong>{region.name}</strong><small>{region.count} ИС</small></div></div>
+ return <div className="homeEditableRegion"><NodeResizer isVisible={region.editing&&selected} minWidth={140} minHeight={80} onResize={(_,bounds)=>region.resize(bounds)} onResizeEnd={(_,bounds)=>region.resize(bounds)}/><div className="homeLayerRegionLabel"><strong>{region.name}</strong><small>{region.count} ИС</small></div></div>
 }
 const homeNodeTypes={layerRegion:LayerRegionNode}
 type Link={process_id:string;system_id:string}
@@ -211,7 +211,17 @@ export default function ArchitectureHome({systems,components,flows,processes,cat
     </div>)}
     {filteredSystems.length>12&&<small>Показаны первые 12 систем. Уточните запрос.</small>}
   </div>}
-  {layers.systems&&<div className="homeMapGraph"><ReactFlow minZoom={0.08} nodes={canvasNodes} edges={edges} nodeTypes={homeNodeTypes} nodesDraggable={editingLayers&&canEditLayers} onNodeDragStop={(_,node)=>{if(!node.id.startsWith('overlay:'))return;const key=node.id.slice(8);const region=areaNodes.find(item=>item.id===node.id);const group=overlayGroups.find(item=>item.id===key);if(region&&group)updateDraft(key,node.position,{x:region.position.x,y:region.position.y,width:region.width,height:region.height,color:groupColor(group),members:membersFor(group)})}} fitView fitViewOptions={{padding:0.15,minZoom:0.3,maxZoom:1}} nodesDraggable={false} nodesConnectable={false} onNodeClick={(_,node)=>{if(node.id.startsWith('component:')){onOpenComponent(node.id.slice('component:'.length));return}if(node.id.startsWith('overlay:')){setSelectedOverlayGroup(node.id.slice(8));return}setSelectedSystem(node.id);onOpenSystem(node.id)}} onPaneClick={()=>{setSelectedSystem('');onCloseSystem()}}><AutoFit layoutKey={inspectorOpen?'inspector-open':'inspector-closed'} ignoreNodePrefixes="overlay:,component:" focusIds={filteredSystems.map(s=>s.id)} suspended={editingLayers}/><Background gap={20}/><Controls showInteractive={false}/></ReactFlow></div>}
+  {layers.systems&&<div className="homeMapGraph"><ReactFlow minZoom={0.08} nodes={canvasNodes} edges={edges} nodeTypes={homeNodeTypes} nodesDraggable={editingLayers&&canEditLayers}
+   onNodesChange={(changes:NodeChange[])=>{
+    if(!editingLayers||!canEditLayers)return
+    for(const change of changes){
+     if(change.type!=='position'||!change.position||!change.id.startsWith('overlay:'))continue
+     const key=change.id.slice(8)
+     const node=areaNodes.find(item=>item.id===change.id)
+     const group=overlayGroups.find(item=>item.id===key)
+     if(node&&group)updateDraft(key,change.position,{x:node.position.x,y:node.position.y,width:node.width,height:node.height,color:groupColor(group),members:membersFor(group)})
+    }
+   } onNodeDragStop={(_,node)=>{if(!node.id.startsWith('overlay:'))return;const key=node.id.slice(8);const region=areaNodes.find(item=>item.id===node.id);const group=overlayGroups.find(item=>item.id===key);if(region&&group)updateDraft(key,node.position,{x:region.position.x,y:region.position.y,width:region.width,height:region.height,color:groupColor(group),members:membersFor(group)})}} fitView fitViewOptions={{padding:0.15,minZoom:0.3,maxZoom:1}} nodesDraggable={false} nodesConnectable={false} onNodeClick={(_,node)=>{if(node.id.startsWith('component:')){onOpenComponent(node.id.slice('component:'.length));return}if(node.id.startsWith('overlay:')){setSelectedOverlayGroup(node.id.slice(8));return}setSelectedSystem(node.id);onOpenSystem(node.id)}} onPaneClick={()=>{setSelectedSystem('');onCloseSystem()}}><AutoFit layoutKey={inspectorOpen?'inspector-open':'inspector-closed'} ignoreNodePrefixes="overlay:,component:" focusIds={filteredSystems.map(s=>s.id)} suspended={editingLayers}/><Background gap={20}/><Controls showInteractive={false}/></ReactFlow></div>}
   {!layers.systems&&<div className="homeMapEmpty">Включите слой «Информационные системы», чтобы показать карту связей.</div>}
   {selectedOverlayGroup&&focusedLayer&&<div className="homeLayerMembers" role="status"><strong>{focusedLayer.name}</strong><span>В этой области: {membersFor(focusedLayer).map(id=>systems.find(sys=>sys.id===id)?.name||id).join(', ')}</span><button type="button" onClick={()=>setSelectedOverlayGroup('')}>Снять выделение</button></div>}
   {editingLayers&&focusedLayer&&<section className="homeLayerMemberEditor" aria-label="Состав области">

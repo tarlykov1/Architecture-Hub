@@ -16,6 +16,7 @@ from .access import access_middleware, configured_keys, ROLE_ACCESS
 from .password_auth import configured_password_auth, check_password, issue_session, issue_user_session, login_allowed, record_login_attempt, SESSION_SECONDS, make_password_hash
 from .cmdb import ci_graph, potential_impact, CI_CLASSES, LIFECYCLE_STATES, LIFECYCLE_TRANSITIONS, CRITICALITY_LEVELS, VERIFICATION_STATES
 from .cmdb_catalog import validate_class_schema, validate_custom_values, missing_required, assess_relation, RELATION_KINDS
+from .architecture_metamodel import get_logical_relation_types, logical_relation_validation_error
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import DateTime, ForeignKey, JSON, String, Uuid, Index, Boolean, UniqueConstraint, create_engine, select, update, text as sql_text
@@ -1283,6 +1284,12 @@ def delete_object(object_id: UUID, db: Session = Depends(db_session)):
     db.commit()
 
 
+@app.get("/api/metamodel/relation-types")
+def list_logical_relation_types():
+    """Machine-readable contract for links on the logical IS architecture map."""
+    return get_logical_relation_types()
+
+
 @app.get("/api/relations", response_model=list[RelationOut])
 def list_relations(db: Session = Depends(db_session)):
     return db.scalars(select(Relation)).all()
@@ -1292,10 +1299,24 @@ def list_relations(db: Session = Depends(db_session)):
 def add_relation(payload: RelationCreate, db: Session = Depends(db_session)):
     if payload.source_id == payload.target_id:
         raise HTTPException(status_code=422, detail="Self-connections are not supported in MVP")
-    if not db.get(ArchitectureObject, payload.source_id) or not db.get(ArchitectureObject, payload.target_id):
+    source = db.get(ArchitectureObject, payload.source_id)
+    target = db.get(ArchitectureObject, payload.target_id)
+    if source is None or target is None:
         raise HTTPException(status_code=422, detail="Both objects must exist")
+    error = logical_relation_validation_error(payload.kind, source.kind, target.kind)
+    if error:
+        raise HTTPException(status_code=422, detail=error)
+    # Existing configurable CMDB class rules are applied after the static
+    # canonical type contract. The generic IS map never stores technical flows.
     if payload.kind in RELATION_KINDS:
         _check_relation_allowed(db, payload.kind, "application", "application")
+    duplicate = db.scalars(select(Relation).where(
+        Relation.source_id == payload.source_id,
+        Relation.target_id == payload.target_id,
+        Relation.kind == payload.kind,
+    )).first()
+    if duplicate is not None:
+        raise HTTPException(status_code=409, detail="Такая направленная связь ИС уже существует")
     rel = Relation(**payload.model_dump())
     db.add(rel)
     db.commit()

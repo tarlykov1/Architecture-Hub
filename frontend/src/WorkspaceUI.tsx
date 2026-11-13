@@ -2,13 +2,15 @@ import React, {useEffect,useRef,type ReactNode} from 'react'
 import {useNodes,useNodesInitialized,useReactFlow} from '@xyflow/react'
 
 /** Refit measured graphs on membership/layout changes and actual canvas resize. */
-export function AutoFit({layoutKey='',maxFitZoom=1,groupParentsOnly=false,focusIds=[],suspended=false,settleDelayMs=300}:{layoutKey?:string;maxFitZoom?:number;groupParentsOnly?:boolean;focusIds?:string[];suspended?:boolean;settleDelayMs?:number}){
+export function AutoFit({layoutKey='',maxFitZoom=1,groupParentsOnly=false,focusIds=[],suspended=false,settleDelayMs=300,ignoreNodePrefixes=''}:{layoutKey?:string;maxFitZoom?:number;groupParentsOnly?:boolean;focusIds?:string[];suspended?:boolean;settleDelayMs?:number;ignoreNodePrefixes?:string}){
  const anchor=useRef<HTMLSpanElement>(null)
  const {fitView}=useReactFlow()
  const initialized=useNodesInitialized()
  const graphNodes=useNodes()
- const ids=graphNodes.map(n=>n.id).sort().join('|')
- const topLevelIds=graphNodes.filter(n=>!n.parentId).map(n=>n.id).sort().join('|')
+ const ignored=ignoreNodePrefixes.split(',').filter(Boolean)
+ const stableNodes=graphNodes.filter(n=>!ignored.some(prefix=>n.id.startsWith(prefix)))
+ const ids=stableNodes.map(n=>n.id).sort().join('|')
+ const topLevelIds=stableNodes.filter(n=>!n.parentId).map(n=>n.id).sort().join('|')
  const visibleFocusIds=focusIds.filter(id=>graphNodes.some(node=>node.id===id)).sort().join('|')
  useEffect(()=>{
   const canvas=anchor.current?.closest('.react-flow')

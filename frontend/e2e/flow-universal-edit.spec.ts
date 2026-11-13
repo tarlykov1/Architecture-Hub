@@ -29,7 +29,7 @@ test('All grouped flow records can be chosen directly and one reassigned without
     await expect(editor.locator('.boardEndpointGrip')).toHaveCount(2)
   }
   await picker.selectOption(ids[1])
-  await editor.getByRole('combobox',{name:'Куда',exact:true}).selectOption(alternative)
+  await editor.getByRole('combobox',{name:'Получатель выбранного потока'}).selectOption(alternative)
   const reassign=editor.getByRole('button',{name:'Изменить подключение выбранного потока'})
   await expect(reassign).toBeEnabled()
   await reassign.click()

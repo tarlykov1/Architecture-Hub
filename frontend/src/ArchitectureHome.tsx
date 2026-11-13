@@ -128,7 +128,7 @@ export default function ArchitectureHome({systems,components,flows,processes,cat
   <div className="homeMapMode" role="group" aria-label="Тип связей на архитектурной карте">
     {([['business','Бизнес-связи'],['flows','Потоки данных'],['networks','Сети и зоны']] as const).map(([id,label])=><button key={id} type="button" aria-pressed={mapMode===id} className={mapMode===id?'current':''} onClick={()=>setMapMode(id)}>{label}</button>)}
    </div>
-  <div className="homeLayerToolbar" aria-label="Накладываемые слои">
+  <div className="homeLayerToolbar" role="group" aria-label="Накладываемые слои">
    <strong>Области на схеме</strong>
    <label><input type="checkbox" checked={activeOverlays.business} onChange={e=>setActiveOverlays(old=>({...old,business:e.target.checked}))}/> Бизнес-категории</label>
    <label><input type="checkbox" checked={activeOverlays.network} onChange={e=>setActiveOverlays(old=>({...old,network:e.target.checked}))}/> Сети и зоны</label>

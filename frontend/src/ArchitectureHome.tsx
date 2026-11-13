@@ -175,7 +175,7 @@ export default function ArchitectureHome({systems,components,flows,processes,cat
  for(const cat of categories){
    const ids=new Set(processes.filter(p=>p.category_id===cat.id).map(p=>p.id))
    const members=new Set(links.filter(l=>ids.has(l.process_id)&&visibleIds.has(l.system_id)).map(l=>l.system_id))
-   if(members.size||savedRegions['business:'+cat.id])overlayGroups.push({id:'business:'+cat.id,name:cat.name,type:'business',members})
+   overlayGroups.push({id:'business:'+cat.id,name:cat.name,type:'business',members})
  }
  // Processes without a known category retain their own visual group.
  for(const process of processes.filter(p=>!p.category_id||!categories.some(c=>c.id===p.category_id))){
@@ -184,7 +184,7 @@ export default function ArchitectureHome({systems,components,flows,processes,cat
  }
  for(const network of networks){
    const members=networkSystems.get(network.id)
-   if(members?.size||savedRegions['network:'+network.id])overlayGroups.push({id:'network:'+network.id,name:network.name,type:'network',members:members||new Set()})
+   overlayGroups.push({id:'network:'+network.id,name:network.name,type:'network',members:members||new Set()})
  }
  const palette=['#a78bfa','#f59e0b','#10b981','#60a5fa','#f472b6','#22d3ee','#f97316','#84cc16']
  const groupColor=(group:OverlayGroup)=>layerDrafts[group.id]?.color||savedRegions[group.id]?.color||overlayColors[group.id]||palette[Math.max(0,overlayGroups.findIndex(item=>item.id===group.id))%palette.length]
@@ -198,16 +198,34 @@ export default function ArchitectureHome({systems,components,flows,processes,cat
     height:points.length?Math.max(...points.map(p=>p.y))-Math.min(...points.map(p=>p.y))+Math.max(110,100+componentRows*43)+42:190,
     color:groupColor(group),members:memberIds}
  }
- const areaNodes=overlayGroups.filter(group=>activeOverlays[group.type]&&!hiddenOverlayGroups.includes(group.id)).map(group=>{
+ const areaNodes=overlayGroups.filter(group=>activeOverlays[group.type]&&!hiddenOverlayGroups.includes(group.id)&&(membersFor(group).length>0||Boolean(savedRegions[group.id]||layerDrafts[group.id]))).map(group=>{
    const initial=defaultDraftFor(group)
    const memberIds=initial.members
    const area=layerDrafts[group.id]||savedRegions[group.id]||initial
    const color=groupColor(group)
    return {id:'overlay:'+group.id,type:'layerRegion',position:{x:area.x,y:area.y},width:area.width,height:area.height,
-     data:{name:group.name,count:memberIds.length,editing:editingLayers&&canEditLayers,resize:(value:{x:number;y:number;width:number;height:number})=>updateDraft(group.id,value,initial)},
-     draggable:editingLayers&&canEditLayers,selectable:editingLayers&&canEditLayers,connectable:false,zIndex:-10,
+     data:{name:group.name,count:memberIds.length,editing:editingLayers&&canEditLayers&&layerTool==='move',resize:(value:{x:number;y:number;width:number;height:number})=>updateDraft(group.id,value,initial)},
+     draggable:editingLayers&&canEditLayers&&layerTool==='move',selectable:editingLayers&&canEditLayers&&layerTool!=='draw',connectable:false,zIndex:-10,
      style:{width:area.width,height:area.height,backgroundColor:color+Math.round(overlayOpacity/100*255).toString(16).padStart(2,'0'),border:'2px solid '+color,borderRadius:16,pointerEvents:editingLayers?'auto' as const:'none' as const,boxShadow:'none'}}
  })
+ const drawRegion=(rect:RegionRect)=>{
+   if(!editingLayers||!canEditLayers)return
+   const group=overlayGroups.find(item=>item.id===selectedOverlayGroup)
+   if(!group)return
+   const base=layerDrafts[group.id]||savedRegions[group.id]||defaultDraftFor(group)
+   updateDraft(group.id,rect,base)
+   setActiveOverlays(current=>({...current,[group.type]:true}))
+   setHiddenOverlayGroups(current=>current.filter(id=>id!==group.id))
+   setLayerTool('move')
+ }
+ const selectedRegion=overlayGroups.find(group=>group.id===selectedOverlayGroup)
+ const regionDraft=selectedRegion?(layerDrafts[selectedRegion.id]||savedRegions[selectedRegion.id]||defaultDraftFor(selectedRegion)):null
+ const updateRegionField=(field:'x'|'y'|'width'|'height',raw:number)=>{
+   if(!selectedRegion||!regionDraft||!Number.isFinite(raw))return
+   const value=(field==='width'?Math.max(140,raw):field==='height'?Math.max(80,raw):raw)
+   updateDraft(selectedRegion.id,{[field]:value},regionDraft)
+ }
+
  const componentNodes=layers.components?components.filter(c=>visibleIds.has(c.system_id)).flatMap(c=>{
    const group=components.filter(item=>item.system_id===c.system_id)
    const index=group.findIndex(item=>item.id===c.id)

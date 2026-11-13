@@ -278,7 +278,7 @@ export default function ArchitectureHome({systems,components,flows,processes,cat
      <button type="button" onClick={()=>{setEditingLayers(true);setLayerTool('select');setLayerError('');setSelectedOverlayGroup(old=>old||overlayGroups[0]?.id||'')}}>Редактировать области</button>
    </div>}
    {editingLayers&&<span role="status" className="homeLayerHint">Режим редактора: инструменты слева, свойства выбранной области справа.</span>}
-   {layerError&&<p role="alert">{layerError}</p>
+   {layerError&&<p role="alert">{layerError}</p>}
    <label><input type="checkbox" checked={layers.components} onChange={e=>setLayers(old=>({...old,components:e.target.checked}))}/> Показать ВМ и компоненты</label>
    <span className="homeLayerHint">Объекты остаются на месте; переключаются только цветные области принадлежности.</span>
    <label className="homeLayerOpacity">Прозрачность заливки <input aria-label="Насыщенность слоёв" type="range" min="5" max="55" value={overlayOpacity} onChange={e=>setOverlayOpacity(Number(e.target.value))}/></label>

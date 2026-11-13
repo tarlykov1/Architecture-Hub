@@ -90,6 +90,14 @@ export default function ArchitectureHome({systems,components,flows,processes,cat
  const [editingLayers,setEditingLayers]=useState(false)
  const [layerTool,setLayerTool]=useState<LayerTool>('select')
  const [fitTrigger,setFitTrigger]=useState(0)
+ useEffect(()=>{
+   if(!editingLayers)return
+   const onKey=(event:KeyboardEvent)=>{
+     if(event.key==='Escape'&&layerTool!=='select'){setLayerTool('select');event.preventDefault()}
+   }
+   window.addEventListener('keydown',onKey)
+   return()=>window.removeEventListener('keydown',onKey)
+ },[editingLayers,layerTool])
  const [layerBusy,setLayerBusy]=useState(false)
  const [layerError,setLayerError]=useState('')
  const [layerApiReady,setLayerApiReady]=useState(false)
@@ -205,7 +213,7 @@ export default function ArchitectureHome({systems,components,flows,processes,cat
    const color=groupColor(group)
    return {id:'overlay:'+group.id,type:'layerRegion',position:{x:area.x,y:area.y},width:area.width,height:area.height,
      data:{name:group.name,count:memberIds.length,editing:editingLayers&&canEditLayers&&layerTool==='move',resize:(value:{x:number;y:number;width:number;height:number})=>updateDraft(group.id,value,initial)},
-     draggable:editingLayers&&canEditLayers&&layerTool==='move',selectable:editingLayers&&canEditLayers&&layerTool!=='draw',connectable:false,zIndex:-10,
+     draggable:editingLayers&&canEditLayers&&layerTool==='move',selectable:editingLayers&&canEditLayers&&layerTool!=='draw',connectable:false,zIndex:editingLayers?0:-10,
      style:{width:area.width,height:area.height,backgroundColor:color+Math.round(overlayOpacity/100*255).toString(16).padStart(2,'0'),border:'2px solid '+color,borderRadius:16,pointerEvents:editingLayers?'auto' as const:'none' as const,boxShadow:'none'}}
  })
  const drawRegion=(rect:RegionRect)=>{
@@ -266,12 +274,10 @@ export default function ArchitectureHome({systems,components,flows,processes,cat
     <button type="button" aria-pressed={!activeOverlays.business&&!activeOverlays.network} onClick={()=>setActiveOverlays({business:false,network:false})}>Без областей</button>
    </div>
    <strong>Области на схеме</strong>
-   {canEditLayers&&layerApiReady&&<div className="homeLayerEditActions">
-    {!editingLayers?<button type="button" onClick={()=>{setEditingLayers(true);setLayerError('')}}>Редактировать области</button>:<>
-     <button type="button" className="primary" disabled={layerBusy||!Object.keys(layerDrafts).length} onClick={()=>void saveLayerChanges()}>{layerBusy?'Сохранение…':'Сохранить области'}</button>
-     <button type="button" disabled={layerBusy} onClick={cancelLayerChanges}>Отменить</button>
-    </>}
+   {canEditLayers&&layerApiReady&&!editingLayers&&<div className="homeLayerEditActions">
+     <button type="button" onClick={()=>{setEditingLayers(true);setLayerTool('select');setLayerError('');setSelectedOverlayGroup(old=>old||overlayGroups[0]?.id||'')}}>Редактировать области</button>
    </div>}
+   {editingLayers&&<span role="status" className="homeLayerHint">Режим редактора: инструменты слева, свойства выбранной области справа.</span>}
    {layerError&&<p role="alert">{layerError}</p>
    <label><input type="checkbox" checked={layers.components} onChange={e=>setLayers(old=>({...old,components:e.target.checked}))}/> Показать ВМ и компоненты</label>
    <span className="homeLayerHint">Объекты остаются на месте; переключаются только цветные области принадлежности.</span>
@@ -294,9 +300,9 @@ export default function ArchitectureHome({systems,components,flows,processes,cat
     </div>)}
     {filteredSystems.length>12&&<small>Показаны первые 12 систем. Уточните запрос.</small>}
   </div>}
-  {layers.systems&&<div className="homeMapGraph"><ReactFlow minZoom={0.08} nodes={canvasNodes} edges={edges} nodeTypes={homeNodeTypes} nodesDraggable={editingLayers&&canEditLayers}
+  {layers.systems&&<div className="homeMapGraph"><ReactFlow minZoom={0.08} nodes={canvasNodes} edges={edges} nodeTypes={homeNodeTypes} nodesDraggable={editingLayers&&canEditLayers&&layerTool==='move'}
    onNodesChange={(changes:NodeChange[])=>{
-    if(!editingLayers||!canEditLayers)return
+    if(!editingLayers||!canEditLayers||layerTool!=='move')return
     for(const change of changes){
      if(change.type!=='position'||!change.position||!change.id.startsWith('overlay:'))continue
      const key=change.id.slice(8)
@@ -304,7 +310,7 @@ export default function ArchitectureHome({systems,components,flows,processes,cat
      const group=overlayGroups.find(item=>item.id===key)
      if(node&&group)updateDraft(key,change.position,{x:node.position.x,y:node.position.y,width:node.width,height:node.height,color:groupColor(group),members:membersFor(group)})
     }
-   } onNodeDragStop={(_,node)=>{if(!node.id.startsWith('overlay:'))return;const key=node.id.slice(8);const region=areaNodes.find(item=>item.id===node.id);const group=overlayGroups.find(item=>item.id===key);if(region&&group)updateDraft(key,node.position,{x:region.position.x,y:region.position.y,width:region.width,height:region.height,color:groupColor(group),members:membersFor(group)})}} fitView fitViewOptions={{padding:0.15,minZoom:0.3,maxZoom:1}} nodesConnectable={false} onNodeClick={(_,node)=>{if(node.id.startsWith('component:')){onOpenComponent(node.id.slice('component:'.length));return}if(node.id.startsWith('overlay:')){setSelectedOverlayGroup(node.id.slice(8));return}setSelectedSystem(node.id);onOpenSystem(node.id)}} onPaneClick={()=>{setSelectedSystem('');onCloseSystem()}}><AutoFit layoutKey={inspectorOpen?'inspector-open':'inspector-closed'} ignoreNodePrefixes="overlay:,component:" focusIds={filteredSystems.map(s=>s.id)} suspended={editingLayers}/><Background gap={20}/><Controls showInteractive={false}/></ReactFlow></div>}
+   } onNodeDragStop={(_,node)=>{if(layerTool!=='move'||!node.id.startsWith('overlay:'))return;const key=node.id.slice(8);const region=areaNodes.find(item=>item.id===node.id);const group=overlayGroups.find(item=>item.id===key);if(region&&group)updateDraft(key,node.position,{x:region.position.x,y:region.position.y,width:region.width,height:region.height,color:groupColor(group),members:membersFor(group)})}} fitView fitViewOptions={{padding:0.15,minZoom:0.3,maxZoom:1}} nodesConnectable={false} onNodeClick={(_,node)=>{if(node.id.startsWith('component:')){onOpenComponent(node.id.slice('component:'.length));return}if(node.id.startsWith('overlay:')){setSelectedOverlayGroup(node.id.slice(8));return}setSelectedSystem(node.id);onOpenSystem(node.id)}} onPaneClick={()=>{setSelectedSystem('');onCloseSystem()}}><AutoFit layoutKey={inspectorOpen?'inspector-open':'inspector-closed'} ignoreNodePrefixes="overlay:,component:" focusIds={filteredSystems.map(s=>s.id)} suspended={editingLayers}/><Background gap={20}/><Controls showInteractive={false}/></ReactFlow></div>}
   {!layers.systems&&<div className="homeMapEmpty">Включите слой «Информационные системы», чтобы показать карту связей.</div>}
   {selectedOverlayGroup&&focusedLayer&&<div className="homeLayerMembers" role="status"><strong>{focusedLayer.name}</strong><span>В этой области: {membersFor(focusedLayer).map(id=>systems.find(sys=>sys.id===id)?.name||id).join(', ')}</span><button type="button" onClick={()=>setSelectedOverlayGroup('')}>Снять выделение</button></div>}
   {editingLayers&&focusedLayer&&<section className="homeLayerMemberEditor" aria-label="Состав области">

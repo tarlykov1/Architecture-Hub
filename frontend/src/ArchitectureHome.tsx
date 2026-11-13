@@ -266,7 +266,7 @@ export default function ArchitectureHome({systems,components,flows,processes,cat
   <div className="homeMapMode" role="group" aria-label="Тип связей на архитектурной карте">
     {([['business','Бизнес-связи'],['flows','Потоки данных'],['networks','Сети и зоны']] as const).map(([id,label])=><button key={id} type="button" aria-pressed={mapMode===id} className={mapMode===id?'current':''} onClick={()=>setMapMode(id)}>{label}</button>)}
    </div>
-  <div className="homeLayerToolbar" role="group" aria-label="Накладываемые слои">
+  {!editingLayers&&<div className="homeLayerToolbar" role="group" aria-label="Накладываемые слои">
    <div className="homeLayerPresets" role="group" aria-label="Режим архитектурных областей">
     <button type="button" aria-pressed={activeOverlays.business&&!activeOverlays.network} onClick={()=>setActiveOverlays({business:true,network:false})}>Бизнес-слой</button>
     <button type="button" aria-pressed={!activeOverlays.business&&activeOverlays.network} onClick={()=>setActiveOverlays({business:false,network:true})}>Сетевой слой</button>
@@ -286,7 +286,7 @@ export default function ArchitectureHome({systems,components,flows,processes,cat
     <input type="checkbox" aria-label={'Показать область '+group.name} checked={!hiddenOverlayGroups.includes(group.id)} onChange={e=>setHiddenOverlayGroups(old=>e.target.checked?old.filter(id=>id!==group.id):[...old,group.id])}/>
     <input aria-label={'Цвет слоя '+group.name} type="color" value={groupColor(group)} onChange={e=>editingLayers&&canEditLayers?updateDraft(group.id,{color:e.target.value},layerDrafts[group.id]||savedRegions[group.id]||defaultDraftFor(group)):setOverlayColors(old=>({...old,[group.id]:e.target.value}))}/><button type="button" aria-pressed={selectedOverlayGroup===group.id} onClick={()=>{setSelectedOverlayGroup(old=>old===group.id?'':group.id);setActiveOverlays(old=>({...old,[group.type]:true}))}}>{group.name}</button><small>{membersFor(group).length} ИС · {group.type==='business'?'Бизнес':'Сети'}</small>
    </label>)}</div></details>
-  </div>
+  </div>}
   <div className="homeMapTools"><input aria-label="Поиск на карте" value={query} onChange={e=>setQuery(e.target.value)} placeholder="Найти ИС или компонент…"/><Disclosure label="Фильтры и слои"><select aria-label="Контур карты" value={environment} onChange={e=>setEnvironment(e.target.value)}><option value="all">Все контуры</option>{environments.map(e=><option key={e} value={e}>{e}</option>)}</select><select aria-label="Фокус на ИС" value={focus} onChange={e=>setFocus(e.target.value)}><option value="">Все системы</option>{systems.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select>
   <details className="homeMapLayersDisclosure"><summary>Слои карты <span aria-hidden="true">▾</span></summary><div className="homeMapLayers" aria-label="Слои карты">{([['systems','Информационные системы'],['business','Бизнес-процессы'],['networks','Сетевые объекты']] as const).map(([key,label])=><label key={key}><input type="checkbox" checked={layers[key]} onChange={e=>setLayers(old=>({...old,[key]:e.target.checked}))}/>{label}</label>)}</div></details></Disclosure></div>
   {query.trim()&&<div className="homeMapSearchMatches" role="region" aria-label="Результаты поиска по архитектуре">

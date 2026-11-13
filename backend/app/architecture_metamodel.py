@@ -60,3 +60,58 @@ def logical_relation_validation_error(kind: str, source_kind: str, target_kind: 
     if source_kind != definition["source_kind"] or target_kind != definition["target_kind"]:
         return "Логическая связь ИС допускает только две информационные системы (kind=system)."
     return None
+
+
+def summarize_legacy_relations(
+    object_kinds: dict[str, str], relations: list[dict[str, str]],
+) -> dict[str, Any]:
+    """Read-only migration inventory; never rewrite existing IDs or links.
+
+    Examples are capped so the diagnostic endpoint remains bounded and
+    independent of the text/content of real architecture passports.
+    """
+    object_counts: dict[str, int] = {}
+    for kind in object_kinds.values():
+        object_counts[kind] = object_counts.get(kind, 0) + 1
+
+    relation_counts: dict[str, int] = {}
+    problems: dict[str, int] = {
+        "unknown_kind": 0, "invalid_endpoints": 0,
+        "orphan_endpoints": 0, "duplicate_direction": 0,
+        "deprecated_data_flow": 0,
+    }
+    samples: list[dict[str, str]] = []
+    seen: set[tuple[str, str, str]] = set()
+    for relation in relations:
+        kind, source, target = (
+            relation["kind"], relation["source_id"], relation["target_id"]
+        )
+        relation_counts[kind] = relation_counts.get(kind, 0) + 1
+        issues: list[str] = []
+        if kind not in _BY_KIND:
+            issues.append("unknown_kind")
+        if source not in object_kinds or target not in object_kinds:
+            issues.append("orphan_endpoints")
+        elif kind in _BY_KIND and logical_relation_validation_error(
+            kind, object_kinds[source], object_kinds[target]
+        ):
+            issues.append("invalid_endpoints")
+        signature = (kind, source, target)
+        if signature in seen:
+            issues.append("duplicate_direction")
+        seen.add(signature)
+        if kind == "data_flow":
+            issues.append("deprecated_data_flow")
+        for issue in issues:
+            problems[issue] += 1
+        if issues and len(samples) < 20:
+            samples.append({"relation_id": relation["id"], "issues": ",".join(issues)})
+    return {
+        "objects": len(object_kinds),
+        "relations": len(relations),
+        "object_kinds": dict(sorted(object_counts.items())),
+        "relation_kinds": dict(sorted(relation_counts.items())),
+        "issues": problems,
+        "samples": samples,
+        "read_only": True,
+    }

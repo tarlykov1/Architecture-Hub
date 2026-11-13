@@ -1117,7 +1117,7 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
        }}>
          <option value="">Выберите поток для редактирования ({selectableFlows.length})</option>
          {selectableFlows.slice().sort((a,b)=>a.name.localeCompare(b.name,'ru')).map(flow=><option key={flow.id} value={flow.id}>
-           {flow.name||'Без названия'} · {allVMs.find(vm=>vm.id===flow.source_id)?.name||'Источник'} → {allVMs.find(vm=>vm.id===flow.target_id)?.name||'Получатель'}
+           {flow.name||'Без названия'} · {allVMs.find(vm=>vm.id===flow.source_id)?.name||'Источник'} → {allVMs.find(vm=>vm.id===flow.target_id)?.name||'Получатель'} · {[flow.protocol,flow.port].filter(Boolean).join(':')||'протокол не указан'} · {flow.id.slice(0,8)}
          </option>)}
        </select>
      </label>

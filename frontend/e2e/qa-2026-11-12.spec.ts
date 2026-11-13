@@ -203,6 +203,8 @@ test('Architecture regions save selected IS membership and color in server stora
  await page.goto('/')
  const map=page.getByRole('region',{name:'Главная карта архитектуры'})
  await map.getByRole('button',{name:'Редактировать области'}).click()
+ const fixedSystem=map.locator('.react-flow__node').filter({hasText:'Layer owner '+suffix}).first()
+ await expect(fixedSystem).toHaveAttribute('class',/react-flow__node/)
  await map.getByRole('button',{name:'Layer category '+suffix}).click()
  const editor=map.getByRole('region',{name:'Состав области'})
  await expect(editor).toBeVisible()

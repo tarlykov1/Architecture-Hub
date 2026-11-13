@@ -923,3 +923,21 @@ button:disabled{cursor:not-allowed;opacity:.55}
 .homeMapModeHint{font-size:12px;color:#64748b;margin:0}
 .homeMapGraph{height:clamp(360px,65vh,760px);min-height:360px}
 @media(max-width:650px){.homeMapMode{width:100%;display:grid;grid-template-columns:repeat(3,minmax(0,1fr))}.homeMapMode>button{font-size:11px;padding:9px 4px;white-space:normal}.homeMapGraph{height:60vh;min-height:330px}}
+
+/* Composable semantic group overlays on the stable architecture coordinate plane. */
+.homeLayerToolbar{display:flex;flex-wrap:wrap;align-items:center;gap:10px 16px;padding:9px 12px;border:1px solid #dce5ef;border-radius:10px;background:#fff}
+.homeLayerToolbar>strong{font-size:12px;color:#334155}
+.homeLayerToolbar>label{display:inline-flex;align-items:center;gap:6px;font-size:13px;white-space:nowrap;color:#334155}
+.homeLayerToolbar input[type="checkbox"]{accent-color:#2563eb}
+.homeLayerToolbar .homeLayerOpacity{font-size:12px;color:#64748b}
+.homeLayerOpacity input{width:95px;accent-color:#2563eb}
+.homeLayerToolbar>details{position:relative;font-size:12px}
+.homeLayerToolbar>details>summary{cursor:pointer;padding:5px 8px;border:1px solid #dce5ef;border-radius:6px}
+.homeLayerColorList{position:absolute;top:100%;right:0;z-index:50;display:grid;gap:6px;min-width:240px;max-height:280px;overflow:auto;padding:10px;background:#fff;border:1px solid #dce5ef;box-shadow:0 8px 24px #0f172a26;border-radius:8px}
+.homeLayerColorList label{display:flex;align-items:center;gap:9px;white-space:nowrap;font-size:12px}
+.homeLayerColorList label span{flex:1;overflow:hidden;text-overflow:ellipsis}
+.homeLayerColorList label small{color:#64748b}
+.homeLayerColorList input[type="color"]{width:30px;height:26px;border:0;padding:0;cursor:pointer}
+.homeLayerRegionLabel{font-size:13px;font-weight:700;display:flex;gap:8px;align-items:center;white-space:nowrap;opacity:.95;color:#0f172a}
+.homeLayerRegionLabel small{font-size:11px;font-weight:500}
+@media(max-width:650px){.homeLayerToolbar{align-items:flex-start}.homeLayerToolbar>strong{width:100%}.homeLayerToolbar>details{margin-left:auto}.homeLayerColorList{right:0;max-width:calc(100vw - 30px)}}

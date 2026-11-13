@@ -184,3 +184,37 @@ test('Architecture overlay layers overlap without moving system and VM nodes',as
  await mode.getByRole('button',{name:'Без областей'}).click()
  expect(await map.locator('.react-flow__node').filter({hasText:'DEMO-WEB-01'}).first().getAttribute('style')).toBe(componentPositions)
 })
+
+test('Architecture regions save selected IS membership and color in server storage',async({page})=>{
+ await page.addInitScript(()=>sessionStorage.setItem('architecture-hub:access-token:session','browser-ci-development-token'))
+ const suffix=String(Date.now())
+ const base='http://127.0.0.1:8001'
+ const system=await page.request.post(base+'/api/objects',{data:{name:'Layer owner '+suffix,kind:'system'}})
+ expect(system.status()).toBe(201)
+ const systemId=(await system.json()).id as string
+ const category=await page.request.post(base+'/api/business/categories',{data:{name:'Layer category '+suffix}})
+ expect(category.status()).toBe(201)
+ const categoryId=(await category.json()).id as string
+ const process=await page.request.post(base+'/api/business/processes',{data:{name:'Layer process '+suffix,category_id:categoryId}})
+ expect(process.status()).toBe(201)
+ const processId=(await process.json()).id as string
+ const link=await page.request.post(base+'/api/business/system-links',{data:{process_id:processId,system_id:systemId,role:'consumer'}})
+ expect(link.status()).toBe(201)
+ await page.goto('/')
+ const map=page.getByRole('region',{name:'Главная карта архитектуры'})
+ await map.getByRole('button',{name:'Редактировать области'}).click()
+ await map.getByRole('button',{name:'Layer category '+suffix}).click()
+ const editor=map.getByRole('region',{name:'Состав области'})
+ await expect(editor).toBeVisible()
+ await expect(editor.getByRole('checkbox',{name:'Layer owner '+suffix})).toBeChecked()
+ await editor.getByRole('checkbox',{name:'Layer owner '+suffix}).uncheck()
+ await map.getByRole('button',{name:'Сохранить области'}).click()
+ await expect(map.getByRole('button',{name:'Редактировать области'})).toBeVisible()
+ const response=await page.request.get(base+'/api/diagrams/layer-regions')
+ expect(response.status()).toBe(200)
+ const area=(await response.json() as Array<{group_key:string;members:string[]}>).find(item=>item.group_key==='business:'+categoryId)
+ expect(area).toBeTruthy()
+ expect(area?.members).not.toContain(systemId)
+ await page.reload()
+ await expect(map.getByRole('button',{name:'Редактировать области'})).toBeVisible()
+})

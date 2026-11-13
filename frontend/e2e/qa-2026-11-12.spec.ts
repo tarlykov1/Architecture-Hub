@@ -82,3 +82,69 @@ test('AH-02: clicking the connection label selects the flow, not its network con
   .getByLabel('Название потока')).toHaveValue('QA labelled exchange '+suffix)
  await expect(dock.getByText('QA network '+suffix,{exact:false})).toHaveCount(0)
 })
+
+const demoSystem='11111111-1111-4111-8111-111111111111'
+
+test('AH-QA-001/002: guest can open both CMDB tabs and close the VM card',async({page})=>{
+ const exceptions:string[]=[]
+ page.on('pageerror',error=>exceptions.push(error.message))
+ await page.goto('/components?system='+demoSystem)
+ const vm=page.getByRole('row').filter({hasText:'DEMO-WEB-01'})
+ await vm.getByRole('button',{name:'Открыть',exact:true}).click()
+ const card=page.getByRole('dialog',{name:'Карточка компонента DEMO-WEB-01'})
+ for(const tab of ['Влияние CMDB','Управление КЕ']){
+  await card.getByRole('tab',{name:tab,exact:true}).click()
+  await expect(card.getByText(/Войдите, чтобы посмотреть/)).toBeVisible()
+ }
+ await card.getByRole('button',{name:'Закрыть',exact:false}).first().click()
+ await expect(card).toHaveCount(0)
+ await expect(vm).toBeVisible()
+ expect(exceptions).toEqual([])
+})
+
+test('AH-QA-003/004: passport link survives reload and empty search can be reset',async({page})=>{
+ await page.goto('/systems')
+ const registry=page.getByRole('table')
+ await expect(registry.getByRole('button',{name:'Паспорт',exact:true})).toHaveCount(2)
+ await registry.getByRole('row').filter({hasText:'Демо: портал сотрудников'}).getByRole('button',{name:'Паспорт'}).click()
+ const passport=page.getByRole('complementary',{name:'Карточка архитектурного объекта'})
+ await passport.getByRole('button',{name:'Развернуть карточку'}).click()
+ await expect(page).toHaveURL('/systems?passport='+demoSystem+'&expanded=1')
+ await page.reload()
+ await expect(passport.getByRole('heading',{name:'Демо: портал сотрудников'})).toBeVisible()
+ await expect(passport.getByRole('button',{name:'Свернуть карточку'})).toBeVisible()
+ await page.goBack()
+ await expect(page).toHaveURL('/systems')
+ await expect(passport).toHaveCount(0)
+ await page.getByRole('textbox',{name:'Фильтр по названию'}).fill('QA-WORK-ABSENT')
+ await expect(registry.getByRole('status')).toHaveText('Системы не найдены.')
+ await page.getByRole('button',{name:'Сбросить',exact:true}).click()
+ await expect(registry.getByRole('button',{name:'Паспорт',exact:true})).toHaveCount(2)
+})
+
+test('AH-QA-005/006: opening a flow fits both endpoints and a guest can discard local edits',async({page})=>{
+ await page.setViewportSize({width:1363,height:936})
+ await page.goto('/flows?system='+demoSystem)
+ await page.getByRole('button',{name:'Редактор схемы',exact:true}).click()
+ const editor=page.getByRole('region',{name:'Редактор архитектурной схемы'})
+ await editor.getByRole('button',{name:'Выбрать поток HTTPS:443'}).click()
+ const dock=editor.getByRole('complementary',{name:'Свойства и изменения схемы'})
+ const flow=dock.getByRole('form',{name:'Редактирование существующего потока'})
+ await expect(flow).toBeVisible()
+ await expect.poll(async()=>editor.locator('.boardCanvas').evaluate(canvas=>{
+  const bounds=canvas.getBoundingClientRect()
+  const nodes=Array.from(canvas.querySelectorAll('.react-flow__node-boardComponent'))
+  return nodes.length===2&&nodes.every(node=>{
+   const rect=node.getBoundingClientRect()
+   return rect.left>=bounds.left&&rect.right<=bounds.right&&rect.top>=bounds.top&&rect.bottom<=bounds.bottom
+  })
+ })).toBe(true)
+ await flow.getByLabel('Порт',{exact:true}).fill('444')
+ await flow.getByRole('button',{name:'Добавить изменение в черновик'}).click()
+ await expect(dock.getByText('Для проверки и сохранения изменений войдите по паролю.')).toBeVisible()
+ await expect(dock.getByLabel('Причина изменений')).toHaveCount(0)
+ await expect(dock.getByRole('button',{name:/Проверить изменения/})).toHaveCount(0)
+ page.once('dialog',dialog=>dialog.accept())
+ await dock.getByRole('button',{name:'Отменить черновик'}).click()
+ await expect(editor.getByRole('button',{name:'Черновик: 0 изменений'})).toBeDisabled()
+})

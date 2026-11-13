@@ -30,7 +30,7 @@ import {ReciprocalEdge} from './ReciprocalEdge'
 import {ObstacleAwareEdge} from './ObstacleAwareEdge'
 import {ReadonlyFlowNode,autoFlowPorts,type FlowPortPair} from './flowPorts'
 
-import {AutoFit, Disclosure, useWorkspaceKeyboard} from './WorkspaceUI'
+import {AutoFit, Disclosure, InspectorErrorBoundary, useWorkspaceKeyboard} from './WorkspaceUI'
 
 type Obj = { id: string; kind: string; name: string; description: string; status: string; attributes: Record<string, unknown> }
 type Rel = { id: string; source_id: string; target_id: string; kind: string; description: string }
@@ -320,9 +320,9 @@ function App() {
   const [kbLoading,setKbLoading]=useState(false)
   const [kbMessage,setKbMessage]=useState('')
   const [panelTab,setPanelTab] = useState<'overview'|'components'|'flows'|'monitoring'|'knowledge'|'incidents'|'edit'>('overview')
-  const [inspectorOpen,setInspectorOpen] = useState(false)
+  const [inspectorOpen,setInspectorOpen] = useState(()=>Boolean(parseWorkspaceRoute(window.location).passportId))
   const [viewsMenuOpen,setViewsMenuOpen] = useState(false)
-  const [inspectorExpanded,setInspectorExpanded] = useState(false)
+  const [inspectorExpanded,setInspectorExpanded] = useState(()=>parseWorkspaceRoute(window.location).passportExpanded)
   // The object inspector is a non-modal drawer: clicking the workspace or
   // pressing Escape dismisses it, while interactions inside keep it open.
   useEffect(()=>{
@@ -331,7 +331,7 @@ function App() {
       // Modal passport editing must not dismiss the underlying IS drawer.
       if(passportEditId)return
       const target=event.target
-      if(!(target instanceof Element)||target.closest('.details, .editorBackdrop, .homeMapSearchMatches button, .react-flow__node, .systemNameLink, .knowledgeWorkspaceList button'))return
+      if(!(target instanceof Element)||target.closest('.details, .editorBackdrop, .homeMapSearchMatches button, .react-flow__node, .systemNameLink, .systemRowActions button, .knowledgeWorkspaceList button'))return
       setInspectorOpen(false)
       setInspectorExpanded(false)
     }
@@ -516,19 +516,22 @@ function App() {
     return ()=>{active=false}
   },[viewSystem,layer,diagramEditMode])
 
+  const [selected, setSelected] = useState(()=>parseWorkspaceRoute(window.location).passportId)
   useEffect(()=>{
     const onPopState=()=>{
       const route=parseWorkspaceRoute(window.location)
       setLayer(route.layer)
       setViewSystem(route.systemId)
-      setInspectorOpen(false)
-      setInspectorExpanded(false)
+      setSelected(route.passportId)
+      setInspectorOpen(Boolean(route.passportId))
+      setInspectorExpanded(route.passportExpanded)
+      setPanelTab('overview')
     }
     window.addEventListener('popstate',onPopState)
     return ()=>window.removeEventListener('popstate',onPopState)
   },[])
   useEffect(()=>{
-    const nextUrl=new URL(workspaceRouteUrl(layer,viewSystem),window.location.origin)
+    const nextUrl=new URL(workspaceRouteUrl(layer,viewSystem,inspectorOpen?selected:'',inspectorExpanded),window.location.origin)
     // Preserve a direct link to a selected VM/flow while bootstrapping Topology.
     // The section router must not erase inspector-specific query parameters
     // before the Topology component can restore its selected object.
@@ -539,8 +542,14 @@ function App() {
       }
     }
     const next=nextUrl.pathname+nextUrl.search
-    if(window.location.pathname+window.location.search!==next)window.history.pushState(null,'',next)
-  },[layer,viewSystem])
+    if(window.location.pathname+window.location.search===next)return
+    const currentRoute=parseWorkspaceRoute(window.location)
+    if(layer==='systems'&&currentRoute.passportId&&currentRoute.passportId===nextUrl.searchParams.get('passport')){
+      window.history.replaceState(null,'',next)
+    }else{
+      window.history.pushState(null,'',next)
+    }
+  },[layer,viewSystem,inspectorOpen,selected,inspectorExpanded])
   const [infraName,setInfraName] = useState('')
   const [infraKind,setInfraKind] = useState('vm')
   const [infraParent,setInfraParent] = useState('')
@@ -557,7 +566,6 @@ function App() {
   const [diagrams, setDiagrams] = useState<Diagram[]>([])
   const [diagramId, setDiagramId] = useState('')
   const [positions, setPositions] = useState<Record<string, { x: number; y: number }>>({})
-  const [selected, setSelected] = useState('')
   const [name, setName] = useState('')
   const [createObjectOpen,setCreateObjectOpen] = useState(false)
   const [kind, setKind] = useState('system')
@@ -656,6 +664,7 @@ function App() {
   }
 
 
+  const registrySystems=objects.filter(o=>!workspaceQuery||[o.name,o.kind,o.status,o.description].join(' ').toLowerCase().includes(workspaceQuery.toLowerCase()))
   const visibleObjects = objects.filter(o=>(!workspaceQuery||[o.name,o.description,o.kind].join(' ').toLowerCase().includes(workspaceQuery.toLowerCase()))&&(workspaceKind==='all'||o.kind===workspaceKind))
   const nodes = useMemo<Node[]>(() => visibleObjects.map((o, i) => ({
     id: o.id,
@@ -1191,8 +1200,8 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
         </ReactFlow>
         {!objects.length && <div className="emptyHint">Создайте систему через меню «Создать». Для изменения связей включите редактирование схемы.</div>}
       </section> : <div className="systemsTableWrap"><table className="systemsTable"><thead><tr><th>Система</th><th>Тип</th><th>Статус</th><th>Компоненты</th><th>Действия</th></tr></thead><tbody>
-          {objects.filter(o=>!workspaceQuery||[o.name,o.kind,o.status,o.description].join(' ').toLowerCase().includes(workspaceQuery.toLowerCase())).map(o=><tr key={o.id}><td><button type="button" className="systemNameLink" onClick={()=>{setSelected(o.id);setInspectorOpen(true);setPanelTab('overview')}}>{o.name}</button>{o.description&&<small className="systemDescription">{o.description}</small>}</td><td>{o.kind||'ИС'}</td><td><span className="tag">{o.status||'Не указан'}</span></td><td>{infra.filter(i=>i.system_id===o.id).length}</td><td><div className="systemRowActions"><button type="button" onClick={()=>{setSelected(o.id);setInspectorOpen(true);setPanelTab('overview')}}>Паспорт</button><button type="button" onClick={()=>{setViewSystem(o.id);setComponentView('diagram');setLayer('infrastructure');setInspectorOpen(false)}}>Компоненты</button></div></td></tr>)}
-          {!objects.length&&<tr><td colSpan={5}>Информационные системы пока не добавлены.</td></tr>}
+          {registrySystems.map(o=><tr key={o.id}><td><button type="button" className="systemNameLink" onClick={()=>{setSelected(o.id);setInspectorOpen(true);setPanelTab('overview')}}>{o.name}</button>{o.description&&<small className="systemDescription">{o.description}</small>}</td><td>{o.kind||'ИС'}</td><td><span className="tag">{o.status||'Не указан'}</span></td><td>{infra.filter(i=>i.system_id===o.id).length}</td><td><div className="systemRowActions"><button type="button" onClick={()=>{setSelected(o.id);setInspectorOpen(true);setPanelTab('overview')}}>Паспорт</button><button type="button" onClick={()=>{setViewSystem(o.id);setComponentView('diagram');setLayer('infrastructure');setInspectorOpen(false)}}>Компоненты</button></div></td></tr>)}
+          {!registrySystems.length&&<tr><td colSpan={5} role="status">{workspaceQuery?'Системы не найдены.':'Информационные системы пока не добавлены.'}</td></tr>}
         </tbody></table></div>}
       </section> : <section className="infraPanel">
         {drill && <button onClick={()=>{setViewSystem("");setLayer("systems")}}>← К общей карте</button>}
@@ -1223,7 +1232,7 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
           </div>}
           {drill && <div className="graphModeHint" role="status">{effectiveComponentGroupMode?'Сгруппированная схема только для просмотра. Чтобы редактировать связи, выберите «Все компоненты».':diagramEditMode?'Режим редактирования – перемещайте компоненты, создавайте потоки и сети на схеме; операции сохраняются после проверки и подтверждения.':'Режим просмотра – схема защищена от случайных соединений. Для изменения связей нажмите «Редактировать схему».'}</div>}
           {drill && effectiveComponentGroupMode&&<div className="componentGroupBar" role="status">{isComponentGroupOverview?`Группы: ${displayedComponentCount} · компонентов: ${scopedItems.length} · потоки между группами: ${groupedComponents?.edges.reduce((n,e)=>n+e.count,0)||0}`:`Группа: ${groupedComponents?.nodes.find(group=>group.id===expandedComponentGroup)?.label||'Неизвестная'} · компонентов: ${displayedComponentCount}`}{expandedComponentGroup&&<button type="button" onClick={()=>{setExpandedComponentGroup('');setFocusedComponent('');setImpactMode(false)}}>← Ко всем группам</button>}</div>}
-          {drill&&diagramEditMode&&!effectiveComponentGroupMode&&<ArchitectureBoard key={viewSystem} onDraftStateChange={setBoardHasPendingChanges} systemId={viewSystem} ownerName={objects.find(o=>o.id===viewSystem)?.name||''} ownerBySystemId={Object.fromEntries(objects.map(o=>[o.id,o.name]))} items={infra.filter(i=>i.system_id===viewSystem)} networks={segments} interfaces={nics} flows={flows} savedPositions={componentCanvasPositions[viewSystem]||{}} onPositionChange={node=>moveComponentOnCanvas(viewSystem,node)} request={request} onEditNetwork={id=>{const segment=segments.find(n=>n.id===id);if(segment)editNetwork(segment)}} onCommitted={async()=>{setInfra(await request<Infra[]>('/api/infra'));setFlows(await request<Flow[]>('/api/flows'));setSegments(await request<Segment[]>('/api/networks'));setNics(await request<Nic[]>('/api/network-interfaces'))}}/>}
+          {drill&&diagramEditMode&&!effectiveComponentGroupMode&&<ArchitectureBoard demoMode={!tokenReady} key={viewSystem} onDraftStateChange={setBoardHasPendingChanges} systemId={viewSystem} ownerName={objects.find(o=>o.id===viewSystem)?.name||''} ownerBySystemId={Object.fromEntries(objects.map(o=>[o.id,o.name]))} items={infra.filter(i=>i.system_id===viewSystem)} networks={segments} interfaces={nics} flows={flows} savedPositions={componentCanvasPositions[viewSystem]||{}} onPositionChange={node=>moveComponentOnCanvas(viewSystem,node)} request={request} onEditNetwork={id=>{const segment=segments.find(n=>n.id===id);if(segment)editNetwork(segment)}} onCommitted={async()=>{setInfra(await request<Infra[]>('/api/infra'));setFlows(await request<Flow[]>('/api/flows'));setSegments(await request<Segment[]>('/api/networks'));setNics(await request<Nic[]>('/api/network-interfaces'))}}/>}
           {drill && (!diagramEditMode||!!effectiveComponentGroupMode) && <div className="miniArchitecture" data-active-graph="infrastructure"><ReactFlow minZoom={0.08} maxZoom={renderedDrillNodes.length<=2?0.85:1.2} fitViewOptions={{padding:0.22,maxZoom:renderedDrillNodes.length<=2?0.85:1.2}} key={drill.id+viewMode+(effectiveComponentGroupMode||'components')+expandedComponentGroup} nodes={renderedDrillNodes} edges={renderedDrillEdges} nodeTypes={{readonlyFlowNode:ReadonlyFlowNode}} edgeTypes={{reciprocal:ReciprocalEdge,'obstacle-aware':ObstacleAwareEdge}} onNodeClick={(_,node)=>{if(isComponentGroupOverview){setExpandedComponentGroup(node.id);setFocusedComponent('');setImpactMode(false)}else if(diagramEditMode&&componentCanvasTool==='connect'&&!effectiveComponentGroupMode){if(connectionStart&&connectionStart!==node.id){connectComponents({source:connectionStart,target:node.id,sourceHandle:null,targetHandle:null});setConnectionStart('')}else setConnectionStart(node.id)}else {setFocusedComponent(node.id);setComponentInspectId(node.id);setComponentInspectTab('passport')}}} onPaneClick={()=>{setFocusedComponent('');setConnectionStart('')}} onConnect={diagramEditMode&&!effectiveComponentGroupMode?connectComponents:undefined} onEdgeClick={(_,edge)=>{const pairFlows=visibleDrillFlows.filter(f=>f.source_id===edge.source&&f.target_id===edge.target);const flow=pairFlows[0];if(flow){setSelectedFlow(flow.id);setFocusedComponent(flow.source_id);setComponentInspectId(flow.source_id);setComponentInspectTab('flows')}}} fitView nodesConnectable={diagramEditMode&&!effectiveComponentGroupMode} nodesDraggable={diagramEditMode&&!effectiveComponentGroupMode&&componentCanvasTool==='move'} onNodesChange={changes=>{if(!effectiveComponentGroupMode)updateComponentDrag(changes)}} onNodeDragStop={(_,node)=>{if(diagramEditMode&&!effectiveComponentGroupMode)moveComponentOnCanvas(viewSystem,node)}}><AutoFit maxFitZoom={renderedDrillNodes.length<=2?0.85:1.2} layoutKey={viewMode+(effectiveComponentGroupMode||'components')+expandedComponentGroup+JSON.stringify(boardViewLayout)+JSON.stringify(boardViewFlowAnchors)+visibleDrillFlows.map(f=>f.source_id+f.target_id).join('|')}/><Background gap={20}/><Controls showInteractive={false}/></ReactFlow></div>}
           {viewMode==='security'&&<div className="networkZones">{zones.map(z=><article key={z} className="zoneCard"><h3>{segments.find(s=>s.id===z)?.name||z}</h3>{scopedItems.filter(i=>(nics.find(n=>n.item_id===i.id)?.zone_id||String(i.details.security_zone||'Зона неизвестна'))===z).map(i=><button key={i.id} onClick={()=>setSelected(i.system_id)}><strong>{i.name}</strong><small>{nics.filter(n=>n.item_id===i.id).map(n=>n.name+' · '+segmentName(n.vrf_id)+' · '+segmentName(n.vlan_id)).join('; ')||'Сетевой интерфейс не задан'}</small></button>)}</article>)}</div>}
           {viewMode==='security'&&<div className="networkLegend">Цвет стрелки: зелёный – указан тип защиты; оранжевый – неизвестно. Наличие TLS не подтверждает защиту всего маршрута. Неподтверждённые параметры требуют проверки.</div>}
@@ -1360,7 +1369,7 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
           {flowView==='diagram'&&flowEditMode&&(!viewSystem?<section className="diagramEditorEntry" role="region" aria-label="Выбор информационной системы для редактора потоков">
             <h3>Редактор потоков</h3><p>Выберите ИС – на холсте появятся её компоненты и непосредственно связанные компоненты смежных ИС. Изменения сохраняются только после проверки и подтверждения.</p>
             <label>Информационная система <select aria-label="Выбрать ИС для редактора потоков" value={viewSystem} onChange={e=>setViewSystem(e.target.value)}><option value="">Выберите ИС</option>{objects.map(o=><option key={o.id} value={o.id}>{o.name}</option>)}</select></label>
-          </section>:<ArchitectureBoard key={'flow-editor:'+viewSystem} systemId={viewSystem} ownerName={objects.find(o=>o.id===viewSystem)?.name||''} ownerBySystemId={Object.fromEntries(objects.map(o=>[o.id,o.name]))} items={infra.filter(i=>editorFlowNodeIds.has(i.id))} networks={segments} interfaces={nics} flows={flows} savedPositions={componentCanvasPositions[viewSystem]||{}} onPositionChange={node=>moveComponentOnCanvas(viewSystem,node)} request={request} onEditNetwork={id=>{const segment=segments.find(n=>n.id===id);if(segment)editNetwork(segment)}} onCommitted={async()=>{setInfra(await request<Infra[]>('/api/infra'));setFlows(await request<Flow[]>('/api/flows'));setSegments(await request<Segment[]>('/api/networks'));setNics(await request<Nic[]>('/api/network-interfaces'))}}/>)}
+          </section>:<ArchitectureBoard demoMode={!tokenReady} key={'flow-editor:'+viewSystem} systemId={viewSystem} ownerName={objects.find(o=>o.id===viewSystem)?.name||''} ownerBySystemId={Object.fromEntries(objects.map(o=>[o.id,o.name]))} items={infra.filter(i=>editorFlowNodeIds.has(i.id))} networks={segments} interfaces={nics} flows={flows} savedPositions={componentCanvasPositions[viewSystem]||{}} onPositionChange={node=>moveComponentOnCanvas(viewSystem,node)} request={request} onEditNetwork={id=>{const segment=segments.find(n=>n.id===id);if(segment)editNetwork(segment)}} onCommitted={async()=>{setInfra(await request<Infra[]>('/api/infra'));setFlows(await request<Flow[]>('/api/flows'));setSegments(await request<Segment[]>('/api/networks'));setNics(await request<Nic[]>('/api/network-interfaces'))}}/>)}
           {expandedFlowPair&&<section className="expandedFlowPanel" aria-label="Потоки выбранной группы"><div className="expandedFlowHead"><div><strong>Потоки выбранного направления</strong><small>{infra.find(i=>i.id===expandedFlowPair.split('|')[0])?.name||'Источник'} → {infra.find(i=>i.id===expandedFlowPair.split('|')[1])?.name||'Получатель'} · {visibleFlows.filter(f=>f.source_id+'|'+f.target_id===expandedFlowPair).length} связей</small></div><button type="button" onClick={()=>setExpandedFlowPair('')}>Свернуть ×</button></div>{visibleFlows.filter(f=>f.source_id+'|'+f.target_id===expandedFlowPair).map(f=><div className="expandedFlowRow" key={f.id}><button type="button" aria-pressed={selectedFlow===f.id} onClick={()=>setSelectedFlow(f.id)}>{f.name} · {f.protocol||'Протокол не указан'} · {f.port||'порт ?'} · {f.security||'защита не указана'}</button><button type="button" onClick={()=>{setSelectedFlow(f.id);setExpandedFlowPair('');setNetworkPathOpen(false);setFlowDataOpen(true)}}>Атрибуты</button><button type="button" onClick={()=>{setExpandedFlowPair('');editFlow(f)}}>Редактировать</button></div>)}</section>}
 
           {flowView==='cards'&&<div className="infraGrid">{visibleFlows.map(f=><article className="infraCard" key={f.id} role="button" tabIndex={0} aria-pressed={selectedFlow===f.id} onKeyDown={e=>{if(e.target===e.currentTarget&&(e.key==="Enter"||e.key===" ")){e.preventDefault();setSelectedFlow(selectedFlow===f.id?"":f.id)}}} onClick={()=>setSelectedFlow(selectedFlow===f.id?"":f.id)} style={{cursor:"pointer",borderColor:selectedFlow===f.id?"#2563eb":undefined}}>
@@ -1406,7 +1415,7 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
         {panelTab==='components'&&<>{detailItems.map(i=><article className="inspectorItem" key={i.id}><strong>{i.name}</strong><small>{i.kind} · {String(i.details.environment||'—')} · {String(i.details.security_zone||'Зона не указана')}</small></article>)}
           {!detailItems.length&&<p>Компонентов пока нет</p>}</>}
         {panelTab==='flows'&&<><button type="button" className="primary" onClick={()=>{setSystemDataId(detail.id);setInspectorOpen(false)}}>Карта потоков и атрибутов ИС</button>{flows.filter(f=>detailItems.some(i=>i.id===f.source_id||i.id===f.target_id)).map(f=><article className="inspectorItem" key={f.id}><strong>{f.name}</strong><small>{infra.find(i=>i.id===f.source_id)?.name} → {infra.find(i=>i.id===f.target_id)?.name}</small><small>{f.protocol} / {f.security}</small></article>)}</>}
-      </>:<p className="hint">Выберите систему на карте. Двойной клик откроет её внутреннюю архитектуру.</p>}
+      </>:<p className="hint">Система недоступна или ещё загружается.</p>}
       <div className="disclaimer">Architecture Hub · Реестр архитектуры</div>
     </aside></>}
     {kisOpen&&<div className="editorBackdrop" onClick={()=>setKisOpen(false)}><div className="editorDialog" onClick={e=>e.stopPropagation()}>
@@ -1453,8 +1462,10 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
           {componentInspectTab==='network'&&<section><h3>Сетевые интерфейсы</h3>{interfaces.length?interfaces.map(n=><article className="inspectorItem" key={n.id}><strong>{n.name} – {n.ip_address||'IP не указан'}</strong><small>VRF: {segments.find(x=>x.id===n.vrf_id)?.name||'Не указана'} · VLAN: {segments.find(x=>x.id===n.vlan_id)?.name||'Не указан'}</small><small>Зона: {segments.find(x=>x.id===n.zone_id)?.name||'Не указана'}</small></article>):<p>Интерфейсы пока не описаны.</p>}<button type="button" onClick={()=>{setComponentInspectId('');setLayer('topology')}}>Открыть топологию</button></section>}
           {componentInspectTab==='flows'&&<section><div className="componentFlowHeader"><h3>Известные зависимости</h3><button type="button" className="primary" onClick={()=>{editFlow();setFlowSource(component.id);setComponentInspectId('')}}>+ Создать исходящий поток</button><button type="button" onClick={()=>{editFlow();setFlowTarget(component.id);setComponentInspectId('')}}>+ Создать входящий поток</button></div>{connected.length?connected.map(f=>{const outgoing=f.source_id===component.id;const peer=infra.find(i=>i.id===(outgoing?f.target_id:f.source_id));return <article className="inspectorItem" key={f.id}><strong>{outgoing?'→ Исходящий':'← Входящий'}: {peer?.name||'Неизвестный компонент'}</strong><small>{f.name} · {f.protocol||'Протокол не указан'} · {f.port||'Порт не указан'} · {f.verification}</small><button type="button" onClick={()=>{setSelectedFlow(f.id);setComponentInspectId('');setLayer('flows')}}>Открыть поток</button>{peer&&<button type="button" onClick={()=>{setComponentInspectId(peer.id);setComponentInspectTab('passport')}}>Связанный компонент</button>}</article>}):<p>Описанных потоков нет – это не подтверждает отсутствие зависимостей.</p>}</section>}
           {componentInspectTab==='monitoring'&&<MonitoringPanel targetType="component" targetId={component.id} request={request} systems={objects.map(o=>({id:o.id,name:o.name}))}/>}
-          {componentInspectTab==='cmdb'&&<CmdbImpact ciId={'component:'+component.id} request={request} onOpenComponent={id=>{setComponentInspectId(id);setComponentInspectTab('passport');setComponentEditing(false)}}/>}
-           {componentInspectTab==='governance'&&<CmdbRecord ciId={'component:'+component.id} request={request}/>}
+          <InspectorErrorBoundary key={component.id+':'+componentInspectTab}>
+          {componentInspectTab==='cmdb'&&(!tokenReady?<p role="status">Войдите, чтобы посмотреть зависимости CMDB.</p>:<CmdbImpact ciId={'component:'+component.id} request={request} onOpenComponent={id=>{setComponentInspectId(id);setComponentInspectTab('passport');setComponentEditing(false)}}/>)}
+           {componentInspectTab==='governance'&&(!tokenReady?<p role="status">Войдите, чтобы посмотреть паспорт КЕ и историю изменений.</p>:<CmdbRecord ciId={'component:'+component.id} request={request}/>)}
+          </InspectorErrorBoundary>
            {componentInspectTab==='incidents'&&<Incidents readOnly={!canWrite('incidents')} request={request} systems={objects} components={infra} networks={segments} flows={flows} context={{entity_type:'component',entity_id:component.id}}/>}
         </div>
       </div>

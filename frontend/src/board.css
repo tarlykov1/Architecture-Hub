@@ -39,17 +39,19 @@
    nodes cannot be hidden underneath the inspector on desktop. */
 .boardEditorStage{
   --board-height:clamp(510px,calc(100dvh - 240px),860px);
-  position:relative;display:grid;grid-template-columns:minmax(0,1fr);
+  position:relative;display:grid;grid-template-columns:var(--board-tools-width) minmax(0,1fr);grid-template-rows:minmax(0,1fr);
+  --board-tools-width:103px;
   width:100%;height:var(--board-height);min-width:0;
   border:1px solid #dce4ec;border-radius:12px;overflow:hidden;background:#f8fafc;
 }
-.boardEditorStage:has(>.boardDock){grid-template-columns:minmax(0,1fr) minmax(285px,320px)}
+.boardEditorStage:has(>.boardDock){grid-template-columns:var(--board-tools-width) minmax(0,1fr) minmax(285px,320px)}
 .boardEditorStage>.boardCanvas{
-  grid-column:1;grid-row:1;min-width:0;width:100%;height:100%;min-height:0;
+  grid-column:2;grid-row:1;min-width:0;width:100%;height:100%;min-height:0;
   margin:0;border:0;border-radius:0;overflow:hidden;
 }
 .boardEditorStage>.boardTools{
-  position:absolute;z-index:8;top:14px;left:14px;display:flex;flex-direction:column;
+  grid-column:1;grid-row:1;align-self:start;max-height:100%;box-sizing:border-box;
+  z-index:8;display:flex;flex-flow:column nowrap;overflow-y:auto;
   width:50px;padding:6px;gap:4px;border:1px solid #d1dbe7;border-radius:12px;
   background:rgba(255,255,255,.97);box-shadow:0 9px 25px #10253c21;
 }
@@ -66,7 +68,7 @@
 .boardChangeCount{display:grid;place-items:center;min-height:24px;border-radius:7px;
   background:#eff6ff;color:#1d4ed8;font-weight:700;font-size:12px;font-variant-numeric:tabular-nums}
 .boardEditorStage>.boardDock{
-  grid-column:2;grid-row:1;min-width:0;min-height:0;
+  grid-column:3;grid-row:1;min-width:0;min-height:0;
   border-left:1px solid #dce4ec;background:#fff;
   overflow-y:auto;overflow-x:hidden;z-index:7;
 }
@@ -114,15 +116,14 @@
 .boardEditorStage .boardReview button{padding:9px;border-radius:8px}
 .boardEditorStage .boardStatus{margin:10px 17px;font-size:12px;overflow-wrap:anywhere}
 @media(max-width:880px){
-  .boardEditorStage:has(>.boardDock){grid-template-columns:minmax(0,1fr)}
+  .boardEditorStage:has(>.boardDock){grid-template-columns:var(--board-tools-width) minmax(0,1fr)}
   .boardEditorStage>.boardDock{
-    position:absolute;right:0;top:0;bottom:0;width:min(330px,calc(100% - 64px));
+    position:absolute;right:0;top:0;bottom:0;width:min(330px,calc(100% - var(--board-tools-width)));
     box-shadow:-10px 0 35px #10253c24;border-radius:0
   }
 }
 @media(max-width:650px){
   .boardEditorStage{--board-height:clamp(460px,68dvh,730px)}
-  .boardEditorStage>.boardTools{left:8px;top:8px}
 }
 
 /* Keep descriptive change counts available to assistive technology and CI while the rail stays compact. */
@@ -130,8 +131,8 @@
 
 /* Inline feedback never forces the contextual properties dock to remain open. */
 .boardEditorStage .boardCanvasToast{
-  position:absolute;z-index:15;left:76px;bottom:14px;
-  width:min(430px,calc(100% - 96px));display:flex;align-items:flex-start;gap:9px;
+  position:absolute;z-index:15;left:calc(var(--board-tools-width) + 8px);bottom:14px;
+  width:min(430px,calc(100% - var(--board-tools-width) - 16px));display:flex;align-items:flex-start;gap:9px;
   padding:10px 12px;background:rgba(255,255,255,.98);border:1px solid #bfdbfe;
   border-radius:9px;box-shadow:0 7px 24px #0f172a23;
   color:#334155;font-size:12px;line-height:1.45;overflow-wrap:anywhere;
@@ -142,7 +143,7 @@
 
 /* Compact, readable canvas tools: each icon has a persistent verb/noun. */
 .boardEditorStage>.boardTools{
-  width:91px;left:12px;top:12px;padding:7px 6px;gap:3px;
+  width:100%;padding:7px 6px;gap:3px;border-width:0 1px 0 0;border-radius:0;box-shadow:none;
 }
 .boardEditorStage>.boardTools>button,
 .boardEditorStage>.boardTools>.boardChangeCount{
@@ -177,7 +178,8 @@
   width:auto;padding:4px 8px;background:transparent;border:0;color:#64748b;
 }
 @media(max-width:700px){
-  .boardEditorStage>.boardTools{left:8px;top:8px;width:75px;padding:5px 3px}
+  .boardEditorStage{--board-tools-width:76px}
+  .boardEditorStage>.boardTools{padding:5px 3px}
   .boardEditorStage>.boardTools>button,.boardEditorStage>.boardTools>.boardChangeCount{
     width:67px;min-width:67px;height:51px;min-height:51px
   }
@@ -205,7 +207,7 @@
    grid row consumed a large part of the architecture canvas whenever one
    unsaved change existed. Keep the alert compact and inside the canvas. */
 .boardEditorStage>.boardPendingBanner{
- position:absolute;z-index:6;left:115px;right:14px;bottom:12px;
+ position:absolute;z-index:6;left:calc(var(--board-tools-width) + 12px);right:14px;bottom:12px;
  max-width:780px;box-sizing:border-box;min-width:0;
  box-shadow:0 4px 18px #6843161a;
 }
@@ -215,7 +217,7 @@
  .boardEditorStage>.boardPendingBanner span{display:none}
 }
 @media(max-width:650px){
- .boardEditorStage>.boardPendingBanner{left:8px;right:8px;bottom:8px}
+ .boardEditorStage>.boardPendingBanner{left:calc(var(--board-tools-width) + 8px);right:8px;bottom:8px}
 }
 
 /* Direct flow drawing, with ports visible only when the flow tool is selected. */

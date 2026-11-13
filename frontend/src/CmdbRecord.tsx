@@ -10,7 +10,10 @@ type RecordData={
 }
 type CustomField={key:string;label:string;type:'text'|'number'|'boolean'|'choice';options:string[]}
 type ClassEntry={id:string;label:string;fields:CustomField[];required:string[]}
-type ClassesResponse={classes:ClassEntry[]}
+type ClassesResponse={classes?:ClassEntry[]}
+const classEntries=(catalog:ClassesResponse|null)=>Array.isArray(catalog?.classes)
+  ? catalog.classes.filter(item=>item&&typeof item.id==='string'&&Array.isArray(item.fields)&&Array.isArray(item.required))
+  : []
 type HistoryEntry={
   revision:number;action:string;reason:string;actor_role:string
   occurred_at:string;before:Partial<RecordData>;after:Partial<RecordData>
@@ -57,18 +60,23 @@ export default function CmdbRecord({ciId,request}:Props){
     const [next,entries]=await Promise.all([
       request<RecordData>(path),request<HistoryEntry[]>(path+'/history')
     ])
-    setRecord(next);setDraft(next);setHistory(entries)
+    setRecord(next);setDraft(next);setHistory(Array.isArray(entries)?entries.filter(item=>item&&typeof item.revision==='number'):[])
   }
   useEffect(()=>{
     let active=true
-    setLoading(true);setError('');setMessage('');setIsEditing(false)
+    setLoading(true);setError('');setMessage('');setIsEditing(false);setRecord(null);setDraft(null);setHistory([]);setSchema([]);setShowCatalog(false)
     void Promise.all([request<RecordData>(path),request<HistoryEntry[]>(path+'/history'),
       request<ClassesResponse>('/api/cmdb/classes')])
-      .then(([next,entries,catalog])=>{if(active){setRecord(next);setDraft(next);setHistory(entries);setSchema(catalog.classes)}})
+      .then(([next,entries,catalog])=>{
+        if(!active||next?.ci_id!==ciId||typeof next.revision!=='number')return
+        setRecord(next);setDraft(next)
+        setHistory(Array.isArray(entries)?entries.filter(item=>item&&typeof item.revision==='number'):[])
+        setSchema(classEntries(catalog))
+      })
       .catch(err=>{if(active)setError('Не удалось загрузить КЕ: '+String(err))})
       .finally(()=>{if(active)setLoading(false)})
     return ()=>{active=false}
-  },[path,request])
+  },[ciId,path,request])
 
   const update=async()=>{
     if(!record||!draft)return
@@ -99,6 +107,7 @@ export default function CmdbRecord({ciId,request}:Props){
   return <section className="cmdbRecord" role="region" aria-label="Управление конфигурационной единицей">
     {loading&&<p role="status">Загружаем конфигурационную единицу…</p>}
     {error&&<p role="alert">{error}</p>}
+    {!loading&&!error&&!record&&<p role="status">Паспорт КЕ недоступен.</p>}
     {message&&<p role="status">{message}</p>}
     {record&&draft&&<>
       <div className="cmdbRecordTop">
@@ -177,7 +186,7 @@ export default function CmdbRecord({ciId,request}:Props){
         <button type="button" aria-expanded={showCatalog} onClick={()=>setShowCatalog(!showCatalog)}>
           {showCatalog?'Скрыть классификатор':'Классификатор и правила CMDB'}
         </button>
-        {showCatalog&&<CmdbCatalog request={request} onChange={()=>void request<ClassesResponse>('/api/cmdb/classes').then(catalog=>setSchema(catalog.classes))}/>}
+        {showCatalog&&<CmdbCatalog request={request} onChange={()=>void request<ClassesResponse>('/api/cmdb/classes').then(catalog=>setSchema(classEntries(catalog)))}/>}
       </div>
       <details className="cmdbAuditHistory">
         <summary>История изменений ({history.length})</summary>

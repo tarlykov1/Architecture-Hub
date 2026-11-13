@@ -18,10 +18,7 @@ type ImpactRow = {
   confidence:'known_relation'|'requires_verification'
 }
 type ImpactResponse = {
-  root:ConfigurationItem
-  depth:number
   affected:ImpactRow[]
-  count:number
   disclaimer:string
 }
 type Props={
@@ -48,8 +45,15 @@ export default function CmdbImpact({ciId,request,onOpenComponent}:Props){
     let active=true
     setLoading(true);setError('');setResult(null)
     void request<ImpactResponse>('/api/cmdb/impact?ci_id='+encodeURIComponent(ciId)+'&depth='+depth)
-      .then(value=>{if(active)setResult(value)})
-      .catch(err=>{if(active)setError('Не удалось получить зависимости CMDB: '+String(err))})
+      .then(value=>{
+        if(!active)return
+        if(!Array.isArray(value?.affected)){
+          setError('Сведения о зависимостях CMDB недоступны.')
+          return
+        }
+        setResult({...value,affected:value.affected.filter(row=>typeof row?.node?.id==='string')})
+      })
+      .catch(err=>{if(active)setError('Не удалось получить зависимости CMDB: '+(err instanceof Error?err.message:String(err)))})
       .finally(()=>{if(active)setLoading(false)})
     return ()=>{active=false}
   },[ciId,depth,request])
@@ -72,10 +76,10 @@ export default function CmdbImpact({ciId,request,onOpenComponent}:Props){
     {error&&<p role="alert">{error}</p>}
     {result&&<>
       <div className="cmdbImpactSummary">
-        <strong>{result.count}</strong>
+        <strong>{result.affected.length}</strong>
         <span>потенциально связанных КЕ и процессов</span>
       </div>
-      {!result.count&&<p>Зависимости не зарегистрированы. Это не доказывает их отсутствие.</p>}
+      {!result.affected.length&&<p>Зависимости не зарегистрированы. Это не доказывает их отсутствие.</p>}
       <ol className="cmdbImpactList">
         {result.affected.map(row=><li key={row.node.id}>
           <div className="cmdbImpactItem">
@@ -83,7 +87,7 @@ export default function CmdbImpact({ciId,request,onOpenComponent}:Props){
               <strong>{row.node.name}</strong>
               <small>{TYPE_LABEL[row.node.ci_class]||row.node.ci_class} · {row.depth} шаг(а)</small>
               <small>{row.confidence==='requires_verification'?'Связь требует проверки':'Связь зарегистрирована как подтверждённая'}</small>
-              <small>Путь: {row.relations.join(' → ')}</small>
+              <small>Путь: {Array.isArray(row.relations)&&row.relations.length?row.relations.join(' → '):'Не указан'}</small>
             </div>
             {row.node.id.startsWith('component:')&&onOpenComponent&&
               <button type="button" onClick={()=>onOpenComponent(row.node.id.slice('component:'.length))}>Открыть КЕ</button>}

@@ -37,7 +37,7 @@ test('flow registry opens the unified overview map with the original IS focused'
   const registry=page.getByRole('region',{name:'Реестр технических потоков'})
   await expect(registry.locator('.infraCard')).toHaveCount(2)
   await expect(page.locator('[data-active-graph="flows"]')).toHaveCount(0)
-  await registry.getByRole('button',{name:'На карте'}).first().click()
+  await registry.getByRole('link',{name:'На карте'}).first().click()
 
   const map=page.getByRole('region',{name:'Главная карта архитектуры'})
   await expect(map).toBeVisible()

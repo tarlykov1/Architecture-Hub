@@ -94,9 +94,11 @@ def summarize_legacy_relations(
             issues.append("unknown_kind")
         if source not in object_kinds or target not in object_kinds:
             issues.append("orphan_endpoints")
-        elif kind in _BY_KIND and logical_relation_validation_error(
-            kind, object_kinds[source], object_kinds[target]
+        elif kind in _BY_KIND and (
+            object_kinds[source] != _BY_KIND[kind]["source_kind"]
+            or object_kinds[target] != _BY_KIND[kind]["target_kind"]
         ):
+            # Deprecated is a separate diagnostic category, not a bad endpoint.
             issues.append("invalid_endpoints")
         signature = (kind, source, target)
         if signature in seen:

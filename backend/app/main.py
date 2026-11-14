@@ -1336,7 +1336,15 @@ def add_relation(payload: RelationCreate, db: Session = Depends(db_session)):
         raise HTTPException(status_code=409, detail="Такая направленная связь ИС уже существует")
     rel = Relation(**payload.model_dump())
     db.add(rel)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        # The partial DB unique index is authoritative when concurrent
+        # requests pass the application-level duplicate check simultaneously.
+        db.rollback()
+        raise HTTPException(
+            status_code=409, detail="Такая направленная связь ИС уже существует"
+        ) from exc
     db.refresh(rel)
     return rel
 

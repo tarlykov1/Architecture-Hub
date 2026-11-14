@@ -1385,7 +1385,7 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
             <span className="tag">{f.verification}</span><h3>{f.name}</h3>
             <strong>{infra.find(i=>i.id===f.source_id)?.name} → {infra.find(i=>i.id===f.target_id)?.name}</strong>
             <p>{f.data_description}</p><button type="button" onClick={e=>{e.stopPropagation();navigateToFlowMap(infra.find(i=>i.id===f.source_id)?.system_id||'')}}>На карте</button><button type="button" onClick={e=>{e.stopPropagation();setSelectedFlow(f.id);setFlowDataOpen(true)}}>Атрибуты</button><button type="button" onClick={e=>{e.stopPropagation();setSelectedFlow(f.id);setNetworkPathOpen(true)}}>Сетевой маршрут</button><button type="button" onClick={e=>{e.stopPropagation();editFlow(f)}}>Редактировать</button><small>{f.protocol} · порт {f.port||'?'} · {f.security}</small>{selectedFlow===f.id&&<div className="flowDetails"><strong>Защита: {f.security}</strong><p>Достоверность: {f.verification}</p><p>Периодичность: {f.schedule||"Не указана"}</p><p>Зона источника: {segmentName(nics.find(n=>n.item_id===f.source_id)?.zone_id||null)}</p><p>Зона получателя: {segmentName(nics.find(n=>n.item_id===f.target_id)?.zone_id||null)}</p><p>Неизвестно, разрешён ли маршрут на межсетевом экране.</p></div>}
-          </article>)}{visibleFlows.length===0&&<div className="diagramEmptyState" role="status">Нет потоков для выбранной информационной системы или фильтра. Измените фильтр или выберите другую ИС.</div>}</div>}
+          </article>)}{visibleFlows.length===0&&<div className="flowRegistryEmptyState" role="status">Нет потоков для выбранной информационной системы или фильтра. Измените фильтр или выберите другую ИС.</div>}</div>}
         </>}
       </section>}
     </main>

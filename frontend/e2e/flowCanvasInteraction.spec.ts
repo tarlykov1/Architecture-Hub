@@ -29,6 +29,8 @@ async function navigate(page:Page,section:'Потоки'|'Компоненты')
 }
 
 test('flow registry opens the unified overview map with the original IS focused',async({page})=>{
+  const errors:string[]=[]
+  page.on('pageerror',error=>errors.push(error.message))
   const {system,systemName}=await seed(page)
   await navigate(page,'Потоки')
   await page.getByRole('combobox',{name:'Система потоков'}).selectOption(system)
@@ -36,6 +38,8 @@ test('flow registry opens the unified overview map with the original IS focused'
   await expect(registry.locator('.infraCard')).toHaveCount(2)
   await expect(page.locator('[data-active-graph="flows"]')).toHaveCount(0)
   await registry.getByRole('button',{name:'На карте'}).first().click()
+  console.log('QA-WORK flow-to-map:',page.url(),
+    (await page.locator('body').innerText()).slice(0,900),'pageerrors:',errors.join(' / '))
   const map=page.getByRole('region',{name:'Главная карта архитектуры'})
   await expect(map).toBeVisible()
   const source=map.locator('.react-flow__node').filter({hasText:systemName})

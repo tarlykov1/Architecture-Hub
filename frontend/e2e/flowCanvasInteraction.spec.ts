@@ -80,3 +80,20 @@ test('flow utilities remain available from More while flow workspace is a regist
   await menu.locator('summary').click()
   await expect(menu).not.toHaveAttribute('open','')
 })
+
+
+test('QA-WORK: mobile flow registry links to one shared architecture map',async({page})=>{
+  await page.setViewportSize({width:390,height:844})
+  const {system,systemName}=await seed(page)
+  await page.goto('/flows?system='+system)
+  const registry=page.getByRole('region',{name:'Реестр технических потоков'})
+  await expect(registry.getByRole('link',{name:'На карте'}).first()).toBeVisible()
+  await registry.getByRole('link',{name:'На карте'}).first().click()
+  await expect(page).toHaveURL(new RegExp('\\?focus='+system))
+  const map=page.getByRole('region',{name:'Главная карта архитектуры'})
+  await expect(map).toBeVisible()
+  await expect(map.locator('.react-flow__node').filter({hasText:systemName})).toHaveCount(1)
+  await expect(map.getByRole('group',{name:'Режим архитектурных областей'})).toBeVisible()
+  await map.getByRole('button',{name:'Наложить оба'}).click()
+  await expect(map.getByRole('button',{name:'Наложить оба'})).toHaveAttribute('aria-pressed','true')
+})

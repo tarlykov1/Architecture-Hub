@@ -1381,9 +1381,12 @@ def save_layer_region(group_key: str, payload: LayerRegionInput, request: Reques
         raise HTTPException(status_code=404, detail="Категория или сеть не найдена")
     members = list(dict.fromkeys(payload.members))
     if members:
-        existing = set(db.scalars(select(ArchitectureObject.id).where(ArchitectureObject.id.in_(members))).all())
+        existing = set(db.scalars(select(ArchitectureObject.id).where(
+            ArchitectureObject.id.in_(members),
+            ArchitectureObject.kind == "system",
+        )).all())
         if len(existing) != len(members):
-            raise HTTPException(status_code=422, detail="В области есть неизвестные ИС")
+            raise HTTPException(status_code=422, detail="В области допускаются только существующие информационные системы")
     region = db.get(ArchitectureLayerRegion, group_key)
     before = layer_region_output(region) if region is not None else None
     if region is None:

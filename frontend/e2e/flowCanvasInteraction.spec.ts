@@ -16,7 +16,7 @@ async function seed(page:Page){
   }
   const systemName='QA-WORK-Canvas UX '+suffix
   const system=await create('/api/objects',{kind:'system',name:systemName})
-  const names=['Source '+suffix,'Hub '+suffix,'Consumer '+suffix]
+  const names=['QA-WORK-Source '+suffix,'QA-WORK-Hub '+suffix,'QA-WORK-Consumer '+suffix]
   const ids=await Promise.all(names.map(name=>create('/api/infra',{system_id:system,kind:'vm',name,description:'UI regression component'})))
   await create('/api/flows',{source_id:ids[0],target_id:ids[1],name:'Source to Hub '+suffix})
   await create('/api/flows',{source_id:ids[1],target_id:ids[2],name:'Hub to Consumer '+suffix})
@@ -38,10 +38,10 @@ test('flow registry opens the unified overview map with the original IS focused'
   await expect(registry.locator('.infraCard')).toHaveCount(2)
   await expect(page.locator('[data-active-graph="flows"]')).toHaveCount(0)
   await registry.getByRole('button',{name:'На карте'}).first().click()
-  console.log('QA-WORK flow-to-map:',page.url(),
-    (await page.locator('body').innerText()).slice(0,900),'pageerrors:',errors.join(' / '))
+
   const map=page.getByRole('region',{name:'Главная карта архитектуры'})
   await expect(map).toBeVisible()
+  expect(errors).toEqual([])
   const source=map.locator('.react-flow__node').filter({hasText:systemName})
   await expect(source).toBeVisible()
   // Focus must survive the first map mount; it used to be cleared by an

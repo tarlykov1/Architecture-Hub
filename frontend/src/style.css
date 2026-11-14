@@ -973,3 +973,65 @@ button:disabled{cursor:not-allowed;opacity:.55}
 .homeLayerMemberGrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:8px;max-height:240px;overflow-y:auto}
 .homeLayerMemberGrid label{display:flex;gap:7px;align-items:center;font-size:12px}
 .homeLayerMemberGrid input{accent-color:#2563eb}
+
+/* Layer editor uses the same three-column tool/canvas/inspector grammar as ArchitectureBoard. */
+.homeLayerEditorStage{min-width:0}
+.homeLayerEditorStage>.homeMapGraph{width:100%}
+.homeLayerEditorStage.editing{
+  display:grid;grid-template-columns:86px minmax(0,1fr) minmax(270px,320px);
+  grid-template-rows:minmax(0,1fr);height:clamp(460px,70vh,780px);
+  border:1px solid #dce4ec;border-radius:12px;overflow:hidden;background:#f8fafc
+}
+.homeLayerEditorStage.editing>.homeMapGraph{
+  grid-column:2;grid-row:1;height:100%;min-height:0;
+  border:0;border-radius:0;position:relative;overflow:hidden
+}
+.homeLayerTools{
+  grid-column:1;grid-row:1;z-index:10;display:flex;flex-direction:column;
+  gap:4px;align-items:center;padding:7px 5px;min-height:0;
+  overflow-y:auto;background:#f8fafc;border-right:1px solid #dce4ec
+}
+.homeLayerTools>button{
+  position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:4px;width:73px;min-height:57px;padding:5px 3px;border:0;border-radius:8px;
+  color:#334155;background:transparent;cursor:pointer;font-size:10px;line-height:1.15;text-align:center
+}
+.homeLayerTools>button svg{flex:0 0 auto}
+.homeLayerTools>button span{display:block;white-space:normal}
+.homeLayerTools>button:hover:not(:disabled){background:#eff6ff;color:#1d4ed8}
+.homeLayerTools>button[aria-pressed="true"]{background:#176bc1;color:#fff}
+.homeLayerTools>button:focus-visible{outline:2px solid #2563eb;outline-offset:-2px}
+.homeLayerTools>button:disabled{opacity:.4;cursor:not-allowed}
+.homeLayerToolsSeparator{width:64px;height:1px;background:#d8e2ed;margin:5px 0}
+.homeLayerToolsDraft{display:flex;flex-direction:column;align-items:center;gap:3px;text-align:center;font-size:10px;color:#64748b;padding:8px 2px}
+.homeLayerDock{
+  grid-column:3;grid-row:1;display:flex;flex-direction:column;gap:12px;
+  min-height:0;overflow-y:auto;padding:14px;background:#fff;border-left:1px solid #dce4ec
+}
+.homeLayerDock>header{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.homeLayerDock>header strong{font-size:14px;color:#1e293b}
+.homeLayerDock>header span{font-size:11px;color:#64748b}
+.homeLayerToolInstructions{font-size:12px;color:#52657e;line-height:1.4;margin:0}
+.homeLayerDock .homeLayerGroupSelect,.homeLayerDock .homeLayerProperties label{display:grid;gap:5px;font-size:12px;color:#334155}
+.homeLayerDock select,.homeLayerDock input[type="number"]{border:1px solid #cbd5e1;border-radius:6px;min-height:35px;padding:6px;background:#fff;max-width:100%;width:100%}
+.homeLayerProperties{display:grid;gap:10px;border-top:1px solid #e2e8f0;padding-top:10px}
+.homeLayerProperties>label{display:flex!important;align-items:center;justify-content:space-between}
+.homeLayerProperties input[type="color"]{width:44px;height:32px;border:0;padding:0;cursor:pointer}
+.homeLayerGeometry{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.homeLayerProperties>p{font-size:11px;color:#64748b;margin:0;line-height:1.4}
+.homeLayerDock .homeLayerMemberEditor{border:0;border-top:1px solid #e2e8f0;border-radius:0;padding:10px 0 0;gap:8px}
+.homeLayerDock .homeLayerMemberGrid{grid-template-columns:1fr;max-height:none;overflow:visible;gap:9px}
+.homeLayerError{font-size:12px;color:#b42318;background:#fef2f2;border-radius:6px;padding:9px}
+.homeLayerDrawSurface{position:absolute;inset:0;z-index:20;background:transparent;touch-action:none;cursor:crosshair}
+.homeLayerDrawPreview{position:absolute;box-sizing:border-box;pointer-events:none;border:2px dashed #2563eb;border-radius:8px;background:#60a5fa26;box-shadow:0 0 0 1px #bfdbfe inset}
+.homeLayerEditorStage.editing .react-flow__node-layerRegion{cursor:default}
+.homeLayerEditorStage.editing .react-flow__node-layerRegion.draggable{cursor:grab}
+.homeLayerEditorStage.editing .react-flow__node-layerRegion.dragging{cursor:grabbing}
+@media(max-width:900px){
+  .homeLayerEditorStage.editing{grid-template-columns:75px minmax(0,1fr);grid-template-rows:minmax(380px,65vh) minmax(220px,auto);height:auto}
+  .homeLayerEditorStage.editing>.homeMapGraph{grid-column:2;grid-row:1;min-height:380px}
+  .homeLayerTools{grid-column:1;grid-row:1}
+  .homeLayerTools>button{width:65px;min-height:52px;font-size:9px}
+  .homeLayerDock{grid-column:1/-1;grid-row:2;border-left:0;border-top:1px solid #dce4ec;max-height:350px}
+  .homeLayerDock .homeLayerMemberGrid{grid-template-columns:repeat(auto-fit,minmax(180px,1fr))}
+}

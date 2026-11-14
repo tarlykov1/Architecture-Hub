@@ -82,6 +82,7 @@ test('QA-WORK: cancel a right-side reassignment without changing the flow or its
   await expect(editor.getByRole('button',{name:/Черновик: 1 изменений/})).toBeEnabled()
   await editor.getByRole('button',{name:'Отменить правку потока'}).click()
   await expect(editor.getByRole('button',{name:'Черновик: 0 изменений'})).toBeDisabled()
+  await expect(editor.getByRole('button',{name:'Сохранить расположение'})).toBeDisabled()
   const response=await page.request.get(api+'/api/flows')
   const data=await response.json() as Array<{id:string;source_id:string;target_id:string}>
   for(const id of [first,peer]){

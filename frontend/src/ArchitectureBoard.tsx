@@ -93,6 +93,7 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
  const [passportDraft,setPassportDraft]=useState({name:'',description:'',purpose:'',environment:''})
  const [changes,setChanges]=useState<Change[]>(()=>restoredDraft?.changes||[])
  const [layoutDirty,setLayoutDirty]=useState(false)
+ const [layoutReady,setLayoutReady]=useState(false)
  const [layoutBusy,setLayoutBusy]=useState(false)
  const [layoutMessage,setLayoutMessage]=useState('')
  const [reason,setReason]=useState(restoredDraft?.reason||'')
@@ -861,6 +862,10 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
  // The visual layout is saved independently from technical changes.
  useEffect(()=>{
    let active=true
+   // Do not mount a draggable canvas while saved coordinates are loading:
+   // pointer capture on a default position can otherwise be lost when
+   // React Flow receives the asynchronous network geometry.
+   setLayoutReady(false)
    setLayoutDirty(false);setLayoutMessage('')
    void request<{positions:Record<string,Geometry>;flow_anchors?:Record<string,FlowPortPair>}>('/api/board/layout/'+systemId)
      .then(result=>{
@@ -885,6 +890,7 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
        persistedFlowAnchors.current=result.flow_anchors||{}
        setFlowAnchors({...persistedFlowAnchors.current,...(restoredDraft?.flowAnchors||{})})
      }).catch(()=>{/* Browser positions remain the fallback. */})
+     .finally(()=>{if(active)setLayoutReady(true)})
    return ()=>{active=false}
  },[systemId,request,setNodes,networks])
 
@@ -974,7 +980,7 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
    }catch(e){setPreview(null);setError('Сохранение отклонено: '+String(e)+'. Обновите предварительный просмотр.')}
    finally{setBusy(false)}
  }
- return <section className="boardWorkspace" aria-label="Редактор архитектурной схемы">
+ return <section className="boardWorkspace" aria-label="Редактор архитектурной схемы" aria-busy={!layoutReady}>
    <div className="boardEditorStage">
         <div ref={boardCanvasRef} className="boardCanvas" data-active-graph="infrastructure-editor"
           onPointerDownCapture={event=>{
@@ -1048,7 +1054,7 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
           onPointerCancelCapture={event=>{
             if(retargetGesture.current)endReattach(event)
             else if(flowGesture.current)endFlowPointer(event)
-          }}><ReactFlow nodes={displayedNodes} edges={edges} panOnDrag={tool==='move'} nodeTypes={boardNodeTypes} edgeTypes={{reciprocal:ReciprocalEdge,'obstacle-aware':ObstacleAwareEdge}} onNodesChange={(updates:NodeChange[])=>{
+          }}>{layoutReady?<ReactFlow nodes={displayedNodes} edges={edges} panOnDrag={tool==='move'} nodeTypes={boardNodeTypes} edgeTypes={{reciprocal:ReciprocalEdge,'obstacle-aware':ObstacleAwareEdge}} onNodesChange={(updates:NodeChange[])=>{
   // React Flow is controlled: update rectangle geometry during the drag,
   // not only on drop, otherwise VRF/VLAN boxes appear stuck in place.
   const moved=new Map<string,{x:number;y:number}>()
@@ -1089,7 +1095,7 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
    if(!from||to||from===node.id){setFrom(node.id);setTo('');setSelectedDraftFlowId('');setLayoutMessage('Источник выбран. Нажмите на целевой компонент или протяните стрелку от порта.')}
    else stageDirectedFlow(from,node.id)
  }else if(tool==='move'){openPassport(node.id);setFocusDependencies(false)}
-}} onNodeDragStart={(_,node)=>{setDraggingNode(true);startVisualGroupDrag(node)}} onNodeDrag={(_,node)=>updateVisualGroupDrag(node)} onNodeDragStop={(_,node)=>{finishVisualDrop(node);moveNode(node);setDraggingNode(false)} } onPaneClick={handlePaneClick} minZoom={0.08} fitViewOptions={{padding:0.2,maxZoom:0.9}}><AutoFit layoutKey={systemId+':'+items.length+':'+flows.length} maxFitZoom={0.9} focusIds={selectedFlowEndpoints} suspended={drawingConnection||draggingNode||(!selectedFlowEndpoints.length&&(tool!=='move'||canvasInteracted))} settleDelayMs={0}/><Background gap={20}/><Controls showInteractive={false}/></ReactFlow>
+}} onNodeDragStart={(_,node)=>{setDraggingNode(true);startVisualGroupDrag(node)}} onNodeDrag={(_,node)=>updateVisualGroupDrag(node)} onNodeDragStop={(_,node)=>{finishVisualDrop(node);moveNode(node);setDraggingNode(false)} } onPaneClick={handlePaneClick} minZoom={0.08} fitViewOptions={{padding:0.2,maxZoom:0.9}}><AutoFit layoutKey={systemId+':'+items.length+':'+flows.length} maxFitZoom={0.9} focusIds={selectedFlowEndpoints} suspended={drawingConnection||draggingNode||(!selectedFlowEndpoints.length&&(tool!=='move'||canvasInteracted))} settleDelayMs={0}/><Background gap={20}/><Controls showInteractive={false}/></ReactFlow>:<div role="status" className="boardLayoutLoading">Загружаем сохранённое расположение схемы…</div>}
      {flowGhost&&<svg className="boardFlowGesturePreview" aria-hidden="true" width="100%" height="100%">
        <defs><marker id="board-flow-ghost-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill="#176bc1"/></marker></defs>
        <line x1={flowGhost.start.x} y1={flowGhost.start.y} x2={flowGhost.end.x} y2={flowGhost.end.y} stroke="#176bc1" strokeWidth="2.5" strokeDasharray="6 3" markerEnd="url(#board-flow-ghost-arrow)"/>

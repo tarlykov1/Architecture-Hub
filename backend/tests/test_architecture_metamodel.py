@@ -1,9 +1,9 @@
 """P0 metamodel: public logical-IS relation semantics and server enforcement."""
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from fastapi.testclient import TestClient
 from app.architecture_metamodel import get_logical_relation_types, logical_relation_validation_error, summarize_legacy_relations
-from app.main import app
+from app.main import app, SessionLocal, Relation
 
 ADMIN = {"Authorization": "Bearer ci-admin-token-123456789012345678901234"}
 VIEWER = {"Authorization": "Bearer ci-viewer-token-123456789012345678901234"}
@@ -109,3 +109,28 @@ def test_readonly_relation_audit_uses_system_reader_permission():
         assert "issues" in result.json() and "relation_kinds" in result.json()
         assert client.get("/api/metamodel/relation-audit").status_code == 401
         assert client.put("/api/metamodel/relation-audit", headers=ADMIN, json={}).status_code in (403, 405)
+
+
+def test_historical_logical_relation_records_remain_readable_without_rewrites():
+    """The new write contract must not retroactively erase older types."""
+    with TestClient(app) as client:
+        source, target = _object(client), _object(client)
+        legacy_id = uuid4()
+        with SessionLocal() as db:
+            db.add(Relation(
+                id=legacy_id, source_id=UUID(source), target_id=UUID(target),
+                kind="data_flow", description="QA-WORK historical logical edge"
+            ))
+            db.commit()
+        response = client.get("/api/relations", headers=VIEWER)
+        assert response.status_code == 200
+        assert any(row["id"] == str(legacy_id) and row["kind"] == "data_flow"
+                   for row in response.json())
+        # Only new writes are blocked; existing historical rows are untouched.
+        rejected = client.post("/api/relations", headers=ADMIN, json={
+            "source_id": source, "target_id": target, "kind": "data_flow",
+        })
+        assert rejected.status_code == 422
+        response_again = client.get("/api/relations", headers=VIEWER)
+        assert any(row["id"] == str(legacy_id)
+                   for row in response_again.json())

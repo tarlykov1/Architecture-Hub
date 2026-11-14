@@ -20,6 +20,34 @@ abort() { printf 'BLOCKED: %s\n' "$*" >&2; exit 2; }
 [ -f /etc/architecture-hub.env ] || abort "backend EnvironmentFile missing"
 systemctl is-active --quiet "$SERVICE" || abort "architecture-hub.service is not active"
 command -v python3 >/dev/null || abort "Python 3 is unavailable"
+systemctl show "$SERVICE" -p EnvironmentFiles --value | grep -Fq '/etc/architecture-hub.env' ||
+  abort "service does not use the expected EnvironmentFile"
+[ "$(stat -c %U "$DB")" = "archhub" ] ||
+  abort "SQLite database owner differs from the documented archhub user"
+
+# The same SQLite path must be configured in systemd's EnvironmentFile.
+# Parse it as data (never source/execute it) and never echo credentials.
+python3 - /etc/architecture-hub.env "$DB" <<'PY'
+from pathlib import Path
+import shlex
+import sys
+
+file_path, expected = sys.argv[1:]
+entries = {}
+for raw in Path(file_path).read_text().splitlines():
+    line = raw.strip()
+    if not line or line.startswith("#"):
+        continue
+    if line.startswith("DATABASE_URL="):
+        entries["DATABASE_URL"] = shlex.split(line.partition("=")[2])[0]
+database_url = entries.get("DATABASE_URL", "")
+if database_url != "sqlite:////" + expected.lstrip("/"):
+    raise SystemExit(
+        "BLOCKED: DATABASE_URL differs from the expected SQLite path "
+        "or is not explicitly configured; no sensitive values disclosed."
+    )
+print("PASS: backend environment points to the expected SQLite file")
+PY
 
 # Capture a consistent copy through the sqlite backup API, not a raw file
 # copy of a live SQLite database. All snapshot files remain root-readable.

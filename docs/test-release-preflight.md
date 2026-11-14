@@ -6,9 +6,11 @@
 
 - В текущей `main` `deploy-test.yml` публикует **только frontend**, если задана переменная `DEPLOY_ENABLED=true`; он не обновляет API или SQLite.
 - `deploy-backend-test.yml` управляется отдельным флагом `BACKEND_DEPLOY_ENABLED=true`. Он использует ограниченный root-owned `/usr/local/sbin/architecture-hub-deploy-backend` и вначале делает SQLite snapshot.
-- **Этот PR изменяет порядок запуска:** CI успешного push в `main` → успешный backend deploy → только затем frontend deploy той же ревизии. Для frontend теперь требуются **оба флага** `BACKEND_DEPLOY_ENABLED=true` и `DEPLOY_ENABLED=true`. При неуспешном backend-deploy frontend не публикуется.
+- **Этот PR изменяет порядок запуска:** CI успешного push в `main` → успешный backend deploy → только затем frontend deploy **точно той же ревизии**, которую backend передаёт через артефакт `backend-release-revision`. Для frontend теперь требуются **оба флага** `BACKEND_DEPLOY_ENABLED=true` и `DEPLOY_ENABLED=true`. При неуспешном backend-deploy frontend не публикуется. Каждый workflow дополнительно проверяет, что `main` не продвинулся дальше проверенной ревизии.
 - Backend deploy запускает `alembic upgrade head` **только** при наличии файла `/etc/architecture-hub-enable-migrations`; иначе выдаёт успешное обновление кода без миграции. Новый API при этом может обратиться к отсутствующему столбцу `revision`.
 - **Без изменения цепочки** frontend/backend workflow стартовали от одного CI независимо. В PR устранена эта гонка; но без проверки текущей серверной БД даже последовательный деплой нельзя считать безопасным.
+
+Важное техническое ограничение GitHub Actions: при событии `workflow_run` собственный `GITHUB_SHA` вторичного workflow относится к ветке по умолчанию, **не обязательно к первоначальному CI-коммиту**. Поэтому frontend не использует его вслепую: backend записывает подтверждённый CI SHA в артефакт, а frontend загружает артефакт по ID завершившегося backend workflow, сверяет его с `main` и только затем делает checkout и сборку.
 
 ## Что проверено в репозитории
 

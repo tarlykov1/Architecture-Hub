@@ -341,10 +341,14 @@ test('QA-WORK: changing network area geometry never changes VM positions, interf
  await map.getByRole('checkbox',{name:'Показать ВМ и компоненты'}).check()
  const systemNode=map.locator('.react-flow__node').filter({hasText:systemName}).first()
  const vmNode=map.locator('.react-flow__node').filter({hasText:sourceName}).first()
- await expect(systemNode).toBeVisible()
- await expect(vmNode).toBeVisible()
+ // The global graph may virtualize distant nodes outside the viewport.
+ // They must keep their graph-space positions even when temporarily hidden.
+ await expect(systemNode).toHaveCount(1)
+ await expect(vmNode).toHaveCount(1)
  const systemPosition=await systemNode.evaluate(el=>(el as HTMLElement).style.transform)
  const vmPosition=await vmNode.evaluate(el=>(el as HTMLElement).style.transform)
+ expect(systemPosition).toContain('translate(')
+ expect(vmPosition).toContain('translate(')
  await map.getByRole('button',{name:'Наложить оба'}).click()
  await map.getByRole('button',{name:'Редактировать области'}).click()
  const dock=map.getByRole('complementary',{name:'Свойства архитектурной области'})

@@ -4,10 +4,11 @@
 
 ## Почему нельзя просто объединить PR и ждать автодеплоя
 
-- `deploy-test.yml` публикует **только frontend**, если задана переменная `DEPLOY_ENABLED=true`; он не обновляет API или SQLite.
-- `deploy-backend-test.yml` управляется **независимым** флагом `BACKEND_DEPLOY_ENABLED=true`. Он использует ограниченный root-owned `/usr/local/sbin/architecture-hub-deploy-backend` и вначале делает SQLite snapshot.
+- В текущей `main` `deploy-test.yml` публикует **только frontend**, если задана переменная `DEPLOY_ENABLED=true`; он не обновляет API или SQLite.
+- `deploy-backend-test.yml` управляется отдельным флагом `BACKEND_DEPLOY_ENABLED=true`. Он использует ограниченный root-owned `/usr/local/sbin/architecture-hub-deploy-backend` и вначале делает SQLite snapshot.
+- **Этот PR изменяет порядок запуска:** CI успешного push в `main` → успешный backend deploy → только затем frontend deploy той же ревизии. Для frontend теперь требуются **оба флага** `BACKEND_DEPLOY_ENABLED=true` и `DEPLOY_ENABLED=true`. При неуспешном backend-deploy frontend не публикуется.
 - Backend deploy запускает `alembic upgrade head` **только** при наличии файла `/etc/architecture-hub-enable-migrations`; иначе выдаёт успешное обновление кода без миграции. Новый API при этом может обратиться к отсутствующему столбцу `revision`.
-- Backend/frontend workflow стартуют от одного CI независимо друг от друга. Это не гарантирует нужного порядка. Без дополнительной проверки можно опубликовать несовместимые версии.
+- **Без изменения цепочки** frontend/backend workflow стартовали от одного CI независимо. В PR устранена эта гонка; но без проверки текущей серверной БД даже последовательный деплой нельзя считать безопасным.
 
 ## Что проверено в репозитории
 
@@ -34,7 +35,7 @@ bash /root/archhub-test-release-preflight.sh
 
 1. Вывод `READY_FOR_TEST_RELEASE_PRECHECK=1`; путь и целостность резервной копии подтверждены.
 2. Текущая ревизия Alembic известна и соответствует реальной схеме; миграции `0011–0014` проверены **на восстановленной копии именно серверной БД**, а не только на CI-фикстуре.
-3. У deployment-user работает ограниченный sudo-скрипт, флаги `BACKEND_DEPLOY_ENABLED` / `DEPLOY_ENABLED` сверены и права сервиса/venv соответствуют фактическому окружению.
+3. У deployment-user работает ограниченный sudo-скрипт, **оба** флага `BACKEND_DEPLOY_ENABLED` / `DEPLOY_ENABLED` сверены и права сервиса/venv соответствуют фактическому окружению. Перед разрешением main push сначала должен быть объединён этот preflight/workflow PR с новым порядком публикации.
 4. Публикация backend завершилась успешно, обновлённая API-модель поддерживает `GET/PUT /api/diagrams/layer-regions`, аудит и ревизии.
 5. **Только после этого** публикуется frontend проверенного коммита; проверяется `build-info.json`, `/api/health`, UI авторизации и сценарии редактирования ВМ/потоков/слоёв.
 

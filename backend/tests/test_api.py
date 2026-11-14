@@ -52,17 +52,20 @@ def test_architecture_layer_regions_persist_and_obey_permissions():
         assert category.status_code == 201, category.text
         key = "business:" + category.json()["id"]
         payload = {"x": 120.0, "y": 210.0, "width": 650.0, "height": 420.0,
-                   "color": "#aa55dd", "members": [system.json()["id"]]}
+                   "color": "#aa55dd", "opacity": 0.35, "members": [system.json()["id"]]}
         forbidden = client.put("/api/diagrams/layer-regions/" + key, headers=VIEWER, json=payload)
         assert forbidden.status_code == 403
         saved = client.put("/api/diagrams/layer-regions/" + key, headers=ADMIN, json=payload)
         assert saved.status_code == 200, saved.text
         assert saved.json()["width"] == 650
+        assert saved.json()["opacity"] == 0.35
         assert saved.json()["members"] == payload["members"]
         regions = client.get("/api/diagrams/layer-regions", headers=VIEWER)
         assert regions.status_code == 200, regions.text
-        assert any(item["group_key"] == key and item["color"] == "#aa55dd" for item in regions.json())
+        assert any(item["group_key"] == key and item["color"] == "#aa55dd" and item["opacity"] == 0.35 for item in regions.json())
         invalid_size = client.put("/api/diagrams/layer-regions/" + key, headers=ADMIN, json={**payload,"width": 15})
         assert invalid_size.status_code == 422
+        invalid_opacity = client.put("/api/diagrams/layer-regions/" + key, headers=ADMIN, json={**payload, "opacity": 1.4})
+        assert invalid_opacity.status_code == 422
         unknown = client.put("/api/diagrams/layer-regions/business:99999999-9999-4999-8999-999999999999", headers=ADMIN, json=payload)
         assert unknown.status_code == 404

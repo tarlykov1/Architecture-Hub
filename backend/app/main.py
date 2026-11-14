@@ -84,6 +84,7 @@ class ArchitectureLayerRegion(Base):
     height: Mapped[float] = mapped_column(nullable=False)
     color: Mapped[str] = mapped_column(String(7), nullable=False)
     opacity: Mapped[float] = mapped_column(nullable=False, default=0.22)
+    revision: Mapped[int] = mapped_column(nullable=False, default=1)
     members: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
@@ -462,7 +463,7 @@ class RelationOut(RelationCreate):
     id: UUID
 
 
-class LayerRegionInput(BaseModel):
+class LayerRegionGeometry(BaseModel):
     x: float = Field(ge=-100000, le=100000)
     y: float = Field(ge=-100000, le=100000)
     width: float = Field(ge=140, le=100000)
@@ -472,8 +473,21 @@ class LayerRegionInput(BaseModel):
     members: list[UUID] = Field(max_length=500)
 
 
-class LayerRegionOutput(LayerRegionInput):
+class LayerRegionInput(LayerRegionGeometry):
+    expected_revision: int | None = Field(default=None, ge=1)
+
+
+class LayerRegionOutput(LayerRegionGeometry):
     group_key: str
+    revision: int
+
+
+class LayerRegionWrite(LayerRegionInput):
+    group_key: str = Field(min_length=1, max_length=130)
+
+
+class LayerRegionBatch(BaseModel):
+    regions: list[LayerRegionWrite] = Field(min_length=1, max_length=100)
 
 
 class DiagramCreate(BaseModel):
@@ -1361,7 +1375,8 @@ def delete_relation(relation_id: UUID, db: Session = Depends(db_session)):
 def layer_region_output(region: ArchitectureLayerRegion) -> dict:
     return {"group_key": region.group_key, "x": region.x, "y": region.y,
             "width": region.width, "height": region.height, "color": region.color,
-            "opacity": region.opacity, "members": region.members}
+            "opacity": region.opacity, "revision": region.revision,
+            "members": region.members}
 
 
 @app.get("/api/diagrams/layer-regions", response_model=list[LayerRegionOutput])

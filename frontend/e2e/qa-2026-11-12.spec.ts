@@ -366,3 +366,50 @@ test('QA-WORK: changing network area geometry never changes VM positions, interf
  expect(await getNIC()).toEqual(beforeNIC)
  expect(await getFlow()).toEqual(beforeFlow)
 })
+
+
+test('QA-WORK: stale layer drafts cannot overwrite a newer architecture region',async({page})=>{
+ await page.addInitScript(()=>sessionStorage.setItem('architecture-hub:access-token:session','browser-ci-development-token'))
+ const api='http://127.0.0.1:8001',suffix=String(Date.now())
+ const category=await page.request.post(api+'/api/business/categories',{
+   data:{name:'QA-WORK-Concurrent region '+suffix}
+ })
+ expect(category.status()).toBe(201)
+ const key='business:'+(await category.json()).id
+ const url=api+'/api/diagrams/layer-regions/'+key
+ const baseline={x:100,y:80,width:420,height:290,color:'#336699',opacity:.32,members:[],expected_revision:null}
+ const first=await page.request.put(url,{data:baseline})
+ expect(first.status()).toBe(200,await first.text())
+ expect((await first.json()).revision).toBe(1)
+
+ await page.goto('/')
+ const map=page.getByRole('region',{name:'Главная карта архитектуры'})
+ await map.getByRole('button',{name:'Редактировать области'}).click()
+ const dock=map.getByRole('complementary',{name:'Свойства архитектурной области'})
+ await dock.getByRole('combobox',{name:'Выбрать архитектурную область'}).selectOption(key)
+ await dock.getByRole('spinbutton',{name:'X области'}).fill('300')
+ await expect(map.getByRole('button',{name:'Сохранить области'})).toBeEnabled()
+
+ // Another editor commits a newer revision while this browser keeps its draft.
+ const remote=await page.request.put(url,{data:{...baseline,x:555,color:'#6622aa',expected_revision:1}})
+ expect(remote.status()).toBe(200,await remote.text())
+ expect((await remote.json()).revision).toBe(2)
+ await map.getByRole('button',{name:'Сохранить области'}).click()
+ await expect(dock.getByRole('alert')).toContainText(/изменена|конкурентн/i)
+ await expect(dock.getByRole('button',{name:'Обновить области и отбросить мой черновик'})).toBeVisible()
+ // The failed operation must preserve the full unsaved local draft.
+ await expect(dock.getByRole('spinbutton',{name:'X области'})).toHaveValue('300')
+ await expect(map.getByRole('button',{name:'Сохранить области'})).toBeEnabled()
+ const actual=await page.request.get(api+'/api/diagrams/layer-regions')
+ const stored=(await actual.json() as Array<{group_key:string;x:number;revision:number}>).find(row=>row.group_key===key)
+ expect(stored).toMatchObject({group_key:key,x:555,revision:2})
+
+ // Recovery is explicit: only clicking refresh drops the local draft.
+ await dock.getByRole('button',{name:'Обновить области и отбросить мой черновик'}).click()
+ await expect(map.getByRole('button',{name:'Редактировать области'})).toBeVisible()
+ await map.getByRole('button',{name:'Редактировать области'}).click()
+ const reopened=map.getByRole('complementary',{name:'Свойства архитектурной области'})
+ await reopened.getByRole('combobox',{name:'Выбрать архитектурную область'}).selectOption(key)
+ await expect(reopened.getByRole('spinbutton',{name:'X области'})).toHaveValue('555')
+ await expect(reopened.getByLabel('Цвет выбранной области')).toHaveValue('#6622aa')
+})

@@ -193,6 +193,18 @@ test('dragged VM saves its own coordinates and never mutates flows or NICs',asyn
   const inventory=await (await page.request.get(api+'/api/infra')).json() as Array<{id:string;system_id:string;name:string}>
   const vm=inventory.find(item=>item.system_id===id&&item.name==='QA-WORK-Editor source')
   expect(vm).toBeTruthy()
+  const destination=inventory.find(item=>item.system_id===id&&item.name==='QA-WORK-Editor destination')
+  expect(destination).toBeTruthy()
+  // Nonempty controls: a saved VM move must preserve an actual technical flow
+  // and an existing NIC, not merely compare two empty collections.
+  const flowCreated=await page.request.post(api+'/api/flows',{data:{
+    source_id:vm!.id,target_id:destination!.id,name:'QA-WORK-VM-drag-preserved-flow'
+  }})
+  expect(flowCreated.status()).toBe(201)
+  const nicCreated=await page.request.post(api+'/api/network-interfaces',{data:{
+    item_id:vm!.id,name:'eth0',ip_address:''
+  }})
+  expect(nicCreated.status()).toBe(201)
   const vmIds=new Set(inventory.filter(item=>item.system_id===id).map(item=>item.id))
   const scopedFlows=async()=>{
     const all=await (await page.request.get(api+'/api/flows')).json() as Array<{source_id:string;target_id:string}>

@@ -161,7 +161,7 @@ test('Unified overview changes relation semantics without duplicating the flow g
  await navigate(page,'Потоки')
  await expect(page.getByRole('region',{name:'Реестр технических потоков'})).toBeVisible()
  await expect(page.locator('[data-active-graph="flows"]')).toHaveCount(0)
- await page.getByRole('button',{name:'Общая карта связей'}).click()
+ await page.getByRole('link',{name:'Общая карта связей'}).click()
  await expect(map).toBeVisible()
 })
 

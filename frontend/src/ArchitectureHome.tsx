@@ -1,4 +1,4 @@
-import React, {useEffect,useMemo,useState} from 'react'
+import React, {useEffect,useMemo,useRef,useState} from 'react'
 import {architectureIcon,DiagramNodeLabel,diagramCardStyle} from './DiagramVisual'
 export {architectureIcon} from './DiagramVisual'
 import {ReactFlow,Background,Controls,MarkerType,NodeResizer,type NodeProps,type NodeChange} from '@xyflow/react'
@@ -70,7 +70,13 @@ export default function ArchitectureHome({systems,components,flows,processes,cat
  const [focus,setFocus]=useState('')
  const [selectedSystem,setSelectedSystem]=useState('')
  useEffect(()=>{if(focusSystemId)setSelectedSystem(focusSystemId)},[focusSystemId])
- useEffect(()=>{if(!inspectorOpen)setSelectedSystem('')},[inspectorOpen])
+ // Do not clear the flow-registry deep-link focus on the first overview
+ // mount. Only clear a manual inspector selection when it actually closes.
+ const previousInspectorOpen=useRef(inspectorOpen)
+ useEffect(()=>{
+   if(previousInspectorOpen.current&&!inspectorOpen)setSelectedSystem('')
+   previousInspectorOpen.current=inspectorOpen
+ },[inspectorOpen])
  const [environment,setEnvironment]=useState('all')
  const systemByComponent=useMemo(()=>new Map(components.map(c=>[c.id,c.system_id])),[components])
  const filteredSystems=systems.filter(s=>(!query||s.name.toLowerCase().includes(query.toLowerCase())||components.some(c=>c.system_id===s.id&&c.name.toLowerCase().includes(query.toLowerCase())))&&(!focus||focus===s.id)&& (environment==='all'||components.some(c=>c.system_id===s.id&&String(c.details.environment||'').toLowerCase()===environment)))

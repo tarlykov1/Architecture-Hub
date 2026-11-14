@@ -1,7 +1,8 @@
 import React, {useEffect,useMemo,useRef,useState} from 'react'
 import {architectureIcon,DiagramNodeLabel,diagramCardStyle} from './DiagramVisual'
 export {architectureIcon} from './DiagramVisual'
-import {ReactFlow,Background,Controls,MarkerType,NodeResizer,type NodeProps,type NodeChange} from '@xyflow/react'
+import {ReactFlow,Background,Controls,MarkerType,NodeResizer,useReactFlow,type NodeProps,type NodeChange} from '@xyflow/react'
+import {MousePointer2, Move, SquareDashed, Maximize2, Save, X, ClipboardList} from 'lucide-react'
 
 type System={id:string;name:string;kind:string}
 type Component={id:string;system_id:string;name:string;kind:string;details:Record<string,unknown>}
@@ -17,6 +18,61 @@ function LayerRegionNode({data,selected}:NodeProps){
  return <div className="homeEditableRegion"><NodeResizer isVisible={region.editing&&selected} minWidth={140} minHeight={80} onResize={(_,bounds)=>region.resize(bounds)} onResizeEnd={(_,bounds)=>region.resize(bounds)}/><div className="homeLayerRegionLabel"><strong>{region.name}</strong><small>{region.count} ИС</small></div></div>
 }
 const homeNodeTypes={layerRegion:LayerRegionNode}
+type RegionRect={x:number;y:number;width:number;height:number}
+type LayerTool='select'|'move'|'draw'
+
+/** Exactly the same React Flow coordinate space as the IS and VM nodes. */
+function LayerRectangleDraw({enabled,onDraw}:{enabled:boolean;onDraw:(rect:RegionRect)=>void}){
+ const {screenToFlowPosition}=useReactFlow()
+ const start=useRef<{x:number;y:number}|null>(null)
+ const [preview,setPreview]=useState<RegionRect|null>(null)
+ useEffect(()=>{if(!enabled){start.current=null;setPreview(null)}},[enabled])
+ if(!enabled)return null
+ const screenRect=(left:number,top:number,right:number,bottom:number):RegionRect=>({
+   x:Math.min(left,right),y:Math.min(top,bottom),
+   width:Math.abs(right-left),height:Math.abs(bottom-top)
+ })
+ return <div className="homeLayerDrawSurface" role="region" aria-label="Поле рисования архитектурной области"
+  onPointerDown={event=>{
+   if(event.button!==0)return
+   event.preventDefault()
+   start.current={x:event.clientX,y:event.clientY}
+   event.currentTarget.setPointerCapture(event.pointerId)
+   setPreview({x:event.nativeEvent.offsetX,y:event.nativeEvent.offsetY,width:0,height:0})
+  }}
+  onPointerMove={event=>{
+   if(!start.current)return
+   const bounds=event.currentTarget.getBoundingClientRect()
+   setPreview(screenRect(start.current.x-bounds.left,start.current.y-bounds.top,event.clientX-bounds.left,event.clientY-bounds.top))
+  }}
+  onPointerUp={event=>{
+   const initial=start.current
+   if(!initial)return
+   start.current=null
+   if(event.currentTarget.hasPointerCapture(event.pointerId))event.currentTarget.releasePointerCapture(event.pointerId)
+   setPreview(null)
+   const a=screenToFlowPosition(initial)
+   const b=screenToFlowPosition({x:event.clientX,y:event.clientY})
+   const small=Math.hypot(event.clientX-initial.x,event.clientY-initial.y)<8
+   const x=small?a.x:Math.min(a.x,b.x),y=small?a.y:Math.min(a.y,b.y)
+   const width=small?440:Math.max(140,Math.abs(b.x-a.x))
+   const height=small?260:Math.max(80,Math.abs(b.y-a.y))
+   onDraw({x:Math.round(x),y:Math.round(y),width:Math.round(width),height:Math.round(height)})
+  }}
+  onPointerCancel={()=>{start.current=null;setPreview(null)}}>
+  {preview&&<div className="homeLayerDrawPreview" style={preview}/>}
+ </div>
+}
+
+function LayerFitController({trigger,systemIds}:{trigger:number;systemIds:string[]}){
+ const {fitView}=useReactFlow()
+ useEffect(()=>{
+   if(!trigger||!systemIds.length)return
+   void fitView({nodes:systemIds.map(id=>({id})),padding:0.2,maxZoom:1,duration:220})
+ // eslint-disable-next-line react-hooks/exhaustive-deps
+ },[trigger])
+ return null
+}
 type Link={process_id:string;system_id:string}
 type Network={id:string;name:string;kind:string}
 type Interface={item_id:string;zone_id:string|null;vlan_id:string|null;vrf_id:string|null}
@@ -32,11 +88,21 @@ export default function ArchitectureHome({systems,components,flows,processes,cat
  const [savedRegions,setSavedRegions]=useState<Record<string,LayerRegion>>({})
  const [layerDrafts,setLayerDrafts]=useState<Record<string,LayerDraft>>({})
  const [editingLayers,setEditingLayers]=useState(false)
+ const [layerTool,setLayerTool]=useState<LayerTool>('select')
+ const [fitTrigger,setFitTrigger]=useState(0)
+ useEffect(()=>{
+   if(!editingLayers)return
+   const onKey=(event:KeyboardEvent)=>{
+     if(event.key==='Escape'&&layerTool!=='select'){setLayerTool('select');event.preventDefault()}
+   }
+   window.addEventListener('keydown',onKey)
+   return()=>window.removeEventListener('keydown',onKey)
+ },[editingLayers,layerTool])
  const [layerBusy,setLayerBusy]=useState(false)
  const [layerError,setLayerError]=useState('')
  const [layerApiReady,setLayerApiReady]=useState(false)
  useEffect(()=>{
-  if(!request){setSavedRegions({});setLayerDrafts({});setEditingLayers(false);setLayerApiReady(false);return}
+  if(!request){setSavedRegions({});setLayerDrafts({});setEditingLayers(false);setLayerTool('select');setLayerApiReady(false);return}
   setLayerApiReady(false)
   let cancelled=false
   void request<LayerRegion[]>('/api/diagrams/layer-regions').then(rows=>{
@@ -47,7 +113,7 @@ export default function ArchitectureHome({systems,components,flows,processes,cat
  const updateDraft=(id:string,update:Partial<LayerDraft>,base:LayerDraft)=>{
   setLayerDrafts(old=>({...old,[id]:{...(old[id]||base),...update}}))
  }
- const cancelLayerChanges=()=>{setLayerDrafts({});setEditingLayers(false);setLayerError('')}
+ const cancelLayerChanges=()=>{setLayerDrafts({});setEditingLayers(false);setLayerTool('select');setLayerError('')}
  const saveLayerChanges=async()=>{
   if(!request||!canEditLayers)return
   setLayerBusy(true);setLayerError('')
@@ -56,7 +122,7 @@ export default function ArchitectureHome({systems,components,flows,processes,cat
    for(const [key,payload] of Object.entries(layerDrafts)){
     updated[key]=await request<LayerRegion>('/api/diagrams/layer-regions/'+encodeURIComponent(key),{method:'PUT',body:JSON.stringify(payload)})
    }
-   setSavedRegions(updated);setLayerDrafts({});setEditingLayers(false)
+   setSavedRegions(updated);setLayerDrafts({});setEditingLayers(false);setLayerTool('select')
   }catch(err){setLayerError((err as Error).message)}
   finally{setLayerBusy(false)}
  }
@@ -70,8 +136,6 @@ export default function ArchitectureHome({systems,components,flows,processes,cat
  const [focus,setFocus]=useState('')
  const [selectedSystem,setSelectedSystem]=useState('')
  useEffect(()=>{if(focusSystemId)setSelectedSystem(focusSystemId)},[focusSystemId])
- // Do not clear the flow-registry deep-link focus on the first overview
- // mount. Only clear a manual inspector selection when it actually closes.
  const previousInspectorOpen=useRef(inspectorOpen)
  useEffect(()=>{
    if(previousInspectorOpen.current&&!inspectorOpen)setSelectedSystem('')
@@ -123,7 +187,7 @@ export default function ArchitectureHome({systems,components,flows,processes,cat
  for(const cat of categories){
    const ids=new Set(processes.filter(p=>p.category_id===cat.id).map(p=>p.id))
    const members=new Set(links.filter(l=>ids.has(l.process_id)&&visibleIds.has(l.system_id)).map(l=>l.system_id))
-   if(members.size||savedRegions['business:'+cat.id])overlayGroups.push({id:'business:'+cat.id,name:cat.name,type:'business',members})
+   overlayGroups.push({id:'business:'+cat.id,name:cat.name,type:'business',members})
  }
  // Processes without a known category retain their own visual group.
  for(const process of processes.filter(p=>!p.category_id||!categories.some(c=>c.id===p.category_id))){
@@ -132,7 +196,7 @@ export default function ArchitectureHome({systems,components,flows,processes,cat
  }
  for(const network of networks){
    const members=networkSystems.get(network.id)
-   if(members?.size||savedRegions['network:'+network.id])overlayGroups.push({id:'network:'+network.id,name:network.name,type:'network',members:members||new Set()})
+   overlayGroups.push({id:'network:'+network.id,name:network.name,type:'network',members:members||new Set()})
  }
  const palette=['#a78bfa','#f59e0b','#10b981','#60a5fa','#f472b6','#22d3ee','#f97316','#84cc16']
  const groupColor=(group:OverlayGroup)=>layerDrafts[group.id]?.color||savedRegions[group.id]?.color||overlayColors[group.id]||palette[Math.max(0,overlayGroups.findIndex(item=>item.id===group.id))%palette.length]
@@ -146,16 +210,34 @@ export default function ArchitectureHome({systems,components,flows,processes,cat
     height:points.length?Math.max(...points.map(p=>p.y))-Math.min(...points.map(p=>p.y))+Math.max(110,100+componentRows*43)+42:190,
     color:groupColor(group),members:memberIds}
  }
- const areaNodes=overlayGroups.filter(group=>activeOverlays[group.type]&&!hiddenOverlayGroups.includes(group.id)).map(group=>{
+ const areaNodes=overlayGroups.filter(group=>activeOverlays[group.type]&&!hiddenOverlayGroups.includes(group.id)&&(membersFor(group).length>0||Boolean(savedRegions[group.id]||layerDrafts[group.id]))).map(group=>{
    const initial=defaultDraftFor(group)
    const memberIds=initial.members
    const area=layerDrafts[group.id]||savedRegions[group.id]||initial
    const color=groupColor(group)
    return {id:'overlay:'+group.id,type:'layerRegion',position:{x:area.x,y:area.y},width:area.width,height:area.height,
-     data:{name:group.name,count:memberIds.length,editing:editingLayers&&canEditLayers,resize:(value:{x:number;y:number;width:number;height:number})=>updateDraft(group.id,value,initial)},
-     draggable:editingLayers&&canEditLayers,selectable:editingLayers&&canEditLayers,connectable:false,zIndex:-10,
+     data:{name:group.name,count:memberIds.length,editing:editingLayers&&canEditLayers&&layerTool==='move',resize:(value:{x:number;y:number;width:number;height:number})=>updateDraft(group.id,value,initial)},
+     draggable:editingLayers&&canEditLayers&&layerTool==='move',selectable:editingLayers&&canEditLayers&&layerTool!=='draw',selected:editingLayers&&selectedOverlayGroup===group.id,connectable:false,zIndex:editingLayers?0:-10,
      style:{width:area.width,height:area.height,backgroundColor:color+Math.round(overlayOpacity/100*255).toString(16).padStart(2,'0'),border:'2px solid '+color,borderRadius:16,pointerEvents:editingLayers?'auto' as const:'none' as const,boxShadow:'none'}}
  })
+ const drawRegion=(rect:RegionRect)=>{
+   if(!editingLayers||!canEditLayers)return
+   const group=overlayGroups.find(item=>item.id===selectedOverlayGroup)
+   if(!group)return
+   const base=layerDrafts[group.id]||savedRegions[group.id]||defaultDraftFor(group)
+   updateDraft(group.id,rect,base)
+   setActiveOverlays(current=>({...current,[group.type]:true}))
+   setHiddenOverlayGroups(current=>current.filter(id=>id!==group.id))
+   setLayerTool('move')
+ }
+ const selectedRegion=overlayGroups.find(group=>group.id===selectedOverlayGroup)
+ const regionDraft=selectedRegion?(layerDrafts[selectedRegion.id]||savedRegions[selectedRegion.id]||defaultDraftFor(selectedRegion)):null
+ const updateRegionField=(field:'x'|'y'|'width'|'height',raw:number)=>{
+   if(!selectedRegion||!regionDraft||!Number.isFinite(raw))return
+   const value=(field==='width'?Math.max(140,raw):field==='height'?Math.max(80,raw):raw)
+   updateDraft(selectedRegion.id,{[field]:value},regionDraft)
+ }
+
  const componentNodes=layers.components?components.filter(c=>visibleIds.has(c.system_id)).flatMap(c=>{
    const group=components.filter(item=>item.system_id===c.system_id)
    const index=group.findIndex(item=>item.id===c.id)
@@ -188,7 +270,7 @@ export default function ArchitectureHome({systems,components,flows,processes,cat
   <div className="homeMapMode" role="group" aria-label="Тип связей на архитектурной карте">
     {([['business','Бизнес-связи'],['flows','Потоки данных'],['networks','Сети и зоны']] as const).map(([id,label])=><button key={id} type="button" aria-pressed={mapMode===id} className={mapMode===id?'current':''} onClick={()=>setMapMode(id)}>{label}</button>)}
    </div>
-  <div className="homeLayerToolbar" role="group" aria-label="Накладываемые слои">
+  {!editingLayers&&<div className="homeLayerToolbar" role="group" aria-label="Накладываемые слои">
    <div className="homeLayerPresets" role="group" aria-label="Режим архитектурных областей">
     <button type="button" aria-pressed={activeOverlays.business&&!activeOverlays.network} onClick={()=>setActiveOverlays({business:true,network:false})}>Бизнес-слой</button>
     <button type="button" aria-pressed={!activeOverlays.business&&activeOverlays.network} onClick={()=>setActiveOverlays({business:false,network:true})}>Сетевой слой</button>
@@ -196,12 +278,10 @@ export default function ArchitectureHome({systems,components,flows,processes,cat
     <button type="button" aria-pressed={!activeOverlays.business&&!activeOverlays.network} onClick={()=>setActiveOverlays({business:false,network:false})}>Без областей</button>
    </div>
    <strong>Области на схеме</strong>
-   {canEditLayers&&layerApiReady&&<div className="homeLayerEditActions">
-    {!editingLayers?<button type="button" onClick={()=>{setEditingLayers(true);setLayerError('')}}>Редактировать области</button>:<>
-     <button type="button" className="primary" disabled={layerBusy||!Object.keys(layerDrafts).length} onClick={()=>void saveLayerChanges()}>{layerBusy?'Сохранение…':'Сохранить области'}</button>
-     <button type="button" disabled={layerBusy} onClick={cancelLayerChanges}>Отменить</button>
-    </>}
+   {canEditLayers&&layerApiReady&&!editingLayers&&<div className="homeLayerEditActions">
+     <button type="button" onClick={()=>{setEditingLayers(true);setLayerTool('select');setLayerError('');setSelectedOverlayGroup(old=>old||overlayGroups[0]?.id||'')}}>Редактировать области</button>
    </div>}
+   {editingLayers&&<span role="status" className="homeLayerHint">Режим редактора: инструменты слева, свойства выбранной области справа.</span>}
    {layerError&&<p role="alert">{layerError}</p>}
    <label><input type="checkbox" checked={layers.components} onChange={e=>setLayers(old=>({...old,components:e.target.checked}))}/> Показать ВМ и компоненты</label>
    <span className="homeLayerHint">Объекты остаются на месте; переключаются только цветные области принадлежности.</span>
@@ -210,7 +290,7 @@ export default function ArchitectureHome({systems,components,flows,processes,cat
     <input type="checkbox" aria-label={'Показать область '+group.name} checked={!hiddenOverlayGroups.includes(group.id)} onChange={e=>setHiddenOverlayGroups(old=>e.target.checked?old.filter(id=>id!==group.id):[...old,group.id])}/>
     <input aria-label={'Цвет слоя '+group.name} type="color" value={groupColor(group)} onChange={e=>editingLayers&&canEditLayers?updateDraft(group.id,{color:e.target.value},layerDrafts[group.id]||savedRegions[group.id]||defaultDraftFor(group)):setOverlayColors(old=>({...old,[group.id]:e.target.value}))}/><button type="button" aria-pressed={selectedOverlayGroup===group.id} onClick={()=>{setSelectedOverlayGroup(old=>old===group.id?'':group.id);setActiveOverlays(old=>({...old,[group.type]:true}))}}>{group.name}</button><small>{membersFor(group).length} ИС · {group.type==='business'?'Бизнес':'Сети'}</small>
    </label>)}</div></details>
-  </div>
+  </div>}
   <div className="homeMapTools"><input aria-label="Поиск на карте" value={query} onChange={e=>setQuery(e.target.value)} placeholder="Найти ИС или компонент…"/><Disclosure label="Фильтры и слои"><select aria-label="Контур карты" value={environment} onChange={e=>setEnvironment(e.target.value)}><option value="all">Все контуры</option>{environments.map(e=><option key={e} value={e}>{e}</option>)}</select><select aria-label="Фокус на ИС" value={focus} onChange={e=>setFocus(e.target.value)}><option value="">Все системы</option>{systems.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select>
   <details className="homeMapLayersDisclosure"><summary>Слои карты <span aria-hidden="true">▾</span></summary><div className="homeMapLayers" aria-label="Слои карты">{([['systems','Информационные системы'],['business','Бизнес-процессы'],['networks','Сетевые объекты']] as const).map(([key,label])=><label key={key}><input type="checkbox" checked={layers[key]} onChange={e=>setLayers(old=>({...old,[key]:e.target.checked}))}/>{label}</label>)}</div></details></Disclosure></div>
   {query.trim()&&<div className="homeMapSearchMatches" role="region" aria-label="Результаты поиска по архитектуре">
@@ -224,9 +304,25 @@ export default function ArchitectureHome({systems,components,flows,processes,cat
     </div>)}
     {filteredSystems.length>12&&<small>Показаны первые 12 систем. Уточните запрос.</small>}
   </div>}
-  {layers.systems&&<div className="homeMapGraph"><ReactFlow minZoom={0.08} nodes={canvasNodes} edges={edges} nodeTypes={homeNodeTypes} nodesDraggable={editingLayers&&canEditLayers}
+  {layers.systems&&<div className={editingLayers?'homeLayerEditorStage editing':'homeLayerEditorStage'}>
+
+   {editingLayers&&<div className="homeLayerTools" role="toolbar" aria-label="Инструменты слоёв">
+     <button type="button" aria-label="Выбрать область" title="Выбор области и её свойств" data-tool="select" aria-pressed={layerTool==='select'} onClick={()=>setLayerTool('select')}><MousePointer2 size={19} strokeWidth={1.8}/><span>Выбрать</span></button>
+     <button type="button" aria-label="Переместить область" title="Перемещение и изменение размера выбранной области" data-tool="move" aria-pressed={layerTool==='move'} onClick={()=>setLayerTool('move')}><Move size={19} strokeWidth={1.8}/><span>Переместить</span></button>
+     <button type="button" aria-label="Нарисовать область" title="Выберите категорию справа, затем нарисуйте рамку на схеме" data-tool="draw" aria-pressed={layerTool==='draw'} disabled={!overlayGroups.length} onClick={()=>{
+       if(!selectedOverlayGroup&&overlayGroups.length)setSelectedOverlayGroup(overlayGroups[0].id)
+       setLayerTool('draw')
+     }}><SquareDashed size={19} strokeWidth={1.8}/><span>Область</span></button>
+     <div className="homeLayerToolsSeparator"/>
+     <button type="button" aria-label="Вписать системы в экран" title="Вписать все системы, не меняя их положение" onClick={()=>setFitTrigger(value=>value+1)}><Maximize2 size={19} strokeWidth={1.8}/><span>Вписать</span></button>
+     <button type="button" aria-label="Сохранить области" title="Сохранить изменённые области в базе" disabled={layerBusy||!Object.keys(layerDrafts).length} onClick={()=>void saveLayerChanges()}><Save size={19} strokeWidth={1.8}/><span>Сохранить</span></button>
+     <button type="button" aria-label="Отменить изменения областей" title="Отменить черновик и выйти из редактора" disabled={layerBusy} onClick={cancelLayerChanges}><X size={19} strokeWidth={1.8}/><span>Отменить</span></button>
+     <div className="homeLayerToolsDraft" aria-live="polite"><ClipboardList size={17}/><span>Черновик: {Object.keys(layerDrafts).length}</span></div>
+   </div>}
+
+  <div className="homeMapGraph"><ReactFlow minZoom={0.08} nodes={canvasNodes} edges={edges} nodeTypes={homeNodeTypes} nodesDraggable={editingLayers&&canEditLayers&&layerTool==='move'}
    onNodesChange={(changes:NodeChange[])=>{
-    if(!editingLayers||!canEditLayers)return
+    if(!editingLayers||!canEditLayers||layerTool!=='move')return
     for(const change of changes){
      if(change.type!=='position'||!change.position||!change.id.startsWith('overlay:'))continue
      const key=change.id.slice(8)
@@ -234,10 +330,35 @@ export default function ArchitectureHome({systems,components,flows,processes,cat
      const group=overlayGroups.find(item=>item.id===key)
      if(node&&group)updateDraft(key,change.position,{x:node.position.x,y:node.position.y,width:node.width,height:node.height,color:groupColor(group),members:membersFor(group)})
     }
-   }} onNodeDragStop={(_,node)=>{if(!node.id.startsWith('overlay:'))return;const key=node.id.slice(8);const region=areaNodes.find(item=>item.id===node.id);const group=overlayGroups.find(item=>item.id===key);if(region&&group)updateDraft(key,node.position,{x:region.position.x,y:region.position.y,width:region.width,height:region.height,color:groupColor(group),members:membersFor(group)})}} fitView fitViewOptions={{padding:0.15,minZoom:0.3,maxZoom:1}} nodesConnectable={false} onNodeClick={(_,node)=>{if(node.id.startsWith('component:')){onOpenComponent(node.id.slice('component:'.length));return}if(node.id.startsWith('overlay:')){setSelectedOverlayGroup(node.id.slice(8));return}setSelectedSystem(node.id);onOpenSystem(node.id)}} onPaneClick={()=>{setSelectedSystem('');onCloseSystem()}}><AutoFit layoutKey={inspectorOpen?'inspector-open':'inspector-closed'} ignoreNodePrefixes="overlay:,component:" focusIds={filteredSystems.map(s=>s.id)} suspended={editingLayers}/><Background gap={20}/><Controls showInteractive={false}/></ReactFlow></div>}
-  {!layers.systems&&<div className="homeMapEmpty">Включите слой «Информационные системы», чтобы показать карту связей.</div>}
-  {selectedOverlayGroup&&focusedLayer&&<div className="homeLayerMembers" role="status"><strong>{focusedLayer.name}</strong><span>В этой области: {membersFor(focusedLayer).map(id=>systems.find(sys=>sys.id===id)?.name||id).join(', ')}</span><button type="button" onClick={()=>setSelectedOverlayGroup('')}>Снять выделение</button></div>}
-  {editingLayers&&focusedLayer&&<section className="homeLayerMemberEditor" aria-label="Состав области">
+   }} onNodeDragStop={(_,node)=>{if(layerTool!=='move'||!node.id.startsWith('overlay:'))return;const key=node.id.slice(8);const region=areaNodes.find(item=>item.id===node.id);const group=overlayGroups.find(item=>item.id===key);if(region&&group)updateDraft(key,node.position,{x:region.position.x,y:region.position.y,width:region.width,height:region.height,color:groupColor(group),members:membersFor(group)})}} fitView fitViewOptions={{padding:0.15,minZoom:0.3,maxZoom:1}} nodesConnectable={false} onNodeClick={(_,node)=>{if(node.id.startsWith('component:')){onOpenComponent(node.id.slice('component:'.length));return}if(node.id.startsWith('overlay:')){setSelectedOverlayGroup(node.id.slice(8));return}setSelectedSystem(node.id);onOpenSystem(node.id)}} onPaneClick={()=>{setSelectedSystem('');onCloseSystem()}}><AutoFit layoutKey={inspectorOpen?'inspector-open':'inspector-closed'} ignoreNodePrefixes="overlay:,component:" focusIds={filteredSystems.map(s=>s.id)} suspended={editingLayers}/><Background gap={20}/><Controls showInteractive={false}/><LayerFitController trigger={fitTrigger} systemIds={filteredSystems.map(s=>s.id)}/>
+   <LayerRectangleDraw enabled={editingLayers&&layerTool==='draw'&&Boolean(selectedOverlayGroup)} onDraw={drawRegion}/>
+   </ReactFlow></div>
+
+   {editingLayers&&<aside className="homeLayerDock" role="complementary" aria-label="Свойства архитектурной области">
+     <header><strong>Свойства области</strong><span>{layerTool==='draw'?'Рисование':layerTool==='move'?'Перемещение':'Выбор'}</span></header>
+     <p className="homeLayerToolInstructions">{layerTool==='draw'?'Выберите бизнес-категорию или сеть, затем протяните прямоугольник на холсте. Одно нажатие создаст рамку стандартного размера.':layerTool==='move'?'Перетаскивайте область. Чтобы изменить размер, выделите её и потяните за маркеры.':'Выберите область на схеме или в списке.'}</p>
+     {layerError&&<p role="alert" className="homeLayerError">{layerError}</p>}
+     <label className="homeLayerGroupSelect">Область
+       <select aria-label="Выбрать архитектурную область" value={selectedOverlayGroup} onChange={event=>{
+         const id=event.target.value;setSelectedOverlayGroup(id)
+         const item=overlayGroups.find(group=>group.id===id)
+         if(item)setActiveOverlays(old=>({...old,[item.type]:true}))
+       }}>
+         <option value="">Выберите область</option>
+         <optgroup label="Бизнес-категории">{overlayGroups.filter(group=>group.type==='business').map(group=><option key={group.id} value={group.id}>{group.name}</option>)}</optgroup>
+         <optgroup label="Сети и зоны">{overlayGroups.filter(group=>group.type==='network').map(group=><option key={group.id} value={group.id}>{group.name}</option>)}</optgroup>
+       </select>
+     </label>
+     {selectedRegion&&regionDraft&&<div className="homeLayerProperties">
+       <label>Цвет области<input aria-label="Цвет выбранной области" type="color" value={groupColor(selectedRegion)} onChange={event=>updateDraft(selectedRegion.id,{color:event.target.value},regionDraft)}/></label>
+       <div className="homeLayerGeometry">
+         {([['x','X'],['y','Y'],['width','Ширина'],['height','Высота']] as const).map(([key,label])=><label key={key}>{label}
+           <input type="number" aria-label={label+' области'} value={Math.round(regionDraft[key])} step="10" min={key==='width'?140:key==='height'?80:-100000} max="100000" onChange={event=>updateRegionField(key,Number(event.target.value))}/>
+         </label>)}
+       </div>
+       <p>Прямоугольник изменяет только визуальное представление; координаты систем и ВМ остаются неизменными.</p>
+     </div>}
+       {focusedLayer&&<section className="homeLayerMemberEditor" aria-label="Состав области">
    <h3>{focusedLayer.name} – состав области</h3>
    <p>Выбор влияет только на отображение области, а не на фактические бизнес-связи или сетевые интерфейсы.</p>
    <div className="homeLayerMemberGrid">{systems.map(system=><label key={system.id}><input type="checkbox" checked={membersFor(focusedLayer).includes(system.id)} onChange={e=>{
@@ -248,6 +369,12 @@ export default function ArchitectureHome({systems,components,flows,processes,cat
      updateDraft(focusedLayer.id,{members},base)
    }}/>{system.name}</label>)}</div>
   </section>}
+   </aside>}
+
+   </div>}
+  {!layers.systems&&<div className="homeMapEmpty">Включите слой «Информационные системы», чтобы показать карту связей.</div>}
+  {selectedOverlayGroup&&focusedLayer&&<div className="homeLayerMembers" role="status"><strong>{focusedLayer.name}</strong><span>В этой области: {membersFor(focusedLayer).map(id=>systems.find(sys=>sys.id===id)?.name||id).join(', ')}</span><button type="button" onClick={()=>setSelectedOverlayGroup('')}>Снять выделение</button></div>}
+
   <p className="homeMapModeHint">Полупрозрачные области показывают принадлежность ИС к категориям, а не технические маршруты. Пересекающиеся рамки означают одновременное участие; для точного состава смотрите подписи и реестры.</p>
   <p className="homeMapModeHint">{mapMode==='business'?'Пунктир показывает участие систем в общих бизнес-процессах, а не направление передачи данных.':mapMode==='flows'?'Стрелки показывают реальные зарегистрированные потоки между компонентами разных ИС. Количество указано на связи.':'Сетевой слой показывает привязки систем к зонам, VLAN и VRF. Совпадение сети не означает наличие разрешённого маршрута.'}</p>
   <div className="homeMapDetails">

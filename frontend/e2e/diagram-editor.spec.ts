@@ -242,12 +242,10 @@ test('dragged VM saves its own coordinates and never mutates flows or NICs',asyn
   const reopened=page.getByRole('region',{name:'Редактор архитектурной схемы'})
     .locator('.react-flow__node-boardComponent').filter({hasText:'QA-WORK-Editor source'})
   await expect(reopened).toBeVisible()
-  console.log('QA-WORK reopened VM:',JSON.stringify(saved),
-    'transform:',await reopened.evaluate(node=>(node as HTMLElement).style.transform),
-    'server:',JSON.stringify((await (await page.request.get(api+'/api/board/layout/'+id)).json()).positions[vm!.id]))
+  
   await expect.poll(async()=>{
     const transform=await reopened.evaluate(node=>(node as HTMLElement).style.transform)
-    const matches=transform.match(/translate\\(\\s*(-?[\\d.]+)px,\\s*(-?[\\d.]+)px\\)/)
+    const matches=transform.match(/translate\(\s*(-?[\d.]+)px,\s*(-?[\d.]+)px\)/)
     return Boolean(matches&&Math.abs(Number(matches[1])-saved.x)<2&&Math.abs(Number(matches[2])-saved.y)<2)
   }).toBe(true)
   expect(await scopedFlows()).toEqual(beforeFlows)

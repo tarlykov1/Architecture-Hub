@@ -51,6 +51,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Validate safety preflight shell syntax
+        run: bash -n scripts/preflight_test_release.sh
       - run: docker compose config --quiet
       - name: Validate Wiki.js Compose
         env:

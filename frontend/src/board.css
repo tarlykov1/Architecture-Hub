@@ -353,3 +353,8 @@
 .boardFlowReassign p{margin:0;font-size:11px;line-height:1.45;color:#52657e}
 .boardFlowReassign button{width:100%;max-width:100%;padding:9px 10px;border:1px solid #176bc1;border-radius:7px;color:#fff;background:#176bc1;font-size:12px;font-weight:600;cursor:pointer}
 .boardFlowReassign button:disabled{color:#70869f;background:#e8eef6;border-color:#d9e4f2;cursor:not-allowed}
+
+/* Loading saved layout is part of entering the editor. Never let pointer
+   gestures start on temporary default positions and silently disappear. */
+.boardLayoutLoading{position:absolute;inset:0;display:grid;place-items:center;
+  padding:18px;background:#f8fafc;color:#52657e;font-size:13px;text-align:center}

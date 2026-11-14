@@ -27,6 +27,7 @@ def test_relation_type_catalog_covers_legacy_and_is_not_a_transport_graph():
     assert all(row["technical_flow"] is False for row in registry)
     assert next(item for item in registry if item["kind"] == "data_flow")["deprecated"] is True
     assert logical_relation_validation_error("integrates_with", "system", "system") is None
+    assert logical_relation_validation_error("data_flow", "system", "system") is not None
     assert logical_relation_validation_error("depends_on", "system", "vm")
     assert logical_relation_validation_error("made_up_link", "system", "system")
 
@@ -49,6 +50,8 @@ def test_relation_writes_validate_types_and_direction_without_changing_existing_
 
         unknown = client.post(url, json={**base, "kind": "arbitrary_fact"}, headers=ADMIN)
         assert unknown.status_code == 422
+        deprecated = client.post(url, json={**base, "kind": "data_flow"}, headers=ADMIN)
+        assert deprecated.status_code == 422
         invalid_source = client.post(
             url, json={**base, "source_id": non_system}, headers=ADMIN,
         )

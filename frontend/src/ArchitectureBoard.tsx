@@ -457,7 +457,9 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
      setFrom(sourceId);setTo(targetId)
    }else if(pair.source_handle===current.source_handle&&pair.target_handle===current.target_handle)return
    setFlowAnchors(previous=>({...previous,[gesture.flowId]:pair}))
-   setLayoutDirty(true)
+   // A changed source/target is a reviewed flow transaction; standalone
+   // layout dirtiness applies only to a moved handle on unchanged endpoints.
+   if(!endpointsChanged)setLayoutDirty(true)
    setLayoutMessage(endpointsChanged
      ?'Подключение изменено на схеме. Проверьте и подтвердите черновик.'
      :'Точка подключения стрелки изменена. Нажмите «Сохранить», чтобы сохранить расположение концов в схеме.')
@@ -757,7 +759,7 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
    }
    setSelectedEdgeFlowIds([selectedFlow.id])
    setFlowAnchors(previous=>({...previous,[selectedFlow.id]:automaticPorts(from,to)}))
-   setLayoutDirty(true)
+   // Staged reassignment is saved with the flow, not as a geometry-only edit.
    setLayoutMessage('Новое подключение потока добавлено в черновик. Проверьте и подтвердите изменения через «Сохранить всё».')
    setError('')
  }

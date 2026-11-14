@@ -11,6 +11,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: architecture-hub-test-frontend-deploy
@@ -37,10 +38,37 @@ jobs:
       DEPLOY_DIR: /var/www/webtie.ru/data/www/test.web-tie.ru
 
     steps:
+      - name: Download release revision from the successful backend workflow
+        uses: actions/download-artifact@v4
+        with:
+          name: backend-release-revision
+          path: ${{ runner.temp }}/backend-release
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify the backend revision matches the current main
+        id: revision
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          expected="$(tr -d '\\n' < "${{ runner.temp }}/backend-release/backend-release-sha.txt")"
+          if [[ ! "$expected" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::Invalid backend revision artifact"
+            exit 1
+          fi
+          current="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq '.object.sha')"
+          if [ "$current" != "$expected" ]; then
+            echo "::error::Main moved after backend deployment; refusing to publish stale frontend"
+            exit 1
+          fi
+          echo "sha=$expected" >> "$GITHUB_OUTPUT"
+
       - name: Checkout the exact commit deployed by the successful backend workflow
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}
+          ref: ${{ steps.revision.outputs.sha }}
           persist-credentials: false
 
       - name: Setup Node.js 22
@@ -54,7 +82,7 @@ jobs:
         working-directory: frontend
         env:
           VITE_WIKI_URL: ${{ vars.VITE_WIKI_URL }}
-          BUILD_REVISION: ${{ github.event.workflow_run.head_sha }}
+          BUILD_REVISION: ${{ steps.revision.outputs.sha }}
         run: |
           npm ci --no-audit --no-fund
           npm run build
@@ -101,7 +129,7 @@ jobs:
       - name: Verify deployed frontend revision matches the tested commit
         shell: bash
         env:
-          EXPECTED_REVISION: ${{ github.event.workflow_run.head_sha }}
+          EXPECTED_REVISION: ${{ steps.revision.outputs.sha }}
         run: |
           set -euo pipefail
           actual="$(curl --fail --show-error --silent --retry 5 --retry-delay 3 \

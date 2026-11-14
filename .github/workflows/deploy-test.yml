@@ -53,7 +53,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          expected="$(tr -d '\\n' < "${{ runner.temp }}/backend-release/backend-release-sha.txt")"
+          expected="$(cat "${{ runner.temp }}/backend-release/backend-release-sha.txt")"
           if [[ ! "$expected" =~ ^[0-9a-f]{40}$ ]]; then
             echo "::error::Invalid backend revision artifact"
             exit 1

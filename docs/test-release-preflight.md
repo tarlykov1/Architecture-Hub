@@ -23,7 +23,7 @@ PR #161 (первая очередь), #162 (миграция 0013) и #163 (м�
 Команды ниже загружают скрипт из проверяемого GitHub-коммита и **только создают консистентную резервную копию + читают метаданные базы**. Скрипт не выводит содержимое паспортов, пароли, адреса или токены.
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/tarlykov1/Architecture-Hub/55fc1d7f15857311de3d362d60450acad2626f06/scripts/preflight_test_release.sh \
+curl -fsSL https://raw.githubusercontent.com/tarlykov1/Architecture-Hub/b9414b012b51dc5978f69ed08a9994085f55c887/scripts/preflight_test_release.sh \
   -o /root/archhub-test-release-preflight.sh
 bash -n /root/archhub-test-release-preflight.sh
 bash /root/archhub-test-release-preflight.sh

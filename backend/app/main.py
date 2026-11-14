@@ -83,6 +83,7 @@ class ArchitectureLayerRegion(Base):
     width: Mapped[float] = mapped_column(nullable=False)
     height: Mapped[float] = mapped_column(nullable=False)
     color: Mapped[str] = mapped_column(String(7), nullable=False)
+    opacity: Mapped[float] = mapped_column(nullable=False, default=0.22)
     members: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
@@ -467,6 +468,7 @@ class LayerRegionInput(BaseModel):
     width: float = Field(ge=140, le=100000)
     height: float = Field(ge=80, le=100000)
     color: str = Field(pattern=r"^#[0-9a-fA-F]{6}$")
+    opacity: float = Field(default=0.22, ge=0.05, le=0.85)
     members: list[UUID] = Field(max_length=500)
 
 
@@ -1351,7 +1353,7 @@ def delete_relation(relation_id: UUID, db: Session = Depends(db_session)):
 def layer_region_output(region: ArchitectureLayerRegion) -> dict:
     return {"group_key": region.group_key, "x": region.x, "y": region.y,
             "width": region.width, "height": region.height, "color": region.color,
-            "members": region.members}
+            "opacity": region.opacity, "members": region.members}
 
 
 @app.get("/api/diagrams/layer-regions", response_model=list[LayerRegionOutput])
@@ -1387,7 +1389,7 @@ def save_layer_region(group_key: str, payload: LayerRegionInput, request: Reques
     if region is None:
         region = ArchitectureLayerRegion(group_key=group_key)
         db.add(region)
-    for field_name in ("x", "y", "width", "height", "color"):
+    for field_name in ("x", "y", "width", "height", "color", "opacity"):
         setattr(region, field_name, getattr(payload, field_name))
     region.members = [str(member) for member in members]
     region.updated_at = datetime.now(timezone.utc)

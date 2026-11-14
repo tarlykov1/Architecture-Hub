@@ -10,7 +10,7 @@ type Flow={id:string;source_id:string;target_id:string}
 type Process={id:string;name:string;category_id?:string}
 type Category={id:string;name:string}
 type OverlayGroup={id:string;name:string;type:'business'|'network';members:Set<string>}
-type LayerRegion={group_key:string;x:number;y:number;width:number;height:number;color:string;members:string[]}
+type LayerRegion={group_key:string;x:number;y:number;width:number;height:number;color:string;opacity:number;members:string[]}
 type LayerDraft=Omit<LayerRegion,'group_key'>
 type LayerRegionNodeData={name:string;count:number;editing:boolean;resize:(bounds:{x:number;y:number;width:number;height:number})=>void}
 function LayerRegionNode({data,selected}:NodeProps){
@@ -208,7 +208,7 @@ export default function ArchitectureHome({systems,components,flows,processes,cat
     y:points.length?Math.min(...points.map(p=>p.y))-42:20,
     width:points.length?Math.max(...points.map(p=>p.x))-Math.min(...points.map(p=>p.x))+330:340,
     height:points.length?Math.max(...points.map(p=>p.y))-Math.min(...points.map(p=>p.y))+Math.max(110,100+componentRows*43)+42:190,
-    color:groupColor(group),members:memberIds}
+    color:groupColor(group),opacity:overlayOpacity/100,members:memberIds}
  }
  const areaNodes=overlayGroups.filter(group=>activeOverlays[group.type]&&!hiddenOverlayGroups.includes(group.id)&&(membersFor(group).length>0||Boolean(savedRegions[group.id]||layerDrafts[group.id]))).map(group=>{
    const initial=defaultDraftFor(group)
@@ -218,7 +218,7 @@ export default function ArchitectureHome({systems,components,flows,processes,cat
    return {id:'overlay:'+group.id,type:'layerRegion',position:{x:area.x,y:area.y},width:area.width,height:area.height,
      data:{name:group.name,count:memberIds.length,editing:editingLayers&&canEditLayers&&layerTool==='move',resize:(value:{x:number;y:number;width:number;height:number})=>updateDraft(group.id,value,initial)},
      draggable:editingLayers&&canEditLayers&&layerTool==='move',selectable:editingLayers&&canEditLayers&&layerTool!=='draw',selected:editingLayers&&selectedOverlayGroup===group.id,connectable:false,zIndex:editingLayers?0:-10,
-     style:{width:area.width,height:area.height,backgroundColor:color+Math.round(overlayOpacity/100*255).toString(16).padStart(2,'0'),border:'2px solid '+color,borderRadius:16,pointerEvents:editingLayers?'auto' as const:'none' as const,boxShadow:'none'}}
+     style:{width:area.width,height:area.height,backgroundColor:color+Math.round((area.opacity??overlayOpacity/100)*255).toString(16).padStart(2,'0'),border:'2px solid '+color,borderRadius:16,pointerEvents:editingLayers?'auto' as const:'none' as const,boxShadow:'none'}}
  })
  const drawRegion=(rect:RegionRect)=>{
    if(!editingLayers||!canEditLayers)return
@@ -285,7 +285,7 @@ export default function ArchitectureHome({systems,components,flows,processes,cat
    {layerError&&<p role="alert">{layerError}</p>}
    <label><input type="checkbox" checked={layers.components} onChange={e=>setLayers(old=>({...old,components:e.target.checked}))}/> Показать ВМ и компоненты</label>
    <span className="homeLayerHint">Объекты остаются на месте; переключаются только цветные области принадлежности.</span>
-   <label className="homeLayerOpacity">Прозрачность заливки <input aria-label="Насыщенность слоёв" type="range" min="5" max="55" value={overlayOpacity} onChange={e=>setOverlayOpacity(Number(e.target.value))}/></label>
+   <label className="homeLayerOpacity">Прозрачность новых областей <input aria-label="Насыщенность слоёв" type="range" min="5" max="55" value={overlayOpacity} onChange={e=>setOverlayOpacity(Number(e.target.value))}/></label>
    <details open className="homeLayerCatalog"><summary>Категории и области</summary><div className="homeLayerColorList">{overlayGroups.map(group=><label key={group.id}>
     <input type="checkbox" aria-label={'Показать область '+group.name} checked={!hiddenOverlayGroups.includes(group.id)} onChange={e=>setHiddenOverlayGroups(old=>e.target.checked?old.filter(id=>id!==group.id):[...old,group.id])}/>
     <input aria-label={'Цвет слоя '+group.name} type="color" value={groupColor(group)} onChange={e=>editingLayers&&canEditLayers?updateDraft(group.id,{color:e.target.value},layerDrafts[group.id]||savedRegions[group.id]||defaultDraftFor(group)):setOverlayColors(old=>({...old,[group.id]:e.target.value}))}/><button type="button" aria-pressed={selectedOverlayGroup===group.id} onClick={()=>{setSelectedOverlayGroup(old=>old===group.id?'':group.id);setActiveOverlays(old=>({...old,[group.type]:true}))}}>{group.name}</button><small>{membersFor(group).length} ИС · {group.type==='business'?'Бизнес':'Сети'}</small>
@@ -328,9 +328,9 @@ export default function ArchitectureHome({systems,components,flows,processes,cat
      const key=change.id.slice(8)
      const node=areaNodes.find(item=>item.id===change.id)
      const group=overlayGroups.find(item=>item.id===key)
-     if(node&&group)updateDraft(key,change.position,{x:node.position.x,y:node.position.y,width:node.width,height:node.height,color:groupColor(group),members:membersFor(group)})
+     if(node&&group)updateDraft(key,change.position,{x:node.position.x,y:node.position.y,width:node.width,height:node.height,color:groupColor(group),opacity:(layerDrafts[key]||savedRegions[key])?.opacity??overlayOpacity/100,members:membersFor(group)})
     }
-   }} onNodeDragStop={(_,node)=>{if(layerTool!=='move'||!node.id.startsWith('overlay:'))return;const key=node.id.slice(8);const region=areaNodes.find(item=>item.id===node.id);const group=overlayGroups.find(item=>item.id===key);if(region&&group)updateDraft(key,node.position,{x:region.position.x,y:region.position.y,width:region.width,height:region.height,color:groupColor(group),members:membersFor(group)})}} fitView fitViewOptions={{padding:0.15,minZoom:0.3,maxZoom:1}} nodesConnectable={false} onNodeClick={(_,node)=>{if(node.id.startsWith('component:')){onOpenComponent(node.id.slice('component:'.length));return}if(node.id.startsWith('overlay:')){setSelectedOverlayGroup(node.id.slice(8));return}setSelectedSystem(node.id);onOpenSystem(node.id)}} onPaneClick={()=>{setSelectedSystem('');onCloseSystem()}}><AutoFit layoutKey={inspectorOpen?'inspector-open':'inspector-closed'} ignoreNodePrefixes="overlay:,component:" focusIds={filteredSystems.map(s=>s.id)} suspended={editingLayers}/><Background gap={20}/><Controls showInteractive={false}/><LayerFitController trigger={fitTrigger} systemIds={filteredSystems.map(s=>s.id)}/>
+   }} onNodeDragStop={(_,node)=>{if(layerTool!=='move'||!node.id.startsWith('overlay:'))return;const key=node.id.slice(8);const region=areaNodes.find(item=>item.id===node.id);const group=overlayGroups.find(item=>item.id===key);if(region&&group)updateDraft(key,node.position,{x:region.position.x,y:region.position.y,width:region.width,height:region.height,color:groupColor(group),opacity:(layerDrafts[key]||savedRegions[key])?.opacity??overlayOpacity/100,members:membersFor(group)})}} fitView fitViewOptions={{padding:0.15,minZoom:0.3,maxZoom:1}} nodesConnectable={false} onNodeClick={(_,node)=>{if(node.id.startsWith('component:')){onOpenComponent(node.id.slice('component:'.length));return}if(node.id.startsWith('overlay:')){setSelectedOverlayGroup(node.id.slice(8));return}setSelectedSystem(node.id);onOpenSystem(node.id)}} onPaneClick={()=>{setSelectedSystem('');onCloseSystem()}}><AutoFit layoutKey={inspectorOpen?'inspector-open':'inspector-closed'} ignoreNodePrefixes="overlay:,component:" focusIds={filteredSystems.map(s=>s.id)} suspended={editingLayers}/><Background gap={20}/><Controls showInteractive={false}/><LayerFitController trigger={fitTrigger} systemIds={filteredSystems.map(s=>s.id)}/>
    <LayerRectangleDraw enabled={editingLayers&&layerTool==='draw'&&Boolean(selectedOverlayGroup)} onDraw={drawRegion}/>
    </ReactFlow></div>
 
@@ -351,6 +351,10 @@ export default function ArchitectureHome({systems,components,flows,processes,cat
      </label>
      {selectedRegion&&regionDraft&&<div className="homeLayerProperties">
        <label>Цвет области<input aria-label="Цвет выбранной области" type="color" value={groupColor(selectedRegion)} onChange={event=>updateDraft(selectedRegion.id,{color:event.target.value},regionDraft)}/></label>
+       <label>Прозрачность области
+         <input aria-label="Прозрачность выбранной области" type="range" min="5" max="85" step="1" value={Math.round((regionDraft.opacity??0.22)*100)} onChange={event=>updateDraft(selectedRegion.id,{opacity:Number(event.target.value)/100},regionDraft)}/>
+         <span>{Math.round((regionDraft.opacity??0.22)*100)}%</span>
+       </label>
        <div className="homeLayerGeometry">
          {([['x','X'],['y','Y'],['width','Ширина'],['height','Высота']] as const).map(([key,label])=><label key={key}>{label}
            <input type="number" aria-label={label+' области'} value={Math.round(regionDraft[key])} step="10" min={key==='width'?140:key==='height'?80:-100000} max="100000" onChange={event=>updateRegionField(key,Number(event.target.value))}/>
@@ -365,7 +369,7 @@ export default function ArchitectureHome({systems,components,flows,processes,cat
      const members=membersFor(focusedLayer).filter(id=>id!==system.id)
      if(e.target.checked)members.push(system.id)
      const region=areaNodes.find(node=>node.id==='overlay:'+focusedLayer.id)
-     const base:LayerDraft=layerDrafts[focusedLayer.id]||savedRegions[focusedLayer.id]||{x:region?.position.x||20,y:region?.position.y||20,width:region?.width||340,height:region?.height||190,color:groupColor(focusedLayer),members:membersFor(focusedLayer)}
+     const base:LayerDraft=layerDrafts[focusedLayer.id]||savedRegions[focusedLayer.id]||{x:region?.position.x||20,y:region?.position.y||20,width:region?.width||340,height:region?.height||190,color:groupColor(focusedLayer),opacity:overlayOpacity/100,members:membersFor(focusedLayer)}
      updateDraft(focusedLayer.id,{members},base)
    }}/>{system.name}</label>)}</div>
   </section>}

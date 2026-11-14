@@ -44,11 +44,11 @@ def test_wiki_status_without_secrets():
 def test_architecture_layer_regions_persist_and_obey_permissions():
     with TestClient(app) as client:
         system = client.post("/api/objects", headers=ADMIN, json={
-            "kind": "system", "name": "Layer-owned system", "description": "",
+            "kind": "system", "name": "QA-WORK-Layer-owned system", "description": "",
             "status": "active", "attributes": {}
         })
         assert system.status_code == 201, system.text
-        category = client.post("/api/business/categories", headers=ADMIN, json={"name": "Layer test " + system.json()["id"]})
+        category = client.post("/api/business/categories", headers=ADMIN, json={"name": "QA-WORK-Layer test " + system.json()["id"]})
         assert category.status_code == 201, category.text
         key = "business:" + category.json()["id"]
         payload = {"x": 120.0, "y": 210.0, "width": 650.0, "height": 420.0,

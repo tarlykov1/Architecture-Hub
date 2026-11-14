@@ -16,6 +16,7 @@ from .access import access_middleware, configured_keys, ROLE_ACCESS
 from .password_auth import configured_password_auth, check_password, issue_session, issue_user_session, login_allowed, record_login_attempt, SESSION_SECONDS, make_password_hash
 from .cmdb import ci_graph, potential_impact, CI_CLASSES, LIFECYCLE_STATES, LIFECYCLE_TRANSITIONS, CRITICALITY_LEVELS, VERIFICATION_STATES
 from .cmdb_catalog import validate_class_schema, validate_custom_values, missing_required, assess_relation, RELATION_KINDS
+from .architecture_metamodel import get_logical_relation_types, logical_relation_validation_error, summarize_legacy_relations
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import DateTime, ForeignKey, JSON, String, Uuid, Index, Boolean, UniqueConstraint, create_engine, select, update, text as sql_text
@@ -82,6 +83,7 @@ class ArchitectureLayerRegion(Base):
     width: Mapped[float] = mapped_column(nullable=False)
     height: Mapped[float] = mapped_column(nullable=False)
     color: Mapped[str] = mapped_column(String(7), nullable=False)
+    opacity: Mapped[float] = mapped_column(nullable=False, default=0.22)
     members: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
@@ -466,6 +468,7 @@ class LayerRegionInput(BaseModel):
     width: float = Field(ge=140, le=100000)
     height: float = Field(ge=80, le=100000)
     color: str = Field(pattern=r"^#[0-9a-fA-F]{6}$")
+    opacity: float = Field(default=0.22, ge=0.05, le=0.85)
     members: list[UUID] = Field(max_length=500)
 
 
@@ -1283,6 +1286,27 @@ def delete_object(object_id: UUID, db: Session = Depends(db_session)):
     db.commit()
 
 
+@app.get("/api/metamodel/relation-types")
+def list_logical_relation_types():
+    """Machine-readable contract for links on the logical IS architecture map."""
+    return get_logical_relation_types()
+
+
+@app.get("/api/metamodel/relation-audit")
+def audit_legacy_relations(db: Session = Depends(db_session)):
+    """Read-only inventory of legacy link kinds, duplicates and invalid endpoints.
+
+    This endpoint does not migrate or modify source records.
+    """
+    kinds = {str(obj.id): obj.kind for obj in db.scalars(select(ArchitectureObject)).all()}
+    rows = [
+        {"id": str(row.id), "source_id": str(row.source_id),
+         "target_id": str(row.target_id), "kind": row.kind}
+        for row in db.scalars(select(Relation)).all()
+    ]
+    return summarize_legacy_relations(kinds, rows)
+
+
 @app.get("/api/relations", response_model=list[RelationOut])
 def list_relations(db: Session = Depends(db_session)):
     return db.scalars(select(Relation)).all()
@@ -1292,10 +1316,24 @@ def list_relations(db: Session = Depends(db_session)):
 def add_relation(payload: RelationCreate, db: Session = Depends(db_session)):
     if payload.source_id == payload.target_id:
         raise HTTPException(status_code=422, detail="Self-connections are not supported in MVP")
-    if not db.get(ArchitectureObject, payload.source_id) or not db.get(ArchitectureObject, payload.target_id):
+    source = db.get(ArchitectureObject, payload.source_id)
+    target = db.get(ArchitectureObject, payload.target_id)
+    if source is None or target is None:
         raise HTTPException(status_code=422, detail="Both objects must exist")
+    error = logical_relation_validation_error(payload.kind, source.kind, target.kind)
+    if error:
+        raise HTTPException(status_code=422, detail=error)
+    # Existing configurable CMDB class rules are applied after the static
+    # canonical type contract. The generic IS map never stores technical flows.
     if payload.kind in RELATION_KINDS:
         _check_relation_allowed(db, payload.kind, "application", "application")
+    duplicate = db.scalars(select(Relation).where(
+        Relation.source_id == payload.source_id,
+        Relation.target_id == payload.target_id,
+        Relation.kind == payload.kind,
+    )).first()
+    if duplicate is not None:
+        raise HTTPException(status_code=409, detail="Такая направленная связь ИС уже существует")
     rel = Relation(**payload.model_dump())
     db.add(rel)
     db.commit()
@@ -1315,7 +1353,7 @@ def delete_relation(relation_id: UUID, db: Session = Depends(db_session)):
 def layer_region_output(region: ArchitectureLayerRegion) -> dict:
     return {"group_key": region.group_key, "x": region.x, "y": region.y,
             "width": region.width, "height": region.height, "color": region.color,
-            "members": region.members}
+            "opacity": region.opacity, "members": region.members}
 
 
 @app.get("/api/diagrams/layer-regions", response_model=list[LayerRegionOutput])
@@ -1343,15 +1381,18 @@ def save_layer_region(group_key: str, payload: LayerRegionInput, request: Reques
         raise HTTPException(status_code=404, detail="Категория или сеть не найдена")
     members = list(dict.fromkeys(payload.members))
     if members:
-        existing = set(db.scalars(select(ArchitectureObject.id).where(ArchitectureObject.id.in_(members))).all())
+        existing = set(db.scalars(select(ArchitectureObject.id).where(
+            ArchitectureObject.id.in_(members),
+            ArchitectureObject.kind == "system",
+        )).all())
         if len(existing) != len(members):
-            raise HTTPException(status_code=422, detail="В области есть неизвестные ИС")
+            raise HTTPException(status_code=422, detail="В области допускаются только существующие информационные системы")
     region = db.get(ArchitectureLayerRegion, group_key)
     before = layer_region_output(region) if region is not None else None
     if region is None:
         region = ArchitectureLayerRegion(group_key=group_key)
         db.add(region)
-    for field_name in ("x", "y", "width", "height", "color"):
+    for field_name in ("x", "y", "width", "height", "color", "opacity"):
         setattr(region, field_name, getattr(payload, field_name))
     region.members = [str(member) for member in members]
     region.updated_at = datetime.now(timezone.utc)

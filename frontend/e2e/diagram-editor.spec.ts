@@ -9,11 +9,11 @@ test.beforeEach(async ({page})=>{
 
 async function seedSystem(page:import('@playwright/test').Page){
   const system=await page.request.post('http://127.0.0.1:8001/api/objects',{
-    data:{name:'Canvas editor '+Date.now(),kind:'system'}
+    data:{name:'QA-WORK-Canvas editor '+Date.now(),kind:'system'}
   })
   expect(system.status()).toBe(201)
   const id=(await system.json()).id as string
-  for(const name of ['Editor source','Editor destination']){
+  for(const name of ['QA-WORK-Editor source','QA-WORK-Editor destination']){
     const component=await page.request.post('http://127.0.0.1:8001/api/infra',{
       data:{system_id:id,name,kind:'vm',description:'Test-only diagram node'}
     })
@@ -46,39 +46,41 @@ test('components expose the real palette even when no system is selected or grou
   await expect(editor).toHaveCount(0)
 })
 
-test('flows expose the shared architecture toolbar and use overview card styling',async({page})=>{
+test('flow editor uses the shared architecture tools without restoring a duplicate flow diagram',async({page})=>{
   const id=await seedSystem(page)
-  await page.goto('/')
-  await page.getByRole('navigation',{name:'Разделы архитектуры'}).getByRole('button',{name:'Потоки',exact:true}).click()
-  await page.getByRole('group',{name:'Представление потоков'}).getByRole('button',{name:'Схема',exact:true}).click()
-  await page.getByRole('button',{name:'Редактор схемы'}).click()
-  const chooser=page.getByRole('region',{name:'Выбор информационной системы для редактора потоков'})
-  await expect(chooser).toBeVisible()
-  await chooser.getByRole('combobox',{name:'Выбрать ИС для редактора потоков'}).selectOption(id)
+  await page.goto('/flows')
+  await expect(page.getByRole('region',{name:'Реестр технических потоков'})).toBeVisible()
+  await expect(page.locator('[data-active-graph="flows"]')).toHaveCount(0)
+  await page.getByRole('combobox',{name:'Система потоков'}).selectOption(id)
+  await page.getByRole('button',{name:'Редактор потоков',exact:true}).click()
   const editor=page.getByRole('region',{name:'Редактор архитектурной схемы'})
   await expect(editor).toBeVisible()
-  await expect(editor.getByRole('toolbar',{name:'Инструменты архитектуры'})).toBeVisible()
+  const tools=editor.getByRole('toolbar',{name:'Инструменты архитектуры'})
+  await expect(tools.getByRole('button',{name:'Курсор / перемещение'})).toBeVisible()
+  await expect(tools.getByRole('button',{name:'→ Поток'})).toBeVisible()
+  await expect(tools.getByRole('button',{name:'▭ Сеть / контейнер'})).toBeVisible()
   await expect(editor.locator('.react-flow__node .homeNode')).toHaveCount(2)
-  await editor.getByRole('toolbar').getByRole('button',{name:'▭ Сеть / контейнер'}).click()
+  await tools.getByRole('button',{name:'▭ Сеть / контейнер'}).click()
   await expect(editor.getByText(/протяните прямоугольник/)).toBeVisible()
-  await page.getByRole('button',{name:'Завершить редактирование'}).click()
+  await page.getByRole('button',{name:'Вернуться в реестр',exact:true}).click()
   await expect(editor).toHaveCount(0)
+  await expect(page.getByRole('region',{name:'Реестр технических потоков'})).toBeVisible()
 })
 
-test('floating canvas palette keeps the workspace clear and opens properties on the right',async({page})=>{
+test('flow editor keeps the tool rail clear and opens selected properties on the right',async({page})=>{
   const id=await seedSystem(page)
-  await page.goto('/')
-  await page.getByRole('navigation',{name:'Разделы архитектуры'}).getByRole('button',{name:'Потоки',exact:true}).click()
-  await page.getByRole('button',{name:'Редактор схемы'}).click()
-  await page.getByRole('combobox',{name:'Выбрать ИС для редактора потоков'}).selectOption(id)
+  await page.goto('/flows')
+  await page.getByRole('combobox',{name:'Система потоков'}).selectOption(id)
+  await page.getByRole('button',{name:'Редактор потоков',exact:true}).click()
   const editor=page.getByRole('region',{name:'Редактор архитектурной схемы'})
   const stage=editor.locator('.boardEditorStage')
   const canvas=editor.locator('.boardCanvas')
   const toolbar=editor.getByRole('toolbar',{name:'Инструменты архитектуры'})
+  await expect(stage).toBeVisible()
   await expect(toolbar).toBeVisible()
   await expect(editor.locator('.boardDock')).toHaveCount(0)
   const pane=await canvas.boundingBox(),rail=await toolbar.boundingBox()
-  expect(pane&&rail&&rail.x>=pane.x&&rail.x+rail.width<pane.x+110).toBeTruthy()
+  expect(pane&&rail&&rail.x+rail.width<=pane.x+2).toBeTruthy()
 
   await toolbar.getByRole('button',{name:'→ Поток'}).click()
   const dock=editor.getByRole('complementary',{name:'Свойства и изменения схемы'})
@@ -101,8 +103,8 @@ test('flow tool selects endpoints on canvas and opens its settings without a hor
   const editor=page.getByRole('region',{name:'Редактор архитектурной схемы'})
   const toolbar=editor.getByRole('toolbar',{name:'Инструменты архитектуры'})
   await toolbar.getByRole('button',{name:'→ Поток'}).click()
-  const source=editor.locator('.react-flow__node').filter({hasText:'Editor source'})
-  const target=editor.locator('.react-flow__node').filter({hasText:'Editor destination'})
+  const source=editor.locator('.react-flow__node').filter({hasText:'QA-WORK-Editor source'})
+  const target=editor.locator('.react-flow__node').filter({hasText:'QA-WORK-Editor destination'})
   await source.click()
   const dock=editor.getByRole('complementary',{name:'Свойства и изменения схемы'})
   await expect(dock.getByLabel('Откуда')).not.toHaveValue('')
@@ -126,8 +128,8 @@ test('component properties open in a non-modal right dock without hiding the dia
   await page.getByRole('button',{name:'Редактировать схему'}).click()
   await page.getByRole('combobox',{name:'Выбрать ИС для редактора компонентов'}).selectOption(id)
   const editor=page.getByRole('region',{name:'Редактор архитектурной схемы'})
-  await editor.locator('.react-flow__node').filter({hasText:'Editor source'}).click()
-  const dialog=editor.getByRole('dialog',{name:/Паспорт компонента Editor source/})
+  await editor.locator('.react-flow__node').filter({hasText:'QA-WORK-Editor source'}).click()
+  const dialog=editor.getByRole('dialog',{name:/Паспорт компонента QA-WORK-Editor source/})
   await expect(dialog).toBeVisible()
   await expect(editor.locator('.boardInspectorBackdrop')).toHaveCount(0)
   await expect(editor.locator('.boardCanvas')).toBeVisible()
@@ -185,31 +187,81 @@ test('staged VM remains visible and can be reviewed, then removed by cancelling 
   await expect(editor.locator('.boardDock')).toHaveCount(0)
 })
 
-test('dragged node coordinates are saved to backend without committing network data',async({page})=>{
+test('dragged VM saves its own coordinates and never mutates flows or NICs',async({page})=>{
   const id=await seedSystem(page)
-  await page.goto('/')
-  await page.getByRole('navigation',{name:'Разделы архитектуры'}).getByRole('button',{name:'Компоненты',exact:true}).click()
-  await page.getByRole('group',{name:'Представление компонентов'}).getByRole('button',{name:'Схема',exact:true}).click()
+  const api='http://127.0.0.1:8001'
+  const inventory=await (await page.request.get(api+'/api/infra')).json() as Array<{id:string;system_id:string;name:string}>
+  const vm=inventory.find(item=>item.system_id===id&&item.name==='QA-WORK-Editor source')
+  expect(vm).toBeTruthy()
+  const destination=inventory.find(item=>item.system_id===id&&item.name==='QA-WORK-Editor destination')
+  expect(destination).toBeTruthy()
+  // Nonempty controls: a saved VM move must preserve an actual technical flow
+  // and an existing NIC, not merely compare two empty collections.
+  const flowCreated=await page.request.post(api+'/api/flows',{data:{
+    source_id:vm!.id,target_id:destination!.id,name:'QA-WORK-VM-drag-preserved-flow'
+  }})
+  expect(flowCreated.status()).toBe(201)
+  const nicCreated=await page.request.post(api+'/api/network-interfaces',{data:{
+    item_id:vm!.id,name:'eth0',ip_address:''
+  }})
+  expect(nicCreated.status()).toBe(201)
+  const vmIds=new Set(inventory.filter(item=>item.system_id===id).map(item=>item.id))
+  const scopedFlows=async()=>{
+    const all=await (await page.request.get(api+'/api/flows')).json() as Array<{source_id:string;target_id:string}>
+    return all.filter(flow=>vmIds.has(flow.source_id)||vmIds.has(flow.target_id))
+  }
+  const scopedInterfaces=async()=>{
+    const all=await (await page.request.get(api+'/api/network-interfaces')).json() as Array<{item_id:string}>
+    return all.filter(nic=>vmIds.has(nic.item_id))
+  }
+  const beforeFlows=await scopedFlows(),beforeNICs=await scopedInterfaces()
+
+  await page.goto('/components')
+  await page.getByRole('group',{name:'Представление компонентов'}).getByRole('button',{name:'Схема'}).click()
   await page.getByRole('button',{name:'Редактировать схему'}).click()
   await page.getByRole('combobox',{name:'Выбрать ИС для редактора компонентов'}).selectOption(id)
   const editor=page.getByRole('region',{name:'Редактор архитектурной схемы'})
   const tools=editor.getByRole('toolbar',{name:'Инструменты архитектуры'})
-  const source=editor.locator('.react-flow__node').filter({hasText:'Editor source'})
+  const source=editor.locator('.react-flow__node-boardComponent').filter({hasText:'QA-WORK-Editor source'})
+  await expect(source).toBeVisible()
   const bounds=await source.boundingBox()
   expect(bounds).not.toBeNull()
   const start={x:bounds!.x+bounds!.width/2,y:bounds!.y+24}
   await page.mouse.move(start.x,start.y)
   await page.mouse.down()
-  await page.mouse.move(start.x+115,start.y+90,{steps:8})
+  await page.mouse.move(start.x+115,start.y+90,{steps:12})
   await page.mouse.up()
+  // A real drag must move the rendered VM before the save becomes enabled.
+  await expect.poll(async()=>{
+    const now=await source.boundingBox()
+    return Boolean(now&&Math.hypot(now.x-bounds!.x,now.y-bounds!.y)>30)
+  }).toBe(true)
   await expect(tools.getByRole('button',{name:'Сохранить расположение'})).toBeEnabled()
   await tools.getByRole('button',{name:'Сохранить расположение'}).click()
-  await expect(editor.getByText('Расположение схемы сохранено.')).toBeVisible()
-  const result=await page.request.get('http://127.0.0.1:8001/api/board/layout/'+id)
-  expect(result.ok()).toBeTruthy()
-  const saved=await result.json()
-  expect(Object.keys(saved.positions).length).toBe(2)
-  expect(saved.positions[Object.keys(saved.positions)[0]]).toHaveProperty('x')
+  await expect(editor.getByText('Расположение схемы сохранено.',{exact:false})).toBeVisible()
+
+  const layoutResponse=await page.request.get(api+'/api/board/layout/'+id)
+  expect(layoutResponse.ok()).toBeTruthy()
+  const layout=await layoutResponse.json() as {positions:Record<string,{x:number;y:number}>}
+  expect(layout.positions[vm!.id]).toBeDefined()
+  const saved={...layout.positions[vm!.id]}
+  expect(Number.isFinite(saved.x)&&Number.isFinite(saved.y)).toBe(true)
+  expect(await scopedFlows()).toEqual(beforeFlows)
+  expect(await scopedInterfaces()).toEqual(beforeNICs)
+
+  await page.getByRole('button',{name:'Завершить редактирование'}).click()
+  await page.getByRole('button',{name:'Редактировать схему'}).click()
+  const reopened=page.getByRole('region',{name:'Редактор архитектурной схемы'})
+    .locator('.react-flow__node-boardComponent').filter({hasText:'QA-WORK-Editor source'})
+  await expect(reopened).toBeVisible()
+  
+  await expect.poll(async()=>{
+    const transform=await reopened.evaluate(node=>(node as HTMLElement).style.transform)
+    const matches=transform.match(/translate\(\s*(-?[\d.]+)px,\s*(-?[\d.]+)px\)/)
+    return Boolean(matches&&Math.abs(Number(matches[1])-saved.x)<2&&Math.abs(Number(matches[2])-saved.y)<2)
+  }).toBe(true)
+  expect(await scopedFlows()).toEqual(beforeFlows)
+  expect(await scopedInterfaces()).toEqual(beforeNICs)
 })
 
 test('closing KIS passport editor keeps the selected system card open',async({page})=>{
@@ -547,7 +599,7 @@ test('saved flow edits are reviewed from VM passport and survive reloading the d
   const systemId=await seedSystem(page)
   const infra=(await (await page.request.get('http://127.0.0.1:8001/api/infra')).json())
     .filter((v:{system_id:string})=>v.system_id===systemId) as Array<{id:string;name:string}>
-  const source=infra.find(v=>v.name==='Editor source')!,target=infra.find(v=>v.name==='Editor destination')!
+  const source=infra.find(v=>v.name==='QA-WORK-Editor source')!,target=infra.find(v=>v.name==='QA-WORK-Editor destination')!
   const created=await page.request.post('http://127.0.0.1:8001/api/flows',{data:{
     source_id:source.id,target_id:target.id,name:'HR data batch',protocol:'TCP',
     port:'443',security:'unknown',data_description:'Employee identifier',schedule:'daily',verification:'draft'
@@ -560,8 +612,8 @@ test('saved flow edits are reviewed from VM passport and survive reloading the d
   await page.getByRole('button',{name:'Редактировать схему'}).click()
   await page.getByRole('combobox',{name:'Выбрать ИС для редактора компонентов'}).selectOption(systemId)
   const editor=page.getByRole('region',{name:'Редактор архитектурной схемы'})
-  await editor.locator('.react-flow__node').filter({hasText:'Editor source'}).click()
-  const inspector=editor.getByRole('dialog',{name:'Паспорт компонента Editor source'})
+  await editor.locator('.react-flow__node').filter({hasText:'QA-WORK-Editor source'}).click()
+  const inspector=editor.getByRole('dialog',{name:'Паспорт компонента QA-WORK-Editor source'})
   await expect(inspector.getByRole('button',{name:'Открыть параметры потока'})).toBeVisible()
   await inspector.getByRole('button',{name:'Открыть параметры потока'}).click()
   const savedEditor=editor.getByRole('form',{name:'Редактирование существующего потока'})
@@ -596,8 +648,8 @@ test('saved flow edits are reviewed from VM passport and survive reloading the d
   const chooser=page.getByRole('combobox',{name:'Выбрать ИС для редактора компонентов'})
   if(await chooser.isVisible())await chooser.selectOption(systemId)
   const refreshed=page.getByRole('region',{name:'Редактор архитектурной схемы'})
-  await refreshed.locator('.react-flow__node').filter({hasText:'Editor source'}).click()
-  await refreshed.getByRole('dialog',{name:'Паспорт компонента Editor source'}).getByRole('button',{name:'Открыть параметры потока'}).click()
+  await refreshed.locator('.react-flow__node').filter({hasText:'QA-WORK-Editor source'}).click()
+  await refreshed.getByRole('dialog',{name:'Паспорт компонента QA-WORK-Editor source'}).getByRole('button',{name:'Открыть параметры потока'}).click()
   await expect(refreshed.getByRole('form',{name:'Редактирование существующего потока'}).getByRole('textbox',{name:'Порт'})).toHaveValue('8443')
 })
 
@@ -605,7 +657,7 @@ test('one grouped arrow exposes its separate saved flow records',async({page})=>
   const systemId=await seedSystem(page)
   const infra=(await (await page.request.get('http://127.0.0.1:8001/api/infra')).json())
     .filter((v:{system_id:string})=>v.system_id===systemId) as Array<{id:string;name:string}>
-  const source=infra.find(v=>v.name==='Editor source')!,target=infra.find(v=>v.name==='Editor destination')!
+  const source=infra.find(v=>v.name==='QA-WORK-Editor source')!,target=infra.find(v=>v.name==='QA-WORK-Editor destination')!
   for(const name of ['Payroll','Work schedule']){
     const result=await page.request.post('http://127.0.0.1:8001/api/flows',{
       data:{source_id:source.id,target_id:target.id,name,protocol:'HTTPS',port:'443'}

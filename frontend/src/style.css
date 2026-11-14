@@ -1038,3 +1038,8 @@ button:disabled{cursor:not-allowed;opacity:.55}
 
 /* Registry empty states are in normal document flow, unlike diagram overlays. */
 .flowRegistryEmptyState{grid-column:1/-1;position:static;min-height:95px;display:flex;align-items:center;justify-content:center;text-align:center;background:#f8fafc;border:1px dashed #cbd5e1;border-radius:10px;padding:20px;color:#52657e;font-size:13px}
+
+/* Deep-link to the one shared architecture map from the technical flow register. */
+.flowMapLink{display:inline-flex;align-items:center;justify-content:center;padding:7px 11px;border:1px solid #a5c4e9;border-radius:7px;color:#1759a5;background:#eff6ff;font-size:12px;font-weight:600;text-decoration:none;cursor:pointer;white-space:nowrap}
+.flowMapLink:hover{background:#dbeafe;color:#164b91}
+.flowMapLink:focus-visible{outline:2px solid #2563eb;outline-offset:2px}

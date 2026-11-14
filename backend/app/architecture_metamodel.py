@@ -84,6 +84,7 @@ def summarize_legacy_relations(
     }
     samples: list[dict[str, str]] = []
     seen: set[tuple[str, str, str]] = set()
+    duplicate_active_logical = 0
     for relation in relations:
         kind, source, target = (
             relation["kind"], relation["source_id"], relation["target_id"]
@@ -103,6 +104,8 @@ def summarize_legacy_relations(
         signature = (kind, source, target)
         if signature in seen:
             issues.append("duplicate_direction")
+            if kind in {"integrates_with", "depends_on"}:
+                duplicate_active_logical += 1
         seen.add(signature)
         if kind == "data_flow":
             issues.append("deprecated_data_flow")
@@ -116,6 +119,8 @@ def summarize_legacy_relations(
         "object_kinds": dict(sorted(object_counts.items())),
         "relation_kinds": dict(sorted(relation_counts.items())),
         "issues": problems,
+        "active_logical_duplicates": duplicate_active_logical,
+        "logical_unique_index_ready": duplicate_active_logical == 0,
         "samples": samples,
         "read_only": True,
     }

@@ -1035,3 +1035,6 @@ button:disabled{cursor:not-allowed;opacity:.55}
   .homeLayerDock{grid-column:1/-1;grid-row:2;border-left:0;border-top:1px solid #dce4ec;max-height:350px}
   .homeLayerDock .homeLayerMemberGrid{grid-template-columns:repeat(auto-fit,minmax(180px,1fr))}
 }
+
+/* Registry empty states are in normal document flow, unlike diagram overlays. */
+.flowRegistryEmptyState{grid-column:1/-1;position:static;min-height:95px;display:flex;align-items:center;justify-content:center;text-align:center;background:#f8fafc;border:1px dashed #cbd5e1;border-radius:10px;padding:20px;color:#52657e;font-size:13px}

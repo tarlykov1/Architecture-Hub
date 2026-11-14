@@ -57,6 +57,8 @@ def logical_relation_validation_error(kind: str, source_kind: str, target_kind: 
     definition = _BY_KIND.get(kind)
     if definition is None:
         return "Неизвестный тип связи ИС. Используйте тип из /api/metamodel/relation-types."
+    if definition["deprecated"]:
+        return "Устаревший тип data_flow доступен только для чтения. Новые технические потоки создавайте через /api/flows."
     if source_kind != definition["source_kind"] or target_kind != definition["target_kind"]:
         return "Логическая связь ИС допускает только две информационные системы (kind=system)."
     return None

@@ -309,3 +309,56 @@ test('QA-WORK: mobile layer editor preserves separate tools, canvas and properti
  await tools.getByRole('button',{name:'Отменить изменения областей'}).click()
  await expect(map.getByRole('button',{name:'Редактировать области'})).toBeVisible()
 })
+
+
+test('QA-WORK: changing network area geometry never changes VM positions, interfaces or flows',async({page})=>{
+ await page.addInitScript(()=>sessionStorage.setItem('architecture-hub:access-token:session','browser-ci-development-token'))
+ const api='http://127.0.0.1:8001',suffix=String(Date.now())
+ const create=async(path:string,data:Record<string,unknown>)=>{
+   const response=await page.request.post(api+path,{data})
+   expect(response.status(),await response.text()).toBe(201)
+   return (await response.json()).id as string
+ }
+ const systemName='QA-WORK-Layer network IS '+suffix
+ const system=await create('/api/objects',{kind:'system',name:systemName})
+ const sourceName='QA-WORK-Network VM source '+suffix
+ const source=await create('/api/infra',{system_id:system,kind:'vm',name:sourceName})
+ const target=await create('/api/infra',{system_id:system,kind:'vm',name:'QA-WORK-Network VM target '+suffix})
+ const vrf=await create('/api/networks',{name:'QA-WORK-VRF '+suffix,kind:'vrf'})
+ const nic=await create('/api/network-interfaces',{item_id:source,name:'eth0',vrf_id:vrf})
+ const flow=await create('/api/flows',{source_id:source,target_id:target,name:'QA-WORK-Flow '+suffix})
+ const getNIC=async()=>{
+  const records=await (await page.request.get(api+'/api/network-interfaces')).json() as Array<{id:string;item_id:string;vrf_id:string}>
+  return records.find(item=>item.id===nic)
+ }
+ const getFlow=async()=>{
+  const records=await (await page.request.get(api+'/api/flows')).json() as Array<{id:string;source_id:string;target_id:string}>
+  return records.find(item=>item.id===flow)
+ }
+ const beforeNIC=await getNIC(),beforeFlow=await getFlow()
+ await page.goto('/')
+ const map=page.getByRole('region',{name:'Главная карта архитектуры'})
+ await map.getByRole('checkbox',{name:'Показать ВМ и компоненты'}).check()
+ const systemNode=map.locator('.react-flow__node').filter({hasText:systemName}).first()
+ const vmNode=map.locator('.react-flow__node').filter({hasText:sourceName}).first()
+ await expect(systemNode).toBeVisible()
+ await expect(vmNode).toBeVisible()
+ const systemPosition=await systemNode.evaluate(el=>(el as HTMLElement).style.transform)
+ const vmPosition=await vmNode.evaluate(el=>(el as HTMLElement).style.transform)
+ await map.getByRole('button',{name:'Наложить оба'}).click()
+ await map.getByRole('button',{name:'Редактировать области'}).click()
+ const dock=map.getByRole('complementary',{name:'Свойства архитектурной области'})
+ await dock.getByRole('combobox',{name:'Выбрать архитектурную область'}).selectOption('network:'+vrf)
+ await dock.getByRole('spinbutton',{name:'X области'}).fill('120')
+ await dock.getByRole('spinbutton',{name:'Y области'}).fill('160')
+ await dock.getByRole('spinbutton',{name:'Ширина области'}).fill('590')
+ await dock.getByRole('spinbutton',{name:'Высота области'}).fill('310')
+ await map.getByRole('button',{name:'Сохранить области'}).click()
+ const areas=await (await page.request.get(api+'/api/diagrams/layer-regions')).json() as Array<{group_key:string;x:number;y:number;width:number;height:number}>
+ const rect=areas.find(item=>item.group_key==='network:'+vrf)
+ expect(rect).toMatchObject({group_key:'network:'+vrf,x:120,y:160,width:590,height:310})
+ expect(await systemNode.evaluate(el=>(el as HTMLElement).style.transform)).toBe(systemPosition)
+ expect(await vmNode.evaluate(el=>(el as HTMLElement).style.transform)).toBe(vmPosition)
+ expect(await getNIC()).toEqual(beforeNIC)
+ expect(await getFlow()).toEqual(beforeFlow)
+})

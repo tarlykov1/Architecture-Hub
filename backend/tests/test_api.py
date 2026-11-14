@@ -65,6 +65,12 @@ def test_architecture_layer_regions_persist_and_obey_permissions():
         assert any(item["group_key"] == key and item["color"] == "#aa55dd" and item["opacity"] == 0.35 for item in regions.json())
         invalid_size = client.put("/api/diagrams/layer-regions/" + key, headers=ADMIN, json={**payload,"width": 15})
         assert invalid_size.status_code == 422
+        component = client.post("/api/objects",headers=ADMIN,json={"kind":"vm","name":"QA-WORK-layer-non-IS"})
+        assert component.status_code == 201
+        invalid_membership = client.put("/api/diagrams/layer-regions/" + key,headers=ADMIN,json={
+            **payload,"members":[component.json()["id"]],
+        })
+        assert invalid_membership.status_code == 422
         invalid_opacity = client.put("/api/diagrams/layer-regions/" + key, headers=ADMIN, json={**payload, "opacity": 1.4})
         assert invalid_opacity.status_code == 422
         unknown = client.put("/api/diagrams/layer-regions/business:99999999-9999-4999-8999-999999999999", headers=ADMIN, json=payload)

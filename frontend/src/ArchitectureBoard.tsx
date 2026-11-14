@@ -93,6 +93,7 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
  const [passportDraft,setPassportDraft]=useState({name:'',description:'',purpose:'',environment:''})
  const [changes,setChanges]=useState<Change[]>(()=>restoredDraft?.changes||[])
  const [layoutDirty,setLayoutDirty]=useState(false)
+ const [layoutReady,setLayoutReady]=useState(false)
  const [layoutBusy,setLayoutBusy]=useState(false)
  const [layoutMessage,setLayoutMessage]=useState('')
  const [reason,setReason]=useState(restoredDraft?.reason||'')
@@ -217,6 +218,7 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
  // when network geometry is represented by rectangles instead of useNodesState.
  const beginManualNetworkDrag=(id:string,event:React.PointerEvent<HTMLDivElement>)=>{
    if(tool!=='move'||event.button!==0)return
+   if(!layoutReady){setLayoutMessage('Сохранённое расположение загружается. Перемещение станет доступно после загрузки.');return}
    const rect=rectangles.find(r=>r.id===id)
    if(!rect)return
    event.stopPropagation();event.preventDefault()
@@ -861,6 +863,9 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
  // The visual layout is saved independently from technical changes.
  useEffect(()=>{
    let active=true
+   // Keep the graph visible and passports clickable during hydration,
+   // but do not permit network-container dragging on temporary positions.
+   setLayoutReady(false)
    setLayoutDirty(false);setLayoutMessage('')
    void request<{positions:Record<string,Geometry>;flow_anchors?:Record<string,FlowPortPair>}>('/api/board/layout/'+systemId)
      .then(result=>{
@@ -885,6 +890,7 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
        persistedFlowAnchors.current=result.flow_anchors||{}
        setFlowAnchors({...persistedFlowAnchors.current,...(restoredDraft?.flowAnchors||{})})
      }).catch(()=>{/* Browser positions remain the fallback. */})
+     .finally(()=>{if(active)setLayoutReady(true)})
    return ()=>{active=false}
  },[systemId,request,setNodes,networks])
 
@@ -974,7 +980,7 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
    }catch(e){setPreview(null);setError('Сохранение отклонено: '+String(e)+'. Обновите предварительный просмотр.')}
    finally{setBusy(false)}
  }
- return <section className="boardWorkspace" aria-label="Редактор архитектурной схемы">
+ return <section className="boardWorkspace" aria-label="Редактор архитектурной схемы" aria-busy={!layoutReady}>
    <div className="boardEditorStage">
         <div ref={boardCanvasRef} className="boardCanvas" data-active-graph="infrastructure-editor"
           onPointerDownCapture={event=>{

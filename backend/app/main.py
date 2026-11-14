@@ -84,6 +84,7 @@ class ArchitectureLayerRegion(Base):
     height: Mapped[float] = mapped_column(nullable=False)
     color: Mapped[str] = mapped_column(String(7), nullable=False)
     opacity: Mapped[float] = mapped_column(nullable=False, default=0.22)
+    revision: Mapped[int] = mapped_column(nullable=False, default=1)
     members: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
@@ -462,7 +463,7 @@ class RelationOut(RelationCreate):
     id: UUID
 
 
-class LayerRegionInput(BaseModel):
+class LayerRegionGeometry(BaseModel):
     x: float = Field(ge=-100000, le=100000)
     y: float = Field(ge=-100000, le=100000)
     width: float = Field(ge=140, le=100000)
@@ -472,8 +473,21 @@ class LayerRegionInput(BaseModel):
     members: list[UUID] = Field(max_length=500)
 
 
-class LayerRegionOutput(LayerRegionInput):
+class LayerRegionInput(LayerRegionGeometry):
+    expected_revision: int | None = Field(default=None, ge=1)
+
+
+class LayerRegionOutput(LayerRegionGeometry):
     group_key: str
+    revision: int
+
+
+class LayerRegionWrite(LayerRegionInput):
+    group_key: str = Field(min_length=1, max_length=130)
+
+
+class LayerRegionBatch(BaseModel):
+    regions: list[LayerRegionWrite] = Field(min_length=1, max_length=100)
 
 
 class DiagramCreate(BaseModel):
@@ -1361,7 +1375,8 @@ def delete_relation(relation_id: UUID, db: Session = Depends(db_session)):
 def layer_region_output(region: ArchitectureLayerRegion) -> dict:
     return {"group_key": region.group_key, "x": region.x, "y": region.y,
             "width": region.width, "height": region.height, "color": region.color,
-            "opacity": region.opacity, "members": region.members}
+            "opacity": region.opacity, "revision": region.revision,
+            "members": region.members}
 
 
 @app.get("/api/diagrams/layer-regions", response_model=list[LayerRegionOutput])
@@ -1371,49 +1386,109 @@ def list_layer_regions(db: Session = Depends(db_session)):
     ).all()]
 
 
-@app.put("/api/diagrams/layer-regions/{group_key:path}", response_model=LayerRegionOutput)
-def save_layer_region(group_key: str, payload: LayerRegionInput, request: Request, db: Session = Depends(db_session)):
-    # Visual membership never modifies business-process links or technical network data.
-    if not re.fullmatch(r"(business|network):[a-zA-Z0-9:-]{1,110}", group_key):
-        raise HTTPException(status_code=422, detail="Некорректный идентификатор слоя")
-    try:
-        if group_key.startswith("business:process:"):
-            owner = db.get(BusinessProcess, UUID(group_key.removeprefix("business:process:")))
-        elif group_key.startswith("business:"):
-            owner = db.get(BusinessCategory, UUID(group_key.removeprefix("business:")))
-        else:
-            owner = db.get(NetworkSegment, UUID(group_key.removeprefix("network:")))
-    except ValueError:
-        raise HTTPException(status_code=422, detail="Некорректный идентификатор слоя")
-    if owner is None:
-        raise HTTPException(status_code=404, detail="Категория или сеть не найдена")
-    members = list(dict.fromkeys(payload.members))
-    if members:
-        existing = set(db.scalars(select(ArchitectureObject.id).where(
-            ArchitectureObject.id.in_(members),
-            ArchitectureObject.kind == "system",
-        )).all())
-        if len(existing) != len(members):
-            raise HTTPException(status_code=422, detail="В области допускаются только существующие информационные системы")
-    region = db.get(ArchitectureLayerRegion, group_key)
-    before = layer_region_output(region) if region is not None else None
-    if region is None:
-        region = ArchitectureLayerRegion(group_key=group_key)
-        db.add(region)
-    for field_name in ("x", "y", "width", "height", "color", "opacity"):
-        setattr(region, field_name, getattr(payload, field_name))
-    region.members = [str(member) for member in members]
-    region.updated_at = datetime.now(timezone.utc)
-    db.add(BoardAudit(
-        actor=board_actor(request),
-        reason="Изменение визуальной архитектурной области",
-        changes=[{"action": "update_architecture_layer_region", "id": group_key,
-                  "before": before, "after": layer_region_output(region)}],
-    ))
-    db.commit()
-    db.refresh(region)
-    return layer_region_output(region)
+def _persist_layer_regions(
+    writes: list[tuple[str, LayerRegionInput]], request: Request, db: Session,
+) -> list[dict]:
+    """Validate every region, then commit all geometry and audit entries atomically.
 
+    A saved region must carry the version that the editor originally loaded.
+    A compare-and-swap UPDATE protects against a concurrent writer after read.
+    Geometric membership never writes canonical business or network relations.
+    """
+    keys = [group_key for group_key, _ in writes]
+    if len(keys) != len(set(keys)):
+        raise HTTPException(422, "Область не может повторяться в одном пакете")
+    staged: list[tuple[str, LayerRegionInput, ArchitectureLayerRegion | None, dict | None, dict]] = []
+    for group_key, payload in writes:
+        if not re.fullmatch(r"(business|network):[a-zA-Z0-9:-]{1,110}", group_key):
+            raise HTTPException(422, "Некорректный идентификатор слоя")
+        try:
+            if group_key.startswith("business:process:"):
+                owner = db.get(BusinessProcess, UUID(group_key.removeprefix("business:process:")))
+            elif group_key.startswith("business:"):
+                owner = db.get(BusinessCategory, UUID(group_key.removeprefix("business:")))
+            else:
+                owner = db.get(NetworkSegment, UUID(group_key.removeprefix("network:")))
+        except ValueError as exc:
+            raise HTTPException(422, "Некорректный идентификатор слоя") from exc
+        if owner is None:
+            raise HTTPException(404, "Категория или сеть не найдена")
+
+        members = list(dict.fromkeys(payload.members))
+        if members:
+            existing = set(db.scalars(select(ArchitectureObject.id).where(
+                ArchitectureObject.id.in_(members),
+                ArchitectureObject.kind == "system",
+            )).all())
+            if len(existing) != len(members):
+                raise HTTPException(422, "В области допускаются только существующие информационные системы")
+        region = db.get(ArchitectureLayerRegion, group_key)
+        stored_revision = region.revision if region is not None else None
+        if payload.expected_revision != stored_revision:
+            raise HTTPException(
+                409, "Область изменена другим пользователем. Обновите представление перед сохранением."
+            )
+        after = {
+            "group_key": group_key,
+            **payload.model_dump(exclude={"expected_revision"}),
+            "members": [str(member) for member in members],
+            "revision": 1 if region is None else region.revision + 1,
+        }
+        before = layer_region_output(region) if region is not None else None
+        staged.append((group_key, payload, region, before, after))
+
+    try:
+        for group_key, payload, region, before, after in staged:
+            geometry = {field: getattr(payload, field) for field in (
+                "x", "y", "width", "height", "color", "opacity"
+            )}
+            geometry["members"] = after["members"]
+            now = datetime.now(timezone.utc)
+            if region is None:
+                db.add(ArchitectureLayerRegion(
+                    group_key=group_key, revision=1, updated_at=now, **geometry
+                ))
+            else:
+                result = db.execute(update(ArchitectureLayerRegion).where(
+                    ArchitectureLayerRegion.group_key == group_key,
+                    ArchitectureLayerRegion.revision == payload.expected_revision,
+                ).values(**geometry, revision=after["revision"], updated_at=now))
+                if result.rowcount != 1:
+                    db.rollback()
+                    raise HTTPException(
+                        409, "Область изменена другим пользователем. Обновите представление перед сохранением."
+                    )
+            db.add(BoardAudit(
+                actor=board_actor(request),
+                reason="Изменение визуальной архитектурной области",
+                changes=[{
+                    "action": "update_architecture_layer_region",
+                    "id": group_key, "before": before, "after": after,
+                }],
+            ))
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(
+            409, "Область изменена конкурентным запросом. Обновите представление."
+        ) from exc
+    return [after for _, _, _, _, after in staged]
+
+
+@app.put("/api/diagrams/layer-regions", response_model=list[LayerRegionOutput])
+def save_layer_regions_batch(payload: LayerRegionBatch, request: Request,
+                             db: Session = Depends(db_session)):
+    """All-or-nothing save for an architectural view containing many regions."""
+    return _persist_layer_regions(
+        [(item.group_key, item) for item in payload.regions], request, db
+    )
+
+
+@app.put("/api/diagrams/layer-regions/{group_key:path}", response_model=LayerRegionOutput)
+def save_layer_region(group_key: str, payload: LayerRegionInput,
+                      request: Request, db: Session = Depends(db_session)):
+    """Single-region compatibility API, also subject to revision preconditions."""
+    return _persist_layer_regions([(group_key, payload)], request, db)[0]
 
 @app.get("/api/diagrams", response_model=list[DiagramOut])
 def list_diagrams(db: Session = Depends(db_session)):

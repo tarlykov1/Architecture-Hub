@@ -170,7 +170,9 @@ test('Architecture overlay layers overlap without moving system and VM nodes',as
  const map=page.getByRole('region',{name:'Главная карта архитектуры'})
  const toolbar=map.getByLabel('Накладываемые слои')
  const systemNodes=map.locator('.react-flow__node').filter({hasText:'Демо: портал сотрудников'})
- const getPosition=()=>systemNodes.first().getAttribute('style')
+ // React Flow toggles visibility:hidden/visible during measurement.
+ // Compare stable graph-space transforms, not the entire transient style.
+ const getPosition=()=>systemNodes.first().evaluate(node=>(node as HTMLElement).style.transform)
  const initial=await getPosition()
  const mode=toolbar.getByRole('group',{name:'Режим архитектурных областей'})
  await mode.getByRole('button',{name:'Бизнес-слой'}).click()
@@ -180,9 +182,9 @@ test('Architecture overlay layers overlap without moving system and VM nodes',as
  // The view can gain or lose translucent group nodes, but base coordinates stay fixed.
  expect(await getPosition()).toBe(initial)
  await toolbar.getByRole('checkbox',{name:'Показать ВМ и компоненты'}).check()
- const componentPositions=await map.locator('.react-flow__node').filter({hasText:'DEMO-WEB-01'}).first().getAttribute('style')
+ const componentPositions=await map.locator('.react-flow__node').filter({hasText:'DEMO-WEB-01'}).first().evaluate(node=>(node as HTMLElement).style.transform)
  await mode.getByRole('button',{name:'Без областей'}).click()
- expect(await map.locator('.react-flow__node').filter({hasText:'DEMO-WEB-01'}).first().getAttribute('style')).toBe(componentPositions)
+ expect(await map.locator('.react-flow__node').filter({hasText:'DEMO-WEB-01'}).first().evaluate(node=>(node as HTMLElement).style.transform)).toBe(componentPositions)
 })
 
 test('Architecture regions save selected IS membership and color in server storage',async({page})=>{

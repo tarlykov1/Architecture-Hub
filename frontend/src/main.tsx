@@ -678,7 +678,7 @@ function App() {
   })), [visibleObjects, positions, selected, infra])
 
   const edges = useMemo<Edge[]>(() => relations.filter(r=>visibleObjects.some(o=>o.id===r.source_id)&&visibleObjects.some(o=>o.id===r.target_id)).map(r => ({
-    id: r.id, source: r.source_id, target: r.target_id, label: r.kind === 'data_flow' ? 'Поток данных' : r.kind,
+    id: r.id, source: r.source_id, target: r.target_id, label: r.kind === 'data_flow' ? 'Заявленный обмен (устар.)' : r.kind === 'integrates_with' ? 'Интеграция (логическая)' : r.kind === 'depends_on' ? 'Зависит от' : r.kind,
     animated: false, style: { stroke: '#64748b', strokeWidth: 2 },
     labelStyle: { fill: '#475569', fontSize: 11 },
   })), [relations, visibleObjects])
@@ -696,7 +696,7 @@ function App() {
     if (!diagramEditMode || !connection.source || !connection.target || connection.source===connection.target) return
     try {
       await request('/api/relations', { method: 'POST', body: JSON.stringify({
-        source_id: connection.source, target_id: connection.target, kind: 'data_flow',
+        source_id: connection.source, target_id: connection.target, kind: 'integrates_with',
       }) })
       setRelations(await request<Rel[]>('/api/relations'))
     } catch (e) { setError(String(e)) }

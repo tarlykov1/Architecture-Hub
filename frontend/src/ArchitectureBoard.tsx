@@ -563,6 +563,7 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
    }else stageDirectedFlow(from,id,preferredSourceHandle?{...automaticPorts(from,id),source_handle:preferredSourceHandle}:undefined)
  }
  const displayedNodes=graphNodes.map(n=>({...n,
+   draggable:!n.id.startsWith('network:')&&tool==='move',
    data:n.id.startsWith('network:')?n.data:{...n.data,flowMode:tool==='flow',
      onDirectClick:()=>selectFlowComponent(n.id),
      onStartFlow:(handle:string,event:React.PointerEvent<HTMLDivElement>)=>beginFlowPointer(n.id,handle,event),
@@ -1031,6 +1032,21 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
     const position=moved.get(rect.id)
     return position?{...rect,x:position.x,y:position.y}:rect
   }))
+  // Capture the real change as soon as React Flow reports a dragged VM.
+  // onNodeDragStop is not guaranteed to run if the gesture ends outside
+  // the canvas, so that callback cannot be the only dirty-state trigger.
+  if(tool==='move'&&updates.some(change=>
+    change.type==='position'&&change.dragging===true&&Boolean(change.position)&&
+    !change.id.startsWith('network:')&&nodes.some(node=>
+      node.id===change.id&&(
+        Math.abs(node.position.x-change.position!.x)>0.5||
+        Math.abs(node.position.y-change.position!.y)>0.5
+      )
+    )
+  )){
+    setLayoutDirty(true)
+    setLayoutMessage('Расположение ВМ изменено. Сохраните схему.')
+  }
   onNodesChange(updates.filter(change=>!('id' in change)||!change.id.startsWith('network:')))
  }} nodesDraggable={tool==='move'} snapToGrid={snapToGrid} snapGrid={[20,20]} nodesConnectable={tool==='flow'} onConnectStart={()=>setDrawingConnection(true)} onConnectEnd={()=>setDrawingConnection(false)} onConnect={connection=>{if(tool==='flow'&&connection.source&&connection.target){stageDirectedFlow(connection.source,connection.target);setInspectedId(null)}}} onEdgeClick={(_,edge)=>selectCanvasEdge(edge.source,edge.target,(edge.data?.flowIds as string[]|undefined)||[])} onNodeClick={(event,node)=>{
  // Network rectangles occupy their whole area; a click on one is not a pane

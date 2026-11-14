@@ -92,6 +92,8 @@ def test_readonly_mapping_report_distinguishes_duplicates_legacy_and_bad_endpoin
     report = summarize_legacy_relations({a: "system", b: "system", vm: "vm"}, rows)
     assert report["read_only"] is True
     assert report["objects"] == 3 and report["relations"] == 5
+    assert report["active_logical_duplicates"] == 1
+    assert report["logical_unique_index_ready"] is False
     assert report["issues"] == {
         "unknown_kind": 1, "invalid_endpoints": 1,
         "orphan_endpoints": 1, "duplicate_direction": 1,
@@ -106,6 +108,7 @@ def test_readonly_relation_audit_uses_system_reader_permission():
         result = client.get("/api/metamodel/relation-audit", headers=VIEWER)
         assert result.status_code == 200, result.text
         assert result.json()["read_only"] is True
+        assert isinstance(result.json()["logical_unique_index_ready"], bool)
         assert "issues" in result.json() and "relation_kinds" in result.json()
         assert client.get("/api/metamodel/relation-audit").status_code == 401
         assert client.put("/api/metamodel/relation-audit", headers=ADMIN, json={}).status_code in (403, 405)

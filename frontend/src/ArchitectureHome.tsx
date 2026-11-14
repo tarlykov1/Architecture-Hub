@@ -10,8 +10,8 @@ type Flow={id:string;source_id:string;target_id:string}
 type Process={id:string;name:string;category_id?:string}
 type Category={id:string;name:string}
 type OverlayGroup={id:string;name:string;type:'business'|'network';members:Set<string>}
-type LayerRegion={group_key:string;x:number;y:number;width:number;height:number;color:string;opacity:number;members:string[]}
-type LayerDraft=Omit<LayerRegion,'group_key'>
+type LayerRegion={group_key:string;revision:number;x:number;y:number;width:number;height:number;color:string;opacity:number;members:string[]}
+type LayerDraft=Omit<LayerRegion,'group_key'|'revision'>
 type LayerRegionNodeData={name:string;count:number;editing:boolean;resize:(bounds:{x:number;y:number;width:number;height:number})=>void}
 function LayerRegionNode({data,selected}:NodeProps){
  const region=data as unknown as LayerRegionNodeData
@@ -100,6 +100,7 @@ export default function ArchitectureHome({systems,components,flows,processes,cat
  },[editingLayers,layerTool])
  const [layerBusy,setLayerBusy]=useState(false)
  const [layerError,setLayerError]=useState('')
+ const [layerConflict,setLayerConflict]=useState(false)
  const [layerApiReady,setLayerApiReady]=useState(false)
  useEffect(()=>{
   if(!request){setSavedRegions({});setLayerDrafts({});setEditingLayers(false);setLayerTool('select');setLayerApiReady(false);return}
@@ -113,18 +114,37 @@ export default function ArchitectureHome({systems,components,flows,processes,cat
  const updateDraft=(id:string,update:Partial<LayerDraft>,base:LayerDraft)=>{
   setLayerDrafts(old=>({...old,[id]:{...(old[id]||base),...update}}))
  }
- const cancelLayerChanges=()=>{setLayerDrafts({});setEditingLayers(false);setLayerTool('select');setLayerError('')}
- const saveLayerChanges=async()=>{
-  if(!request||!canEditLayers)return
-  setLayerBusy(true);setLayerError('')
+ const cancelLayerChanges=()=>{setLayerDrafts({});setEditingLayers(false);setLayerTool('select');setLayerError('');setLayerConflict(false)}
+ const reloadLayerRegions=async()=>{
+  if(!request)return
+  setLayerBusy(true)
   try{
-   const updated={...savedRegions}
-   for(const [key,payload] of Object.entries(layerDrafts)){
-    updated[key]=await request<LayerRegion>('/api/diagrams/layer-regions/'+encodeURIComponent(key),{method:'PUT',body:JSON.stringify(payload)})
-   }
-   setSavedRegions(updated);setLayerDrafts({});setEditingLayers(false);setLayerTool('select')
+   const rows=await request<LayerRegion[]>('/api/diagrams/layer-regions')
+   setSavedRegions(Object.fromEntries(rows.map(row=>[row.group_key,row])))
+   setLayerDrafts({})
+   setEditingLayers(false);setLayerTool('select');setLayerError('');setLayerConflict(false)
   }catch(err){setLayerError((err as Error).message)}
   finally{setLayerBusy(false)}
+ }
+ const saveLayerChanges=async()=>{
+  if(!request||!canEditLayers||!Object.keys(layerDrafts).length)return
+  setLayerBusy(true);setLayerError('');setLayerConflict(false)
+  try{
+   // All-or-nothing: either every region is saved against its last observed
+   // revision, or the editor keeps the complete local draft on HTTP 409.
+   const regions=Object.entries(layerDrafts).map(([key,payload])=>({
+    ...payload,group_key:key,expected_revision:savedRegions[key]?.revision??null
+   }))
+   const updated=await request<LayerRegion[]>('/api/diagrams/layer-regions',{
+    method:'PUT',body:JSON.stringify({regions})
+   })
+   setSavedRegions(old=>({...old,...Object.fromEntries(updated.map(row=>[row.group_key,row]))}))
+   setLayerDrafts({});setEditingLayers(false);setLayerTool('select')
+  }catch(err){
+   const message=(err as Error).message
+   setLayerError(message)
+   setLayerConflict(/409|изменен|изменёна|изменена|конкурентн/i.test(message))
+  }finally{setLayerBusy(false)}
  }
  const [overlayOpacity,setOverlayOpacity]=useState(22)
  const [hiddenOverlayGroups,setHiddenOverlayGroups]=useState<string[]>([])
@@ -338,6 +358,7 @@ export default function ArchitectureHome({systems,components,flows,processes,cat
      <header><strong>Свойства области</strong><span>{layerTool==='draw'?'Рисование':layerTool==='move'?'Перемещение':'Выбор'}</span></header>
      <p className="homeLayerToolInstructions">{layerTool==='draw'?'Выберите бизнес-категорию или сеть, затем протяните прямоугольник на холсте. Одно нажатие создаст рамку стандартного размера.':layerTool==='move'?'Перетаскивайте область. Чтобы изменить размер, выделите её и потяните за маркеры.':'Выберите область на схеме или в списке.'}</p>
      {layerError&&<p role="alert" className="homeLayerError">{layerError}</p>}
+     {layerConflict&&<button type="button" className="homeLayerRefresh" disabled={layerBusy} onClick={()=>void reloadLayerRegions()}>Обновить области и отбросить мой черновик</button>}
      <label className="homeLayerGroupSelect">Область
        <select aria-label="Выбрать архитектурную область" value={selectedOverlayGroup} onChange={event=>{
          const id=event.target.value;setSelectedOverlayGroup(id)

@@ -34,6 +34,31 @@ def _legacy_database(tmp_path: Path, baseline: str, duplicates: bool = False):
     _alembic(database, "upgrade", baseline)
     source, target = uuid4().hex, uuid4().hex
     with sqlite3.connect(database) as db:
+        # The repository's earliest bootstrap migration may create tables
+        # directly from the *current* ORM metadata even when stamped at an
+        # older Alembic revision. Normalize ONLY this disposable fixture to
+        # the historical shape so the incremental migrations are really
+        # exercised rather than all idempotently skipped.
+        existing = {
+            row[0] for row in db.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            )
+        }
+        if "architecture_layer_regions" in existing:
+            if baseline == "0010_auth_users":
+                db.execute("DROP TABLE architecture_layer_regions")
+            else:
+                columns = {
+                    row[1] for row in db.execute(
+                        "PRAGMA table_info(architecture_layer_regions)"
+                    )
+                }
+                if baseline in ("0011_architecture_layer_regions",
+                                "0012_layer_region_opacity",
+                                "0013_logical_relation_unique") and "revision" in columns:
+                    db.execute("ALTER TABLE architecture_layer_regions DROP COLUMN revision")
+                if baseline == "0011_architecture_layer_regions" and "opacity" in columns:
+                    db.execute("ALTER TABLE architecture_layer_regions DROP COLUMN opacity")
         for object_id, name in ((source, "QA-WORK-legacy-IS-one"),
                                 (target, "QA-WORK-legacy-IS-two")):
             db.execute("""
@@ -53,13 +78,20 @@ def _legacy_database(tmp_path: Path, baseline: str, duplicates: bool = False):
             INSERT INTO relations (id,source_id,target_id,kind,description)
             VALUES (?,?,?,?,?)
         """, rows)
-        if baseline == "0012_layer_region_opacity":
+        if baseline in ("0012_layer_region_opacity", "0013_logical_relation_unique"):
             db.execute("""
                 INSERT INTO architecture_layer_regions
                 (group_key,x,y,width,height,color,members,opacity,updated_at)
                 VALUES (?,?,?,?,?,?,?,?,?)
             """, ("business:" + source, 70., 81., 600., 340., "#abcdef",
                   '["' + source + '"]', .41, "2026-11-15 00:00:00"))
+        elif baseline == "0011_architecture_layer_regions":
+            db.execute("""
+                INSERT INTO architecture_layer_regions
+                (group_key,x,y,width,height,color,members,updated_at)
+                VALUES (?,?,?,?,?,?,?,?)
+            """, ("business:" + source, 70., 81., 600., 340., "#abcdef",
+                  '["' + source + '"]', "2026-11-15 00:00:00"))
         db.commit()
     return database
 
@@ -72,7 +104,8 @@ def _run_verifier(database: Path):
 
 
 @pytest.mark.parametrize("revision", [
-    "0010_auth_users", "0012_layer_region_opacity",
+    "0010_auth_users", "0011_architecture_layer_regions",
+    "0012_layer_region_opacity", "0013_logical_relation_unique",
 ])
 def test_release_verifier_preserves_historical_rows_and_never_touches_source(
     tmp_path, revision,
@@ -87,11 +120,20 @@ def test_release_verifier_preserves_historical_rows_and_never_touches_source(
     with sqlite3.connect(source) as db:
         assert db.execute("SELECT version_num FROM alembic_version").fetchone()[0] == revision
         assert db.execute("SELECT COUNT(*) FROM relations").fetchone()[0] == 3
-        if revision == "0012_layer_region_opacity":
+        tables = {
+            row[0] for row in db.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            )
+        }
+        if revision == "0010_auth_users":
+            assert "architecture_layer_regions" not in tables
+        else:
             cols = {row[1] for row in db.execute(
                 "PRAGMA table_info(architecture_layer_regions)"
             )}
             assert "revision" not in cols
+            if revision == "0011_architecture_layer_regions":
+                assert "opacity" not in cols
 
 
 def test_release_verifier_blocks_historical_logical_duplicates_before_upgrade(tmp_path):

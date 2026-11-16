@@ -12,11 +12,17 @@ export function AutoFit({layoutKey='',maxFitZoom=1,groupParentsOnly=false,focusI
  const ids=stableNodes.map(n=>n.id).sort().join('|')
  const topLevelIds=stableNodes.filter(n=>!n.parentId).map(n=>n.id).sort().join('|')
  const visibleFocusIds=focusIds.filter(id=>graphNodes.some(node=>node.id===id)).sort().join('|')
+ // Overview refits only its IS cards: unmeasured decorative/overlay nodes must
+ // not block fitting the cards that have already been measured.
+ const measuredFocusReady=focusIds.length>0&&focusIds.every(id=>{
+  const node=graphNodes.find(item=>item.id===id)
+  return Boolean(node&&(node.measured?.width||0)>0&&(node.measured?.height||0)>0)
+ })
  useEffect(()=>{
   const canvas=anchor.current?.closest('.react-flow')
   // A delayed resize refit during an active React Flow connection would move
   // both handles away from the pointer and cancel the drawn edge.
-  if(suspended||!initialized||!ids||!canvas)return
+  if(suspended||(!initialized&&!measuredFocusReady)||!ids||!canvas)return
   let frame=0,inner=0,settle=0,width=0,height=0
   const fit=()=>{
    cancelAnimationFrame(frame);cancelAnimationFrame(inner)
@@ -47,7 +53,7 @@ export function AutoFit({layoutKey='',maxFitZoom=1,groupParentsOnly=false,focusI
    window.clearTimeout(settle)
    cancelAnimationFrame(frame);cancelAnimationFrame(inner)
   }
- },[fitView,initialized,ids,topLevelIds,visibleFocusIds,layoutKey,maxFitZoom,groupParentsOnly,suspended,settleDelayMs])
+ },[fitView,initialized,measuredFocusReady,ids,topLevelIds,visibleFocusIds,layoutKey,maxFitZoom,groupParentsOnly,suspended,settleDelayMs])
  return <span ref={anchor} hidden/>
 }
 

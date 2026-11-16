@@ -9,7 +9,7 @@ type Component={id:string;system_id:string;name:string;kind:string;details:Recor
 type Flow={id:string;source_id:string;target_id:string}
 type Process={id:string;name:string;category_id?:string}
 type Category={id:string;name:string}
-type OverlayGroup={id:string;name:string;type:'business'|'network';members:Set<string>}
+type OverlayGroup={id:string;name:string;type:'business';members:Set<string>}
 type LayerRegion={group_key:string;revision:number;x:number;y:number;width:number;height:number;color:string;opacity:number;members:string[]}
 type LayerDraft=Omit<LayerRegion,'group_key'|'revision'>
 type LayerRegionNodeData={name:string;count:number;editing:boolean;resize:(bounds:{x:number;y:number;width:number;height:number})=>void}
@@ -81,9 +81,9 @@ import {AutoFit,Disclosure} from './WorkspaceUI'
 import {overviewGridPositions} from './graphLayout'
 
 export default function ArchitectureHome({systems,components,flows,processes,categories,links,networks,interfaces,onOpenSystem,onCloseSystem,inspectorOpen,onOpenComponents,onOpenComponent,onOpenFlows,onOpenNetworks,focusSystemId='',request,canEditLayers=false}:{systems:System[];components:Component[];flows:Flow[];processes:Process[];categories:Category[];links:Link[];networks:Network[];interfaces:Interface[];onOpenSystem:(id:string)=>void;onCloseSystem:()=>void;inspectorOpen:boolean;onOpenComponents:(id:string)=>void;onOpenComponent:(id:string)=>void;onOpenFlows:()=>void;onOpenNetworks:()=>void;focusSystemId?:string;request?:<T>(url:string,init?:RequestInit)=>Promise<T>;canEditLayers?:boolean}){
- const [layers,setLayers]=useState({systems:true,components:false,flows:false,business:false,networks:false})
- const [mapMode,setMapMode]=useState<'business'|'flows'|'networks'>('flows')
- const [activeOverlays,setActiveOverlays]=useState({business:true,network:false})
+ const [layers,setLayers]=useState({systems:true,components:false,flows:false,business:false})
+ const [mapMode,setMapMode]=useState<'business'|'flows'>('business')
+ const [activeOverlays,setActiveOverlays]=useState({business:false})
  const [selectedOverlayGroup,setSelectedOverlayGroup]=useState('')
  const [savedRegions,setSavedRegions]=useState<Record<string,LayerRegion>>({})
  const [layerDrafts,setLayerDrafts]=useState<Record<string,LayerDraft>>({})
@@ -146,12 +146,12 @@ export default function ArchitectureHome({systems,components,flows,processes,cat
    setLayerConflict(/409|изменен|изменёна|изменена|конкурентн/i.test(message))
   }finally{setLayerBusy(false)}
  }
- const [overlayOpacity,setOverlayOpacity]=useState(22)
+ const overlayOpacity=22
  const [hiddenOverlayGroups,setHiddenOverlayGroups]=useState<string[]>([])
- const [overlayColors,setOverlayColors]=useState<Record<string,string>>(()=>{
+ const [overlayColors]=useState<Record<string,string>>(()=>{
   try{const value=JSON.parse(localStorage.getItem('architecture-hub-layer-colors-v1')||'{}');return value&&typeof value==='object'&&!Array.isArray(value)?value:{}}catch{return {}}
  })
- useEffect(()=>{try{localStorage.setItem('architecture-hub-layer-colors-v1',JSON.stringify(overlayColors))}catch{/* browser storage unavailable */}},[overlayColors])
+ 
  const [query,setQuery]=useState('')
  const [focus,setFocus]=useState('')
  const [selectedSystem,setSelectedSystem]=useState('')
@@ -182,17 +182,6 @@ export default function ArchitectureHome({systems,components,flows,processes,cat
      const key=ids[i]+'|'+ids[j];businessCounts.set(key,(businessCounts.get(key)||0)+1)
    }
  }
- // Shared networks are reported as memberships, never as inferred network paths.
- const networkSystems=new Map<string,Set<string>>()
- for(const nic of interfaces){
-   const systemId=systemByComponent.get(nic.item_id)
-   if(!systemId||!visibleIds.has(systemId))continue
-   for(const id of [nic.zone_id,nic.vlan_id,nic.vrf_id]){
-     if(!id)continue
-     const members=networkSystems.get(id)||new Set<string>()
-     members.add(systemId);networkSystems.set(id,members)
-   }
- }
  // A three-column overview avoids microscopic nodes in long dependency chains.
  // The coordinate space is defined by the full architecture, never by
  // active overlays or search filters. Node coordinates cannot jump on layer changes.
@@ -213,10 +202,6 @@ export default function ArchitectureHome({systems,components,flows,processes,cat
  for(const process of processes.filter(p=>!p.category_id||!categories.some(c=>c.id===p.category_id))){
    const members=new Set(links.filter(l=>l.process_id===process.id&&visibleIds.has(l.system_id)).map(l=>l.system_id))
    if(members.size||savedRegions['business:process:'+process.id])overlayGroups.push({id:'business:process:'+process.id,name:process.name,type:'business',members})
- }
- for(const network of networks){
-   const members=networkSystems.get(network.id)
-   overlayGroups.push({id:'network:'+network.id,name:network.name,type:'network',members:members||new Set()})
  }
  const palette=['#a78bfa','#f59e0b','#10b981','#60a5fa','#f472b6','#22d3ee','#f97316','#84cc16']
  const groupColor=(group:OverlayGroup)=>layerDrafts[group.id]?.color||savedRegions[group.id]?.color||overlayColors[group.id]||palette[Math.max(0,overlayGroups.findIndex(item=>item.id===group.id))%palette.length]
@@ -275,7 +260,7 @@ export default function ArchitectureHome({systems,components,flows,processes,cat
  const focusedLayer=overlayGroups.find(group=>group.id===selectedOverlayGroup)
  const highlightedNodes=nodes.map(n=>({...n,zIndex:10,style:{...n.style,border:selectedSystem===n.id?'2px solid #2563eb':n.style.border,opacity:focusedLayer&&!membersFor(focusedLayer).includes(n.id)?0.2:selectedSystem&&!selectedNeighbors.has(n.id)?0.28:1}}))
  const canvasNodes=[...areaNodes,...highlightedNodes,...componentNodes]
- const connectionCounts=mapMode==='business'?businessCounts:mapMode==='flows'?flowCounts:new Map<string,number>()
+ const connectionCounts=mapMode==='business'?businessCounts:flowCounts
  const edges=[...connectionCounts].map(([key,count])=>{
    const [source,target]=key.split('|')
    const related=selectedSystem&&(source===selectedSystem||target===selectedSystem)
@@ -288,31 +273,19 @@ export default function ArchitectureHome({systems,components,flows,processes,cat
  return <section className="homeMap" aria-label="Главная карта архитектуры">
   <header className="homeMapHead"><div className="homeMapStats"><span>{systems.length} ИС</span><span>{components.length} компонентов</span><span>{flows.length} потоков</span></div></header>
   <div className="homeMapMode" role="group" aria-label="Тип связей на архитектурной карте">
-    {([['business','Бизнес-связи'],['flows','Потоки данных'],['networks','Сети и зоны']] as const).map(([id,label])=><button key={id} type="button" aria-pressed={mapMode===id} className={mapMode===id?'current':''} onClick={()=>setMapMode(id)}>{label}</button>)}
+    {([['business','Бизнес-связи'],['flows','Потоки данных']] as const).map(([id,label])=><button key={id} type="button" aria-pressed={mapMode===id} className={mapMode===id?'current':''} onClick={()=>setMapMode(id)}>{label}</button>)}
    </div>
-  {!editingLayers&&<div className="homeLayerToolbar" role="group" aria-label="Накладываемые слои">
-   <div className="homeLayerPresets" role="group" aria-label="Режим архитектурных областей">
-    <button type="button" aria-pressed={activeOverlays.business&&!activeOverlays.network} onClick={()=>setActiveOverlays({business:true,network:false})}>Бизнес-слой</button>
-    <button type="button" aria-pressed={!activeOverlays.business&&activeOverlays.network} onClick={()=>setActiveOverlays({business:false,network:true})}>Сетевой слой</button>
-    <button type="button" aria-pressed={activeOverlays.business&&activeOverlays.network} onClick={()=>setActiveOverlays({business:true,network:true})}>Наложить оба</button>
-    <button type="button" aria-pressed={!activeOverlays.business&&!activeOverlays.network} onClick={()=>setActiveOverlays({business:false,network:false})}>Без областей</button>
-   </div>
-   <strong>Области на схеме</strong>
-   {canEditLayers&&layerApiReady&&!editingLayers&&<div className="homeLayerEditActions">
-     <button type="button" onClick={()=>{setEditingLayers(true);setLayerTool('select');setLayerError('');setSelectedOverlayGroup(old=>old||overlayGroups[0]?.id||'')}}>Редактировать области</button>
-   </div>}
-   {editingLayers&&<span role="status" className="homeLayerHint">Режим редактора: инструменты слева, свойства выбранной области справа.</span>}
-   {layerError&&<p role="alert">{layerError}</p>}
-   <label><input type="checkbox" checked={layers.components} onChange={e=>setLayers(old=>({...old,components:e.target.checked}))}/> Показать ВМ и компоненты</label>
-   <span className="homeLayerHint">Объекты остаются на месте; переключаются только цветные области принадлежности.</span>
-   <label className="homeLayerOpacity">Прозрачность новых областей <input aria-label="Насыщенность слоёв" type="range" min="5" max="55" value={overlayOpacity} onChange={e=>setOverlayOpacity(Number(e.target.value))}/></label>
-   <details open className="homeLayerCatalog"><summary>Категории и области</summary><div className="homeLayerColorList">{overlayGroups.map(group=><label key={group.id}>
-    <input type="checkbox" aria-label={'Показать область '+group.name} checked={!hiddenOverlayGroups.includes(group.id)} onChange={e=>setHiddenOverlayGroups(old=>e.target.checked?old.filter(id=>id!==group.id):[...old,group.id])}/>
-    <input aria-label={'Цвет слоя '+group.name} type="color" value={groupColor(group)} onChange={e=>editingLayers&&canEditLayers?updateDraft(group.id,{color:e.target.value},layerDrafts[group.id]||savedRegions[group.id]||defaultDraftFor(group)):setOverlayColors(old=>({...old,[group.id]:e.target.value}))}/><button type="button" aria-pressed={selectedOverlayGroup===group.id} onClick={()=>{setSelectedOverlayGroup(old=>old===group.id?'':group.id);setActiveOverlays(old=>({...old,[group.type]:true}))}}>{group.name}</button><small>{membersFor(group).length} ИС · {group.type==='business'?'Бизнес':'Сети'}</small>
-   </label>)}</div></details>
-  </div>}
-  <div className="homeMapTools"><input aria-label="Поиск на карте" value={query} onChange={e=>setQuery(e.target.value)} placeholder="Найти ИС или компонент…"/><Disclosure label="Фильтры и слои"><select aria-label="Контур карты" value={environment} onChange={e=>setEnvironment(e.target.value)}><option value="all">Все контуры</option>{environments.map(e=><option key={e} value={e}>{e}</option>)}</select><select aria-label="Фокус на ИС" value={focus} onChange={e=>setFocus(e.target.value)}><option value="">Все системы</option>{systems.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select>
-  <details className="homeMapLayersDisclosure"><summary>Слои карты <span aria-hidden="true">▾</span></summary><div className="homeMapLayers" aria-label="Слои карты">{([['systems','Информационные системы'],['business','Бизнес-процессы'],['networks','Сетевые объекты']] as const).map(([key,label])=><label key={key}><input type="checkbox" checked={layers[key]} onChange={e=>setLayers(old=>({...old,[key]:e.target.checked}))}/>{label}</label>)}</div></details></Disclosure></div>
+  <div className="homeLayerToolbar" role="group" aria-label="Бизнес-области">
+ <label><input type="checkbox" checked={activeOverlays.business} onChange={e=>setActiveOverlays({business:e.target.checked})}/> Показать бизнес-области</label>
+ {activeOverlays.business&&canEditLayers&&layerApiReady&&!editingLayers&&<button type="button" onClick={()=>{setEditingLayers(true);setLayerTool('select');setLayerError('');setSelectedOverlayGroup(old=>old||overlayGroups[0]?.id||'')}}>Редактировать бизнес-области</button>}
+ {layerError&&<p role="alert">{layerError}</p>}
+ <details className="homeLayerCatalog"><summary>Бизнес-категории</summary><div className="homeLayerColorList">{overlayGroups.map(group=><label key={group.id}>
+ <input type="checkbox" aria-label={'Показать область '+group.name} checked={!hiddenOverlayGroups.includes(group.id)} onChange={e=>setHiddenOverlayGroups(old=>e.target.checked?old.filter(id=>id!==group.id):[...old,group.id])}/>
+ <button type="button" aria-pressed={selectedOverlayGroup===group.id} onClick={()=>setSelectedOverlayGroup(old=>old===group.id?'':group.id)}>{group.name}</button><small>{membersFor(group).length} ИС</small>
+ </label>)}</div></details>
+ </div>
+ <div className="homeMapTools"><input aria-label="Поиск на карте" value={query} onChange={e=>setQuery(e.target.value)} placeholder="Найти ИС или компонент…"/><Disclosure label="Фильтры и слои"><select aria-label="Контур карты" value={environment} onChange={e=>setEnvironment(e.target.value)}><option value="all">Все контуры</option>{environments.map(e=><option key={e} value={e}>{e}</option>)}</select><select aria-label="Фокус на ИС" value={focus} onChange={e=>setFocus(e.target.value)}><option value="">Все системы</option>{systems.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select>
+  <details className="homeMapLayersDisclosure"><summary>Слои карты <span aria-hidden="true">▾</span></summary><div className="homeMapLayers" aria-label="Слои карты">{([['systems','Информационные системы'],['business','Бизнес-процессы']] as const).map(([key,label])=><label key={key}><input type="checkbox" checked={layers[key]} onChange={e=>setLayers(old=>({...old,[key]:e.target.checked}))}/>{label}</label>)}</div></details></Disclosure></div>
   {query.trim()&&<div className="homeMapSearchMatches" role="region" aria-label="Результаты поиска по архитектуре">
     <strong>Найденные ИС: {filteredSystems.length}</strong>
     {!filteredSystems.length&&<span>Системы не найдены.</span>}
@@ -356,7 +329,7 @@ export default function ArchitectureHome({systems,components,flows,processes,cat
 
    {editingLayers&&<aside className="homeLayerDock" role="complementary" aria-label="Свойства архитектурной области">
      <header><strong>Свойства области</strong><span>{layerTool==='draw'?'Рисование':layerTool==='move'?'Перемещение':'Выбор'}</span></header>
-     <p className="homeLayerToolInstructions">{layerTool==='draw'?'Выберите бизнес-категорию или сеть, затем протяните прямоугольник на холсте. Одно нажатие создаст рамку стандартного размера.':layerTool==='move'?'Перетаскивайте область. Чтобы изменить размер, выделите её и потяните за маркеры.':'Выберите область на схеме или в списке.'}</p>
+     <p className="homeLayerToolInstructions">{layerTool==='draw'?'Выберите бизнес-категорию, затем протяните прямоугольник на холсте. Одно нажатие создаст рамку стандартного размера.':layerTool==='move'?'Перетаскивайте область. Чтобы изменить размер, выделите её и потяните за маркеры.':'Выберите область на схеме или в списке.'}</p>
      {layerError&&<p role="alert" className="homeLayerError">{layerError}</p>}
      {layerConflict&&<button type="button" className="homeLayerRefresh" disabled={layerBusy} onClick={()=>void reloadLayerRegions()}>Обновить области и отбросить мой черновик</button>}
      <label className="homeLayerGroupSelect">Область
@@ -367,7 +340,6 @@ export default function ArchitectureHome({systems,components,flows,processes,cat
        }}>
          <option value="">Выберите область</option>
          <optgroup label="Бизнес-категории">{overlayGroups.filter(group=>group.type==='business').map(group=><option key={group.id} value={group.id}>{group.name}</option>)}</optgroup>
-         <optgroup label="Сети и зоны">{overlayGroups.filter(group=>group.type==='network').map(group=><option key={group.id} value={group.id}>{group.name}</option>)}</optgroup>
        </select>
      </label>
      {selectedRegion&&regionDraft&&<div className="homeLayerProperties">
@@ -401,12 +373,12 @@ export default function ArchitectureHome({systems,components,flows,processes,cat
   {selectedOverlayGroup&&focusedLayer&&<div className="homeLayerMembers" role="status"><strong>{focusedLayer.name}</strong><span>В этой области: {membersFor(focusedLayer).map(id=>systems.find(sys=>sys.id===id)?.name||id).join(', ')}</span><button type="button" onClick={()=>setSelectedOverlayGroup('')}>Снять выделение</button></div>}
 
   <p className="homeMapModeHint">Полупрозрачные области показывают принадлежность ИС к категориям, а не технические маршруты. Пересекающиеся рамки означают одновременное участие; для точного состава смотрите подписи и реестры.</p>
-  <p className="homeMapModeHint">{mapMode==='business'?'Пунктир показывает участие систем в общих бизнес-процессах, а не направление передачи данных.':mapMode==='flows'?'Стрелки показывают реальные зарегистрированные потоки между компонентами разных ИС. Количество указано на связи.':'Сетевой слой показывает привязки систем к зонам, VLAN и VRF. Совпадение сети не означает наличие разрешённого маршрута.'}</p>
+  <p className="homeMapModeHint">{mapMode==='business'?'Пунктир показывает участие систем в общих бизнес-процессах, а не направление передачи данных.':'Стрелки показывают реальные зарегистрированные потоки между компонентами разных ИС. Количество указано на связи.'}</p>
   <div className="homeMapDetails">
-   {mapMode==='networks'&&<article><h3>Использование сетей</h3>{[...networkSystems].filter(([,members])=>members.size).map(([id,members])=><p key={id}><strong>{networks.find(n=>n.id===id)?.name||id}</strong> · {[...members].map(systemId=>systems.find(sys=>sys.id===systemId)?.name||systemId).join(', ')}</p>)}{!networkSystems.size&&<p>У выбранных систем нет зарегистрированных сетевых привязок.</p>}</article>}
+   
    {(layers.business||mapMode==='business')&&<article><h3>Бизнес-процессы</h3><p>{processes.length} процессов · {links.length} связей с ИС</p><div>{processes.slice(0,12).map(p=><span className="homeMapChip" key={p.id}>{p.name}</span>)}</div></article>}
    {layers.components&&<article><h3>Компоненты</h3><div className="homeMapComponentList">{components.filter(c=>visibleIds.has(c.system_id)).slice(0,60).map(c=><button key={c.id} onClick={()=>onOpenComponent(c.id)}><span aria-hidden="true">{architectureIcon(c.kind)}</span> {c.name} <small>{c.kind}</small></button>)}</div></article>}
-   {(layers.networks||mapMode==='networks')&&<article><h3>Сети и зоны</h3><p>{networks.length} сетевых объектов · {interfaces.length} интерфейсов</p><div>{networks.slice(0,15).map(n=><span className="homeMapChip" key={n.id}>{architectureIcon(n.kind)} {n.name}</span>)}</div><button onClick={onOpenNetworks}>Открыть реестр сетей</button></article>}
+   
    {mapMode==='flows'&&selectedSystemInfo&&<button onClick={onOpenFlows}>Открыть реестр потоков</button>}
   </div>
  </section>

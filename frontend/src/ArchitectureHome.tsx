@@ -215,7 +215,7 @@ export default function ArchitectureHome({systems,components,flows,processes,cat
     height:points.length?Math.max(...points.map(p=>p.y))-Math.min(...points.map(p=>p.y))+Math.max(110,100+componentRows*43)+42:190,
     color:groupColor(group),opacity:overlayOpacity/100,members:memberIds}
  }
- const areaNodes=overlayGroups.filter(group=>activeOverlays[group.type]&&!hiddenOverlayGroups.includes(group.id)&&(membersFor(group).length>0||Boolean(savedRegions[group.id]||layerDrafts[group.id]))).map(group=>{
+ const areaNodes=overlayGroups.filter(group=>activeOverlays[group.type]&&(!selectedOverlayGroup||selectedOverlayGroup===group.id)&&!hiddenOverlayGroups.includes(group.id)&&(membersFor(group).length>0||Boolean(savedRegions[group.id]||layerDrafts[group.id]))).map(group=>{
    const initial=defaultDraftFor(group)
    const memberIds=initial.members
    const area=layerDrafts[group.id]||savedRegions[group.id]||initial
@@ -276,14 +276,15 @@ export default function ArchitectureHome({systems,components,flows,processes,cat
     {([['business','Бизнес-связи'],['flows','Потоки данных']] as const).map(([id,label])=><button key={id} type="button" aria-pressed={mapMode===id} className={mapMode===id?'current':''} onClick={()=>setMapMode(id)}>{label}</button>)}
    </div>
   <div className="homeLayerToolbar" role="group" aria-label="Бизнес-области">
- <label><input type="checkbox" checked={activeOverlays.business} onChange={e=>{setActiveOverlays({business:e.target.checked});if(!e.target.checked)setSelectedOverlayGroup('')}}/> Показать бизнес-области</label>
+ <label><input type="checkbox" checked={activeOverlays.business} onChange={e=>{setActiveOverlays({business:e.target.checked});setSelectedOverlayGroup(e.target.checked?(selectedOverlayGroup||overlayGroups.find(group=>membersFor(group).length>0)?.id||overlayGroups[0]?.id||''):'')}}/> Показать бизнес-области</label>
  {activeOverlays.business&&canEditLayers&&layerApiReady&&!editingLayers&&<button type="button" onClick={()=>{setEditingLayers(true);setLayerTool('select');setLayerError('');setSelectedOverlayGroup(old=>old||overlayGroups[0]?.id||'')}}>Редактировать бизнес-области</button>}
  {layerError&&<p role="alert">{layerError}</p>}
- <details className="homeLayerCatalog"><summary>Бизнес-категории</summary><div className="homeLayerColorList">{overlayGroups.map(group=><label key={group.id}>
+ <details className="homeLayerCatalog"><summary>Выбрать бизнес-область</summary><div className="homeLayerColorList">{overlayGroups.map(group=><label key={group.id}>
  <input type="checkbox" aria-label={'Показать область '+group.name} checked={!hiddenOverlayGroups.includes(group.id)} onChange={e=>setHiddenOverlayGroups(old=>e.target.checked?old.filter(id=>id!==group.id):[...old,group.id])}/>
- <button type="button" aria-pressed={selectedOverlayGroup===group.id} onClick={()=>{setSelectedOverlayGroup(old=>old===group.id?'':group.id);setActiveOverlays({business:true})}}>{group.name}</button><small>{membersFor(group).length} ИС</small>
+ <button type="button" aria-pressed={selectedOverlayGroup===group.id} onClick={()=>{setSelectedOverlayGroup(group.id);setActiveOverlays({business:true})}}>{group.name}</button><small>{membersFor(group).length} ИС</small>
  </label>)}</div></details>
  </div>
+ {activeOverlays.business&&selectedOverlayGroup&&<span className="homeLayerHint" role="status">Показана бизнес-область: {overlayGroups.find(group=>group.id===selectedOverlayGroup)?.name}. Для смены откройте список.</span>}
  <div className="homeMapTools"><input aria-label="Поиск на карте" value={query} onChange={e=>setQuery(e.target.value)} placeholder="Найти ИС или компонент…"/><Disclosure label="Фильтры и слои"><select aria-label="Контур карты" value={environment} onChange={e=>setEnvironment(e.target.value)}><option value="all">Все контуры</option>{environments.map(e=><option key={e} value={e}>{e}</option>)}</select><select aria-label="Фокус на ИС" value={focus} onChange={e=>setFocus(e.target.value)}><option value="">Все системы</option>{systems.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select>
   <details className="homeMapLayersDisclosure"><summary>Слои карты <span aria-hidden="true">▾</span></summary><div className="homeMapLayers" aria-label="Слои карты">{([['systems','Информационные системы'],['business','Бизнес-процессы']] as const).map(([key,label])=><label key={key}><input type="checkbox" checked={layers[key]} onChange={e=>setLayers(old=>({...old,[key]:e.target.checked}))}/>{label}</label>)}</div></details></Disclosure></div>
   {query.trim()&&<div className="homeMapSearchMatches" role="region" aria-label="Результаты поиска по архитектуре">

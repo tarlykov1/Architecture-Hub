@@ -151,13 +151,13 @@ test('Unified overview changes relation semantics without duplicating the flow g
  await page.goto('/')
  const map=page.getByRole('region',{name:'Главная карта архитектуры'})
  const mode=map.getByRole('group',{name:'Тип связей на архитектурной карте'})
- await expect(mode.getByRole('button',{name:'Потоки данных'})).toHaveAttribute('aria-pressed','true')
+ await expect(mode.getByRole('button',{name:'Бизнес-связи'})).toHaveAttribute('aria-pressed','true')
  await expect(map.locator('.react-flow')).toHaveCount(1)
  await mode.getByRole('button',{name:'Бизнес-связи'}).click()
  await expect(mode.getByRole('button',{name:'Бизнес-связи'})).toHaveAttribute('aria-pressed','true')
  await expect(map.getByText(/не направление передачи данных/)).toBeVisible()
- await mode.getByRole('button',{name:'Сети и зоны'}).click()
- await expect(map.getByText(/не означает наличие разрешённого маршрута/)).toBeVisible()
+ await expect(mode.getByRole('button',{name:'Сети и зоны'})).toHaveCount(0)
+ await mode.getByRole('button',{name:'Потоки данных'}).click()
  await navigate(page,'Потоки')
  await expect(page.getByRole('region',{name:'Реестр технических потоков'})).toBeVisible()
  await expect(page.locator('[data-active-graph="flows"]')).toHaveCount(0)
@@ -165,26 +165,20 @@ test('Unified overview changes relation semantics without duplicating the flow g
  await expect(map).toBeVisible()
 })
 
-test('Architecture overlay layers overlap without moving system and VM nodes',async({page})=>{
+test('Overview shows only business regions and preserves system positions',async({page})=>{
  await page.goto('/')
  const map=page.getByRole('region',{name:'Главная карта архитектуры'})
- const toolbar=map.getByLabel('Накладываемые слои')
- const systemNodes=map.locator('.react-flow__node').filter({hasText:'Демо: портал сотрудников'})
- // React Flow toggles visibility:hidden/visible during measurement.
- // Compare stable graph-space transforms, not the entire transient style.
- const getPosition=()=>systemNodes.first().evaluate(node=>(node as HTMLElement).style.transform)
- const initial=await getPosition()
- const mode=toolbar.getByRole('group',{name:'Режим архитектурных областей'})
- await mode.getByRole('button',{name:'Бизнес-слой'}).click()
- await expect(mode.getByRole('button',{name:'Бизнес-слой'})).toHaveAttribute('aria-pressed','true')
- await mode.getByRole('button',{name:'Наложить оба'}).click()
- await expect(mode.getByRole('button',{name:'Наложить оба'})).toHaveAttribute('aria-pressed','true')
- // The view can gain or lose translucent group nodes, but base coordinates stay fixed.
- expect(await getPosition()).toBe(initial)
- await toolbar.getByRole('checkbox',{name:'Показать ВМ и компоненты'}).check()
- const componentPositions=await map.locator('.react-flow__node').filter({hasText:'DEMO-WEB-01'}).first().evaluate(node=>(node as HTMLElement).style.transform)
- await mode.getByRole('button',{name:'Без областей'}).click()
- expect(await map.locator('.react-flow__node').filter({hasText:'DEMO-WEB-01'}).first().evaluate(node=>(node as HTMLElement).style.transform)).toBe(componentPositions)
+ const systems=map.locator('.react-flow__node').filter({hasText:'Демо: портал сотрудников'})
+ await expect(systems.first()).toHaveCount(1)
+ const initial=await systems.first().evaluate(node=>(node as HTMLElement).style.transform)
+ const toggle=map.getByRole('checkbox',{name:'Показать бизнес-области'})
+ await expect(toggle).not.toBeChecked()
+ await toggle.check()
+ expect(await systems.first().evaluate(node=>(node as HTMLElement).style.transform)).toBe(initial)
+ await expect(map.getByRole('button',{name:'Сетевой слой'})).toHaveCount(0)
+ await expect(map.getByRole('button',{name:'Наложить оба'})).toHaveCount(0)
+ await toggle.uncheck()
+ expect(await systems.first().evaluate(node=>(node as HTMLElement).style.transform)).toBe(initial)
 })
 
 test('Architecture regions save selected IS membership and color in server storage',async({page})=>{
@@ -204,7 +198,8 @@ test('Architecture regions save selected IS membership and color in server stora
  expect(link.status()).toBe(201)
  await page.goto('/')
  const map=page.getByRole('region',{name:'Главная карта архитектуры'})
- await map.getByRole('button',{name:'Редактировать области'}).click()
+ await map.getByRole('checkbox',{name:'Показать бизнес-области'}).check()
+ await map.getByRole('button',{name:'Редактировать бизнес-области'}).click()
  const fixedSystem=map.locator('.react-flow__node').filter({hasText:'QA-WORK-Layer owner '+suffix}).first()
  await expect(fixedSystem).toHaveAttribute('class',/react-flow__node/)
  const tools=map.getByRole('toolbar',{name:'Инструменты слоёв'})
@@ -223,7 +218,7 @@ test('Architecture regions save selected IS membership and color in server stora
  await expect(dock.getByRole('slider',{name:'Прозрачность выбранной области'})).toHaveValue('85')
  await dock.getByRole('spinbutton',{name:'Ширина области'}).fill('510')
  await map.getByRole('button',{name:'Сохранить области'}).click()
- await expect(map.getByRole('button',{name:'Редактировать области'})).toBeVisible()
+ await expect(map.getByRole('button',{name:'Редактировать бизнес-области'})).toBeVisible()
  const response=await page.request.get(base+'/api/diagrams/layer-regions')
  expect(response.status()).toBe(200)
  const area=(await response.json() as Array<{group_key:string;members:string[];color:string;opacity:number;width:number}>).find(item=>item.group_key==='business:'+categoryId)
@@ -236,8 +231,9 @@ test('Architecture regions save selected IS membership and color in server stora
  const links=await (await page.request.get(base+'/api/business/system-links')).json() as Array<{process_id:string;system_id:string}>
  expect(links.some(item=>item.process_id===processId&&item.system_id===systemId)).toBe(true)
  await page.reload()
- await expect(map.getByRole('button',{name:'Редактировать области'})).toBeVisible()
- await map.getByRole('button',{name:'Редактировать области'}).click()
+ await expect(map.getByRole('button',{name:'Редактировать бизнес-области'})).toBeVisible()
+ await map.getByRole('checkbox',{name:'Показать бизнес-области'}).check()
+ await map.getByRole('button',{name:'Редактировать бизнес-области'}).click()
  const restoredDock=map.getByRole('complementary',{name:'Свойства архитектурной области'})
  await restoredDock.getByRole('combobox',{name:'Выбрать архитектурную область'}).selectOption('business:'+categoryId)
  await expect(restoredDock.getByLabel('Цвет выбранной области')).toHaveValue('#315dcc')
@@ -253,7 +249,8 @@ test('Layer drawing uses the canvas tool rail and saves rectangle geometry',asyn
  const id=(await category.json()).id as string
  await page.goto('/')
  const map=page.getByRole('region',{name:'Главная карта архитектуры'})
- await map.getByRole('button',{name:'Редактировать области'}).click()
+ await map.getByRole('checkbox',{name:'Показать бизнес-области'}).check()
+ await map.getByRole('button',{name:'Редактировать бизнес-области'}).click()
  const tools=map.getByRole('toolbar',{name:'Инструменты слоёв'})
  const dock=map.getByRole('complementary',{name:'Свойства архитектурной области'})
  await dock.getByRole('combobox',{name:'Выбрать архитектурную область'}).selectOption('business:'+id)
@@ -269,7 +266,7 @@ test('Layer drawing uses the canvas tool rail and saves rectangle geometry',asyn
  await expect(tools.getByRole('button',{name:'Переместить область'})).toHaveAttribute('aria-pressed','true')
  await expect(tools.getByRole('button',{name:'Сохранить области'})).toBeEnabled()
  await tools.getByRole('button',{name:'Сохранить области'}).click()
- await expect(map.getByRole('button',{name:'Редактировать области'})).toBeVisible()
+ await expect(map.getByRole('button',{name:'Редактировать бизнес-области'})).toBeVisible()
  const result=await page.request.get('http://127.0.0.1:8001/api/diagrams/layer-regions')
  expect(result.status()).toBe(200)
  const region=(await result.json() as Array<{group_key:string;width:number;height:number}>).find(row=>row.group_key==='business:'+id)
@@ -277,11 +274,12 @@ test('Layer drawing uses the canvas tool rail and saves rectangle geometry',asyn
  expect(region!.width).toBeGreaterThanOrEqual(140)
  expect(region!.height).toBeGreaterThanOrEqual(80)
  await page.reload()
- await map.getByRole('button',{name:'Редактировать области'}).click()
+ await map.getByRole('checkbox',{name:'Показать бизнес-области'}).check()
+ await map.getByRole('button',{name:'Редактировать бизнес-области'}).click()
  await dock.getByRole('combobox',{name:'Выбрать архитектурную область'}).selectOption('business:'+id)
  await expect(dock.getByRole('spinbutton',{name:'Ширина области'})).toHaveValue(String(Math.round(region!.width)))
  await tools.getByRole('button',{name:'Отменить изменения областей'}).click()
- await expect(map.getByRole('button',{name:'Редактировать области'})).toBeVisible()
+ await expect(map.getByRole('button',{name:'Редактировать бизнес-области'})).toBeVisible()
 })
 
 
@@ -291,10 +289,9 @@ test('QA-WORK: mobile layer editor preserves separate tools, canvas and properti
  await page.goto('/')
  const map=page.getByRole('region',{name:'Главная карта архитектуры'})
  await expect(map).toBeVisible()
- const modes=map.getByRole('group',{name:'Режим архитектурных областей'})
- await modes.getByRole('button',{name:'Наложить оба'}).click()
- await expect(modes.getByRole('button',{name:'Наложить оба'})).toHaveAttribute('aria-pressed','true')
- await map.getByRole('button',{name:'Редактировать области'}).click()
+ await map.getByRole('checkbox',{name:'Показать бизнес-области'}).check()
+ await map.getByRole('checkbox',{name:'Показать бизнес-области'}).check()
+ await map.getByRole('button',{name:'Редактировать бизнес-области'}).click()
  const tools=map.getByRole('toolbar',{name:'Инструменты слоёв'})
  const canvas=map.locator('.homeLayerEditorStage .homeMapGraph')
  const dock=map.getByRole('complementary',{name:'Свойства архитектурной области'})
@@ -307,66 +304,33 @@ test('QA-WORK: mobile layer editor preserves separate tools, canvas and properti
  expect(rail!.x+rail!.width<=stage!.x+3).toBe(true)
  expect(properties!.y>=stage!.y+stage!.height-3).toBe(true)
  await tools.getByRole('button',{name:'Отменить изменения областей'}).click()
- await expect(map.getByRole('button',{name:'Редактировать области'})).toBeVisible()
+ await expect(map.getByRole('button',{name:'Редактировать бизнес-области'})).toBeVisible()
 })
 
 
-test('QA-WORK: changing network area geometry never changes VM positions, interfaces or flows',async({page})=>{
- await page.addInitScript(()=>sessionStorage.setItem('architecture-hub:access-token:session','browser-ci-development-token'))
+test('QA-WORK: network records remain intact and absent from overview',async({page})=>{
  const api='http://127.0.0.1:8001',suffix=String(Date.now())
  const create=async(path:string,data:Record<string,unknown>)=>{
-   const response=await page.request.post(api+path,{data})
-   expect(response.status(),await response.text()).toBe(201)
-   return (await response.json()).id as string
+  const response=await page.request.post(api+path,{data})
+  expect(response.status(),await response.text()).toBe(201)
+  return (await response.json()).id as string
  }
- const systemName='QA-WORK-Layer network IS '+suffix
- const system=await create('/api/objects',{kind:'system',name:systemName})
- const sourceName='QA-WORK-Network VM source '+suffix
- const source=await create('/api/infra',{system_id:system,kind:'vm',name:sourceName})
- const target=await create('/api/infra',{system_id:system,kind:'vm',name:'QA-WORK-Network VM target '+suffix})
+ const system=await create('/api/objects',{kind:'system',name:'QA-WORK-Overview system '+suffix})
+ const source=await create('/api/infra',{system_id:system,kind:'vm',name:'QA-WORK-Source '+suffix})
+ const target=await create('/api/infra',{system_id:system,kind:'vm',name:'QA-WORK-Target '+suffix})
  const vrf=await create('/api/networks',{name:'QA-WORK-VRF '+suffix,kind:'vrf'})
  const nic=await create('/api/network-interfaces',{item_id:source,name:'eth0',vrf_id:vrf})
  const flow=await create('/api/flows',{source_id:source,target_id:target,name:'QA-WORK-Flow '+suffix})
- const getNIC=async()=>{
-  const records=await (await page.request.get(api+'/api/network-interfaces')).json() as Array<{id:string;item_id:string;vrf_id:string}>
-  return records.find(item=>item.id===nic)
- }
- const getFlow=async()=>{
-  const records=await (await page.request.get(api+'/api/flows')).json() as Array<{id:string;source_id:string;target_id:string}>
-  return records.find(item=>item.id===flow)
- }
- const beforeNIC=await getNIC(),beforeFlow=await getFlow()
  await page.goto('/')
  const map=page.getByRole('region',{name:'Главная карта архитектуры'})
- await map.getByRole('checkbox',{name:'Показать ВМ и компоненты'}).check()
- const systemNode=map.locator('.react-flow__node').filter({hasText:systemName}).first()
- const vmNode=map.locator('.react-flow__node').filter({hasText:sourceName}).first()
- // The global graph may virtualize distant nodes outside the viewport.
- // They must keep their graph-space positions even when temporarily hidden.
- await expect(systemNode).toHaveCount(1)
- await expect(vmNode).toHaveCount(1)
- const systemPosition=await systemNode.evaluate(el=>(el as HTMLElement).style.transform)
- const vmPosition=await vmNode.evaluate(el=>(el as HTMLElement).style.transform)
- expect(systemPosition).toContain('translate(')
- expect(vmPosition).toContain('translate(')
- await map.getByRole('button',{name:'Наложить оба'}).click()
- await map.getByRole('button',{name:'Редактировать области'}).click()
- const dock=map.getByRole('complementary',{name:'Свойства архитектурной области'})
- await dock.getByRole('combobox',{name:'Выбрать архитектурную область'}).selectOption('network:'+vrf)
- await dock.getByRole('spinbutton',{name:'X области'}).fill('120')
- await dock.getByRole('spinbutton',{name:'Y области'}).fill('160')
- await dock.getByRole('spinbutton',{name:'Ширина области'}).fill('590')
- await dock.getByRole('spinbutton',{name:'Высота области'}).fill('310')
- await map.getByRole('button',{name:'Сохранить области'}).click()
- const areas=await (await page.request.get(api+'/api/diagrams/layer-regions')).json() as Array<{group_key:string;x:number;y:number;width:number;height:number}>
- const rect=areas.find(item=>item.group_key==='network:'+vrf)
- expect(rect).toMatchObject({group_key:'network:'+vrf,x:120,y:160,width:590,height:310})
- expect(await systemNode.evaluate(el=>(el as HTMLElement).style.transform)).toBe(systemPosition)
- expect(await vmNode.evaluate(el=>(el as HTMLElement).style.transform)).toBe(vmPosition)
- expect(await getNIC()).toEqual(beforeNIC)
- expect(await getFlow()).toEqual(beforeFlow)
+ await expect(map.getByRole('button',{name:'Сети и зоны'})).toHaveCount(0)
+ await expect(map.getByText('QA-WORK-VRF '+suffix)).toHaveCount(0)
+ await expect(map.locator('.react-flow__node').filter({hasText:'QA-WORK-Overview system '+suffix})).toHaveCount(1)
+ const nics=await (await page.request.get(api+'/api/network-interfaces')).json() as Array<{id:string;vrf_id:string}>
+ const flows=await (await page.request.get(api+'/api/flows')).json() as Array<{id:string;source_id:string;target_id:string}>
+ expect(nics.find(item=>item.id===nic)?.vrf_id).toBe(vrf)
+ expect(flows.find(item=>item.id===flow)).toMatchObject({source_id:source,target_id:target})
 })
-
 
 test('QA-WORK: stale layer drafts cannot overwrite a newer architecture region',async({page})=>{
  await page.addInitScript(()=>sessionStorage.setItem('architecture-hub:access-token:session','browser-ci-development-token'))
@@ -384,7 +348,8 @@ test('QA-WORK: stale layer drafts cannot overwrite a newer architecture region',
 
  await page.goto('/')
  const map=page.getByRole('region',{name:'Главная карта архитектуры'})
- await map.getByRole('button',{name:'Редактировать области'}).click()
+ await map.getByRole('checkbox',{name:'Показать бизнес-области'}).check()
+ await map.getByRole('button',{name:'Редактировать бизнес-области'}).click()
  const dock=map.getByRole('complementary',{name:'Свойства архитектурной области'})
  await dock.getByRole('combobox',{name:'Выбрать архитектурную область'}).selectOption(key)
  await dock.getByRole('spinbutton',{name:'X области'}).fill('300')
@@ -406,8 +371,9 @@ test('QA-WORK: stale layer drafts cannot overwrite a newer architecture region',
 
  // Recovery is explicit: only clicking refresh drops the local draft.
  await dock.getByRole('button',{name:'Обновить области и отбросить мой черновик'}).click()
- await expect(map.getByRole('button',{name:'Редактировать области'})).toBeVisible()
- await map.getByRole('button',{name:'Редактировать области'}).click()
+ await expect(map.getByRole('button',{name:'Редактировать бизнес-области'})).toBeVisible()
+ await map.getByRole('checkbox',{name:'Показать бизнес-области'}).check()
+ await map.getByRole('button',{name:'Редактировать бизнес-области'}).click()
  const reopened=map.getByRole('complementary',{name:'Свойства архитектурной области'})
  await reopened.getByRole('combobox',{name:'Выбрать архитектурную область'}).selectOption(key)
  await expect(reopened.getByRole('spinbutton',{name:'X области'})).toHaveValue('555')

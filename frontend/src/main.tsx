@@ -150,7 +150,11 @@ function App() {
   const [nics,setNics] = useState<Nic[]>([])
   const [viewMode,setViewMode] = useState<'architecture'|'security'>('architecture')
   const [selectedFlow,setSelectedFlow] = useState('')
-  const [homeFocusSystemId,setHomeFocusSystemId]=useState('')
+  // The focus belongs to the overview URL so a link from the flow registry
+  // works even across a reload, browser back/forward and a reopened tab.
+  const [homeFocusSystemId,setHomeFocusSystemId]=useState(
+    ()=>new URLSearchParams(window.location.search).get('focus')||''
+  )
   const [highlightedFlowComponent,setHighlightedFlowComponent] = useState('')
   const [flowDataOpen,setFlowDataOpen]=useState(false)
   const [networkPathOpen,setNetworkPathOpen]=useState(false)
@@ -520,6 +524,7 @@ function App() {
     const onPopState=()=>{
       const route=parseWorkspaceRoute(window.location)
       setLayer(route.layer)
+      setHomeFocusSystemId(route.layer==='home'?new URLSearchParams(window.location.search).get('focus')||'':'')
       setViewSystem(route.systemId)
       setSelected(route.passportId)
       setInspectorOpen(Boolean(route.passportId))
@@ -531,6 +536,7 @@ function App() {
   },[])
   useEffect(()=>{
     const nextUrl=new URL(workspaceRouteUrl(layer,viewSystem,inspectorOpen?selected:'',inspectorExpanded),window.location.origin)
+    if(layer==='home'&&homeFocusSystemId)nextUrl.searchParams.set('focus',homeFocusSystemId)
     // Preserve a direct link to a selected VM/flow while bootstrapping Topology.
     // The section router must not erase inspector-specific query parameters
     // before the Topology component can restore its selected object.
@@ -548,7 +554,7 @@ function App() {
     }else{
       window.history.pushState(null,'',next)
     }
-  },[layer,viewSystem,inspectorOpen,selected,inspectorExpanded])
+  },[layer,viewSystem,inspectorOpen,selected,inspectorExpanded,homeFocusSystemId])
   const [infraName,setInfraName] = useState('')
   const [infraKind,setInfraKind] = useState('vm')
   const [infraParent,setInfraParent] = useState('')
@@ -678,7 +684,7 @@ function App() {
   })), [visibleObjects, positions, selected, infra])
 
   const edges = useMemo<Edge[]>(() => relations.filter(r=>visibleObjects.some(o=>o.id===r.source_id)&&visibleObjects.some(o=>o.id===r.target_id)).map(r => ({
-    id: r.id, source: r.source_id, target: r.target_id, label: r.kind === 'data_flow' ? 'Поток данных' : r.kind,
+    id: r.id, source: r.source_id, target: r.target_id, label: r.kind === 'data_flow' ? 'Заявленный обмен (устар.)' : r.kind === 'integrates_with' ? 'Интеграция (логическая)' : r.kind === 'depends_on' ? 'Зависит от' : r.kind,
     animated: false, style: { stroke: '#64748b', strokeWidth: 2 },
     labelStyle: { fill: '#475569', fontSize: 11 },
   })), [relations, visibleObjects])
@@ -696,7 +702,7 @@ function App() {
     if (!diagramEditMode || !connection.source || !connection.target || connection.source===connection.target) return
     try {
       await request('/api/relations', { method: 'POST', body: JSON.stringify({
-        source_id: connection.source, target_id: connection.target, kind: 'data_flow',
+        source_id: connection.source, target_id: connection.target, kind: 'integrates_with',
       }) })
       setRelations(await request<Rel[]>('/api/relations'))
     } catch (e) { setError(String(e)) }
@@ -1246,7 +1252,7 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
             <p>{i.description}</p><p><strong>{String(i.details.environment||"")}</strong> · {String(i.details.security_zone||"Зона неизвестна")} · {String(i.details.vrf||"VRF неизвестен")}</p>
           </article>)}</div>}
         </> : <>
-          <div className="viewHead"><strong>Реестр потоков</strong><button type="button" onClick={()=>{setFlowEditMode(false);setFlowView("cards");setLayer("home")}}>Общая карта связей</button><select aria-label="Система потоков" value={viewSystem} onChange={e=>{setViewSystem(e.target.value);setFlowComponentFocus('');setSelectedFlow('')}}><option value="">Все системы</option>{objects.map(o=><option key={o.id} value={o.id}>{o.name}</option>)}</select>{flowView==='diagram'&&<label className="flowDetailControl">Детализация <select aria-label="Детализация схемы потоков" value={flowDetailPreference} onChange={e=>{setFlowDetailPreference(e.target.value as 'auto'|'systems'|'components');setSelectedFlow('');setExpandedFlowPair('')}}><option value="auto">Автоматически</option><option value="systems">По системам</option><option value="components">Все компоненты</option></select></label>}<span>{visibleFlows.length} потоков</span>{canWrite('flows')&&<button type="button" className={flowEditMode?'primary':''} aria-pressed={flowEditMode} onClick={()=>{const next=!flowEditMode;setFlowEditMode(next);setFlowView(next?'diagram':'cards');setFlowDetailPreference('components');setFlowComponentFocus('');setExpandedFlowPair('')}}>{flowEditMode?'Вернуться в реестр':'Редактор потоков'}</button>}
+          <div className="viewHead"><strong>Реестр потоков</strong><a className="flowMapLink" href="/">Общая карта связей</a><select aria-label="Система потоков" value={viewSystem} onChange={e=>{setViewSystem(e.target.value);setFlowComponentFocus('');setSelectedFlow('')}}><option value="">Все системы</option>{objects.map(o=><option key={o.id} value={o.id}>{o.name}</option>)}</select>{flowView==='diagram'&&<label className="flowDetailControl">Детализация <select aria-label="Детализация схемы потоков" value={flowDetailPreference} onChange={e=>{setFlowDetailPreference(e.target.value as 'auto'|'systems'|'components');setSelectedFlow('');setExpandedFlowPair('')}}><option value="auto">Автоматически</option><option value="systems">По системам</option><option value="components">Все компоненты</option></select></label>}<span>{visibleFlows.length} потоков</span>{canWrite('flows')&&<button type="button" className={flowEditMode?'primary':''} aria-pressed={flowEditMode} onClick={()=>{const next=!flowEditMode;setFlowEditMode(next);setFlowView(next?'diagram':'cards');setFlowDetailPreference('components');setFlowComponentFocus('');setExpandedFlowPair('')}}>{flowEditMode?'Вернуться в реестр':'Редактор потоков'}</button>}
           <details className="flowActionsMenu"><summary aria-label="Дополнительные действия с потоками">Ещё ▾</summary>
             <div className="flowActionsList">
               <button type="button" onClick={()=>setFlowDataOpen(true)}>Справочник атрибутов и состав данных</button>
@@ -1374,8 +1380,8 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
           {flowView==='cards'&&<div className="infraGrid" role="region" aria-label="Реестр технических потоков">{visibleFlows.map(f=><article className="infraCard" key={f.id} role="button" tabIndex={0} aria-pressed={selectedFlow===f.id} onKeyDown={e=>{if(e.target===e.currentTarget&&(e.key==="Enter"||e.key===" ")){e.preventDefault();setSelectedFlow(selectedFlow===f.id?"":f.id)}}} onClick={()=>setSelectedFlow(selectedFlow===f.id?"":f.id)} style={{cursor:"pointer",borderColor:selectedFlow===f.id?"#2563eb":undefined}}>
             <span className="tag">{f.verification}</span><h3>{f.name}</h3>
             <strong>{infra.find(i=>i.id===f.source_id)?.name} → {infra.find(i=>i.id===f.target_id)?.name}</strong>
-            <p>{f.data_description}</p><button type="button" onClick={e=>{e.stopPropagation();setHomeFocusSystemId(infra.find(i=>i.id===f.source_id)?.system_id||'');setFlowView('cards');setFlowEditMode(false);setLayer('home')}}>На карте</button><button type="button" onClick={e=>{e.stopPropagation();setSelectedFlow(f.id);setFlowDataOpen(true)}}>Атрибуты</button><button type="button" onClick={e=>{e.stopPropagation();setSelectedFlow(f.id);setNetworkPathOpen(true)}}>Сетевой маршрут</button><button type="button" onClick={e=>{e.stopPropagation();editFlow(f)}}>Редактировать</button><small>{f.protocol} · порт {f.port||'?'} · {f.security}</small>{selectedFlow===f.id&&<div className="flowDetails"><strong>Защита: {f.security}</strong><p>Достоверность: {f.verification}</p><p>Периодичность: {f.schedule||"Не указана"}</p><p>Зона источника: {segmentName(nics.find(n=>n.item_id===f.source_id)?.zone_id||null)}</p><p>Зона получателя: {segmentName(nics.find(n=>n.item_id===f.target_id)?.zone_id||null)}</p><p>Неизвестно, разрешён ли маршрут на межсетевом экране.</p></div>}
-          </article>)}</div>}
+            <p>{f.data_description}</p><a className="flowMapLink" href={'/?focus='+encodeURIComponent(infra.find(i=>i.id===f.source_id)?.system_id||'')} onClick={e=>e.stopPropagation()}>На карте</a><button type="button" onClick={e=>{e.stopPropagation();setSelectedFlow(f.id);setFlowDataOpen(true)}}>Атрибуты</button><button type="button" onClick={e=>{e.stopPropagation();setSelectedFlow(f.id);setNetworkPathOpen(true)}}>Сетевой маршрут</button><button type="button" onClick={e=>{e.stopPropagation();editFlow(f)}}>Редактировать</button><small>{f.protocol} · порт {f.port||'?'} · {f.security}</small>{selectedFlow===f.id&&<div className="flowDetails"><strong>Защита: {f.security}</strong><p>Достоверность: {f.verification}</p><p>Периодичность: {f.schedule||"Не указана"}</p><p>Зона источника: {segmentName(nics.find(n=>n.item_id===f.source_id)?.zone_id||null)}</p><p>Зона получателя: {segmentName(nics.find(n=>n.item_id===f.target_id)?.zone_id||null)}</p><p>Неизвестно, разрешён ли маршрут на межсетевом экране.</p></div>}
+          </article>)}{visibleFlows.length===0&&<div className="flowRegistryEmptyState" role="status">Нет потоков для выбранной информационной системы или фильтра. Измените фильтр или выберите другую ИС.</div>}</div>}
         </>}
       </section>}
     </main>

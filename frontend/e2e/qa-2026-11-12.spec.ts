@@ -181,6 +181,21 @@ test('Overview shows only business regions and preserves system positions',async
  expect(await systems.first().evaluate(node=>(node as HTMLElement).style.transform)).toBe(initial)
 })
 
+test('Overview displays at most one business region at a time',async({page})=>{
+ await page.goto('/')
+ const map=page.getByRole('region',{name:'Главная карта архитектуры'})
+ await map.getByRole('checkbox',{name:'Показать бизнес-области'}).check()
+ await expect(map.getByRole('status').filter({hasText:'Показана бизнес-область:'})).toBeVisible()
+ expect(await map.locator('.react-flow__node-layerRegion').count()).toBeLessThanOrEqual(1)
+ await map.getByText('Выбрать бизнес-область').click()
+ const choices=map.locator('.homeLayerColorList button')
+ if(await choices.count()>1){
+  await choices.nth(1).click()
+  await expect(choices.nth(1)).toHaveAttribute('aria-pressed','true')
+  expect(await map.locator('.react-flow__node-layerRegion').count()).toBeLessThanOrEqual(1)
+ }
+})
+
 test('Architecture regions save selected IS membership and color in server storage',async({page})=>{
  await page.addInitScript(()=>sessionStorage.setItem('architecture-hub:access-token:session','browser-ci-development-token'))
  const suffix=String(Date.now())

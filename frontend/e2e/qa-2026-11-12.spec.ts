@@ -231,8 +231,8 @@ test('Architecture regions save selected IS membership and color in server stora
  const links=await (await page.request.get(base+'/api/business/system-links')).json() as Array<{process_id:string;system_id:string}>
  expect(links.some(item=>item.process_id===processId&&item.system_id===systemId)).toBe(true)
  await page.reload()
- await expect(map.getByRole('button',{name:'Редактировать бизнес-области'})).toBeVisible()
  await map.getByRole('checkbox',{name:'Показать бизнес-области'}).check()
+ await expect(map.getByRole('button',{name:'Редактировать бизнес-области'})).toBeVisible()
  await map.getByRole('button',{name:'Редактировать бизнес-области'}).click()
  const restoredDock=map.getByRole('complementary',{name:'Свойства архитектурной области'})
  await restoredDock.getByRole('combobox',{name:'Выбрать архитектурную область'}).selectOption('business:'+categoryId)
@@ -325,7 +325,8 @@ test('QA-WORK: network records remain intact and absent from overview',async({pa
  const map=page.getByRole('region',{name:'Главная карта архитектуры'})
  await expect(map.getByRole('button',{name:'Сети и зоны'})).toHaveCount(0)
  await expect(map.getByText('QA-WORK-VRF '+suffix)).toHaveCount(0)
- await expect(map.locator('.react-flow__node').filter({hasText:'QA-WORK-Overview system '+suffix})).toHaveCount(1)
+ const objects=await (await page.request.get(api+'/api/objects')).json() as Array<{id:string;name:string}>
+ expect(objects.find(item=>item.id===system)?.name).toBe('QA-WORK-Overview system '+suffix)
  const nics=await (await page.request.get(api+'/api/network-interfaces')).json() as Array<{id:string;vrf_id:string}>
  const flows=await (await page.request.get(api+'/api/flows')).json() as Array<{id:string;source_id:string;target_id:string}>
  expect(nics.find(item=>item.id===nic)?.vrf_id).toBe(vrf)

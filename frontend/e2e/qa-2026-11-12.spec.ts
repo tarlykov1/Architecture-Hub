@@ -181,6 +181,40 @@ test('Overview shows only business regions and preserves system positions',async
  expect(await systems.first().evaluate(node=>(node as HTMLElement).style.transform)).toBe(initial)
 })
 
+test('Overview displays exactly one selected business region at a time',async({page})=>{
+ await page.addInitScript(()=>sessionStorage.setItem('architecture-hub:access-token:session','browser-ci-development-token'))
+ const api='http://127.0.0.1:8001',suffix=String(Date.now())
+ const create=async(path:string,data:Record<string,unknown>)=>{
+  const response=await page.request.post(api+path,{data})
+  expect(response.status(),await response.text()).toBe(201)
+  return (await response.json()).id as string
+ }
+ const system=await create('/api/objects',{kind:'system',name:'QA-WORK-Overlay system '+suffix})
+ const first=await create('/api/business/categories',{name:'QA-WORK-Overlay first '+suffix})
+ const second=await create('/api/business/categories',{name:'QA-WORK-Overlay second '+suffix})
+ for(const [index,category_id] of [first,second].entries()){
+  const process=await create('/api/business/processes',{name:'QA-WORK-Overlay process '+index+' '+suffix,category_id})
+  await create('/api/business/system-links',{process_id:process,system_id:system,role:'consumer'})
+ }
+ await page.goto('/')
+ const map=page.getByRole('region',{name:'Главная карта архитектуры'})
+ await map.getByRole('checkbox',{name:'Показать бизнес-области'}).check()
+ const status=map.getByRole('status').filter({hasText:'Показана бизнес-область:'})
+ await expect(status).toBeVisible()
+ await expect(map.locator('.react-flow__node-layerRegion')).toHaveCount(1)
+ await map.getByText('Выбрать бизнес-область').click()
+ const firstChoice=map.getByRole('button',{name:'QA-WORK-Overlay first '+suffix})
+ const secondChoice=map.getByRole('button',{name:'QA-WORK-Overlay second '+suffix})
+ await firstChoice.click()
+ await expect(firstChoice).toHaveAttribute('aria-pressed','true')
+ await expect(status).toContainText('QA-WORK-Overlay first '+suffix)
+ await expect(map.locator('.react-flow__node-layerRegion')).toHaveCount(1)
+ await secondChoice.click()
+ await expect(secondChoice).toHaveAttribute('aria-pressed','true')
+ await expect(status).toContainText('QA-WORK-Overlay second '+suffix)
+ await expect(map.locator('.react-flow__node-layerRegion')).toHaveCount(1)
+})
+
 test('Architecture regions save selected IS membership and color in server storage',async({page})=>{
  await page.addInitScript(()=>sessionStorage.setItem('architecture-hub:access-token:session','browser-ci-development-token'))
  const suffix=String(Date.now())

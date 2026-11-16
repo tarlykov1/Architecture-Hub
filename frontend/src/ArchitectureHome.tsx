@@ -80,7 +80,7 @@ type Interface={item_id:string;zone_id:string|null;vlan_id:string|null;vrf_id:st
 import {AutoFit,Disclosure} from './WorkspaceUI'
 import {overviewGridPositions} from './graphLayout'
 
-export default function ArchitectureHome({systems,components,flows,processes,categories,links,networks,interfaces,onOpenSystem,onCloseSystem,inspectorOpen,onOpenComponents,onOpenComponent,onOpenFlows,onOpenNetworks,focusSystemId='',request,canEditLayers=false}:{systems:System[];components:Component[];flows:Flow[];processes:Process[];categories:Category[];links:Link[];networks:Network[];interfaces:Interface[];onOpenSystem:(id:string)=>void;onCloseSystem:()=>void;inspectorOpen:boolean;onOpenComponents:(id:string)=>void;onOpenComponent:(id:string)=>void;onOpenFlows:()=>void;onOpenNetworks:()=>void;focusSystemId?:string;request?:<T>(url:string,init?:RequestInit)=>Promise<T>;canEditLayers?:boolean}){
+export default function ArchitectureHome({systems,components,flows,processes,categories,links,onOpenSystem,onCloseSystem,inspectorOpen,onOpenComponents,onOpenComponent,onOpenFlows,focusSystemId='',request,canEditLayers=false}:{systems:System[];components:Component[];flows:Flow[];processes:Process[];categories:Category[];links:Link[];networks:Network[];interfaces:Interface[];onOpenSystem:(id:string)=>void;onCloseSystem:()=>void;inspectorOpen:boolean;onOpenComponents:(id:string)=>void;onOpenComponent:(id:string)=>void;onOpenFlows:()=>void;onOpenNetworks:()=>void;focusSystemId?:string;request?:<T>(url:string,init?:RequestInit)=>Promise<T>;canEditLayers?:boolean}){
  const [layers,setLayers]=useState({systems:true,components:false,flows:false,business:false})
  const [mapMode,setMapMode]=useState<'business'|'flows'>('business')
  const [activeOverlays,setActiveOverlays]=useState({business:false})
@@ -276,12 +276,12 @@ export default function ArchitectureHome({systems,components,flows,processes,cat
     {([['business','Бизнес-связи'],['flows','Потоки данных']] as const).map(([id,label])=><button key={id} type="button" aria-pressed={mapMode===id} className={mapMode===id?'current':''} onClick={()=>setMapMode(id)}>{label}</button>)}
    </div>
   <div className="homeLayerToolbar" role="group" aria-label="Бизнес-области">
- <label><input type="checkbox" checked={activeOverlays.business} onChange={e=>setActiveOverlays({business:e.target.checked})}/> Показать бизнес-области</label>
+ <label><input type="checkbox" checked={activeOverlays.business} onChange={e=>{setActiveOverlays({business:e.target.checked});if(!e.target.checked)setSelectedOverlayGroup('')}}/> Показать бизнес-области</label>
  {activeOverlays.business&&canEditLayers&&layerApiReady&&!editingLayers&&<button type="button" onClick={()=>{setEditingLayers(true);setLayerTool('select');setLayerError('');setSelectedOverlayGroup(old=>old||overlayGroups[0]?.id||'')}}>Редактировать бизнес-области</button>}
  {layerError&&<p role="alert">{layerError}</p>}
  <details className="homeLayerCatalog"><summary>Бизнес-категории</summary><div className="homeLayerColorList">{overlayGroups.map(group=><label key={group.id}>
  <input type="checkbox" aria-label={'Показать область '+group.name} checked={!hiddenOverlayGroups.includes(group.id)} onChange={e=>setHiddenOverlayGroups(old=>e.target.checked?old.filter(id=>id!==group.id):[...old,group.id])}/>
- <button type="button" aria-pressed={selectedOverlayGroup===group.id} onClick={()=>setSelectedOverlayGroup(old=>old===group.id?'':group.id)}>{group.name}</button><small>{membersFor(group).length} ИС</small>
+ <button type="button" aria-pressed={selectedOverlayGroup===group.id} onClick={()=>{setSelectedOverlayGroup(old=>old===group.id?'':group.id);setActiveOverlays({business:true})}}>{group.name}</button><small>{membersFor(group).length} ИС</small>
  </label>)}</div></details>
  </div>
  <div className="homeMapTools"><input aria-label="Поиск на карте" value={query} onChange={e=>setQuery(e.target.value)} placeholder="Найти ИС или компонент…"/><Disclosure label="Фильтры и слои"><select aria-label="Контур карты" value={environment} onChange={e=>setEnvironment(e.target.value)}><option value="all">Все контуры</option>{environments.map(e=><option key={e} value={e}>{e}</option>)}</select><select aria-label="Фокус на ИС" value={focus} onChange={e=>setFocus(e.target.value)}><option value="">Все системы</option>{systems.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select>

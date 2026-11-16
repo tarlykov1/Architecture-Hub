@@ -16,12 +16,11 @@ test('QA-WORK: stale focus does not dim the current architecture model',async({p
  const system=map.locator('.react-flow__node').filter({hasText:'QA-WORK-Stale focus regression'})
  await expect(system).toBeVisible()
  await expect(system).toHaveCSS('opacity','1')
- const nodes=map.locator('.react-flow__node').filter({has:page.locator('.homeDiagramNodeLabel')})
+ const nodes=map.locator('.react-flow__node:not(.react-flow__node-layerRegion)')
  // The stale query ID must not make legitimate cards look inactive.
- if(await nodes.count()>0){
-  const opacity=await nodes.evaluateAll(elements=>elements.map(element=>getComputedStyle(element).opacity))
-  expect(opacity.every(value=>value==='1')).toBeTruthy()
- }
+ await expect(nodes.first()).toBeVisible()
+ const opacity=await nodes.evaluateAll(elements=>elements.map(element=>getComputedStyle(element).opacity))
+ expect(opacity.every(value=>value==='1')).toBeTruthy()
  await page.goto('/?focus='+id)
  await expect(system).toBeVisible()
  await expect(system).toHaveCSS('border-top-color','rgb(37, 99, 235)')

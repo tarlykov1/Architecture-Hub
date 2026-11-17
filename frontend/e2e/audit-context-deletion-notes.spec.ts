@@ -56,7 +56,7 @@ test('QA-WORK: right-click deletes only chosen flow and blocks a connected VM',a
  await expect(menu.getByRole('menuitem',{name:'Удалить'})).toBeDisabled()
  await expect(menu).toContainText('Связанный поток:')
  await menu.getByRole('button',{name:'Закрыть меню'}).click()
- const edge=editor.locator('.react-flow__edge').filter({has:editor.locator('path')}).first()
+ const edge=editor.locator('.react-flow__edge').first()
  await edge.click({button:'right'})
  menu=page.getByRole('menu',{name:'Действия с объектом'})
  page.once('dialog',dialog=>dialog.accept())
@@ -74,4 +74,41 @@ test('QA-WORK: right-click deletes only chosen flow and blocks a connected VM',a
   const rows=(await (await page.request.get(api+'/api/infra')).json()) as Array<{id:string}>
   return [rows.some(row=>row.id===source),rows.some(row=>row.id===target),rows.some(row=>row.id===spare)]
  }).toEqual([true,true,false])
+})
+
+test('QA-WORK: VLAN context menu blocks attached NIC and deletes a free VLAN only',async({page})=>{
+ const suffix=Date.now().toString(36)
+ const system=await create(page,'/api/objects',{kind:'system',name:'QA-WORK-VLAN-CONTEXT-'+suffix})
+ const vm=await create(page,'/api/infra',{system_id:system,kind:'vm',name:'QA-WORK-NIC owner '+suffix})
+ const vlan=await create(page,'/api/networks',{kind:'vlan',name:'QA-WORK-VLAN-used '+suffix})
+ const free=await create(page,'/api/networks',{kind:'vlan',name:'QA-WORK-VLAN-free '+suffix})
+ await create(page,'/api/network-interfaces',{item_id:vm,name:'QA-WORK-eth0',vlan_id:vlan})
+ const layout=await page.request.put(api+'/api/board/layout/'+system,{data:{positions:{
+  ['network:'+vlan]:{x:80,y:80,width:540,height:340},
+  ['network:'+free]:{x:700,y:80,width:540,height:340}
+ }}})
+ expect(layout.status(),await layout.text()).toBe(200)
+ const editor=await editorFor(page,system)
+ const usedNode=editor.locator('.react-flow__node-boardNetwork').filter({hasText:'QA-WORK-VLAN-used '+suffix})
+ const freeNode=editor.locator('.react-flow__node-boardNetwork').filter({hasText:'QA-WORK-VLAN-free '+suffix})
+ await expect(usedNode).toBeVisible()
+ await expect(freeNode).toBeVisible()
+ let box=await usedNode.boundingBox()
+ expect(box).not.toBeNull()
+ await page.mouse.click(box!.x+18,box!.y+18,{button:'right'})
+ let menu=page.getByRole('menu',{name:'Действия с объектом'})
+ await expect(menu.getByRole('menuitem',{name:'Удалить'})).toBeDisabled()
+ await expect(menu).toContainText('QA-WORK-eth0')
+ await menu.getByRole('button',{name:'Закрыть меню'}).click()
+ box=await freeNode.boundingBox()
+ expect(box).not.toBeNull()
+ await page.mouse.click(box!.x+18,box!.y+18,{button:'right'})
+ menu=page.getByRole('menu',{name:'Действия с объектом'})
+ await expect(menu.getByRole('menuitem',{name:'Удалить'})).toBeEnabled()
+ page.once('dialog',dialog=>dialog.accept())
+ await menu.getByRole('menuitem',{name:'Удалить'}).click()
+ await expect.poll(async()=>{
+  const rows=(await (await page.request.get(api+'/api/networks')).json()) as Array<{id:string}>
+  return [rows.some(row=>row.id===vlan),rows.some(row=>row.id===free)]
+ }).toEqual([true,false])
 })

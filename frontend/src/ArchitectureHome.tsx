@@ -255,7 +255,7 @@ export default function ArchitectureHome({systems,components,flows,processes,cat
      data:{label:<span title={c.name}>{architectureIcon(c.kind)} {c.name}</span>},style:{width:136,fontSize:11,padding:'7px',borderRadius:6,border:'1px solid #cbd5e1',background:'#fff',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' as const},selectable:true,draggable:false,zIndex:20}]:[]
  }):[]
 
- const nodes=filteredSystems.map((s,i)=>({id:s.id,draggable:false,position:positions[s.id]||{x:(i%4)*320,y:Math.floor(i/4)*190},data:{label:<DiagramNodeLabel name={s.name} kind={s.kind} subtitle={components.filter(c=>c.system_id===s.id).length+' компонентов · '+links.filter(l=>l.system_id===s.id).length+' бизнес-связей'}/>},style:diagramCardStyle()}))
+ const nodes=filteredSystems.map((s,i)=>({id:s.id,draggable:false,initialWidth:245,initialHeight:86,position:positions[s.id]||{x:(i%4)*320,y:Math.floor(i/4)*190},data:{label:<DiagramNodeLabel name={s.name} kind={s.kind} subtitle={components.filter(c=>c.system_id===s.id).length+' компонентов · '+links.filter(l=>l.system_id===s.id).length+' бизнес-связей'}/>},style:diagramCardStyle()}))
  const selectedSystemInfo=filteredSystems.find(s=>s.id===selectedSystem)
  const selectedNeighbors=new Set<string>([selectedSystem])
  for(const f of crossFlows)if(f.source===selectedSystem||f.target===selectedSystem){selectedNeighbors.add(f.source);selectedNeighbors.add(f.target)}

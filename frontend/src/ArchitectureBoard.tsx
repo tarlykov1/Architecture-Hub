@@ -1199,7 +1199,11 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
  }} nodesDraggable={tool==='move'} snapToGrid={snapToGrid} snapGrid={[20,20]} nodesConnectable={tool==='flow'} onConnectStart={()=>setDrawingConnection(true)} onConnectEnd={()=>setDrawingConnection(false)} onConnect={connection=>{if(tool==='flow'&&connection.source&&connection.target){stageDirectedFlow(connection.source,connection.target);setInspectedId(null)}}} onEdgeClick={(_,edge)=>selectCanvasEdge(edge.source,edge.target,(edge.data?.flowIds as string[]|undefined)||[])}
  onNodeContextMenu={(event,node)=>openContextMenu(event,node.id.startsWith('note:')?'note':node.id.startsWith('network:')?'network':'vm',node.id.startsWith('note:')?node.id.slice(5):node.id.startsWith('network:')?node.id.slice(8):node.id)}
  onEdgeContextMenu={(event,edge)=>{const ids=(edge.data?.flowIds as string[]|undefined)||[];openContextMenu(event,'flow',ids.length===1?ids[0]:'',ids)}}
- onPaneContextMenu={event=>openContextMenu(event,'pane','')} onNodeClick={(event,node)=>{
+ onPaneContextMenu={event=>{
+   const point=screenToFlowPosition({x:event.clientX,y:event.clientY})
+   const container=visibleRects.filter(rect=>rectContains(rect,point)).sort((a,b)=>a.width*a.height-b.width*b.height)[0]
+   openContextMenu(event,container?'network':'pane',container?.id||'')
+ }} onNodeClick={(event,node)=>{
  // Network rectangles occupy their whole area; a click on one is not a pane
  // click. The VM tool must still allow placing a VM inside that container.
  if(node.id.startsWith('note:')){setSelectedNoteId(node.id.slice(5));setTool('move');setInspectedId(null);setInspectedNetworkId(null);return}

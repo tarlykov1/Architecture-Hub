@@ -1242,10 +1242,21 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
      </div>
    </div>}
    {showHistory&&<div className="boardConfirm" role="dialog" aria-modal="true" aria-label="Журнал изменений архитектуры"><div className="boardConfirmInner"><h3>Журнал изменений схемы</h3><p>Последние подтверждённые пакеты операций.</p><ol>{history.map(entry=><li key={entry.id}><strong>{entry.timestamp}</strong> – {entry.reason} · {entry.changes.length} операций<details><summary>Посмотреть состав</summary><pre>{JSON.stringify(entry.changes,null,2)}</pre></details></li>)}</ol>{!history.length&&<p>Записей пока нет.</p>}<button type="button" onClick={()=>{setShowHistory(false);setTool('move');setReviewOpen(changes.length>0)}}>Вернуться к редактированию</button></div></div>}
-   {preview&&<div className="boardConfirm" role="dialog" aria-modal="true" aria-label="Подтверждение изменений архитектуры"><div className="boardConfirmInner"><h3>Подтверждение изменений</h3><p>Причина: {reason}. Будет сохранено {preview.count} операций. Для существующих интерфейсов сверяется прежняя сеть.</p><ol>{preview.changes.map((c,i)=><li key={i}><strong>{c.endpoints?'Переподключение потока':c.action}</strong> · {c.id}
-     {c.endpoints&&<div><div>Было: {flowEndpointLabel(c.endpoints.before)}</div>
-       <div>Станет: {flowEndpointLabel(c.endpoints.after)}</div></div>}
-     <pre>{JSON.stringify({before:c.before,after:c.after},null,2)}</pre></li>)}</ol><div><button disabled={busy} onClick={()=>{setPreview(null);setReviewOpen(true);setTool('move')}}>Вернуться к редактированию</button><button disabled={busy} className="primary" onClick={commit}>Подтвердить и записать в журнал</button></div></div></div>}
+   {preview&&<div className="boardConfirm" role="dialog" aria-modal="true" aria-label="Подтверждение изменений архитектуры"><div className="boardConfirmInner"><h3>Подтверждение изменений</h3><p>Причина: {reason}. Будет сохранено {preview.count} операций. Для существующих интерфейсов сверяется прежняя сеть.</p><ol>{preview.changes.map((change,i)=>{
+      const original=changes.find(item=>item.id===change.id)
+      const objectName=original?.name||allVMs.find(vm=>vm.id===change.id)?.name||flows.find(flow=>flow.id===change.id)?.name||networks.find(net=>net.id===change.id)?.name||'Объект '+change.id.slice(0,8)
+      const labels:Record<string,string>={name:'Название',description:'Описание',source_id:'Источник',target_id:'Получатель',network_id:'Сеть',protocol:'Протокол',port:'Порт',security:'Защита',verification:'Достоверность',schedule:'Периодичность',kind:'Тип',system_id:'Информационная система',details:'Атрибуты'}
+      const before=change.before&&typeof change.before==='object'&&!Array.isArray(change.before)?change.before as Record<string,unknown>:{}
+      const after=change.after&&typeof change.after==='object'&&!Array.isArray(change.after)?change.after as Record<string,unknown>:{}
+      const fieldChanges=Array.from(new Set([...Object.keys(before),...Object.keys(after)])).filter(field=>JSON.stringify(before[field])!==JSON.stringify(after[field]))
+      const display=(value:unknown):string=>value==null||value===''?'не задано':typeof value==='string'?allVMs.find(vm=>vm.id===value)?.name||networks.find(net=>net.id===value)?.name||value:typeof value==='object'?JSON.stringify(value):String(value)
+      return <li key={i}><strong>{({create_vm:'Создание ВМ',create_network:'Создание сети',create_flow:'Создание потока',update_flow:'Изменение потока',update_vm:'Изменение ВМ',move_interface:'Перенос интерфейса',create_interface:'Создание интерфейса'} as Record<string,string>)[change.action]||'Изменение объекта'}: {objectName}</strong>
+       {change.endpoints&&<div>Подключение: {flowEndpointLabel(change.endpoints.before)} → {flowEndpointLabel(change.endpoints.after)}</div>}
+       {fieldChanges.map(field=><div key={field}>{labels[field]||field}: {display(before[field])} → {display(after[field])}</div>)}
+       {!change.endpoints&&!fieldChanges.length&&<div>Будет создана или обновлена запись в реестре</div>}
+       <details><summary>Технические сведения</summary><pre>{JSON.stringify({id:change.id,before:change.before,after:change.after},null,2)}</pre></details>
+      </li>
+     })}</ol><div><button disabled={busy} onClick={()=>{setPreview(null);setReviewOpen(true);setTool('move')}}>Вернуться к редактированию</button><button disabled={busy} className="primary" onClick={commit}>Подтвердить и записать в журнал</button></div></div></div>}
  </section>
 }
 

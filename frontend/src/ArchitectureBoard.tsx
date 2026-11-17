@@ -85,6 +85,16 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
  const [selectedNoteId,setSelectedNoteId]=useState('')
  const [contextMenu,setContextMenu]=useState<null|{kind:'vm'|'network'|'flow'|'note'|'pane';id:string;flowIds?:string[];x:number;y:number}>(null)
  const [deleteBusy,setDeleteBusy]=useState(false)
+ useEffect(()=>{
+   if(!contextMenu)return
+   const dismiss=(event:PointerEvent)=>{
+     if(!(event.target as Element)?.closest?.('.boardContextMenu'))setContextMenu(null)
+   }
+   const escape=(event:KeyboardEvent)=>{if(event.key==='Escape')setContextMenu(null)}
+   document.addEventListener('pointerdown',dismiss)
+   document.addEventListener('keydown',escape)
+   return()=>{document.removeEventListener('pointerdown',dismiss);document.removeEventListener('keydown',escape)}
+ },[contextMenu])
  const [drawingConnection,setDrawingConnection]=useState(false)
  const [draggingNode,setDraggingNode]=useState(false)
  const [canvasInteracted,setCanvasInteracted]=useState(false)

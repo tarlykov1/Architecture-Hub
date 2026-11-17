@@ -1,0 +1,23 @@
+.systemCommercial{display:grid;gap:12px;min-width:0;padding:4px 0 12px}
+.systemCommercialHint{font-size:12px;color:#64748b;line-height:1.5;margin:4px 0}
+.systemCommercialContent{display:grid;gap:10px;min-width:0}
+.systemCommercialHead{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:8px}
+.systemCommercialHead h3{font-size:15px;margin:0}
+.systemCommercialHead button,.systemCommercialActions button{font-size:12px;border:1px solid #bfcede;border-radius:8px;padding:8px 10px;background:#fff;color:#194b7c;cursor:pointer}
+.systemCommercialHead button:hover,.systemCommercialActions button:hover:not(:disabled){background:#eef5fd}
+.systemCommercialActions{display:flex;gap:6px;flex-wrap:wrap;margin-top:7px}
+.systemCommercialActions button[type=submit]{background:#1d63b5;color:#fff;border-color:#1d63b5}
+.systemCommercialActions button:disabled{opacity:.5;cursor:not-allowed}
+.systemCommercialCard{display:grid;gap:5px;padding:12px;border:1px solid #dce4ef;border-radius:10px;background:#fff;min-width:0}
+.systemCommercialCard strong{color:#162e48;font-size:14px;overflow-wrap:anywhere}
+.systemCommercialCard p{margin:0;font-size:12px;color:#334155;overflow-wrap:anywhere}
+.systemCommercialCard small{color:#61738a;font-size:11px}
+.systemCommercialDue{font-weight:650;color:#a44a10}
+.systemCommercialError{padding:9px;border:1px solid #f9b1ab;background:#fff3f1;color:#9b2424;border-radius:8px;font-size:12px;overflow-wrap:anywhere}
+.systemCommercialForm{display:grid;gap:10px;padding:13px;border:1px solid #93b4de;border-radius:11px;background:#f5f9ff;min-width:0}
+.systemCommercialForm h3{font-size:15px;margin:0}
+.systemCommercialForm label{display:grid;gap:4px;font-size:12px;color:#233852}
+.systemCommercialForm input,.systemCommercialForm select,.systemCommercialForm textarea{width:100%;box-sizing:border-box;min-width:0;padding:8px 9px;background:#fff;border:1px solid #bac9da;border-radius:7px;font-size:13px;color:#24374e}
+.systemCommercialForm textarea{min-height:66px;resize:vertical}
+.systemCommercialForm .systemCommercialCheck{display:flex;gap:8px;align-items:center}
+.systemCommercialCheck input{width:auto}

@@ -7,7 +7,7 @@ import hashlib
 import json
 from contextlib import asynccontextmanager
 import re
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Any, Literal
 from uuid import UUID, uuid4
 
@@ -21,7 +21,7 @@ from .cmdb_catalog import validate_class_schema, validate_custom_values, missing
 from .architecture_metamodel import get_logical_relation_types, logical_relation_validation_error, summarize_legacy_relations
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ConfigDict, Field, model_validator
-from sqlalchemy import DateTime, ForeignKey, JSON, String, Uuid, Index, Boolean, UniqueConstraint, create_engine, select, update, text as sql_text
+from sqlalchemy import Date, DateTime, ForeignKey, JSON, String, Uuid, Index, Boolean, UniqueConstraint, create_engine, select, update, text as sql_text
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
 from sqlalchemy.exc import IntegrityError
 
@@ -56,6 +56,43 @@ class ArchitectureObject(Base):
     description: Mapped[str] = mapped_column(String(4000), default="")
     status: Mapped[str] = mapped_column(String(40), default="active")
     attributes: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+
+
+class SystemContract(Base):
+    """Commercial agreement about an IS; no passwords, licence keys or documents stored."""
+    __tablename__ = "system_contracts"
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    system_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("objects.id", ondelete="CASCADE"), index=True, nullable=False)
+    title: Mapped[str] = mapped_column(String(250), nullable=False)
+    contract_number: Mapped[str] = mapped_column(String(120), default="")
+    agreement_type: Mapped[str] = mapped_column(String(32), default="purchase")
+    vendor: Mapped[str] = mapped_column(String(250), default="")
+    contractor: Mapped[str] = mapped_column(String(250), default="")
+    start_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    end_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    renewal_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    automatic_renewal: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    notice_days: Mapped[int | None] = mapped_column(nullable=True)
+    support_level: Mapped[str] = mapped_column(String(120), default="")
+    support_window: Mapped[str] = mapped_column(String(120), default="")
+    sla_response_hours: Mapped[float | None] = mapped_column(nullable=True)
+    sla_availability_percent: Mapped[float | None] = mapped_column(nullable=True)
+    support_contact: Mapped[str] = mapped_column(String(250), default="")
+    notes: Mapped[str] = mapped_column(String(2000), default="")
+
+
+class SystemLicense(Base):
+    """A licensed entitlement; multiple rows may reference a single contract."""
+    __tablename__ = "system_licenses"
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    system_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("objects.id", ondelete="CASCADE"), index=True, nullable=False)
+    contract_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True), ForeignKey("system_contracts.id"), index=True, nullable=True)
+    product: Mapped[str] = mapped_column(String(250), nullable=False)
+    license_type: Mapped[str] = mapped_column(String(36), default="named")
+    quantity: Mapped[int] = mapped_column(nullable=False, default=1)
+    valid_from: Mapped[date | None] = mapped_column(Date, nullable=True)
+    valid_until: Mapped[date | None] = mapped_column(Date, nullable=True)
+    notes: Mapped[str] = mapped_column(String(2000), default="")
 
 
 class Relation(Base):
@@ -478,6 +515,59 @@ class ObjectCreate(BaseModel):
 class ObjectOut(ObjectCreate):
     model_config = ConfigDict(from_attributes=True)
     id: UUID
+
+
+class ContractInput(BaseModel):
+    title: str = Field(min_length=1, max_length=250)
+    contract_number: str = Field(default="", max_length=120)
+    agreement_type: Literal["purchase", "subscription", "support", "development", "other"] = "purchase"
+    vendor: str = Field(default="", max_length=250)
+    contractor: str = Field(default="", max_length=250)
+    start_date: date | None = None
+    end_date: date | None = None
+    renewal_date: date | None = None
+    automatic_renewal: bool = False
+    notice_days: int | None = Field(default=None, ge=0, le=365)
+    support_level: str = Field(default="", max_length=120)
+    support_window: str = Field(default="", max_length=120)
+    sla_response_hours: float | None = Field(default=None, ge=0, le=8760, allow_inf_nan=False)
+    sla_availability_percent: float | None = Field(default=None, ge=0, le=100, allow_inf_nan=False)
+    support_contact: str = Field(default="", max_length=250)
+    notes: str = Field(default="", max_length=2000)
+
+    @model_validator(mode="after")
+    def validate_dates(self):
+        if self.start_date and self.end_date and self.start_date > self.end_date:
+            raise ValueError("Contract end date must not precede start date")
+        return self
+
+
+class ContractOutput(ContractInput):
+    model_config = ConfigDict(from_attributes=True)
+    id: UUID
+    system_id: UUID
+
+
+class LicenseInput(BaseModel):
+    contract_id: UUID | None = None
+    product: str = Field(min_length=1, max_length=250)
+    license_type: Literal["named", "concurrent", "per_device", "per_core", "per_server", "site", "other"] = "named"
+    quantity: int = Field(ge=1, le=100000000)
+    valid_from: date | None = None
+    valid_until: date | None = None
+    notes: str = Field(default="", max_length=2000)
+
+    @model_validator(mode="after")
+    def validate_dates(self):
+        if self.valid_from and self.valid_until and self.valid_from > self.valid_until:
+            raise ValueError("License expiry must not precede start date")
+        return self
+
+
+class LicenseOutput(LicenseInput):
+    model_config = ConfigDict(from_attributes=True)
+    id: UUID
+    system_id: UUID
 
 
 class RelationCreate(BaseModel):
@@ -1315,6 +1405,94 @@ def update_object(object_id: UUID, payload: ObjectCreate, db: Session = Depends(
     db.commit()
     db.refresh(obj)
     return obj
+
+
+def _contract_system(db: Session, system_id: UUID) -> ArchitectureObject:
+    system = db.get(ArchitectureObject, system_id)
+    if system is None or system.kind != "system":
+        raise HTTPException(404, "Information system not found")
+    return system
+
+
+def _license_contract(db: Session, system_id: UUID, contract_id: UUID | None) -> None:
+    if contract_id is not None:
+        contract = db.get(SystemContract, contract_id)
+        if contract is None or contract.system_id != system_id:
+            raise HTTPException(422, "Contract must belong to the same information system")
+
+
+@app.get("/api/systems/{system_id}/contracts", response_model=list[ContractOutput])
+def list_system_contracts(system_id: UUID, db: Session = Depends(db_session)):
+    _contract_system(db, system_id)
+    return db.scalars(select(SystemContract).where(SystemContract.system_id == system_id).order_by(SystemContract.title, SystemContract.id)).all()
+
+
+@app.post("/api/systems/{system_id}/contracts", response_model=ContractOutput, status_code=201)
+def create_system_contract(system_id: UUID, payload: ContractInput, db: Session = Depends(db_session)):
+    _contract_system(db, system_id)
+    row = SystemContract(system_id=system_id, **payload.model_dump())
+    db.add(row); db.commit(); db.refresh(row)
+    return row
+
+
+@app.put("/api/systems/{system_id}/contracts/{contract_id}", response_model=ContractOutput)
+def edit_system_contract(system_id: UUID, contract_id: UUID, payload: ContractInput, db: Session = Depends(db_session)):
+    _contract_system(db, system_id)
+    row = db.get(SystemContract, contract_id)
+    if not row or row.system_id != system_id:
+        raise HTTPException(404, "Contract not found in this information system")
+    for field, value in payload.model_dump().items():
+        setattr(row, field, value)
+    db.commit(); db.refresh(row)
+    return row
+
+
+@app.delete("/api/systems/{system_id}/contracts/{contract_id}", status_code=204)
+def remove_system_contract(system_id: UUID, contract_id: UUID, db: Session = Depends(db_session)):
+    _contract_system(db, system_id)
+    row = db.get(SystemContract, contract_id)
+    if not row or row.system_id != system_id:
+        raise HTTPException(404, "Contract not found in this information system")
+    if db.scalar(select(SystemLicense.id).where(SystemLicense.contract_id == contract_id)):
+        raise HTTPException(409, "Unlink associated licenses before removing the contract")
+    db.delete(row); db.commit()
+
+
+@app.get("/api/systems/{system_id}/licenses", response_model=list[LicenseOutput])
+def list_system_licenses(system_id: UUID, db: Session = Depends(db_session)):
+    _contract_system(db, system_id)
+    return db.scalars(select(SystemLicense).where(SystemLicense.system_id == system_id).order_by(SystemLicense.product, SystemLicense.id)).all()
+
+
+@app.post("/api/systems/{system_id}/licenses", response_model=LicenseOutput, status_code=201)
+def create_system_license(system_id: UUID, payload: LicenseInput, db: Session = Depends(db_session)):
+    _contract_system(db, system_id)
+    _license_contract(db, system_id, payload.contract_id)
+    row = SystemLicense(system_id=system_id, **payload.model_dump())
+    db.add(row); db.commit(); db.refresh(row)
+    return row
+
+
+@app.put("/api/systems/{system_id}/licenses/{license_id}", response_model=LicenseOutput)
+def edit_system_license(system_id: UUID, license_id: UUID, payload: LicenseInput, db: Session = Depends(db_session)):
+    _contract_system(db, system_id)
+    row = db.get(SystemLicense, license_id)
+    if not row or row.system_id != system_id:
+        raise HTTPException(404, "License not found in this information system")
+    _license_contract(db, system_id, payload.contract_id)
+    for field, value in payload.model_dump().items():
+        setattr(row, field, value)
+    db.commit(); db.refresh(row)
+    return row
+
+
+@app.delete("/api/systems/{system_id}/licenses/{license_id}", status_code=204)
+def remove_system_license(system_id: UUID, license_id: UUID, db: Session = Depends(db_session)):
+    _contract_system(db, system_id)
+    row = db.get(SystemLicense, license_id)
+    if not row or row.system_id != system_id:
+        raise HTTPException(404, "License not found in this information system")
+    db.delete(row); db.commit()
 
 
 @app.delete("/api/objects/{object_id}", status_code=204)

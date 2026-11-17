@@ -1986,6 +1986,31 @@ def update_flow(flow_id: UUID, payload: FlowInput, request: Request, db: Session
     return flow
 
 
+def prune_deleted_board_references(db: Session, item_id: UUID, kind: str) -> None:
+    """Remove orphan visual references, without touching other domain entities."""
+    target = str(item_id)
+    key = "network:" + target if kind == "network" else target
+    for board in db.scalars(select(BoardLayout)).all():
+        raw = board.positions if isinstance(board.positions, dict) else {}
+        if raw.get("_layout_schema") == 2:
+            positions = dict(raw.get("positions") or {})
+            anchors = dict(raw.get("flow_anchors") or {})
+            old_positions, old_anchors = dict(positions), dict(anchors)
+            if kind == "flow":
+                anchors.pop(target, None)
+            else:
+                positions.pop(key, None)
+                if kind == "network":
+                    positions = {name: ({k:v for k,v in point.items() if k != "parent_id"}
+                                        if isinstance(point, dict) and point.get("parent_id") == key
+                                        else point)
+                                 for name,point in positions.items()}
+            if positions != old_positions or anchors != old_anchors:
+                board.positions = {**raw, "positions": positions, "flow_anchors": anchors}
+        elif kind != "flow" and key in raw:
+            board.positions = {name:point for name,point in raw.items() if name != key}
+
+
 @app.delete("/api/flows/{flow_id}", status_code=204)
 def delete_flow(flow_id: UUID, request: Request, db: Session = Depends(db_session)):
     flow = db.get(DataFlow, flow_id)
@@ -1999,6 +2024,7 @@ def delete_flow(flow_id: UUID, request: Request, db: Session = Depends(db_sessio
                       {"name":flow.name,"source_id":flow.source_id,"target_id":flow.target_id},
                       None, "Удалён поток " + flow.name)
     db.delete(flow)
+    prune_deleted_board_references(db, flow_id, 'flow')
     db.commit()
 
 
@@ -2019,6 +2045,7 @@ def delete_infra(item_id: UUID, request: Request, db: Session = Depends(db_sessi
                       {"name":item.name,"kind":item.kind,"system_id":item.system_id},
                       None, "Удалён компонент " + item.name)
     db.delete(item)
+    prune_deleted_board_references(db, item_id, 'vm')
     db.commit()
 
 
@@ -2381,6 +2408,7 @@ def delete_network(segment_id: UUID, request: Request, db: Session = Depends(db_
     before = {"name": segment.name, "kind": segment.kind, "description": segment.description,
               "verification": segment.verification}
     db.delete(segment)
+    prune_deleted_board_references(db, segment_id, 'network')
     db.add(BoardAudit(reason="Удалена сеть " + segment.name, actor=board_actor(request),
                       changes=[{"action": "delete_network", "id": str(segment_id),
                                 "before": before, "after": None}]))

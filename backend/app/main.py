@@ -2463,8 +2463,9 @@ def business_links(db: Session = Depends(db_session)):
 
 @app.post("/api/business/system-links", response_model=ProcessSystemOutput, status_code=201)
 def add_business_link(payload: ProcessSystemInput, db: Session = Depends(db_session)):
-    if not db.get(BusinessProcess, payload.process_id) or not db.get(ArchitectureObject, payload.system_id):
-        raise HTTPException(422, "Process or system not found")
+    system = db.get(ArchitectureObject, payload.system_id)
+    if not db.get(BusinessProcess, payload.process_id) or not system or system.kind != "system":
+        raise HTTPException(422, "Business link requires an existing process and an information system")
     x = db.scalars(select(ProcessSystem).where(ProcessSystem.process_id == payload.process_id,ProcessSystem.system_id == payload.system_id)).first()
     if x: return x
     x = ProcessSystem(**payload.model_dump()); db.add(x); db.commit(); db.refresh(x); return x

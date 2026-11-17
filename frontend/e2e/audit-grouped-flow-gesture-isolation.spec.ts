@@ -33,6 +33,21 @@ test('QA-WORK: grouped flow click never creates a fourth flow; individually sele
  await editor.locator('.react-flow__node-boardComponent').filter({hasText:'QA-WORK-Other '+suffix}).click()
  await expect(editor.getByText('Выбран поток «QA-WORK-Group-1-'+suffix+'»')).toBeVisible()
  await expect(editor.getByRole('button',{name:'Черновик: 0 изменений'})).toBeDisabled()
+ // Move the orange endpoint of exactly one of three overlapping records.
+ const grip=editor.locator('.boardEndpointGrip[data-flow-end="target"]')
+ const alternative=editor.locator('.react-flow__node-boardComponent').filter({hasText:'QA-WORK-Other '+suffix})
+ const from=await grip.boundingBox(),destination=await alternative.boundingBox()
+ expect(from&&destination).toBeTruthy()
+ await page.mouse.move(from!.x+from!.width/2,from!.y+from!.height/2)
+ await page.mouse.down()
+ await page.mouse.move(destination!.x+destination!.width/2,destination!.y+destination!.height/2,{steps:12})
+ await page.mouse.up()
+ await expect(editor.getByRole('button',{name:/Черновик: 1 изменений/})).toBeEnabled()
+ const staged=editor.locator('.react-flow__edge')
+ await expect(staged).toHaveCount(2)
+ // Discarding the one staged edit must leave every other Flow ID unchanged.
+ await editor.getByRole('button',{name:'Отменить правку потока'}).click()
+ await expect(editor.getByRole('button',{name:'Черновик: 0 изменений'})).toBeDisabled()
  const listed=(await (await page.request.get(api+'/api/flows')).json()) as Array<{id:string;source_id:string;target_id:string}>
  expect(ids.map(id=>listed.find(row=>row.id===id)).every(row=>row?.source_id===source&&row?.target_id===target)).toBeTruthy()
 })

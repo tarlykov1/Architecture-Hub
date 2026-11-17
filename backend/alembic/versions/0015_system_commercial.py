@@ -5,6 +5,7 @@ Revises: 0014_layer_region_revisions
 """
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy import inspect
 
 revision = "0015_system_commercial"
 down_revision = "0014_layer_region_revisions"
@@ -13,7 +14,11 @@ depends_on = None
 
 
 def upgrade():
-    op.create_table(
+    # 0001_baseline calls Base.metadata.create_all for brand-new DBs; avoid
+    # duplicate CREATE TABLE while still adding absent tables to older DBs.
+    existing = set(inspect(op.get_bind()).get_table_names())
+    if "system_contracts" not in existing:
+        op.create_table(
         "system_contracts",
         sa.Column("id", sa.Uuid(as_uuid=True), primary_key=True),
         sa.Column("system_id", sa.Uuid(as_uuid=True), sa.ForeignKey("objects.id", ondelete="CASCADE"), nullable=False),
@@ -34,8 +39,9 @@ def upgrade():
         sa.Column("support_contact", sa.String(250), nullable=False),
         sa.Column("notes", sa.String(2000), nullable=False),
     )
-    op.create_index("ix_system_contracts_system_id", "system_contracts", ["system_id"])
-    op.create_table(
+        op.create_index("ix_system_contracts_system_id", "system_contracts", ["system_id"])
+    if "system_licenses" not in existing:
+        op.create_table(
         "system_licenses",
         sa.Column("id", sa.Uuid(as_uuid=True), primary_key=True),
         sa.Column("system_id", sa.Uuid(as_uuid=True), sa.ForeignKey("objects.id", ondelete="CASCADE"), nullable=False),
@@ -47,8 +53,8 @@ def upgrade():
         sa.Column("valid_until", sa.Date(), nullable=True),
         sa.Column("notes", sa.String(2000), nullable=False),
     )
-    op.create_index("ix_system_licenses_system_id", "system_licenses", ["system_id"])
-    op.create_index("ix_system_licenses_contract_id", "system_licenses", ["contract_id"])
+        op.create_index("ix_system_licenses_system_id", "system_licenses", ["system_id"])
+        op.create_index("ix_system_licenses_contract_id", "system_licenses", ["contract_id"])
 
 
 def downgrade():

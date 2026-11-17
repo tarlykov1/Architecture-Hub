@@ -299,8 +299,8 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
  }
 
  useEffect(()=>{
-  onDraftStateChange?.(changes.length>0)
- },[changes.length,onDraftStateChange])
+  onDraftStateChange?.(changes.length>0||layoutDirty)
+ },[changes.length,layoutDirty,onDraftStateChange])
  useEffect(()=>{
   try{
    if(!changes.length){sessionStorage.removeItem(draftKey(systemId));return}

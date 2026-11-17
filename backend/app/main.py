@@ -1500,6 +1500,9 @@ def delete_object(object_id: UUID, db: Session = Depends(db_session)):
     obj = db.get(ArchitectureObject, object_id)
     if obj is None:
         raise HTTPException(status_code=404, detail="Object not found")
+    if (db.scalar(select(SystemContract.id).where(SystemContract.system_id == object_id)) or
+            db.scalar(select(SystemLicense.id).where(SystemLicense.system_id == object_id))):
+        raise HTTPException(409, "Archive or remove IS contracts and licences before deleting the system")
     for rel in db.scalars(select(Relation).where((Relation.source_id == object_id) | (Relation.target_id == object_id))).all():
         db.delete(rel)
     # Diagram positions may contain orphan IDs; UI filters them on load.

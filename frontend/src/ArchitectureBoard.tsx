@@ -377,7 +377,7 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
    return nearest?{targetId:target.dataset.id,targetHandle:nearest.id}:null
  }
  const beginFlowPointer=(id:string,handle:string,event:React.PointerEvent<HTMLDivElement>)=>{
-   if(tool!=='flow'||event.button!==0)return
+   if(tool!=='flow'||event.button!==0||selectedFlow)return
    event.stopPropagation();event.preventDefault()
    setCanvasInteracted(true);setPreferredSourceHandle(handle)
    // Use the true port location, even if the pointer is intercepted by the
@@ -511,6 +511,7 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
          return
        }
      }
+     if(selected)return // no new flow while editing a selected record
      const source=nearest('.react-flow__node-boardComponent .flowPortSource.boardConnectionHandleActive',at)
      const node=source?.el.closest<HTMLElement>('.react-flow__node-boardComponent')
      const anchor=source?.el.dataset.anchor
@@ -562,6 +563,10 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
    }
  },[tool,systemId,selectedExistingFlowId,selectedDraftFlowId,flows,changes,flowAnchors])
  const selectFlowComponent=(id:string)=>{
+   if(selectedFlow){
+     setLayoutMessage('Выбран поток «'+selectedFlow.name+'». Перенесите его маркер или измените источник/получатель справа.')
+     return
+   }
    setInspectedId(null);setInspectedNetworkId(null);setFocusDependencies(false)
    if(!from||to||from===id){
      setFrom(id);setTo('');setSelectedDraftFlowId('')
@@ -1035,6 +1040,7 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
             // circles can be obscured by React Flow's panning layer even when
             // a click appears to land on the port. Hit-test them by coordinates
             // before the pane handles pointerdown and starts dragging canvas.
+            if(selectedFlowId)return
             const targets=[...(boardCanvasRef.current?.querySelectorAll<HTMLElement>('.react-flow__node-boardComponent .flowPortSource.boardConnectionHandleActive')||[])]
               .map(el=>{const b=el.getBoundingClientRect();return {el,distance:Math.hypot(at.x-b.left-b.width/2,at.y-b.top-b.height/2)}})
               .sort((a,b)=>a.distance-b.distance)

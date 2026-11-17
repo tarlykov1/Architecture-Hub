@@ -357,7 +357,7 @@ test('an existing VRF is draggable and its saved geometry is audited',async({pag
   expect(geometry.width).toBeGreaterThanOrEqual(140)
   expect(geometry.height).toBeGreaterThanOrEqual(90)
   await editor.getByRole('toolbar').getByRole('button',{name:'История изменений'}).click()
-  await expect(editor.getByRole('dialog',{name:'Журнал изменений архитектуры'})).toContainText('Сохранено расположение элементов схемы')
+  await expect(editor.getByRole('dialog',{name:'Журнал изменений архитектуры'})).toContainText('Сохранено оформление схемы')
 })
 
 
@@ -676,7 +676,7 @@ test('one grouped arrow exposes its separate saved flow records',async({page})=>
   await page.getByRole('combobox',{name:'Выбрать ИС для редактора компонентов'}).selectOption(systemId)
   const editor=page.getByRole('region',{name:'Редактор архитектурной схемы'})
   await expect(editor.locator('.react-flow__edge')).toHaveCount(1)
-  await editor.locator('.react-flow__edge').first().click()
+  await editor.getByRole('button',{name:/Выбрать поток/}).first().click()
   const selection=editor.getByRole('region',{name:'Потоки выбранной стрелки'})
   await expect(selection).toBeVisible()
   await expect(selection.getByRole('button')).toHaveCount(2)

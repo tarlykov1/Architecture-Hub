@@ -149,6 +149,7 @@ function App() {
   const [businessEditorOpen,setBusinessEditorOpen] = useState(false)
   const [businessEditId,setBusinessEditId] = useState('')
   const [businessCategoryId,setBusinessCategoryId] = useState('')
+  const [businessNewCategory,setBusinessNewCategory] = useState('')
   const [businessName,setBusinessName] = useState('')
   const [businessDescription,setBusinessDescription] = useState('')
   const [businessSystemId,setBusinessSystemId] = useState('')
@@ -869,6 +870,7 @@ function App() {
   function openBusinessEditor(process?:BusinessProcess){
     setBusinessEditId(process?.id||'')
     setBusinessCategoryId(process?.category_id||categories[0]?.id||'')
+    setBusinessNewCategory('')
     setBusinessName(process?.name||'')
     setBusinessDescription(process?.description||'')
     setBusinessSystemId('')
@@ -876,11 +878,17 @@ function App() {
   }
   async function saveBusinessProcess(event:React.FormEvent){
     event.preventDefault()
-    if(!businessCategoryId||!businessName.trim()){setBusinessError('Укажите категорию и название бизнес-процесса');return}
+    if((!businessCategoryId&&!businessNewCategory.trim())||!businessName.trim()){setBusinessError('Укажите категорию и название бизнес-процесса');return}
     setBusinessSaving(true);setBusinessError('')
     try{
+      let categoryId=businessCategoryId
+      if(businessNewCategory.trim()){
+        const category=await request<Category>('/api/business/categories',{method:'POST',body:JSON.stringify({name:businessNewCategory.trim()})})
+        categoryId=category.id;setBusinessCategoryId(category.id);setBusinessNewCategory('')
+        setCategories(await request<Category[]>('/api/business/categories'))
+      }
       const process=await request<BusinessProcess>(businessEditId?'/api/business/processes/'+businessEditId:'/api/business/processes',{
-        method:businessEditId?'PUT':'POST',body:JSON.stringify({category_id:businessCategoryId,name:businessName.trim(),description:businessDescription})
+        method:businessEditId?'PUT':'POST',body:JSON.stringify({category_id:categoryId,name:businessName.trim(),description:businessDescription})
       })
       setBusinessEditId(process.id) // If the link fails, retry updates this ID instead of creating a duplicate.
       setProcesses(await request<BusinessProcess[]>('/api/business/processes'))
@@ -1518,7 +1526,7 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
         </div>
       </div>
     })()}
-    {businessEditorOpen&&<div className="editorBackdrop" onClick={()=>!businessSaving&&setBusinessEditorOpen(false)}><div className="editorDialog architectureDrawer" role="dialog" aria-modal="true" aria-label="Редактор бизнес-процесса" onClick={e=>e.stopPropagation()}><div className="dialogHead"><h2>{businessEditId?'Редактировать бизнес-процесс':'Новый бизнес-процесс'}</h2><button type="button" disabled={businessSaving} onClick={()=>setBusinessEditorOpen(false)}>Закрыть ×</button></div><form className="detailForm" onSubmit={saveBusinessProcess}><label>Категория<select required aria-label="Категория бизнес-процесса" value={businessCategoryId} onChange={e=>setBusinessCategoryId(e.target.value)}><option value="">Выберите категорию</option>{categories.map(cat=><option key={cat.id} value={cat.id}>{cat.name}</option>)}</select></label><label>Название<input required value={businessName} onChange={e=>setBusinessName(e.target.value)}/></label><label>Описание<textarea value={businessDescription} onChange={e=>setBusinessDescription(e.target.value)}/></label><label>Связать с ИС (необязательно)<select value={businessSystemId} onChange={e=>setBusinessSystemId(e.target.value)}><option value="">Без новой связи</option>{objects.filter(o=>o.kind==='system').map(o=><option key={o.id} value={o.id}>{o.name}</option>)}</select></label>{businessError&&<p role="alert">{businessError}</p>}<button className="primary" disabled={businessSaving||!businessCategoryId}>{businessSaving?'Сохранение…':'Сохранить бизнес-процесс'}</button></form></div></div>}
+    {businessEditorOpen&&<div className="editorBackdrop" onClick={()=>!businessSaving&&setBusinessEditorOpen(false)}><div className="editorDialog architectureDrawer" role="dialog" aria-modal="true" aria-label="Редактор бизнес-процесса" onClick={e=>e.stopPropagation()}><div className="dialogHead"><h2>{businessEditId?'Редактировать бизнес-процесс':'Новый бизнес-процесс'}</h2><button type="button" disabled={businessSaving} onClick={()=>setBusinessEditorOpen(false)}>Закрыть ×</button></div><form className="detailForm" onSubmit={saveBusinessProcess}><label>Категория<select aria-label="Категория бизнес-процесса" value={businessCategoryId} onChange={e=>setBusinessCategoryId(e.target.value)}><option value="">Выберите категорию</option>{categories.map(cat=><option key={cat.id} value={cat.id}>{cat.name}</option>)}</select></label><label>Новая категория (если отсутствует в списке)<input aria-label="Новая категория бизнес-процесса" value={businessNewCategory} onChange={e=>setBusinessNewCategory(e.target.value)} placeholder="Создать новую категорию"/></label><label>Название<input required value={businessName} onChange={e=>setBusinessName(e.target.value)}/></label><label>Описание<textarea value={businessDescription} onChange={e=>setBusinessDescription(e.target.value)}/></label><label>Связать с ИС (необязательно)<select value={businessSystemId} onChange={e=>setBusinessSystemId(e.target.value)}><option value="">Без новой связи</option>{objects.filter(o=>o.kind==='system').map(o=><option key={o.id} value={o.id}>{o.name}</option>)}</select></label>{businessError&&<p role="alert">{businessError}</p>}<button className="primary" disabled={businessSaving||(!businessCategoryId&&!businessNewCategory.trim())}>{businessSaving?'Сохранение…':'Сохранить бизнес-процесс'}</button></form></div></div>}
     {createObjectOpen&&<div className="editorBackdrop" onClick={()=>setCreateObjectOpen(false)}>
       <div className="editorDialog" role="dialog" aria-modal="true" aria-label="Создать объект архитектуры" onClick={event=>event.stopPropagation()}>
         <div className="dialogHead"><h2>Новый объект</h2><button type="button" onClick={()=>setCreateObjectOpen(false)}>Закрыть ×</button></div>

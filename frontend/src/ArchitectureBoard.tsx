@@ -737,14 +737,21 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
    setFrom(flow.source_id||'');setTo(flow.target_id||'')
  }
  const stageExistingFlowEdit=(original:Flow,next:FlowValues,sourceId:string,targetId:string)=>{
+   const oldSource=allVMs.find(vm=>vm.id===original.source_id)?.name
+   const oldTarget=allVMs.find(vm=>vm.id===original.target_id)?.name
+   const newSource=allVMs.find(vm=>vm.id===sourceId)?.name
+   const newTarget=allVMs.find(vm=>vm.id===targetId)?.name
+   // Rename only automatically generated endpoint captions; never overwrite a custom title.
+   const generated=oldSource&&oldTarget&&original.name===oldSource+' → '+oldTarget
+   const resolvedNext={...next,name:generated&&next.name===original.name&&newSource&&newTarget?newSource+' → '+newTarget:next.name}
    const before=flowValues(original)
    const endpointsChanged=sourceId!==original.source_id||targetId!==original.target_id
-   const hasChanges=endpointsChanged||Object.keys(before).some(key=>before[key as keyof FlowValues]!==next[key as keyof FlowValues])
+   const hasChanges=endpointsChanged||Object.keys(before).some(key=>before[key as keyof FlowValues]!==resolvedNext[key as keyof FlowValues])
    const remaining=changes.filter(c=>!(c.action==='update_flow'&&c.id===original.id))
    setChanges(hasChanges?[...remaining,{
      action:'update_flow',id:original.id,source_id:sourceId,target_id:targetId,
      previous_source_id:original.source_id,previous_target_id:original.target_id,
-     ...next,previous_flow:before
+     ...resolvedNext,previous_flow:before
    }]:remaining)
    setPreview(null);setError('');setReviewOpen(hasChanges||remaining.length>0)
    setLayoutMessage(demoMode?'Изменение потока добавлено в локальный черновик.':'Проверьте изменения потока и подтвердите запись в журнал.')

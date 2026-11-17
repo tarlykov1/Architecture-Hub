@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import os
+import base64
+import binascii
 import hashlib
 import json
 from contextlib import asynccontextmanager
@@ -18,7 +20,7 @@ from .cmdb import ci_graph, potential_impact, CI_CLASSES, LIFECYCLE_STATES, LIFE
 from .cmdb_catalog import validate_class_schema, validate_custom_values, missing_required, assess_relation, RELATION_KINDS
 from .architecture_metamodel import get_logical_relation_types, logical_relation_validation_error, summarize_legacy_relations
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from sqlalchemy import DateTime, ForeignKey, JSON, String, Uuid, Index, Boolean, UniqueConstraint, create_engine, select, update, text as sql_text
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
 from sqlalchemy.exc import IntegrityError
@@ -444,6 +446,33 @@ class ObjectCreate(BaseModel):
     description: str = Field(default="", max_length=4000)
     status: str = Field(default="active", max_length=40)
     attributes: dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def validate_system_logo(self):
+        """Keep uploaded IS icons small and self-contained; reject remote/SVG/HTML media."""
+        if "system_logo" not in self.attributes:
+            return self
+        logo = self.attributes["system_logo"]
+        if self.kind != "system":
+            raise ValueError("Only information systems can have a logo")
+        if not isinstance(logo, str):
+            raise ValueError("System logo must be an image data URL")
+        mime = next((media for media in ("png", "jpeg", "webp")
+                     if logo.startswith(f"data:image/{media};base64,")), None)
+        if mime is None or len(logo) > 140000:
+            raise ValueError("System logo must be a small PNG, JPEG or WebP image")
+        try:
+            raw = base64.b64decode(logo.split(",", 1)[1], validate=True)
+        except (binascii.Error, ValueError) as exc:
+            raise ValueError("System logo has invalid base64 encoding") from exc
+        signatures = {
+            "png": raw.startswith(b"\x89PNG\r\n\x1a\n"),
+            "jpeg": raw.startswith(b"\xff\xd8\xff"),
+            "webp": raw.startswith(b"RIFF") and raw[8:12] == b"WEBP",
+        }
+        if not raw or len(raw) > 100000 or not signatures[mime]:
+            raise ValueError("System logo image format or size is invalid")
+        return self
 
 
 class ObjectOut(ObjectCreate):

@@ -1275,7 +1275,7 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
       const fieldChanges=Array.from(new Set([...Object.keys(before),...Object.keys(after)])).filter(field=>JSON.stringify(before[field])!==JSON.stringify(after[field]))
       const display=(value:unknown):string=>value==null||value===''?'не задано':typeof value==='string'?allVMs.find(vm=>vm.id===value)?.name||networks.find(net=>net.id===value)?.name||value:typeof value==='object'?JSON.stringify(value):String(value)
       return <li key={i}><strong>{({create_vm:'Создание ВМ',create_network:'Создание сети',create_flow:'Создание потока',update_flow:'Изменение потока',update_vm:'Изменение ВМ',move_interface:'Перенос интерфейса',create_interface:'Создание интерфейса'} as Record<string,string>)[change.action]||'Изменение объекта'}: {objectName}</strong>
-       {change.endpoints&&<div>Подключение: {flowEndpointLabel(change.endpoints.before)} → {flowEndpointLabel(change.endpoints.after)}</div>}
+       {change.endpoints&&<div><div>Было: {flowEndpointLabel(change.endpoints.before)}</div><div>Станет: {flowEndpointLabel(change.endpoints.after)}</div></div>}
        {fieldChanges.map(field=><div key={field}>{labels[field]||field}: {display(before[field])} → {display(after[field])}</div>)}
        {!change.endpoints&&!fieldChanges.length&&<div>Будет создана или обновлена запись в реестре</div>}
        <details><summary>Технические сведения</summary><pre>{JSON.stringify({id:change.id,before:change.before,after:change.after},null,2)}</pre></details>

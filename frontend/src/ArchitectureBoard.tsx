@@ -1335,7 +1335,12 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
        </>}<button disabled={!changes.length||busy} onClick={discardDraft}>Отменить черновик</button></div>}
      </aside>}
      {contextMenu&&<div className="boardContextMenu" role="menu" aria-label="Действия с объектом" style={{position:'fixed',left:contextMenu.x,top:contextMenu.y,zIndex:250}}>
-       {contextMenu.kind==='pane'?<button type="button" role="menuitem" onClick={()=>{setContextMenu(null);setTool('note')}}>Добавить заметку</button>:<>
+       {contextMenu.kind!=='pane'&&<div className="boardContextMeta">
+       <strong>{contextMenu.kind==='note'?'Заметка':contextMenu.kind==='flow'?'Поток':contextMenu.kind==='network'?'Сеть / VLAN / VRF':'Компонент'}</strong>
+       {contextMenu.id&&<small>ID: {contextMenu.id.slice(0,8)} · {contextMenu.kind==='vm'?items.find(item=>item.id===contextMenu.id)?.name:contextMenu.kind==='network'?allNetworks.find(item=>item.id===contextMenu.id)?.name:contextMenu.kind==='flow'?effectiveFlows.find(item=>item.id===contextMenu.id)?.name:notes.find(note=>note.id===contextMenu.id)?.text.slice(0,35)}</small>}
+       {contextMenu.id&&<button type="button" role="menuitem" onClick={()=>{void navigator.clipboard?.writeText(contextMenu.id).then(()=>setLayoutMessage('ID скопирован')).catch(()=>setLayoutMessage('Не удалось скопировать ID'))}}>Копировать ID</button>}
+     </div>}
+     {contextMenu.kind==='pane'?<button type="button" role="menuitem" onClick={()=>{setContextMenu(null);setTool('note')}}>Добавить заметку</button>:<>
        {contextMenu.kind==='flow'&&contextMenu.flowIds&&contextMenu.flowIds.length>1?<><strong>Выберите поток ({contextMenu.flowIds.length})</strong>{contextMenu.flowIds.map(id=><button role="menuitem" type="button" key={id} onClick={()=>{selectFlowInDock(id);setContextMenu({...contextMenu,id,flowIds:[id]})}}>{effectiveFlows.find(flow=>flow.id===id)?.name||id.slice(0,8)}</button>)}</>:<>
        <button type="button" role="menuitem" onClick={()=>{if(contextMenu.kind==='flow')selectFlowInDock(contextMenu.id);else if(contextMenu.kind==='vm')openPassport(contextMenu.id);else if(contextMenu.kind==='note')setSelectedNoteId(contextMenu.id);else setInspectedNetworkId(contextMenu.id);setTool(contextMenu.kind==='flow'?'flow':'move');setContextMenu(null)}}>{contextMenu.kind==='note'?'Редактировать заметку':'Открыть свойства'}</button>
        <button type="button" role="menuitem" disabled={deleteBusy||Boolean(blockersFor(contextMenu.kind,contextMenu.id).length)} onClick={()=>void deleteCanvasObject(contextMenu.kind,contextMenu.id)}>Удалить</button>

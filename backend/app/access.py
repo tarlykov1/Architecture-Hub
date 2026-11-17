@@ -31,6 +31,8 @@ def classify(path: str) -> str | None:
         return "systems"  # Read-only typed link contract; no mutation endpoint.
     if path.startswith("/api/cmdb/"):
         return "systems"  # Same read permissions as the underlying system register.
+    if path.startswith("/api/systems/"):
+        return "systems"  # Existing IS RBAC; never expose contracts to anonymous users.
     if path.startswith("/api/board/"):
         return "board"
     if path.startswith("/api/demo/"):

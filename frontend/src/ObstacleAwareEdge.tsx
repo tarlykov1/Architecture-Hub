@@ -6,7 +6,9 @@ type Rect={left:number;top:number;right:number;bottom:number}
 const GAP=22
 const EPS=0.01
 const key=(x:number,y:number)=>x+','+y
-const uniq=(values:number[])=>[...new Set(values.map(v=>Math.round(v*10)/10))].sort((a,b)=>a-b)
+// Preserve exact React Flow handle coordinates: rounding them to tenths made
+// the start/end keys absent from the visibility graph for fractional positions.
+const uniq=(values:number[])=>[...new Set(values)].sort((a,b)=>a-b)
 function inside(p:Point,r:Rect){return p.x>r.left+EPS&&p.x<r.right-EPS&&p.y>r.top+EPS&&p.y<r.bottom-EPS}
 function clear(a:Point,b:Point,rects:Rect[]){
  if(a.x!==b.x&&a.y!==b.y)return false
@@ -105,7 +107,9 @@ export function ObstacleAwareEdge({id,source,target,sourceX,sourceY,targetX,targ
  const nodes=useNodes()
  const {path,label}=useMemo(()=>{
    const a={x:sourceX,y:sourceY},b={x:targetX,y:targetY}
-   const obstacles:Rect[]=nodes.filter(n=>n.id!==source&&n.id!==target&&!n.id.startsWith('network:')&&!n.hidden).map(n=>{
+   // Source and target cards are obstacles too: ignoring their bodies let a
+   // path wrap behind its own card and arrive along the wrong edge.
+   const obstacles:Rect[]=nodes.filter(n=>!n.id.startsWith('network:')&&!n.hidden).map(n=>{
      const x=n.measured?.width||Number(n.style?.width)||220
      const y=n.measured?.height||Number(n.style?.height)||140
      return {left:n.position.x-10,top:n.position.y-10,right:n.position.x+x+10,bottom:n.position.y+y+10}

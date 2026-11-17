@@ -556,6 +556,9 @@ function App() {
     }
   },[layer,viewSystem,inspectorOpen,selected,inspectorExpanded,homeFocusSystemId])
   const [infraName,setInfraName] = useState('')
+  // The create form has its own explicit IS context; `selected` also points to passports.
+  const [infraSystemId,setInfraSystemId] = useState('')
+  const [infraCreating,setInfraCreating] = useState(false)
   const [infraKind,setInfraKind] = useState('vm')
   const [infraParent,setInfraParent] = useState('')
   const [infraDetails,setInfraDetails] = useState('')
@@ -754,18 +757,23 @@ function App() {
 
   async function addInfrastructure(event: React.FormEvent) {
     event.preventDefault()
-    if (!selected) {setError('Сначала выберите систему');return}
+    if (!infraSystemId || !objects.some(o=>o.id===infraSystemId)) {setError('Выберите информационную систему для компонента');return}
+    if (infraParent && !infra.some(i=>i.id===infraParent&&i.system_id===infraSystemId)) {setError('Родительский компонент должен принадлежать выбранной ИС');return}
+    setInfraCreating(true)
     setError('')
     try {
       let details:Record<string,unknown> = {}
       // Free-text network notes avoid inventing actual VLANs or IP addresses.
       if (infraDetails.trim()) details = {network_notes:infraDetails.trim()}
       await request('/api/infra',{method:'POST',body:JSON.stringify({
-        system_id:selected,parent_id:infraParent||null,kind:infraKind,name:infraName,
+        system_id:infraSystemId,parent_id:infraParent||null,kind:infraKind,name:infraName,
         description:'',details
       })})
-      setInfra(await request<Infra[]>('/api/infra'));setInfraName('');setInfraDetails('');setInfraParent('')
-    } catch(e){setError(String(e))}
+      setInfra(await request<Infra[]>('/api/infra'))
+      setInfraName('');setInfraDetails('');setInfraParent('')
+      setViewSystem(infraSystemId);setComponentView('registry');setLayer('infrastructure')
+      setEditorOpen(false);setNotice('Компонент создан в выбранной ИС')
+    } catch(e){setError(String(e))}finally{setInfraCreating(false)}
   }
   async function addFlow(event: React.FormEvent) {
     event.preventDefault();setError('')
@@ -1145,7 +1153,7 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
           <summary title="Создание и импорт объектов" aria-label="Создать или импортировать">＋ <span className="navActionText">Создать</span></summary>
           <div className="layerActionMenu">
             {canWrite('systems')&&<button onClick={()=>{setPassportEditId('');setComponentInspectId('');setRegistryOpen(null);setCreateObjectOpen(true)}}>Система</button>}
-            {canWrite('infrastructure')&&<button onClick={()=>setEditorOpen(true)}>Компонент</button>}
+            {canWrite('infrastructure')&&<button onClick={()=>{setInfraSystemId(objects.some(o=>o.id===viewSystem)?viewSystem:'');setInfraParent('');setError('');setEditorOpen(true)}}>Компонент</button>}
             {canWrite('networks')&&<button onClick={()=>editNetwork()}>Сеть</button>}
             {canWrite('flows')&&<button onClick={()=>editFlow()}>Поток</button>}
             {canWrite('import')&&<button onClick={()=>{setPassportEditId('');setComponentInspectId('');setRegistryOpen(null);setKisOpen(true)}}>Импорт КИС</button>}
@@ -1528,9 +1536,10 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
     {editorOpen&&<div className="editorBackdrop" onClick={()=>setEditorOpen(false)}>
       <div className="editorDialog" onClick={e=>e.stopPropagation()}>
         <div className="dialogHead"><h2>Добавление объектов и потоков</h2><button onClick={()=>setEditorOpen(false)}>Закрыть ×</button></div>
-        <p className="hint">Выберите систему слева, затем добавьте компонент или создайте обмен между существующими компонентами.</p>
+        <p className="hint">Для компонента укажите родительскую информационную систему. Потоки связывают уже созданные компоненты.</p>
         <h3>Новый компонент</h3>
         <form className="detailForm" onSubmit={addInfrastructure}>
+          <label>Родительская информационная система <select required aria-label="Родительская информационная система" value={infraSystemId} onChange={e=>{setInfraSystemId(e.target.value);setInfraParent('')}}><option value="">Выберите ИС</option>{objects.filter(o=>o.kind!=='process').map(o=><option key={o.id} value={o.id}>{o.name}</option>)}</select></label>
           <input required placeholder="Имя ВМ / сервиса / API" value={infraName} onChange={e=>setInfraName(e.target.value)}/>
           <select aria-label="Тип компонента" value={infraKind} onChange={e=>setInfraKind(e.target.value)}>
              {Array.from(new Set([
@@ -1539,9 +1548,9 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
                  .map(item=>item.id)
              ])).map(id=><option key={id} value={id}>{cmdbKinds.find(x=>x.id===id)?.label||id} ({id})</option>)}
            </select>
-          <select value={infraParent} onChange={e=>setInfraParent(e.target.value)}><option value="">Без родителя</option>{infra.filter(i=>i.system_id===selected).map(i=><option key={i.id} value={i.id}>{i.name}</option>)}</select>
+          <select value={infraParent} onChange={e=>setInfraParent(e.target.value)}><option value="">Без родителя</option>{infra.filter(i=>i.system_id===infraSystemId).map(i=><option key={i.id} value={i.id}>{i.name}</option>)}</select>
           <textarea placeholder="Сетевая зона / VLAN / VRF – примечание" value={infraDetails} onChange={e=>setInfraDetails(e.target.value)}/>
-          <button className="primary">Добавить компонент</button>
+          <button className="primary" disabled={infraCreating||!infraSystemId}>{infraCreating?'Сохранение…':'Добавить компонент'}</button>
         </form>
         <h3>Новый направленный поток</h3>
         <form className="detailForm" onSubmit={addFlow}>

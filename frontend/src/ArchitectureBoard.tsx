@@ -588,7 +588,7 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
  const selectCanvasEdge=(source:string,target:string,ids:string[])=>{
    setInspectedId(null);setInspectedNetworkId(null);setFocusDependencies(false)
    setTool('flow');setFrom(source);setTo(target);setSelectedEdgeFlowIds(ids)
-   if(ids.length===1)selectFlowInDock(ids[0]);else{setSelectedDraftFlowId('');setSelectedExistingFlowId('')}
+   if(ids.length===1)selectFlowInDock(ids[0]);else{setSelectedDraftFlowId('');setSelectedExistingFlowId('');setLayoutMessage('На линии '+ids.length+' отдельных потоков. Выберите конкретный поток справа, чтобы изменить только его подключение.')}
  }
  const edges=Array.from(flowGroups.entries()).map(([pair,list])=>{
    const first=list[0]
@@ -1013,6 +1013,8 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
           onPointerDownCapture={event=>{
             setCanvasInteracted(true)
             if(tool!=='flow'||event.button!==0)return
+            // Document capture may already have started this same gesture.
+            if(flowGesture.current||retargetGesture.current)return
             const selectedFlowId=selectedExistingFlowId||selectedDraftFlowId
             const at={x:event.clientX,y:event.clientY}
             // The renderer places the yellow grips over an SVG label layer;
@@ -1119,6 +1121,10 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
  setInspectedNetworkId(null)
  if(tool==='flow'){
    setInspectedId(null);setFocusDependencies(false)
+   if(selectedFlow){
+     setLayoutMessage('Выбран поток «'+selectedFlow.name+'». Перенесите его маркер или измените источник/получатель справа. Для нового потока снимите выделение.')
+     return
+   }
    if(!from||to||from===node.id){setFrom(node.id);setTo('');setSelectedDraftFlowId('');setLayoutMessage('Источник выбран. Нажмите на целевой компонент или протяните стрелку от порта.')}
    else stageDirectedFlow(from,node.id)
  }else if(tool==='move'){openPassport(node.id);setFocusDependencies(false)}

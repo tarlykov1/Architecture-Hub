@@ -983,8 +983,19 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
        setLayoutDirty(true)
      }
      try{await onCommitted()}catch(e){warning+=' Не удалось обновить данные: '+String(e)}
+     // Replace draft card labels and dashed borders without reloading the page.
+     const committedVMs=new Map(changes.filter(c=>(c.action==='create_vm'||c.action==='update_vm')&&c.id&&c.name).map(c=>[c.id!,c.name!]))
+     if(committedVMs.size){
+       setNodes(previous=>previous.map(node=>{
+         const committedName=committedVMs.get(node.id)
+         if(!committedName)return node
+         const vm=allVMs.find(item=>item.id===node.id)
+         return {...node,data:{...node.data,label:<DiagramNodeLabel name={committedName} kind={vm?.kind||'vm'} subtitle={ownerName} detail={vm?.description||'ВМ'}/>},style:diagramCardStyle({border:'1px solid #94a3b8'})}
+       }))
+     }
      setChanges([]);setSelectedDraftFlowId('');setSelectedExistingFlowId('');setSelectedEdgeFlowIds([]);setPreview(null);setReason('');setDrawing(null);setReviewOpen(false)
-     setError('ВМ, сети и связи сохранены в реестре и журнале.'+warning)
+     if(warning)setError('Запись в реестр выполнена, но есть замечания.'+warning)
+     else {setError('');setLayoutMessage('Изменения сохранены в реестре и журнале. Черновик закрыт.')}
      if(showHistory)void openHistory()
    }catch(e){setPreview(null);setError('Сохранение отклонено: '+String(e)+'. Обновите предварительный просмотр.')}
    finally{setBusy(false)}

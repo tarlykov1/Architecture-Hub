@@ -56,8 +56,10 @@ test('QA-WORK: right-click deletes only chosen flow and blocks a connected VM',a
  await expect(menu.getByRole('menuitem',{name:'Удалить'})).toBeDisabled()
  await expect(menu).toContainText('Связанный поток:')
  await menu.getByRole('button',{name:'Закрыть меню'}).click()
- const edge=editor.locator('.react-flow__edge').first()
- await edge.click({button:'right'})
+ // SVG <g> edges have no reliable click box; use the visible edge caption.
+ const caption=editor.getByRole('button',{name:/Выбрать поток/}).first()
+ await expect(caption).toBeVisible()
+ await caption.click({button:'right'})
  menu=page.getByRole('menu',{name:'Действия с объектом'})
  page.once('dialog',dialog=>dialog.accept())
  await menu.getByRole('menuitem',{name:'Удалить'}).click()

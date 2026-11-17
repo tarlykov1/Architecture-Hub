@@ -15,7 +15,7 @@ export function AutoFit({layoutKey='',maxFitZoom=1,groupParentsOnly=false,focusI
  // Optional overlays should not block fitting measured target IS cards.
  const measuredFocusReady=focusIds.length>0&&focusIds.every(id=>{
   const node=graphNodes.find(item=>item.id===id)
-  return Boolean(node&&(node.measured?.width||0)>0&&(node.measured?.height||0)>0)
+  return Boolean(node&&((node.measured?.width||node.initialWidth||node.width||0)>0)&&((node.measured?.height||node.initialHeight||node.height||0)>0))
  })
  useEffect(()=>{
   const canvas=anchor.current?.closest('.react-flow')

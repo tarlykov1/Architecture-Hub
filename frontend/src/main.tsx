@@ -1583,7 +1583,7 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
         <p className="hint">Для компонента укажите родительскую информационную систему. Потоки связывают уже созданные компоненты.</p>
         <h3>Новый компонент</h3>
         <form className="detailForm" onSubmit={addInfrastructure}>
-          <label>Родительская информационная система <select required aria-label="Родительская информационная система" value={infraSystemId} onChange={e=>{setInfraSystemId(e.target.value);setInfraParent('')}}><option value="">Выберите ИС</option>{objects.filter(o=>o.kind!=='process').map(o=><option key={o.id} value={o.id}>{o.name}</option>)}</select></label>
+          <label>Родительская информационная система <select required aria-label="Родительская информационная система" value={infraSystemId} onChange={e=>{setInfraSystemId(e.target.value);setInfraParent('')}}><option value="">Выберите ИС</option>{objects.filter(o=>o.kind==='system').map(o=><option key={o.id} value={o.id}>{o.name}</option>)}</select></label>
           <input required placeholder="Имя ВМ / сервиса / API" value={infraName} onChange={e=>setInfraName(e.target.value)}/>
           <select aria-label="Тип компонента" value={infraKind} onChange={e=>setInfraKind(e.target.value)}>
              {Array.from(new Set([

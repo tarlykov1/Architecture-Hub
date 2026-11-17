@@ -2576,11 +2576,21 @@ class BoardFlowAnchor(BaseModel):
     target_handle: str = Field(min_length=5, max_length=20)
 
 
+class BoardNote(BaseModel):
+    # Presentation-only annotation: no CMDB, flow or network identity.
+    id: UUID
+    x: float = Field(ge=-100000, le=100000, allow_inf_nan=False)
+    y: float = Field(ge=-100000, le=100000, allow_inf_nan=False)
+    text: str = Field(min_length=1, max_length=2000)
+
+
 class BoardLayoutInput(BaseModel):
     # Network rectangles are stored as "network:<segment UUID>".
     positions: dict[str, BoardPoint] = Field(default_factory=dict, max_length=1000)
     # An omitted field preserves the previously saved anchor choices for older clients.
     flow_anchors: dict[str, BoardFlowAnchor] | None = Field(default=None, max_length=1000)
+    # Omitted notes preserve pre-existing annotations for older clients.
+    notes: list[BoardNote] | None = Field(default=None, max_length=100)
 
 
 def unpack_board_layout(raw: dict[str, Any] | None) -> tuple[dict[str, Any], dict[str, Any]]:
@@ -2598,7 +2608,8 @@ def read_board_layout(system_id: UUID, db: Session = Depends(db_session)):
         raise HTTPException(404, "System not found")
     stored = db.get(BoardLayout, system_id)
     positions, anchors = unpack_board_layout(stored.positions if stored else None)
-    return {"system_id": str(system_id), "positions": positions, "flow_anchors": anchors}
+    notes = list(stored.positions.get("notes") or []) if stored and isinstance(stored.positions, dict) and stored.positions.get("_layout_schema") == 2 else []
+    return {"system_id": str(system_id), "positions": positions, "flow_anchors": anchors, "notes": notes}
 
 
 @app.put("/api/board/layout/{system_id}")
@@ -2661,6 +2672,10 @@ def save_board_layout(system_id: UUID, payload: BoardLayoutInput,
     positions = {key: point.model_dump(exclude_none=True) for key, point in payload.positions.items()}
     stored = db.get(BoardLayout, system_id)
     before, previous_anchors = unpack_board_layout(stored.positions if stored else None)
+    previous_notes = list(stored.positions.get("notes") or []) if stored and isinstance(stored.positions, dict) and stored.positions.get("_layout_schema") == 2 else []
+    notes = previous_notes if payload.notes is None else [note.model_dump(mode="json") for note in payload.notes]
+    if len({note["id"] for note in notes}) != len(notes):
+        raise HTTPException(422, "Duplicate note IDs")
     anchors = previous_anchors.copy() if payload.flow_anchors is None else {
         key: item.model_dump() for key, item in payload.flow_anchors.items()
     }
@@ -2679,10 +2694,10 @@ def save_board_layout(system_id: UUID, payload: BoardLayoutInput,
         present = set(db.scalars(select(DataFlow.id).where(DataFlow.id.in_(flow_ids))).all())
         if len(present) != len(set(flow_ids)):
             raise HTTPException(422, "Unknown flow in layout")
-    if before == positions and previous_anchors == anchors:
-        return {"system_id": str(system_id), "positions": positions, "flow_anchors": anchors}
-    # Reuse existing JSON column without an incompatible SQLite migration.
-    encoded = {"_layout_schema": 2, "positions": positions, "flow_anchors": anchors}
+    if before == positions and previous_anchors == anchors and previous_notes == notes:
+        return {"system_id": str(system_id), "positions": positions, "flow_anchors": anchors, "notes": notes}
+    # Reuse existing JSON column; annotations do not require schema migration.
+    encoded = {"_layout_schema": 2, "positions": positions, "flow_anchors": anchors, "notes": notes}
     if stored is None:
         stored = BoardLayout(system_id=system_id, positions=encoded)
         db.add(stored)
@@ -2699,10 +2714,17 @@ def save_board_layout(system_id: UUID, payload: BoardLayoutInput,
         for key in sorted(set(previous_anchors) | set(anchors))
         if previous_anchors.get(key) != anchors.get(key)
     ]
-    db.add(BoardAudit(reason="Сохранено расположение элементов схемы и точек подключения потоков",
+    layout_changes += [
+        {"action": "update_note", "id": key,
+         "before": {note["id"]: note for note in previous_notes}.get(key),
+         "after": {note["id"]: note for note in notes}.get(key)}
+        for key in sorted({note["id"] for note in previous_notes} | {note["id"] for note in notes})
+        if {note["id"]: note for note in previous_notes}.get(key) != {note["id"]: note for note in notes}.get(key)
+    ]
+    db.add(BoardAudit(reason="Сохранено оформление схемы, точки подключения и заметки",
                       actor=board_actor(request), changes=layout_changes))
     db.commit()
-    return {"system_id": str(system_id), "positions": positions, "flow_anchors": anchors}
+    return {"system_id": str(system_id), "positions": positions, "flow_anchors": anchors, "notes": notes}
 
 
 class BoardBatch(BaseModel):

@@ -79,6 +79,9 @@ def test_contract_and_two_licenses_survive_updates_without_changing_object_ident
         assert updated.json()["quantity"]==1500
         blocked=client.delete(url+"/contracts/"+contract_id,headers=ADMIN)
         assert blocked.status_code==409,blocked.text
+        # Never cascade-delete financial/licensing metadata with the IS.
+        protected=client.delete("/api/objects/"+system,headers=ADMIN)
+        assert protected.status_code==409,protected.text
         for lic in licenses:
             assert client.delete(url+"/licenses/"+lic["id"],headers=ADMIN).status_code==204
         assert client.delete(url+"/contracts/"+contract_id,headers=ADMIN).status_code==204

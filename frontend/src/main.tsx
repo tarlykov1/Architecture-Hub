@@ -1570,7 +1570,7 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
       </div>
     </div>}
     {editorOpen&&<div className="editorBackdrop" onClick={()=>setEditorOpen(false)}>
-      <div className="editorDialog" onClick={e=>e.stopPropagation()}>
+      <div className="editorDialog" role="dialog" aria-modal="true" aria-label="Создание компонента и потока" onClick={e=>e.stopPropagation()}>
         <div className="dialogHead"><h2>Добавление объектов и потоков</h2><button onClick={()=>setEditorOpen(false)}>Закрыть ×</button></div>
         <p className="hint">Для компонента укажите родительскую информационную систему. Потоки связывают уже созданные компоненты.</p>
         <h3>Новый компонент</h3>

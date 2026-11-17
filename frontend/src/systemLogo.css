@@ -1,0 +1,14 @@
+.systemLogo{display:inline-flex;align-items:center;justify-content:center;vertical-align:middle;flex:0 0 auto;width:34px;height:34px;padding:3px;box-sizing:border-box;background:#fff;border:1px solid #d9e2ee;border-radius:8px;overflow:hidden}
+.systemLogo img{display:block;width:100%;height:100%;max-width:100%;max-height:100%;object-fit:contain}
+.systemLogoFallback{font-size:22px;line-height:1;color:#426991;font-weight:700}
+.systemLogo--small{width:24px;height:24px;padding:2px;border-radius:5px;margin-right:5px}
+.systemLogo--small .systemLogoFallback{font-size:16px}
+.systemLogo--large{width:72px;height:72px;padding:6px;border-radius:14px}
+.systemLogo--large .systemLogoFallback{font-size:36px}
+.systemLogoPreview{display:flex;align-items:center;gap:14px;padding:11px 0;min-height:70px}
+.systemLogoUpload{display:grid;gap:7px}
+.systemLogoUpload input[type=file]{max-width:100%;font-size:12px}
+.systemLogoUpload .logoHint{font-size:12px;color:#64748b}
+.systemLogoUpload button{justify-self:start}
+.systemNameWithLogo{display:inline-flex;align-items:center;gap:9px;vertical-align:middle}
+.systemPassportLogo{display:flex;align-items:center;gap:12px}

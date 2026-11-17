@@ -1043,10 +1043,12 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
    if(kind==='vm')return [
      ...items.filter(item=>item.parent_id===id).map(item=>'Дочерний компонент: '+item.name),
      ...flows.filter(flow=>flow.source_id===id||flow.target_id===id).map(flow=>'Связанный поток: '+flow.name),
+     ...changes.filter(change=>(change.action==='create_flow'||change.action==='update_flow')&&(change.source_id===id||change.target_id===id)).map(change=>'Поток в черновике: '+(change.name||change.id||'')),
      ...interfaces.filter(nic=>nic.item_id===id).map(nic=>'Интерфейс: '+nic.name)]
    if(kind==='network')return [
      ...interfaces.filter(nic=>nic.zone_id===id||nic.vlan_id===id||nic.vrf_id===id)
        .map(nic=>'Интерфейс '+nic.name+' · '+(allVMs.find(vm=>vm.id===nic.item_id)?.name||nic.item_id)),
+     ...changes.filter(change=>change.action==='create_interface'&&change.network_id===id).map(change=>'Интерфейс в черновике: '+(change.interface_name||'')),
      ...Object.entries(parents).filter(([,parent])=>parent==='network:'+id)
        .map(([child])=>'Вложенный объект: '+(child.startsWith('network:')?allNetworks.find(net=>net.id===child.slice(8))?.name:allVMs.find(vm=>vm.id===child)?.name||child))]
    return []
@@ -1058,16 +1060,20 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
      setLayoutDirty(true);setContextMenu(null);setLayoutMessage('Заметка удалена. Для записи нажмите «Сохранить».');return
    }
    if(kind==='flow'&&changes.some(change=>change.action==='create_flow'&&change.id===id)){
-     setChanges(previous=>previous.filter(change=>change.id!==id))
+     setChanges(previous=>previous.filter(change=>change.id!==id));setPreview(null)
      setFlowAnchors(previous=>{const next={...previous};delete next[id];return next})
      setSelectedDraftFlowId('');setSelectedEdgeFlowIds([]);setContextMenu(null);return
    }
    if(kind==='vm'&&changes.some(change=>change.action==='create_vm'&&change.id===id)){
-     setChanges(previous=>previous.filter(change=>change.id!==id))
+     const pending=blockersFor(kind,id)
+     if(pending.length){setError('Сначала удалите связи черновика: '+pending.join('; '));return}
+     setChanges(previous=>previous.filter(change=>change.id!==id));setPreview(null)
      setNodes(previous=>previous.filter(node=>node.id!==id));setContextMenu(null);return
    }
    if(kind==='network'&&changes.some(change=>change.action==='create_network'&&change.id===id)){
-     setChanges(previous=>previous.filter(change=>change.id!==id))
+     const pending=blockersFor(kind,id)
+     if(pending.length){setError('Сначала удалите привязки и вложенные объекты черновика: '+pending.join('; '));return}
+     setChanges(previous=>previous.filter(change=>change.id!==id));setPreview(null)
      setRectangles(previous=>previous.filter(rect=>rect.id!==id));setContextMenu(null);return
    }
    if(demoMode){setError('Для удаления войдите в систему.');return}
@@ -1345,7 +1351,10 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
        {contextMenu.kind==='flow'&&contextMenu.flowIds&&contextMenu.flowIds.length>1?<><strong>Выберите поток ({contextMenu.flowIds.length})</strong>{contextMenu.flowIds.map(id=><button role="menuitem" type="button" key={id} onClick={()=>{selectFlowInDock(id);setContextMenu({...contextMenu,id,flowIds:[id]})}}>{effectiveFlows.find(flow=>flow.id===id)?.name||id.slice(0,8)}</button>)}</>:<>
        <button type="button" role="menuitem" onClick={()=>{if(contextMenu.kind==='flow')selectFlowInDock(contextMenu.id);else if(contextMenu.kind==='vm')openPassport(contextMenu.id);else if(contextMenu.kind==='note')setSelectedNoteId(contextMenu.id);else setInspectedNetworkId(contextMenu.id);setTool(contextMenu.kind==='flow'?'flow':'move');setContextMenu(null)}}>{contextMenu.kind==='note'?'Редактировать заметку':'Открыть свойства'}</button>
        <button type="button" role="menuitem" disabled={deleteBusy||Boolean(blockersFor(contextMenu.kind,contextMenu.id).length)} onClick={()=>void deleteCanvasObject(contextMenu.kind,contextMenu.id)}>Удалить</button>
-       {blockersFor(contextMenu.kind,contextMenu.id).length>0&&<div role="status" className="boardContextBlockers"><strong>Удалению препятствуют:</strong>{blockersFor(contextMenu.kind,contextMenu.id).map(value=><div key={value}>{value}</div>)}</div>}
+       {blockersFor(contextMenu.kind,contextMenu.id).length>0&&<div role="status" className="boardContextBlockers"><strong>Удалению препятствуют:</strong>{blockersFor(contextMenu.kind,contextMenu.id).map(value=><div key={value}>{value}</div>)}
+       {contextMenu.kind==='network'&&interfaces.filter(nic=>nic.zone_id===contextMenu.id||nic.vlan_id===contextMenu.id||nic.vrf_id===contextMenu.id).map(nic=><button type="button" key={nic.id} onClick={()=>{openPassport(nic.item_id);setTool('move');setContextMenu(null)}}>Открыть {allVMs.find(vm=>vm.id===nic.item_id)?.name||nic.item_id} · {nic.name}</button>)}
+       {contextMenu.kind==='vm'&&flows.filter(flow=>flow.source_id===contextMenu.id||flow.target_id===contextMenu.id).map(flow=><button type="button" key={flow.id} onClick={()=>{selectFlowInDock(flow.id);setContextMenu(null)}}>Открыть поток: {flow.name}</button>)}
+       </div>}
        </>}
        </>}
        <button type="button" onClick={()=>setContextMenu(null)}>Закрыть меню</button>

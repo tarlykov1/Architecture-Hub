@@ -671,7 +671,16 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
  const addVM=(point?:{x:number;y:number})=>{
    if(!name.trim())return setError('Введите имя новой ВМ.')
    const id=makeId()
-   const node:Node={id,type:'boardComponent',position:point||{x:90+(nodes.length%4)*280,y:100+Math.floor(nodes.length/4)*175},sourcePosition:Position.Bottom,targetPosition:Position.Top,data:{label:<DiagramNodeLabel name={name.trim()} kind="vm" subtitle={ownerName} detail="ВМ · Черновик"/>,flowMode:tool==='flow'},style:diagramCardStyle({border:'1px dashed #2674bf'})}
+   // Place successive additions into free grid slots rather than over existing cards.
+   const occupied=nodes.filter(existing=>!existing.id.startsWith('network:'))
+   const defaultPosition=(()=>{
+     for(let index=0;index<Math.max(24,occupied.length+24);index++){
+       const candidate={x:90+(index%4)*280,y:100+Math.floor(index/4)*175}
+       if(occupied.every(existing=>Math.abs(existing.position.x-candidate.x)>=220||Math.abs(existing.position.y-candidate.y)>=120))return candidate
+     }
+     return {x:90,y:100+Math.ceil(occupied.length/4)*175}
+   })()
+   const node:Node={id,type:'boardComponent',position:point||defaultPosition,sourcePosition:Position.Bottom,targetPosition:Position.Top,data:{label:<DiagramNodeLabel name={name.trim()} kind="vm" subtitle={ownerName} detail="ВМ · Черновик"/>,flowMode:tool==='flow'},style:diagramCardStyle({border:'1px dashed #2674bf'})}
    addChange({action:'create_vm',id,system_id:systemId,name:name.trim(),kind:'vm'})
    setNodes(previous=>[...previous,node])
    onPositionChange?.(node)
@@ -1095,7 +1104,7 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
    if(!from||to||from===node.id){setFrom(node.id);setTo('');setSelectedDraftFlowId('');setLayoutMessage('Источник выбран. Нажмите на целевой компонент или протяните стрелку от порта.')}
    else stageDirectedFlow(from,node.id)
  }else if(tool==='move'){openPassport(node.id);setFocusDependencies(false)}
-}} onNodeDragStart={(_,node)=>{setDraggingNode(true);startVisualGroupDrag(node)}} onNodeDrag={(_,node)=>updateVisualGroupDrag(node)} onNodeDragStop={(_,node)=>{finishVisualDrop(node);moveNode(node);setDraggingNode(false)} } onPaneClick={handlePaneClick} minZoom={0.08} fitViewOptions={{padding:0.2,maxZoom:0.9}}><AutoFit layoutKey={systemId+':'+items.length+':'+flows.length} maxFitZoom={0.9} focusIds={selectedFlowEndpoints} suspended={drawingConnection||draggingNode||(!selectedFlowEndpoints.length&&(tool!=='move'||canvasInteracted))} settleDelayMs={0}/><Background gap={20}/><Controls showInteractive={false}/></ReactFlow>
+}} onNodeDragStart={(_,node)=>{setDraggingNode(true);startVisualGroupDrag(node)}} onNodeDrag={(_,node)=>updateVisualGroupDrag(node)} onNodeDragStop={(_,node)=>{finishVisualDrop(node);moveNode(node);setDraggingNode(false)} } onPaneClick={handlePaneClick} minZoom={0.08} fitViewOptions={{padding:0.2,maxZoom:nodes.length<=2?0.75:0.9}}><AutoFit layoutKey={systemId+':'+items.length+':'+flows.length} maxFitZoom={nodes.length<=2?0.75:0.9} focusIds={selectedFlowEndpoints} suspended={drawingConnection||draggingNode||(!selectedFlowEndpoints.length&&(tool!=='move'||canvasInteracted))} settleDelayMs={0}/><Background gap={20}/><Controls showInteractive={false}/></ReactFlow>
      {flowGhost&&<svg className="boardFlowGesturePreview" aria-hidden="true" width="100%" height="100%">
        <defs><marker id="board-flow-ghost-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill="#176bc1"/></marker></defs>
        <line x1={flowGhost.start.x} y1={flowGhost.start.y} x2={flowGhost.end.x} y2={flowGhost.end.y} stroke="#176bc1" strokeWidth="2.5" strokeDasharray="6 3" markerEnd="url(#board-flow-ghost-arrow)"/>
@@ -1119,7 +1128,7 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
           <Icon size={19} strokeWidth={1.8} aria-hidden="true"/><span className="boardToolCaption" aria-hidden="true">{caption}</span>
         </button>)}
      <span className="boardToolsSeparator" aria-hidden="true"/>
-     <button type="button" title="Вписать всю схему в экран" aria-label="Показать всё" disabled={!nodes.length} onClick={()=>void fitView({padding:0.25,duration:250,maxZoom:0.9})}><Maximize2 size={19} aria-hidden="true"/><span className="boardToolCaption" aria-hidden="true">Вписать</span></button>
+     <button type="button" title="Вписать всю схему в экран" aria-label="Показать всё" disabled={!nodes.length} onClick={()=>void fitView({padding:0.25,duration:250,maxZoom:nodes.length<=2?0.75:0.9})}><Maximize2 size={19} aria-hidden="true"/><span className="boardToolCaption" aria-hidden="true">Вписать</span></button>
      <button type="button" title={changes.length?'Сохранить новые ВМ, VRF/VLAN и связи через проверку черновика':layoutDirty?'Сохранить расположение блоков':'Расположение сохранено'} aria-label={changes.length?'Сохранить изменения схемы':'Сохранить расположение'} disabled={(!layoutDirty&&!changes.length)||layoutBusy||busy} onClick={()=>void saveLayout()}><Save size={19} aria-hidden="true"/><span className="boardToolCaption" aria-hidden="true">{changes.length?'Сохранить всё':'Сохранить'}</span>{(layoutDirty||changes.length>0)&&<span className="boardUnsavedDot" aria-hidden="true"/>}</button>
      <button type="button" title="История изменений" aria-label="История изменений" onClick={()=>void openHistory()}><History size={19} aria-hidden="true"/><span className="boardToolCaption" aria-hidden="true">История</span></button>
      <button type="button" className="boardChangeCount" title="Проверить и сохранить изменения в реестре" aria-label={'Черновик: '+changes.length+' изменений'} disabled={!changes.length} onClick={()=>{setReviewOpen(true);setTool('move');setInspectedId(null)}}>

@@ -1428,33 +1428,38 @@ def list_system_contracts(system_id: UUID, db: Session = Depends(db_session)):
 
 
 @app.post("/api/systems/{system_id}/contracts", response_model=ContractOutput, status_code=201)
-def create_system_contract(system_id: UUID, payload: ContractInput, db: Session = Depends(db_session)):
+def create_system_contract(system_id: UUID, payload: ContractInput, request: Request, db: Session = Depends(db_session)):
     _contract_system(db, system_id)
     row = SystemContract(system_id=system_id, **payload.model_dump())
-    db.add(row); db.commit(); db.refresh(row)
+    db.add(row); db.flush()
+    audit_direct_edit(db, request, 'create_contract', row.id, None, payload.model_dump(), 'Создан договор ИС '+row.title)
+    db.commit(); db.refresh(row)
     return row
 
 
 @app.put("/api/systems/{system_id}/contracts/{contract_id}", response_model=ContractOutput)
-def edit_system_contract(system_id: UUID, contract_id: UUID, payload: ContractInput, db: Session = Depends(db_session)):
+def edit_system_contract(system_id: UUID, contract_id: UUID, payload: ContractInput, request: Request, db: Session = Depends(db_session)):
     _contract_system(db, system_id)
     row = db.get(SystemContract, contract_id)
     if not row or row.system_id != system_id:
         raise HTTPException(404, "Contract not found in this information system")
+    before = ContractOutput.model_validate(row).model_dump(mode='json')
     for field, value in payload.model_dump().items():
         setattr(row, field, value)
+    audit_direct_edit(db, request, 'update_contract', row.id, before, payload.model_dump(), 'Изменён договор ИС '+row.title)
     db.commit(); db.refresh(row)
     return row
 
 
 @app.delete("/api/systems/{system_id}/contracts/{contract_id}", status_code=204)
-def remove_system_contract(system_id: UUID, contract_id: UUID, db: Session = Depends(db_session)):
+def remove_system_contract(system_id: UUID, contract_id: UUID, request: Request, db: Session = Depends(db_session)):
     _contract_system(db, system_id)
     row = db.get(SystemContract, contract_id)
     if not row or row.system_id != system_id:
         raise HTTPException(404, "Contract not found in this information system")
     if db.scalar(select(SystemLicense.id).where(SystemLicense.contract_id == contract_id)):
         raise HTTPException(409, "Unlink associated licenses before removing the contract")
+    audit_direct_edit(db, request, 'delete_contract', row.id, ContractOutput.model_validate(row).model_dump(mode='json'), None, 'Удалён договор ИС '+row.title)
     db.delete(row); db.commit()
 
 
@@ -1465,33 +1470,38 @@ def list_system_licenses(system_id: UUID, db: Session = Depends(db_session)):
 
 
 @app.post("/api/systems/{system_id}/licenses", response_model=LicenseOutput, status_code=201)
-def create_system_license(system_id: UUID, payload: LicenseInput, db: Session = Depends(db_session)):
+def create_system_license(system_id: UUID, payload: LicenseInput, request: Request, db: Session = Depends(db_session)):
     _contract_system(db, system_id)
     _license_contract(db, system_id, payload.contract_id)
     row = SystemLicense(system_id=system_id, **payload.model_dump())
-    db.add(row); db.commit(); db.refresh(row)
+    db.add(row); db.flush()
+    audit_direct_edit(db, request, 'create_license', row.id, None, payload.model_dump(), 'Создана лицензия '+row.product)
+    db.commit(); db.refresh(row)
     return row
 
 
 @app.put("/api/systems/{system_id}/licenses/{license_id}", response_model=LicenseOutput)
-def edit_system_license(system_id: UUID, license_id: UUID, payload: LicenseInput, db: Session = Depends(db_session)):
+def edit_system_license(system_id: UUID, license_id: UUID, payload: LicenseInput, request: Request, db: Session = Depends(db_session)):
     _contract_system(db, system_id)
     row = db.get(SystemLicense, license_id)
     if not row or row.system_id != system_id:
         raise HTTPException(404, "License not found in this information system")
     _license_contract(db, system_id, payload.contract_id)
+    before = LicenseOutput.model_validate(row).model_dump(mode='json')
     for field, value in payload.model_dump().items():
         setattr(row, field, value)
+    audit_direct_edit(db, request, 'update_license', row.id, before, payload.model_dump(), 'Изменена лицензия '+row.product)
     db.commit(); db.refresh(row)
     return row
 
 
 @app.delete("/api/systems/{system_id}/licenses/{license_id}", status_code=204)
-def remove_system_license(system_id: UUID, license_id: UUID, db: Session = Depends(db_session)):
+def remove_system_license(system_id: UUID, license_id: UUID, request: Request, db: Session = Depends(db_session)):
     _contract_system(db, system_id)
     row = db.get(SystemLicense, license_id)
     if not row or row.system_id != system_id:
         raise HTTPException(404, "License not found in this information system")
+    audit_direct_edit(db, request, 'delete_license', row.id, LicenseOutput.model_validate(row).model_dump(mode='json'), None, 'Удалена лицензия '+row.product)
     db.delete(row); db.commit()
 
 

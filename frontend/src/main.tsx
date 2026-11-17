@@ -388,6 +388,7 @@ function App() {
   const [flowSchedule,setFlowSchedule] = useState('')
   const [registryBusy,setRegistryBusy] = useState(false)
   const [registryError,setRegistryError] = useState('')
+  const [networkDeleteBlockers,setNetworkDeleteBlockers] = useState<string[]>([])
   const editNetwork = (n?: Segment) => {
     setPassportEditId('');setComponentInspectId('');setCreateObjectOpen(false);setKisOpen(false)
     setNetworkEditId(n?.id || '');setNetworkName(n?.name || '');setNetworkKind(n?.kind || 'zone')
@@ -484,7 +485,7 @@ function App() {
     if(!id||!registryOpen)return
     const label=isFlow?'поток данных':'сетевой сегмент'
     if(!window.confirm('Удалить '+label+'? Это действие нельзя отменить.'))return
-    setRegistryBusy(true);setRegistryError('')
+    setRegistryBusy(true);setRegistryError('');setNetworkDeleteBlockers([])
     try{
       await request((isFlow?'/api/flows/':'/api/networks/')+id,{method:'DELETE'})
       if(isFlow){
@@ -495,7 +496,11 @@ function App() {
         if(networkDetailId===id)setNetworkDetailId('')
       }
       setRegistryOpen(null);setNotice((isFlow?'Поток':'Сетевой сегмент')+' удалён')
-    }catch(e){setRegistryError('Не удалось удалить: '+String(e))}
+    }catch(e){
+      const blockers=!isFlow?nics.filter(n=>n.zone_id===id||n.vlan_id===id||n.vrf_id===id):[]
+      if(blockers.length){setNetworkDeleteBlockers(blockers.map(n=>n.id));setRegistryError('Удаление сети запрещено: к ней привязаны сетевые интерфейсы. Откройте компоненты ниже и измените привязку интерфейсов перед повторной попыткой.')}
+      else setRegistryError('Не удалось удалить: '+String(e))
+    }
     finally{setRegistryBusy(false)}
   }
   const [savedViews,setSavedViews]=useState<SavedWorkspaceView[]>(readSavedWorkspaceViews)
@@ -1569,6 +1574,7 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
             <label>Достоверность<select value={flowVerification} onChange={e=>setFlowVerification(e.target.value)}><option value="draft">Черновик</option><option value="assumed">Предположение</option><option value="verified">Подтверждено</option></select></label>
           </>}
           {registryError&&<p role="alert" className="kisError">{registryError}</p>}
+          {networkDeleteBlockers.length>0&&<div role="region" aria-label="Интерфейсы, препятствующие удалению"><strong>Привязанные интерфейсы</strong>{nics.filter(n=>networkDeleteBlockers.includes(n.id)).map(n=>{const component=infra.find(i=>i.id===n.item_id);return <div key={n.id}><button type="button" onClick={()=>{if(!component)return;setRegistryOpen(null);setViewSystem(component.system_id);setComponentView('registry');setLayer('infrastructure');setComponentInspectId(component.id);setComponentInspectTab('network')}}>{component?.name||'Компонент'} · {n.name} – открыть компонент</button></div>})}</div>}
           {!accessToken&&<p className="hint demoWriteNotice" role="status">Демонстрационный режим – изменения нельзя сохранить. Для сохранения войдите по паролю и откройте форму повторно.</p>}
           <div className="registryFormActions">
             <button className="primary" disabled={registryBusy||!accessToken}>{registryBusy?'Сохранение…':'Сохранить'}</button>

@@ -134,6 +134,7 @@ export function ObstacleAwareEdge({id,source,target,sourceX,sourceY,targetX,targ
  },[nodes,source,target,sourceX,sourceY,targetX,targetY,sourcePosition,targetPosition,data?.reciprocal])
  const caption=typeof data?.caption==='string'?data.caption:''
  const onSelect=data?.onSelect as undefined|(()=>void)
+ const onContextMenu=data?.onContextMenu as undefined|((event:React.MouseEvent)=>void)
  const endpointEditor=data?.endpointEditor as undefined|{
    onBegin:(end:'source'|'target',event:React.PointerEvent<HTMLButtonElement>)=>void
    onMove:(event:React.PointerEvent<HTMLButtonElement>)=>void
@@ -152,7 +153,7 @@ export function ObstacleAwareEdge({id,source,target,sourceX,sourceY,targetX,targ
  return <>
    <BaseEdge id={id} path={path} markerEnd={markerEnd} style={style} interactionWidth={18}/>
    {(caption||endpointEditor)&&<EdgeLabelRenderer>
-     {caption&&(onSelect?<button type="button" className="reciprocalEdgeLabel boardSelectableEdgeLabel nodrag nopan" aria-label={'Выбрать поток '+caption} onClick={event=>{event.preventDefault();event.stopPropagation();onSelect()}} style={{position:'absolute',transform:`translate(-50%,-50%) translate(${label.x}px,${label.y-26}px)`,pointerEvents:'auto',opacity:style?.opacity??1}}>{caption}</button>:<div className="reciprocalEdgeLabel" style={{position:'absolute',transform:`translate(-50%,-50%) translate(${label.x}px,${label.y}px)`,pointerEvents:'none',opacity:style?.opacity??1}}>{caption}</div>)}
+     {caption&&(onSelect?<button type="button" className="reciprocalEdgeLabel boardSelectableEdgeLabel nodrag nopan" aria-label={'Выбрать поток '+caption} onContextMenu={event=>{event.preventDefault();event.stopPropagation();onContextMenu?.(event)}} onClick={event=>{event.preventDefault();event.stopPropagation();onSelect()}} style={{position:'absolute',transform:`translate(-50%,-50%) translate(${label.x}px,${label.y-26}px)`,pointerEvents:'auto',opacity:style?.opacity??1}}>{caption}</button>:<div className="reciprocalEdgeLabel" style={{position:'absolute',transform:`translate(-50%,-50%) translate(${label.x}px,${label.y}px)`,pointerEvents:'none',opacity:style?.opacity??1}}>{caption}</div>)}
      {endpointEditor&&grip('source',sourceX,sourceY)}
      {endpointEditor&&grip('target',targetX,targetY)}
    </EdgeLabelRenderer>}

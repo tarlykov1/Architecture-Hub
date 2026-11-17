@@ -1049,3 +1049,15 @@ button:disabled{cursor:not-allowed;opacity:.55}
 .homeLayerRefresh:hover{background:#e8f1ff}
 .homeLayerRefresh:focus-visible{outline:2px solid #2563eb;outline-offset:2px}
 .homeLayerRefresh:disabled{opacity:.55;cursor:not-allowed}
+
+/* Keep the mobile section switcher usable when authenticated header actions
+   compete for the 390px row; the old flex:1 1 0 could shrink nav to zero. */
+@media(max-width:480px){
+ .globalHeader .globalBrand strong{display:none}
+ .globalHeader .globalBrandMark{display:inline-flex!important}
+ .globalHeader .globalBrand{flex:0 0 34px;max-width:34px}
+ .globalHeader .layerTabs{flex:1 1 auto;min-width:100px;overflow:visible!important}
+ .globalHeader .layerTabs>.mobileSectionMenu{min-width:94px}
+ .globalHeader .topActions .accountTopAction{display:none}
+ .globalHeader .topActions{flex:0 1 auto;min-width:0}
+}

@@ -4,7 +4,7 @@ import {useNodes,useNodesInitialized,useReactFlow} from '@xyflow/react'
 /** Refit measured graphs on membership/layout changes and actual canvas resize. */
 export function AutoFit({layoutKey='',maxFitZoom=1,groupParentsOnly=false,focusIds=[],suspended=false,settleDelayMs=300,ignoreNodePrefixes=''}:{layoutKey?:string;maxFitZoom?:number;groupParentsOnly?:boolean;focusIds?:string[];suspended?:boolean;settleDelayMs?:number;ignoreNodePrefixes?:string}){
  const anchor=useRef<HTMLSpanElement>(null)
- const {fitView}=useReactFlow()
+ const {fitView,setCenter}=useReactFlow()
  const initialized=useNodesInitialized()
  const graphNodes=useNodes()
  const ignored=ignoreNodePrefixes.split(',').filter(Boolean)
@@ -26,7 +26,23 @@ export function AutoFit({layoutKey='',maxFitZoom=1,groupParentsOnly=false,focusI
   const fit=()=>{
    cancelAnimationFrame(frame);cancelAnimationFrame(inner)
    frame=requestAnimationFrame(()=>{
-    inner=requestAnimationFrame(()=>{void fitView({padding:visibleFocusIds?0.32:0.2,maxZoom:maxFitZoom,minZoom:0.02,duration:0,...(visibleFocusIds?{nodes:visibleFocusIds.split('|').filter(Boolean).map(id=>({id}))}:groupParentsOnly?{nodes:topLevelIds.split('|').filter(Boolean).map(id=>({id}))}:{})})})
+    inner=requestAnimationFrame(()=>{
+     const targetIds=visibleFocusIds.split('|').filter(Boolean)
+     // Fitting one selected IS with fitView can still leave it outside the
+     // viewport while the rest of the overview is being measured. Its
+     // intrinsic geometry is enough to center it deterministically.
+     if(targetIds.length===1){
+      const node=graphNodes.find(item=>item.id===targetIds[0])
+      const boxWidth=node?.measured?.width||node?.initialWidth||node?.width||Number(node?.style?.width)||0
+      const boxHeight=node?.measured?.height||node?.initialHeight||node?.height||Number(node?.style?.height)||0
+      if(node&&boxWidth>0&&boxHeight>0&&canvas.clientWidth>=100&&canvas.clientHeight>=100){
+       const zoom=Math.min(maxFitZoom,(canvas.clientWidth-64)/boxWidth,(canvas.clientHeight-64)/boxHeight)
+       void setCenter(node.position.x+boxWidth/2,node.position.y+boxHeight/2,{zoom:Math.max(0.02,zoom),duration:0})
+       return
+      }
+     }
+     void fitView({padding:visibleFocusIds?0.32:0.2,maxZoom:maxFitZoom,minZoom:0.02,duration:0,...(visibleFocusIds?{nodes:targetIds.map(id=>({id}))}:groupParentsOnly?{nodes:topLevelIds.split('|').filter(Boolean).map(id=>({id}))}:{})})
+    })
    })
   }
   const refit=()=>{
@@ -52,7 +68,7 @@ export function AutoFit({layoutKey='',maxFitZoom=1,groupParentsOnly=false,focusI
    window.clearTimeout(settle)
    cancelAnimationFrame(frame);cancelAnimationFrame(inner)
   }
- },[fitView,initialized,measuredFocusReady,ids,topLevelIds,visibleFocusIds,layoutKey,maxFitZoom,groupParentsOnly,suspended,settleDelayMs])
+ },[fitView,setCenter,initialized,measuredFocusReady,ids,topLevelIds,visibleFocusIds,layoutKey,maxFitZoom,groupParentsOnly,suspended,settleDelayMs])
  return <span ref={anchor} hidden/>
 }
 

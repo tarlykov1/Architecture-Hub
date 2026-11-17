@@ -618,6 +618,7 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
      data:{reciprocal:effectiveFlows.some(f=>f.source_id===first.target_id&&f.target_id===first.source_id),
        flowIds:list.map(f=>f.id),caption:list.length>1?flowCountLabel(list.length):protocolLabel||'Поток',
        onSelect:()=>selectCanvasEdge(first.source_id,first.target_id,list.map(f=>f.id)),
+       onContextMenu:(event:React.MouseEvent)=>openContextMenu(event,'flow',list.length===1?first.id:'',list.map(f=>f.id)),
        ...(selectedForReattach?{endpointEditor:{
          onBegin:(end:FlowEnd,event:React.PointerEvent<HTMLButtonElement>)=>beginReattach(selectedFlow.id,end,event),
          onMove:(event:React.PointerEvent<HTMLButtonElement>)=>moveReattach(event),

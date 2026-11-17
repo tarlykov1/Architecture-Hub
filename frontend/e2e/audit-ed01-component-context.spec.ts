@@ -19,7 +19,6 @@ test('QA-WORK ED-01: explicit IS context, cancel, switch and persisted component
  const navigation=page.getByRole('navigation',{name:'Разделы архитектуры'})
  await navigation.getByRole('button',{name:'Компоненты',exact:true}).click()
  await page.getByRole('combobox',{name:'Система компонентов'}).selectOption(first)
- await navigation.getByRole('button',{name:/Создать или импортировать/}).count().catch(()=>{})
  // The top-level create action is a details menu, not a second component editor.
  await navigation.getByText('Создать',{exact:true}).click()
  await navigation.getByRole('button',{name:'Компонент',exact:true}).click()

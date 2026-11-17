@@ -3,7 +3,7 @@ import {test,expect} from '@playwright/test'
 // The 20 navigation loops must pass on the first attempt, not via runner retry.
 test.describe.configure({retries:0})
 
-test('QA-WORK: #164 flow to overview focus remains visible in 20 transitions without retries',async({page})=>{
+for(let batch=0;batch<4;batch++)test('QA-WORK: #164 focus transitions '+(batch*5+1)+'–'+(batch*5+5)+' of 20, no retry',async({page})=>{
  await page.addInitScript(()=>{
   sessionStorage.setItem('architecture-hub:access-token:session','browser-ci-development-token')
  })
@@ -20,7 +20,7 @@ test('QA-WORK: #164 flow to overview focus remains visible in 20 transitions wit
  await create('/api/flows',{source_id:source,target_id:target,name:'QA-WORK-Repeated focus '+suffix})
  const errors:string[]=[]
  page.on('pageerror',error=>errors.push(error.message))
- for(let iteration=1;iteration<=20;iteration++){
+ for(let iteration=batch*5+1;iteration<=batch*5+5;iteration++){
   await page.goto('/')
   await page.getByRole('navigation',{name:'Разделы архитектуры'}).getByRole('button',{name:'Потоки',exact:true}).click()
   await page.getByRole('combobox',{name:'Система потоков'}).selectOption(system)

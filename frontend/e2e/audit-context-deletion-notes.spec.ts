@@ -11,7 +11,9 @@ async function editorFor(page:import('@playwright/test').Page,system:string){
  await page.addInitScript(()=>sessionStorage.setItem('architecture-hub:access-token:session','browser-ci-development-token'))
  await page.goto('/flows?system='+system)
  await page.getByRole('button',{name:'Редактор потоков',exact:true}).click()
- return page.getByRole('region',{name:'Редактор архитектурной схемы'})
+ const editor=page.getByRole('region',{name:'Редактор архитектурной схемы'})
+ await expect(editor).toHaveAttribute('aria-busy','false')
+ return editor
 }
 
 test('QA-WORK: sticky note is editor-only, persists and can be deleted through right-click',async({page})=>{

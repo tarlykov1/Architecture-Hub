@@ -26,6 +26,14 @@ def test_business_process_create_link_edit_reload_without_legacy_object_duplicat
             "process_id":pid,"system_id":system.json()["id"],"role":"supporting"
         })
         assert link.status_code==201,link.text
+        non_system=client.post("/api/objects",headers=ADMIN,json={
+            "kind":"process","name":"QA-WORK-ED02-legacy-"+suffix
+        })
+        assert non_system.status_code==201,non_system.text
+        invalid_link=client.post("/api/business/system-links",headers=ADMIN,json={
+            "process_id":pid,"system_id":non_system.json()["id"],"role":"supporting"
+        })
+        assert invalid_link.status_code==422
         updated=client.put("/api/business/processes/"+pid,headers=ADMIN,json={
             **payload,"name":"QA-WORK-ED02-edited-"+suffix,"description":"Changed"
         })

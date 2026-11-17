@@ -12,7 +12,7 @@ import {ReciprocalEdge} from './ReciprocalEdge'
 import {ObstacleAwareEdge} from './ObstacleAwareEdge'
 import {FlowPortHandles, autoFlowPorts, closestVisiblePort, type FlowPortPair, type FlowEnd} from './flowPorts'
 
-type VM = {id:string;system_id:string;kind:string;name:string;description?:string;details:Record<string,unknown>}
+type VM = {id:string;system_id:string;parent_id?:string|null;kind:string;name:string;description?:string;details:Record<string,unknown>}
 type Network = {id:string;name:string;kind:string}
 type NIC = {id:string;item_id:string;name:string;zone_id:string|null;vlan_id:string|null;vrf_id:string|null}
 type Flow = {id:string;source_id:string;target_id:string;name:string;protocol:string;port:string;security:string;data_description:string;schedule:string;verification:string}
@@ -1034,7 +1034,7 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
    }catch(e){setPreview(null);setError('Сохранение отклонено: '+String(e)+'. Обновите предварительный просмотр.')}
    finally{setBusy(false)}
  }
- const openContextMenu=(event:React.MouseEvent,kind:'vm'|'network'|'flow'|'note'|'pane',id:string,flowIds?:string[])=>{
+ const openContextMenu=(event:React.MouseEvent|MouseEvent,kind:'vm'|'network'|'flow'|'note'|'pane',id:string,flowIds?:string[])=>{
    event.preventDefault();event.stopPropagation()
    setContextMenu({kind,id,flowIds,x:Math.max(8,Math.min(event.clientX,window.innerWidth-260)),y:Math.max(8,Math.min(event.clientY,window.innerHeight-300))})
  }

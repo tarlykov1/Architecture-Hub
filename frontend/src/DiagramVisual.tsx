@@ -1,4 +1,5 @@
 import type {CSSProperties,ReactNode} from 'react'
+import {SystemLogo} from './SystemLogo'
 
 /**
  * The overview is the visual reference for all Architecture Hub diagrams.
@@ -25,11 +26,11 @@ export const diagramCardStyle = (overrides:CSSProperties={}):CSSProperties=>({
   ...overrides,
 })
 
-export function DiagramNodeLabel({name,kind,subtitle,detail,children}:{
-  name:string;kind:string;subtitle?:string;detail?:string;children?:ReactNode
+export function DiagramNodeLabel({name,kind,subtitle,detail,logo,children}:{
+  name:string;kind:string;subtitle?:string;detail?:string;logo?:string;children?:ReactNode
 }){
   return <div className="homeNode architectureGraphNode">
-    <strong><span className="architectureGraphIcon" aria-hidden="true">{architectureIcon(kind)}</span> {name}</strong>
+    <strong><span className="architectureGraphIcon" aria-hidden="true">{kind==='system'?<SystemLogo logo={logo} size="small"/>:architectureIcon(kind)}</span> {name}</strong>
     {subtitle&&<small>{subtitle}</small>}
     {detail&&<small className="architectureGraphDetail">{detail}</small>}
     {children}

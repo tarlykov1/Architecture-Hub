@@ -1140,7 +1140,7 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
       style:{stroke:focusActive&&highlighted?'#166cc2':pairFlows.some(f=>f.security==='unknown')?'#d58c40':'#369279',
         strokeWidth:focusActive&&highlighted?2:1.8,opacity:focusActive&&!highlighted?0.2:1},
       labelStyle:{fontSize:11,fontWeight:600},labelBgStyle:{fill:'#ffffff',fillOpacity:0.95},
-      labelBgPadding:[7,4],markerEnd:{type:MarkerType.ArrowClosed,width:13,height:13}}
+      labelBgPadding:[7,4],markerEnd:{type:MarkerType.ArrowClosed,width:13,height:13,color:focusActive&&highlighted?'#166cc2':pairFlows.some(f=>f.security==='unknown')?'#d58c40':'#369279'}}
   })
 
   const groupedDrillPositions=groupedComponents?dependencyLayout(groupedComponents.nodes.map(n=>n.id),groupedComponents.edges,285,175):{}

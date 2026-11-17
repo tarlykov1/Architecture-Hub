@@ -1034,6 +1034,61 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
    }catch(e){setPreview(null);setError('Сохранение отклонено: '+String(e)+'. Обновите предварительный просмотр.')}
    finally{setBusy(false)}
  }
+ const openContextMenu=(event:React.MouseEvent,kind:'vm'|'network'|'flow'|'note'|'pane',id:string,flowIds?:string[])=>{
+   event.preventDefault();event.stopPropagation()
+   setContextMenu({kind,id,flowIds,x:Math.max(8,Math.min(event.clientX,window.innerWidth-260)),y:Math.max(8,Math.min(event.clientY,window.innerHeight-300))})
+ }
+ const blockersFor=(kind:'vm'|'network'|'flow'|'note'|'pane',id:string):string[]=>{
+   if(kind==='vm')return [
+     ...items.filter(item=>item.parent_id===id).map(item=>'Дочерний компонент: '+item.name),
+     ...flows.filter(flow=>flow.source_id===id||flow.target_id===id).map(flow=>'Связанный поток: '+flow.name),
+     ...interfaces.filter(nic=>nic.item_id===id).map(nic=>'Интерфейс: '+nic.name)]
+   if(kind==='network')return [
+     ...interfaces.filter(nic=>nic.zone_id===id||nic.vlan_id===id||nic.vrf_id===id)
+       .map(nic=>'Интерфейс '+nic.name+' · '+(allVMs.find(vm=>vm.id===nic.item_id)?.name||nic.item_id)),
+     ...Object.entries(parents).filter(([,parent])=>parent==='network:'+id)
+       .map(([child])=>'Вложенный объект: '+(child.startsWith('network:')?allNetworks.find(net=>net.id===child.slice(8))?.name:allVMs.find(vm=>vm.id===child)?.name||child))]
+   return []
+ }
+ const deleteCanvasObject=async(kind:'vm'|'network'|'flow'|'note'|'pane',id:string)=>{
+   if(kind==='pane')return
+   if(kind==='note'){
+     setNotes(previous=>previous.filter(note=>note.id!==id));setSelectedNoteId('')
+     setLayoutDirty(true);setContextMenu(null);setLayoutMessage('Заметка удалена. Для записи нажмите «Сохранить».');return
+   }
+   if(kind==='flow'&&changes.some(change=>change.action==='create_flow'&&change.id===id)){
+     setChanges(previous=>previous.filter(change=>change.id!==id))
+     setFlowAnchors(previous=>{const next={...previous};delete next[id];return next})
+     setSelectedDraftFlowId('');setSelectedEdgeFlowIds([]);setContextMenu(null);return
+   }
+   if(kind==='vm'&&changes.some(change=>change.action==='create_vm'&&change.id===id)){
+     setChanges(previous=>previous.filter(change=>change.id!==id))
+     setNodes(previous=>previous.filter(node=>node.id!==id));setContextMenu(null);return
+   }
+   if(kind==='network'&&changes.some(change=>change.action==='create_network'&&change.id===id)){
+     setChanges(previous=>previous.filter(change=>change.id!==id))
+     setRectangles(previous=>previous.filter(rect=>rect.id!==id));setContextMenu(null);return
+   }
+   if(demoMode){setError('Для удаления войдите в систему.');return}
+   if(changes.length||layoutDirty){setError('Перед удалением существующего объекта сохраните или отмените несохранённые изменения.');return}
+   const blockers=blockersFor(kind,id)
+   if(blockers.length){setError('Удаление заблокировано: '+blockers.join('; '));return}
+   const label=kind==='vm'?items.find(item=>item.id===id)?.name:kind==='network'?networks.find(net=>net.id===id)?.name:flows.find(flow=>flow.id===id)?.name
+   const warning=kind==='flow'?' Связанные атрибуты данных и участки маршрута также будут удалены.':''
+   if(!window.confirm('Удалить «'+(label||id)+'»?'+warning+' Это действие нельзя отменить.'))return
+   setDeleteBusy(true);setError('')
+   try{
+     await request((kind==='vm'?'/api/infra/':kind==='network'?'/api/networks/':'/api/flows/')+id,{method:'DELETE'})
+     setContextMenu(null);setSelectedExistingFlowId('');setSelectedDraftFlowId('');setSelectedEdgeFlowIds([])
+     setInspectedId(null);setInspectedNetworkId(null)
+     if(kind==='vm')setNodes(previous=>previous.filter(node=>node.id!==id))
+     if(kind==='network')setRectangles(previous=>previous.filter(rect=>rect.id!==id))
+     if(kind==='flow')setFlowAnchors(previous=>{const next={...previous};delete next[id];return next})
+     try{await onCommitted()}catch(error){setError('Удалено, но список не обновился: '+String(error));return}
+     setLayoutMessage('Удалён объект «'+(label||id)+'».')
+   }catch(error){setError('Удаление не выполнено: '+String(error)+'. Проверьте зависимости и технические маршруты.')}
+   finally{setDeleteBusy(false)}
+ }
  return <section className="boardWorkspace" aria-label="Редактор архитектурной схемы" aria-busy={!layoutReady}>
    <div className="boardEditorStage">
         <div ref={boardCanvasRef} className="boardCanvas" data-active-graph="infrastructure-editor"

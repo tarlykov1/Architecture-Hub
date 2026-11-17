@@ -155,7 +155,11 @@ export default function ArchitectureHome({systems,components,flows,processes,cat
  const [query,setQuery]=useState('')
  const [focus,setFocus]=useState('')
  const [selectedSystem,setSelectedSystem]=useState('')
- useEffect(()=>{if(focusSystemId)setSelectedSystem(focusSystemId)},[focusSystemId])
+ const validFocusSystemId=systems.some(system=>system.id===focusSystemId)?focusSystemId:''
+ useEffect(()=>{
+  if(validFocusSystemId)setSelectedSystem(validFocusSystemId)
+  else setSelectedSystem(previous=>previous&&systems.some(system=>system.id===previous)?previous:'')
+ },[validFocusSystemId,systems])
  const previousInspectorOpen=useRef(inspectorOpen)
  useEffect(()=>{
    if(previousInspectorOpen.current&&!inspectorOpen)setSelectedSystem('')
@@ -285,7 +289,7 @@ export default function ArchitectureHome({systems,components,flows,processes,cat
  </label>)}</div></details>
  </div>
  {activeOverlays.business&&selectedOverlayGroup&&<span className="homeLayerHint" role="status">Показана бизнес-область: {overlayGroups.find(group=>group.id===selectedOverlayGroup)?.name}. Для смены откройте список.</span>}
- <div className="homeMapTools"><input aria-label="Поиск на карте" value={query} onChange={e=>setQuery(e.target.value)} placeholder="Найти ИС или компонент…"/><Disclosure label="Фильтры и слои"><select aria-label="Контур карты" value={environment} onChange={e=>setEnvironment(e.target.value)}><option value="all">Все контуры</option>{environments.map(e=><option key={e} value={e}>{e}</option>)}</select><select aria-label="Фокус на ИС" value={focus} onChange={e=>setFocus(e.target.value)}><option value="">Все системы</option>{systems.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select>
+ <div className="homeMapTools"><input aria-label="Поиск на карте" value={query} onChange={e=>setQuery(e.target.value)} placeholder="Найти ИС или компонент…"/><Disclosure label="Фильтры и слои"><select aria-label="Контур карты" value={environment} onChange={e=>setEnvironment(e.target.value)}><option value="all">Все контуры</option>{environments.map(e=><option key={e} value={e}>{e}</option>)}</select><select aria-label="Фокус на ИС" value={focus} onChange={e=>{setFocus(e.target.value);if(!e.target.value){setSelectedSystem('');onCloseSystem()}}}><option value="">Все системы</option>{systems.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select>
   <details className="homeMapLayersDisclosure"><summary>Слои карты <span aria-hidden="true">▾</span></summary><div className="homeMapLayers" aria-label="Слои карты">{([['systems','Информационные системы'],['business','Бизнес-процессы']] as const).map(([key,label])=><label key={key}><input type="checkbox" checked={layers[key]} onChange={e=>setLayers(old=>({...old,[key]:e.target.checked}))}/>{label}</label>)}</div></details></Disclosure></div>
   {query.trim()&&<div className="homeMapSearchMatches" role="region" aria-label="Результаты поиска по архитектуре">
     <strong>Найденные ИС: {filteredSystems.length}</strong>

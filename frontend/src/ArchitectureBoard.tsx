@@ -604,7 +604,7 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
      sourceHandle:anchor.source_handle,targetHandle:anchor.target_handle,
      type:'obstacle-aware',animated:false,
      style:{stroke:list.some(f=>changes.some(c=>c.id===f.id&&(c.action==='create_flow'||c.action==='update_flow')))?'#176bc1':'#369279',strokeWidth:activeEdgeFlowIds.some(id=>list.some(f=>f.id===id))?3.2:inspectedId&&(first.source_id===inspectedId||first.target_id===inspectedId)?3:1.8,opacity:focusDependencies&&inspectedId&&first.source_id!==inspectedId&&first.target_id!==inspectedId?0.16:1},
-     markerEnd:{type:MarkerType.ArrowClosed,width:13,height:13},
+     markerEnd:{type:MarkerType.ArrowClosed,width:13,height:13,color:list.some(f=>changes.some(c=>c.id===f.id&&(c.action==='create_flow'||c.action==='update_flow')))?'#176bc1':'#369279'},
      label:list.length>1?flowCountLabel(list.length):protocolLabel||'Поток',
      labelStyle:{fontSize:11,fontWeight:600},labelBgStyle:{fill:'#ffffff',fillOpacity:0.95},labelBgPadding:[7,4] as [number,number],
      data:{reciprocal:effectiveFlows.some(f=>f.source_id===first.target_id&&f.target_id===first.source_id),

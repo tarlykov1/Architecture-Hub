@@ -1,10 +1,11 @@
 import React, {useEffect,useMemo,useRef,useState} from 'react'
 import {architectureIcon,DiagramNodeLabel,diagramCardStyle} from './DiagramVisual'
+import {logoFromAttributes} from './SystemLogo'
 export {architectureIcon} from './DiagramVisual'
 import {ReactFlow,Background,Controls,MarkerType,NodeResizer,useReactFlow,type NodeProps,type NodeChange} from '@xyflow/react'
 import {MousePointer2, Move, SquareDashed, Maximize2, Save, X, ClipboardList} from 'lucide-react'
 
-type System={id:string;name:string;kind:string}
+type System={id:string;name:string;kind:string;attributes?:Record<string,unknown>}
 type Component={id:string;system_id:string;name:string;kind:string;details:Record<string,unknown>}
 type Flow={id:string;source_id:string;target_id:string}
 type Process={id:string;name:string;category_id?:string}
@@ -255,7 +256,7 @@ export default function ArchitectureHome({systems,components,flows,processes,cat
      data:{label:<span title={c.name}>{architectureIcon(c.kind)} {c.name}</span>},style:{width:136,fontSize:11,padding:'7px',borderRadius:6,border:'1px solid #cbd5e1',background:'#fff',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' as const},selectable:true,draggable:false,zIndex:20}]:[]
  }):[]
 
- const nodes=filteredSystems.map((s,i)=>({id:s.id,draggable:false,initialWidth:245,initialHeight:86,position:positions[s.id]||{x:(i%4)*320,y:Math.floor(i/4)*190},data:{label:<DiagramNodeLabel name={s.name} kind={s.kind} subtitle={components.filter(c=>c.system_id===s.id).length+' компонентов · '+links.filter(l=>l.system_id===s.id).length+' бизнес-связей'}/>},style:diagramCardStyle()}))
+ const nodes=filteredSystems.map((s,i)=>({id:s.id,draggable:false,initialWidth:245,initialHeight:86,position:positions[s.id]||{x:(i%4)*320,y:Math.floor(i/4)*190},data:{label:<DiagramNodeLabel name={s.name} kind={s.kind} logo={logoFromAttributes(s.attributes)} subtitle={components.filter(c=>c.system_id===s.id).length+' компонентов · '+links.filter(l=>l.system_id===s.id).length+' бизнес-связей'}/>},style:diagramCardStyle()}))
  const selectedSystemInfo=filteredSystems.find(s=>s.id===selectedSystem)
  const selectedNeighbors=new Set<string>([selectedSystem])
  for(const f of crossFlows)if(f.source===selectedSystem||f.target===selectedSystem){selectedNeighbors.add(f.source);selectedNeighbors.add(f.target)}

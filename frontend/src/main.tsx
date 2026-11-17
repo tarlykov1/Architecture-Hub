@@ -882,6 +882,7 @@ function App() {
       const process=await request<BusinessProcess>(businessEditId?'/api/business/processes/'+businessEditId:'/api/business/processes',{
         method:businessEditId?'PUT':'POST',body:JSON.stringify({category_id:businessCategoryId,name:businessName.trim(),description:businessDescription})
       })
+      setBusinessEditId(process.id) // If the link fails, retry updates this ID instead of creating a duplicate.
       setProcesses(await request<BusinessProcess[]>('/api/business/processes'))
       if(businessSystemId&&!businessLinks.some(l=>l.process_id===process.id&&l.system_id===businessSystemId)){
         await request('/api/business/system-links',{method:'POST',body:JSON.stringify({process_id:process.id,system_id:businessSystemId,role:'supporting'})})

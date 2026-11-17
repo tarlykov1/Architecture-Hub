@@ -1170,6 +1170,9 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
   // React Flow is controlled: update rectangle geometry during the drag,
   // not only on drop, otherwise VRF/VLAN boxes appear stuck in place.
   const moved=new Map<string,{x:number;y:number}>()
+  const noteMoves=new Map<string,{x:number;y:number}>()
+  for(const change of updates)if(change.type==='position'&&change.position&&change.id.startsWith('note:'))noteMoves.set(change.id.slice(5),change.position)
+  if(noteMoves.size){setNotes(previous=>previous.map(note=>noteMoves.has(note.id)?{...note,...noteMoves.get(note.id)!}:note));setLayoutDirty(true)}
   for(const change of updates){
     if(change.type==='position'&&change.position&&change.id.startsWith('network:')){
       moved.set(change.id.slice(8),change.position)
@@ -1192,10 +1195,14 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
     setLayoutDirty(true)
     setLayoutMessage('Расположение ВМ изменено. Сохраните схему.')
   }
-  onNodesChange(updates.filter(change=>!('id' in change)||!change.id.startsWith('network:')))
- }} nodesDraggable={tool==='move'} snapToGrid={snapToGrid} snapGrid={[20,20]} nodesConnectable={tool==='flow'} onConnectStart={()=>setDrawingConnection(true)} onConnectEnd={()=>setDrawingConnection(false)} onConnect={connection=>{if(tool==='flow'&&connection.source&&connection.target){stageDirectedFlow(connection.source,connection.target);setInspectedId(null)}}} onEdgeClick={(_,edge)=>selectCanvasEdge(edge.source,edge.target,(edge.data?.flowIds as string[]|undefined)||[])} onNodeClick={(event,node)=>{
+  onNodesChange(updates.filter(change=>!('id' in change)||(!change.id.startsWith('network:')&&!change.id.startsWith('note:'))))
+ }} nodesDraggable={tool==='move'} snapToGrid={snapToGrid} snapGrid={[20,20]} nodesConnectable={tool==='flow'} onConnectStart={()=>setDrawingConnection(true)} onConnectEnd={()=>setDrawingConnection(false)} onConnect={connection=>{if(tool==='flow'&&connection.source&&connection.target){stageDirectedFlow(connection.source,connection.target);setInspectedId(null)}}} onEdgeClick={(_,edge)=>selectCanvasEdge(edge.source,edge.target,(edge.data?.flowIds as string[]|undefined)||[])}
+ onNodeContextMenu={(event,node)=>openContextMenu(event,node.id.startsWith('note:')?'note':node.id.startsWith('network:')?'network':'vm',node.id.startsWith('note:')?node.id.slice(5):node.id.startsWith('network:')?node.id.slice(8):node.id)}
+ onEdgeContextMenu={(event,edge)=>{const ids=(edge.data?.flowIds as string[]|undefined)||[];openContextMenu(event,'flow',ids.length===1?ids[0]:'',ids)}}
+ onPaneContextMenu={event=>openContextMenu(event,'pane','')} onNodeClick={(event,node)=>{
  // Network rectangles occupy their whole area; a click on one is not a pane
  // click. The VM tool must still allow placing a VM inside that container.
+ if(node.id.startsWith('note:')){setSelectedNoteId(node.id.slice(5));setTool('move');setInspectedId(null);setInspectedNetworkId(null);return}
  if(tool==='vm'&&node.id.startsWith('network:')){
    addVM(screenToFlowPosition({x:event.clientX,y:event.clientY}))
    return
@@ -1211,7 +1218,7 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
    if(!from||to||from===node.id){setFrom(node.id);setTo('');setSelectedDraftFlowId('');setLayoutMessage('Источник выбран. Нажмите на целевой компонент или протяните стрелку от порта.')}
    else stageDirectedFlow(from,node.id)
  }else if(tool==='move'){openPassport(node.id);setFocusDependencies(false)}
-}} onNodeDragStart={(_,node)=>{setDraggingNode(true);startVisualGroupDrag(node)}} onNodeDrag={(_,node)=>updateVisualGroupDrag(node)} onNodeDragStop={(_,node)=>{finishVisualDrop(node);moveNode(node);setDraggingNode(false)} } onPaneClick={handlePaneClick} minZoom={0.08} fitViewOptions={{padding:0.2,maxZoom:nodes.length<=2?0.75:0.9}}><AutoFit layoutKey={systemId+':'+items.length+':'+flows.length} maxFitZoom={nodes.length<=2?0.75:0.9} focusIds={selectedFlowEndpoints} suspended={drawingConnection||draggingNode||(!selectedFlowEndpoints.length&&(tool!=='move'||canvasInteracted))} settleDelayMs={0}/><Background gap={20}/><Controls showInteractive={false}/></ReactFlow>
+}} onNodeDragStart={(_,node)=>{setDraggingNode(true);if(!node.id.startsWith('note:'))startVisualGroupDrag(node)}} onNodeDrag={(_,node)=>updateVisualGroupDrag(node)} onNodeDragStop={(_,node)=>{if(!node.id.startsWith('note:')){finishVisualDrop(node);moveNode(node)}else setLayoutDirty(true);setDraggingNode(false)} } onPaneClick={handlePaneClick} minZoom={0.08} fitViewOptions={{padding:0.2,maxZoom:nodes.length<=2?0.75:0.9}}><AutoFit layoutKey={systemId+':'+items.length+':'+flows.length} maxFitZoom={nodes.length<=2?0.75:0.9} focusIds={selectedFlowEndpoints} suspended={drawingConnection||draggingNode||(!selectedFlowEndpoints.length&&(tool!=='move'||canvasInteracted))} settleDelayMs={0}/><Background gap={20}/><Controls showInteractive={false}/></ReactFlow>
      {flowGhost&&<svg className="boardFlowGesturePreview" aria-hidden="true" width="100%" height="100%">
        <defs><marker id="board-flow-ghost-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill="#176bc1"/></marker></defs>
        <line x1={flowGhost.start.x} y1={flowGhost.start.y} x2={flowGhost.end.x} y2={flowGhost.end.y} stroke="#176bc1" strokeWidth="2.5" strokeDasharray="6 3" markerEnd="url(#board-flow-ghost-arrow)"/>
@@ -1323,6 +1330,16 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
          <button disabled={busy} onClick={submitPreview}>Проверить изменения ({changes.length})</button>
        </>}<button disabled={!changes.length||busy} onClick={discardDraft}>Отменить черновик</button></div>}
      </aside>}
+     {contextMenu&&<div className="boardContextMenu" role="menu" aria-label="Действия с объектом" style={{position:'fixed',left:contextMenu.x,top:contextMenu.y,zIndex:250}}>
+       {contextMenu.kind==='pane'?<button type="button" role="menuitem" onClick={()=>{setContextMenu(null);setTool('note')}}>Добавить заметку</button>:<>
+       {contextMenu.kind==='flow'&&contextMenu.flowIds&&contextMenu.flowIds.length>1?<><strong>Выберите поток ({contextMenu.flowIds.length})</strong>{contextMenu.flowIds.map(id=><button role="menuitem" type="button" key={id} onClick={()=>{selectFlowInDock(id);setContextMenu({...contextMenu,id,flowIds:[id]})}}>{effectiveFlows.find(flow=>flow.id===id)?.name||id.slice(0,8)}</button>)}</>:<>
+       <button type="button" role="menuitem" onClick={()=>{if(contextMenu.kind==='flow')selectFlowInDock(contextMenu.id);else if(contextMenu.kind==='vm')openPassport(contextMenu.id);else if(contextMenu.kind==='note')setSelectedNoteId(contextMenu.id);else setInspectedNetworkId(contextMenu.id);setTool(contextMenu.kind==='flow'?'flow':'move');setContextMenu(null)}}>{contextMenu.kind==='note'?'Редактировать заметку':'Открыть свойства'}</button>
+       <button type="button" role="menuitem" disabled={deleteBusy||Boolean(blockersFor(contextMenu.kind,contextMenu.id).length)} onClick={()=>void deleteCanvasObject(contextMenu.kind,contextMenu.id)}>Удалить</button>
+       {blockersFor(contextMenu.kind,contextMenu.id).length>0&&<div role="status" className="boardContextBlockers"><strong>Удалению препятствуют:</strong>{blockersFor(contextMenu.kind,contextMenu.id).map(value=><div key={value}>{value}</div>)}</div>}
+       </>}
+       </>}
+       <button type="button" onClick={()=>setContextMenu(null)}>Закрыть меню</button>
+     </div>}
      {(Boolean(error)||Boolean(layoutMessage))&&<div className="boardCanvasToast" role="status">{error||layoutMessage}<button type="button" aria-label="Закрыть сообщение" onClick={()=>{setError('');setLayoutMessage('')}}>✕</button></div>}
    </div>
    {pendingGrouping&&<div className="boardConfirm" role="dialog" aria-modal="true" aria-label="Подтверждение вложенности">

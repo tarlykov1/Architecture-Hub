@@ -2441,6 +2441,21 @@ def add_process(payload: ProcessInput, db: Session = Depends(db_session)):
     x = BusinessProcess(**payload.model_dump()); db.add(x); db.commit(); db.refresh(x); return x
 
 
+@app.put("/api/business/processes/{process_id}", response_model=ProcessOutput)
+def update_process(process_id: UUID, payload: ProcessInput, db: Session = Depends(db_session)):
+    process = db.get(BusinessProcess, process_id)
+    if not process:
+        raise HTTPException(404, "Business process not found")
+    if not db.get(BusinessCategory, payload.category_id):
+        raise HTTPException(422, "Category not found")
+    process.category_id = payload.category_id
+    process.name = payload.name
+    process.description = payload.description
+    db.commit()
+    db.refresh(process)
+    return process
+
+
 @app.get("/api/business/system-links", response_model=list[ProcessSystemOutput])
 def business_links(db: Session = Depends(db_session)):
     return db.scalars(select(ProcessSystem)).all()

@@ -1,5 +1,8 @@
 import {test,expect} from '@playwright/test'
 
+// The 20 navigation loops must pass on the first attempt, not via runner retry.
+test.describe.configure({retries:0})
+
 test('QA-WORK: #164 flow to overview focus remains visible in 20 transitions without retries',async({page})=>{
  await page.addInitScript(()=>{
   sessionStorage.setItem('architecture-hub:access-token:session','browser-ci-development-token')

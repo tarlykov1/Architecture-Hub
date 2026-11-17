@@ -5,7 +5,7 @@ import MonitoringPanel from './MonitoringPanel'
 import ExistingFlowEditor, {type FlowValues} from './ExistingFlowEditor'
 import FlowAttributeMap from './FlowAttributeMap'
 import {AutoFit} from './WorkspaceUI'
-import {MousePointer2, Monitor, GitBranch, SquareDashed, Maximize2, Save, History, ClipboardCheck} from 'lucide-react'
+import {MousePointer2, Monitor, GitBranch, SquareDashed, StickyNote, Maximize2, Save, History, ClipboardCheck} from 'lucide-react'
 import {ReactFlow, ReactFlowProvider, Background, Controls, Handle, NodeResizer, useNodesState, useReactFlow, MarkerType, Position, type Node, type NodeChange, type NodeProps} from '@xyflow/react'
 import {compactComponentLayout,flowCountLabel} from './graphLayout'
 import {ReciprocalEdge} from './ReciprocalEdge'
@@ -19,7 +19,8 @@ type Flow = {id:string;source_id:string;target_id:string;name:string;protocol:st
 type Change = {action:'create_vm'|'create_network'|'create_flow'|'update_flow'|'create_interface'|'move_interface'|'update_vm';id?:string;system_id?:string;name?:string;kind?:string;description?:string;source_id?:string;target_id?:string;protocol?:string;port?:string;security?:string;data_description?:string;schedule?:string;verification?:string;interface_id?:string;item_id?:string;interface_name?:string;network_id?:string|null;previous_network_id?:string|null;previous_name?:string;previous_description?:string;previous_flow?:FlowValues;previous_source_id?:string;previous_target_id?:string;details_patch?:Record<string,string>;previous_details?:Record<string,unknown>;network_field?:'zone_id'|'vlan_id'|'vrf_id'}
 type Preview = {changes:Array<{action:string;id:string;before:unknown;after:unknown;field?:string;endpoints?:{before:[string,string];after:[string,string]}}>;count:number}
 type Props = {systemId:string;demoMode:boolean;ownerName?:string;ownerBySystemId?:Record<string,string>;items:VM[];networks:Network[];interfaces:NIC[];flows:Flow[];savedPositions?:Record<string,{x:number;y:number}>;onPositionChange?:(node:Node)=>void;request:<T>(url:string,init?:RequestInit)=>Promise<T>;onCommitted:()=>Promise<void>;onEditNetwork?:(id:string)=>void;onDraftStateChange?:(pending:boolean)=>void}
-type Tool = 'move'|'vm'|'flow'|'network'
+type Tool = 'move'|'vm'|'flow'|'network'|'note'
+type BoardNote = {id:string;x:number;y:number;text:string}
 // Eight geometrically independent handles per VM, each usable for outgoing
 // and incoming data flows. Target handles are invisible but stay measurable.
 function BoardComponentNode({data}:NodeProps){
@@ -78,6 +79,12 @@ function readBoardDraft(systemId:string):StoredBoardDraft|null{
 function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,networks,interfaces,flows,savedPositions={},onPositionChange,request,onCommitted,onEditNetwork,onDraftStateChange}:Props){
  const [restoredDraft]=useState<StoredBoardDraft|null>(()=>readBoardDraft(systemId))
  const [tool,setTool]=useState<Tool>('move')
+ const [notes,setNotes]=useState<BoardNote[]>([])
+ const persistedNotes=useRef<BoardNote[]>([])
+ const [noteText,setNoteText]=useState('')
+ const [selectedNoteId,setSelectedNoteId]=useState('')
+ const [contextMenu,setContextMenu]=useState<null|{kind:'vm'|'network'|'flow'|'note'|'pane';id:string;flowIds?:string[];x:number;y:number}>(null)
+ const [deleteBusy,setDeleteBusy]=useState(false)
  const [drawingConnection,setDrawingConnection]=useState(false)
  const [draggingNode,setDraggingNode]=useState(false)
  const [canvasInteracted,setCanvasInteracted]=useState(false)
@@ -320,7 +327,8 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
  const visibleRects=rectangles.filter(r=>allNetworks.some(n=>n.id===r.id))
  const draftNetworks=new Set(changes.filter(c=>c.action==='create_network').map(c=>c.id))
  const backgroundNodes:Node[]=visibleRects.map(r=>({id:'network:'+r.id,type:'boardNetwork',position:{x:r.x,y:r.y},width:r.width,height:r.height,measured:{width:r.width,height:r.height},draggable:false,selectable:true,connectable:false,data:{onPointerDown:(event:React.PointerEvent<HTMLDivElement>)=>beginManualNetworkDrag(r.id,event),onPointerMove:(event:React.PointerEvent<HTMLDivElement>)=>moveManualNetworkDrag(r.id,event),onPointerUp:(event:React.PointerEvent<HTMLDivElement>)=>finishManualNetworkDrag(r.id,event),onPointerCancel:(event:React.PointerEvent<HTMLDivElement>)=>cancelManualNetworkDrag(r.id,event),resizable:tool==='move',onResize:(size:{x:number;y:number;width:number;height:number})=>updateNetworkSize(r.id,size),label:<div className="boardNetworkLabel"><strong>{r.name} · {r.kind.toUpperCase()}</strong><small>{draftNetworks.has(r.id)?'Черновик · ещё не сохранён':parents['network:'+r.id]?'В группе: '+(allNetworks.find(n=>'network:'+n.id===parents['network:'+r.id])?.name||'сеть'):'Свободная зона'} · {tool==='move'?'Тяните край для изменения размера':''}</small></div>},style:{width:r.width,height:r.height,background:draftNetworks.has(r.id)?'#fff7ed29':'#dbeafe15',border:draftNetworks.has(r.id)?'2px dashed #d97706':'2px dashed #2563eb',borderRadius:9,zIndex:10+(()=>{let depth=0,p=parents['network:'+r.id];while(p&&depth<10){depth++;p=parents[p]}return depth})(),pointerEvents:'none',textAlign:'left',padding:12,fontSize:13,color:'#1e40af'}}))
- const graphNodes=[...backgroundNodes,...nodes]
+ const noteNodes:Node[]=notes.map(note=>({id:'note:'+note.id,type:'default',position:{x:note.x,y:note.y},draggable:tool==='move',selectable:true,data:{label:<div className="boardStickyNote"><strong>Заметка</strong><p>{note.text}</p></div>},style:{width:200,padding:12,background:'#fff4c2',border:'1px solid #d1aa3d',borderRadius:9,boxShadow:'0 3px 8px #00000019',whiteSpace:'pre-wrap',overflowWrap:'anywhere',zIndex:35}}))
+ const graphNodes=[...backgroundNodes,...nodes,...noteNodes]
  // A pair of machines has one readable connection; its technical flows stay separate records.
  const pendingFlows=changes.filter(c=>c.action==='create_flow').map(c=>({id:c.id!,source_id:c.source_id!,target_id:c.target_id!,protocol:c.protocol||'',port:c.port||'',name:c.name||'',security:c.security||'unknown',data_description:c.data_description||'',schedule:'',verification:'draft'}))
  const effectiveSavedFlows=flows.map(flow=>{
@@ -842,6 +850,13 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
      addVM(screenToFlowPosition({x:event.clientX,y:event.clientY}))
      return
    }
+   if(tool==='note'){
+     const pos=screenToFlowPosition({x:event.clientX,y:event.clientY})
+     const id=makeId()
+     setNotes(previous=>[...previous,{id,x:pos.x,y:pos.y,text:noteText.trim()||'Новая заметка'}])
+     setSelectedNoteId(id);setLayoutDirty(true);setTool('move')
+     setLayoutMessage('Заметка размещена. Для записи нажмите «Сохранить». Она будет видна только в редакторе.')
+   }
  }
  const beginNetworkDrag=(event:React.PointerEvent<HTMLDivElement>)=>{
    if(event.button!==0)return
@@ -888,7 +903,7 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
    // but do not permit network-container dragging on temporary positions.
    setLayoutReady(false)
    setLayoutDirty(false);setLayoutMessage('')
-   void request<{positions:Record<string,Geometry>;flow_anchors?:Record<string,FlowPortPair>}>('/api/board/layout/'+systemId)
+   void request<{positions:Record<string,Geometry>;flow_anchors?:Record<string,FlowPortPair>;notes?:BoardNote[]}>('/api/board/layout/'+systemId)
      .then(result=>{
        if(!active||!result.positions)return
        setNodes(previous=>previous.map(node=>{
@@ -908,6 +923,8 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
        const loaded=Object.fromEntries(Object.entries(result.positions).filter(([,geometry])=>geometry.parent_id).map(([id,geometry])=>[id,geometry.parent_id!]))
        persistedParents.current=loaded
        setParents({...loaded,...(restoredDraft?.parents||{})})
+       persistedNotes.current=result.notes||[]
+       setNotes(result.notes||[])
        persistedFlowAnchors.current=result.flow_anchors||{}
        setFlowAnchors({...persistedFlowAnchors.current,...(restoredDraft?.flowAnchors||{})})
      }).catch(()=>{/* Browser positions remain the fallback. */})
@@ -940,8 +957,10 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
    if(demoMode){setLayoutMessage('Для сохранения расположения войдите по паролю.');return}
    setLayoutBusy(true);setLayoutMessage('');setError('')
    try{
-     await request('/api/board/layout/'+systemId,{method:'PUT',body:JSON.stringify({positions:collectLayout(),flow_anchors:collectFlowAnchors()})})
+     await request('/api/board/layout/'+systemId,{method:'PUT',body:JSON.stringify({positions:collectLayout(),flow_anchors:collectFlowAnchors(),notes})})
      persistedFlowAnchors.current=collectFlowAnchors()
+     persistedNotes.current=notes.map(note=>({...note}))
+     setLayoutDirty(false)
      const hasStagedGeometry=changes.some(c=>c.action==='create_vm'||c.action==='create_network')
      setLayoutDirty(hasStagedGeometry)
      setLayoutMessage(hasStagedGeometry
@@ -958,6 +977,8 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
    setChanges([]);setSelectedDraftFlowId('');setSelectedExistingFlowId('');setSelectedEdgeFlowIds([]);setPreview(null);setError('');setReviewOpen(false)
    setParents(persistedParents.current)
    setFlowAnchors(persistedFlowAnchors.current)
+   setNotes(persistedNotes.current.map(note=>({...note})))
+   setSelectedNoteId('')
    setPendingGrouping(null)
    setLayoutDirty(false)
    setLayoutMessage('Черновик изменений отменён. Несохранённые ВМ и сети удалены со схемы.')
@@ -987,8 +1008,9 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
      let warning=''
      try{
        await request('/api/board/layout/'+systemId,{method:'PUT',
-         body:JSON.stringify({positions:collectLayout(newVMIds,newNetworkIds),flow_anchors:collectFlowAnchors(newFlowIds)})})
+         body:JSON.stringify({positions:collectLayout(newVMIds,newNetworkIds),flow_anchors:collectFlowAnchors(newFlowIds),notes})})
        persistedFlowAnchors.current=collectFlowAnchors(newFlowIds)
+       persistedNotes.current=notes.map(note=>({...note}))
        setLayoutDirty(false);setLayoutMessage('Расположение ВМ, контейнеров и точки стрелок сохранены.')
      }catch(e){
        warning=' Расположение не удалось сохранить: '+String(e)
@@ -1152,6 +1174,7 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
        {key:'vm',title:'+ ВМ',caption:'Добавить ВМ',icon:Monitor,help:'Укажите имя справа и нажмите на схему'},
        {key:'flow',title:'→ Поток',caption:'Поток',icon:GitBranch,help:'Потяните за порт на карточке до целевого компонента или нажмите на две карточки по очереди'},
        {key:'network',title:'▭ Сеть / контейнер',caption:'Контейнер',icon:SquareDashed,help:'Введите название справа, нажмите на холст или нарисуйте прямоугольник'},
+       {key:'note',title:'Заметка',caption:'Заметка',icon:StickyNote,help:'Напишите текст справа и нажмите на свободное место холста'},
      ] as const).map(({key,title,caption,icon:Icon,help})=>
         <button type="button" key={key} title={caption+' – '+help} aria-label={title} data-tool={key} aria-pressed={tool===key}
           onClick={()=>{setTool(key);setInspectedId(null);setInspectedNetworkId(null);setFocusDependencies(false);setDrawing(null);setError('');setLayoutMessage('');setReviewOpen(false);cancelNetworkDrag()}}>
@@ -1166,8 +1189,9 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
      </button>
    </div>
      {changes.length>0&&<div className="boardPendingBanner" role="status"><strong>Не сохранено: {changes.filter(c=>c.action==='create_vm').length} ВМ, {changes.filter(c=>c.action==='create_network').length} сетей и {changes.filter(c=>c.action!=='create_vm'&&c.action!=='create_network').length} других изменений.</strong><span>Новые объекты ещё не в реестре. При выходе из редактора черновик сохранится в этом браузере и восстановится при возвращении.</span><button type="button" onClick={()=>{setTool('move');setReviewOpen(true);setError('')}}>Проверить и сохранить в реестр</button></div>}
-     {(tool!=='move'||inspectedVM||inspectedNetwork||reviewOpen)&&<aside className="boardDock" role="complementary" aria-label="Свойства и изменения схемы">
-       {tool!=='move'&&<div className="boardPropertiesHeader"><div><small>ИНСТРУМЕНТ</small><h3>{tool==='vm'?'Виртуальная машина':tool==='flow'?'Поток данных':'Сеть / контейнер'}</h3></div><button type="button" aria-label="Закрыть настройки инструмента" onClick={()=>{setTool('move');setDrawing(null);setError('');setLayoutMessage('');setReviewOpen(false);cancelNetworkDrag()}}>✕</button></div>}
+     {(tool!=='move'||inspectedVM||inspectedNetwork||selectedNoteId||reviewOpen)&&<aside className="boardDock" role="complementary" aria-label="Свойства и изменения схемы">
+       {tool!=='move'&&<div className="boardPropertiesHeader"><div><small>ИНСТРУМЕНТ</small><h3>{tool==='vm'?'Виртуальная машина':tool==='flow'?'Поток данных':tool==='note'?'Заметка':'Сеть / контейнер'}</h3></div><button type="button" aria-label="Закрыть настройки инструмента" onClick={()=>{setTool('move');setDrawing(null);setError('');setLayoutMessage('');setReviewOpen(false);cancelNetworkDrag()}}>✕</button></div>}
+          {tool==='note'&&<div className="boardToolFields"><p>Заметки видны только в режиме редактирования и не меняют инфраструктурные связи.</p><label>Текст заметки<textarea aria-label="Текст новой заметки" value={noteText} onChange={e=>setNoteText(e.target.value)} maxLength={2000}/></label><button type="button" disabled={!noteText.trim()} onClick={()=>{const id=makeId();setNotes(previous=>[...previous,{id,x:90+notes.length*25,y:90+notes.length*25,text:noteText.trim()}]);setSelectedNoteId(id);setLayoutDirty(true);setTool('move')}}>Добавить заметку</button></div>}
           {tool==='vm'&&<div className="boardToolFields"><p>Введите название и нажмите на холст для размещения ВМ.</p><label>Имя ВМ <input value={name} onChange={e=>setName(e.target.value)} placeholder="Новая ВМ"/></label><button onClick={()=>addVM()}>Разместить на схеме</button></div>}
    {tool==='network'&&<div className="boardToolFields"><label>Название сети * <input ref={networkNameInput} required aria-required="true" aria-invalid={!name.trim()} value={name} onChange={e=>{setName(e.target.value);if(e.target.value.trim())setError('')}} placeholder="Название VRF / VLAN / зоны"/></label>{!name.trim()&&<p className="boardRequiredHint" role="alert">Обязательное поле: сначала укажите название, затем нарисуйте контейнер.</p>}<label>Тип <select value={kind} onChange={e=>setKind(e.target.value as typeof kind)}><option value="zone">Зона</option><option value="vlan">VLAN</option><option value="vrf">VRF</option></select></label><p role="status">{drawing?'Продолжайте тянуть – контур контейнера виден на схеме':'Нажмите на холст – появится стандартный контейнер 540 × 340. Или протяните прямоугольник нужного размера. Затем подтвердите изменения в черновике.'}</p></div>}
    {tool==='flow'&&<section className="boardFlowCatalog" aria-label="Выбор технического потока">
@@ -1220,6 +1244,7 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
      onClose={()=>{setSelectedExistingFlowId('');setSelectedEdgeFlowIds([])}}/>}
    {tool==='flow'&&selectedExistingFlow&&
      <FlowAttributeMap key={'flow-data-map:'+selectedExistingFlow.id} flowId={selectedExistingFlow.id} request={request}/>}
+   {selectedNoteId&&tool==='move'&&notes.some(n=>n.id===selectedNoteId)&&<div className="boardToolFields" aria-label="Редактирование заметки"><h3>Заметка</h3><textarea aria-label="Текст выбранной заметки" maxLength={2000} value={notes.find(n=>n.id===selectedNoteId)?.text||''} onChange={e=>{setNotes(previous=>previous.map(note=>note.id===selectedNoteId?{...note,text:e.target.value}:note));setLayoutDirty(true)}}/><button type="button" onClick={()=>setSelectedNoteId('')}>Закрыть заметку</button></div>}
    {(tool==='network'||(tool==='move'&&inspectedVM))&&<div className="boardToolFields"><p>Вложенность на схеме подтверждается после перетаскивания. При размещении ВМ в VLAN можно отдельно выбрать существующий интерфейс или создать новый. Перемещение VRF/VLAN само по себе не настраивает маршруты и шлюзы.</p></div>}
 
        {tool==='move'&&inspectedNetwork&&<section className="boardToolFields" aria-label="Свойства контейнера"><h3>{inspectedNetwork.name} · {inspectedNetwork.kind.toUpperCase()}</h3><p>Перемещение группы переносит все подтверждённые вложенные VLAN, зоны и ВМ. Размер границ меняется мышью за маркеры на рамке.</p><p>Связанных вложенных объектов: {descendants('network:'+inspectedNetwork.id,parents).size}. При переносе в другую зону или на свободное поле потребуется подтверждение новой архитектурной связи. Реальная маршрутизация автоматически не меняется.</p>{onEditNetwork&&networks.some(n=>n.id===inspectedNetwork.id)&&<button type="button" onClick={()=>onEditNetwork(inspectedNetwork.id)}>Редактировать параметры сети</button>}<button type="button" onClick={()=>setInspectedNetworkId(null)}>Вернуться к схеме</button></section>}

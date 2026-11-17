@@ -94,7 +94,8 @@ export default function SystemCommercial({systemId,readOnly,request}:{systemId:s
     sla_response_hours:contractDraft.sla_response_hours===''?null:Number(contractDraft.sla_response_hours),
     sla_availability_percent:contractDraft.sla_availability_percent===''?null:Number(contractDraft.sla_availability_percent),
    }
-   await request(base+'/contracts'+(editingId?'/'+editingId:''),{method:editingId?'PUT':'POST',body:JSON.stringify(data)})
+   const stored=await request<Agreement>(base+'/contracts'+(editingId?'/'+editingId:''),{method:editingId?'PUT':'POST',body:JSON.stringify(data)})
+   setEditingId(stored.id) // A failed refresh must not create another agreement on retry.
    await reload();setEditor('');setEditingId('');setNotice('Договор сохранён')
   }catch(e){setError('Договор не сохранён: '+String(e))}
   finally{setBusy(false)}
@@ -106,7 +107,8 @@ export default function SystemCommercial({systemId,readOnly,request}:{systemId:s
    const data={...licenseDraft,product:licenseDraft.product.trim(),
     contract_id:licenseDraft.contract_id||null,quantity:Number(licenseDraft.quantity),
     valid_from:licenseDraft.valid_from||null,valid_until:licenseDraft.valid_until||null}
-   await request(base+'/licenses'+(editingId?'/'+editingId:''),{method:editingId?'PUT':'POST',body:JSON.stringify(data)})
+   const stored=await request<Entitlement>(base+'/licenses'+(editingId?'/'+editingId:''),{method:editingId?'PUT':'POST',body:JSON.stringify(data)})
+   setEditingId(stored.id)
    await reload();setEditor('');setEditingId('');setNotice('Лицензия сохранена')
   }catch(e){setError('Лицензия не сохранена: '+String(e))}
   finally{setBusy(false)}

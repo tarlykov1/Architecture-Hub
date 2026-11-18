@@ -21,6 +21,7 @@ import {DiagramNodeLabel,diagramCardStyle} from './DiagramVisual'
 import {SystemLogo,logoFromAttributes,prepareSystemLogo} from './SystemLogo'
 import SystemCommercial from './SystemCommercial'
 import SystemTechStack from './SystemTechStack'
+import TechnologyInventory from './TechnologyInventory'
 import {publicDemoResponse} from './publicDemo'
 import FlowDataCatalog from './FlowDataCatalog'
 import SystemDataMap from './SystemDataMap'
@@ -129,6 +130,7 @@ function App() {
     try{const saved=localStorage.getItem('architecture-hub-component-view-v1');return saved==='board'?'diagram':saved==='diagram'||saved==='registry'||saved==='cards'?saved:'registry'}catch{return 'registry'}
   })
   const [systemsShowDiagram,setSystemsShowDiagram]=useState(false)
+  const [systemsShowTechnologyInventory,setSystemsShowTechnologyInventory]=useState(false)
   const [flowEditMode,setFlowEditMode]=useState(false)
   const [flowView,setFlowView]=useState<'diagram'|'cards'>('cards')
   useEffect(()=>{
@@ -1261,8 +1263,8 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
       {canWrite('systems')&&<button type="button" className="primary" onClick={()=>openBusinessEditor()}>+ Создать бизнес-процесс</button>}
       <div className="businessGrid">{categories.filter(cat=>!workspaceQuery||cat.name.toLowerCase().includes(workspaceQuery.toLowerCase())||processes.some(p=>p.category_id===cat.id&&[p.name,p.description].join(' ').toLowerCase().includes(workspaceQuery.toLowerCase()))).map(cat=><article className="businessCategory" key={cat.id}><h3>{cat.name}</h3>{processes.filter(p=>p.category_id===cat.id&&(!workspaceQuery||[p.name,p.description,cat.name].join(' ').toLowerCase().includes(workspaceQuery.toLowerCase()))).map(p=><div className="businessProcess" key={p.id}><strong>{p.name}</strong>{canWrite('systems')&&<button type="button" onClick={()=>openBusinessEditor(p)}>Редактировать БП</button>}<p>{p.description}</p><div className="processSystems">{businessLinks.filter(l=>l.process_id===p.id).map(l=><button key={l.id} onClick={()=>{setSelected(l.system_id);setLayer('systems')}}>{objects.find(o=>o.id===l.system_id)?.name||'Система'}</button>)}</div></div>)}</article>)}</div>
       {!categories.length&&<p>Бизнес-процессы пока не добавлены.</p>}</section> : layer==='systems' ? <section className="systemsWorkspace" aria-label="Реестр информационных систем">
-        <div className="systemsWorkspaceHead"><div><h2>Информационные системы</h2><p>Реестр, паспорта и состав ИС. Общая карта связей находится в разделе «Обзор».</p></div><div className="systemsWorkspaceActions"><button type="button" onClick={()=>setLayer("home")}>Слои архитектуры</button><button type="button" onClick={()=>setSystemsShowDiagram(v=>!v)} aria-pressed={systemsShowDiagram}>{systemsShowDiagram?'Показать реестр':'Редактор схемы'}</button>{canWrite('systems')&&<button type="button" className="primary" onClick={()=>{setPassportEditId('');setCreateObjectOpen(true)}}>+ Создать ИС</button>}</div></div>
-        {systemsShowDiagram ? <section className="canvas" data-active-graph="systems">
+        <div className="systemsWorkspaceHead"><div><h2>Информационные системы</h2><p>Реестр, паспорта и состав ИС. Общая карта связей находится в разделе «Обзор».</p></div><div className="systemsWorkspaceActions"><button type="button" onClick={()=>setLayer("home")}>Слои архитектуры</button><button type="button" onClick={()=>{setSystemsShowTechnologyInventory(false);setSystemsShowDiagram(v=>!v)}} aria-pressed={systemsShowDiagram}>{systemsShowDiagram?'Показать реестр':'Редактор схемы'}</button><button type="button" onClick={()=>{setSystemsShowDiagram(false);setSystemsShowTechnologyInventory(v=>!v)}} aria-pressed={systemsShowTechnologyInventory}>{systemsShowTechnologyInventory?'Вернуться к реестру ИС':'Реестр технологий'}</button>{canWrite('systems')&&<button type="button" className="primary" onClick={()=>{setPassportEditId('');setCreateObjectOpen(true)}}>+ Создать ИС</button>}</div></div>
+        {systemsShowTechnologyInventory ? <TechnologyInventory request={request} onOpenSystem={id=>{setSystemsShowTechnologyInventory(false);setSelected(id);setInspectorOpen(true);setPanelTab('technologies')}}/> : systemsShowDiagram ? <section className="canvas" data-active-graph="systems">
         <div className="canvasMode">{canWrite('diagrams')&&<button aria-pressed={diagramEditMode} onClick={()=>setDiagramEditMode(v=>!v)}>{diagramEditMode?'Завершить редактирование':'Редактировать схему'}</button>}</div>
         <ReactFlow minZoom={0.08} nodes={nodes} edges={edges} onNodesChange={onNodesChange} onConnect={onConnect} nodesDraggable={diagramEditMode} nodesConnectable={diagramEditMode} deleteKeyCode={null}
           onNodeClick={(_event: React.MouseEvent, node: Node) => {setSelected(node.id);setInspectorOpen(true);setPanelTab("overview")}} onNodeDoubleClick={(_event: React.MouseEvent, node: Node) => {setViewSystem(node.id);setSelected(node.id);setComponentView('diagram');setLayer("infrastructure");setInspectorOpen(false);setInspectorExpanded(false)}} onPaneClick={() => setSelected('')} fitView>

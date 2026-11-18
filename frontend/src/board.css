@@ -353,3 +353,14 @@
 .boardFlowReassign p{margin:0;font-size:11px;line-height:1.45;color:#52657e}
 .boardFlowReassign button{width:100%;max-width:100%;padding:9px 10px;border:1px solid #176bc1;border-radius:7px;color:#fff;background:#176bc1;font-size:12px;font-weight:600;cursor:pointer}
 .boardFlowReassign button:disabled{color:#70869f;background:#e8eef6;border-color:#d9e4f2;cursor:not-allowed}
+
+/* Editing-only canvas annotations and context actions. Never appear in read-only diagrams. */
+.boardStickyNote{color:#674919;text-align:left;min-height:60px}
+.boardStickyNote strong{display:block;font-size:12px;margin-bottom:8px}
+.boardStickyNote p{margin:0;font-size:13px;line-height:1.4;white-space:pre-wrap;overflow-wrap:anywhere}
+.boardContextMenu{min-width:200px;max-width:min(320px,90vw);max-height:65vh;overflow:auto;padding:8px;display:grid;gap:4px;background:#fff;color:#172b46;border:1px solid #cbd5e1;border-radius:10px;box-shadow:0 12px 35px #14213440}
+.boardContextMenu button{display:block;text-align:left;border:0;background:transparent;color:inherit;padding:9px 11px;border-radius:6px;cursor:pointer}
+.boardContextMenu button:hover:not(:disabled){background:#edf4ff}
+.boardContextMenu button:disabled{opacity:.45;cursor:not-allowed}
+.boardContextBlockers{padding:8px;font-size:12px;color:#92400e;background:#fff7ed;border-radius:6px;overflow-wrap:anywhere}
+.boardContextBlockers strong{display:block;margin-bottom:4px}

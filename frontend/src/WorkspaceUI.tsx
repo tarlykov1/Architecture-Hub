@@ -4,7 +4,7 @@ import {useNodes,useNodesInitialized,useReactFlow} from '@xyflow/react'
 /** Refit measured graphs on membership/layout changes and actual canvas resize. */
 export function AutoFit({layoutKey='',maxFitZoom=1,groupParentsOnly=false,focusIds=[],suspended=false,settleDelayMs=300,ignoreNodePrefixes=''}:{layoutKey?:string;maxFitZoom?:number;groupParentsOnly?:boolean;focusIds?:string[];suspended?:boolean;settleDelayMs?:number;ignoreNodePrefixes?:string}){
  const anchor=useRef<HTMLSpanElement>(null)
- const {fitView}=useReactFlow()
+ const {fitView,setCenter}=useReactFlow()
  const initialized=useNodesInitialized()
  const graphNodes=useNodes()
  const ignored=ignoreNodePrefixes.split(',').filter(Boolean)
@@ -12,16 +12,37 @@ export function AutoFit({layoutKey='',maxFitZoom=1,groupParentsOnly=false,focusI
  const ids=stableNodes.map(n=>n.id).sort().join('|')
  const topLevelIds=stableNodes.filter(n=>!n.parentId).map(n=>n.id).sort().join('|')
  const visibleFocusIds=focusIds.filter(id=>graphNodes.some(node=>node.id===id)).sort().join('|')
+ // Optional overlays should not block fitting measured target IS cards.
+ const measuredFocusReady=focusIds.length>0&&focusIds.every(id=>{
+  const node=graphNodes.find(item=>item.id===id)
+  return Boolean(node&&((node.measured?.width||node.initialWidth||node.width||0)>0)&&((node.measured?.height||node.initialHeight||node.height||0)>0))
+ })
  useEffect(()=>{
   const canvas=anchor.current?.closest('.react-flow')
   // A delayed resize refit during an active React Flow connection would move
   // both handles away from the pointer and cancel the drawn edge.
-  if(suspended||!initialized||!ids||!canvas)return
+  if(suspended||(!initialized&&!measuredFocusReady)||!ids||!canvas)return
   let frame=0,inner=0,settle=0,width=0,height=0
   const fit=()=>{
    cancelAnimationFrame(frame);cancelAnimationFrame(inner)
    frame=requestAnimationFrame(()=>{
-    inner=requestAnimationFrame(()=>{void fitView({padding:visibleFocusIds?0.32:0.2,maxZoom:maxFitZoom,minZoom:0.02,duration:0,...(visibleFocusIds?{nodes:visibleFocusIds.split('|').filter(Boolean).map(id=>({id}))}:groupParentsOnly?{nodes:topLevelIds.split('|').filter(Boolean).map(id=>({id}))}:{})})})
+    inner=requestAnimationFrame(()=>{
+     const targetIds=visibleFocusIds.split('|').filter(Boolean)
+     // Fitting one selected IS with fitView can still leave it outside the
+     // viewport while the rest of the overview is being measured. Its
+     // intrinsic geometry is enough to center it deterministically.
+     if(targetIds.length===1){
+      const node=graphNodes.find(item=>item.id===targetIds[0])
+      const boxWidth=node?.measured?.width||node?.initialWidth||node?.width||Number(node?.style?.width)||0
+      const boxHeight=node?.measured?.height||node?.initialHeight||node?.height||Number(node?.style?.height)||0
+      if(node&&boxWidth>0&&boxHeight>0&&canvas.clientWidth>=100&&canvas.clientHeight>=100){
+       const zoom=Math.min(maxFitZoom,(canvas.clientWidth-64)/boxWidth,(canvas.clientHeight-64)/boxHeight)
+       void setCenter(node.position.x+boxWidth/2,node.position.y+boxHeight/2,{zoom:Math.max(0.02,zoom),duration:0})
+       return
+      }
+     }
+     void fitView({padding:visibleFocusIds?0.32:0.2,maxZoom:maxFitZoom,minZoom:0.02,duration:0,...(visibleFocusIds?{nodes:targetIds.map(id=>({id}))}:groupParentsOnly?{nodes:topLevelIds.split('|').filter(Boolean).map(id=>({id}))}:{})})
+    })
    })
   }
   const refit=()=>{
@@ -47,7 +68,7 @@ export function AutoFit({layoutKey='',maxFitZoom=1,groupParentsOnly=false,focusI
    window.clearTimeout(settle)
    cancelAnimationFrame(frame);cancelAnimationFrame(inner)
   }
- },[fitView,initialized,ids,topLevelIds,visibleFocusIds,layoutKey,maxFitZoom,groupParentsOnly,suspended,settleDelayMs])
+ },[fitView,setCenter,initialized,measuredFocusReady,ids,topLevelIds,visibleFocusIds,layoutKey,maxFitZoom,groupParentsOnly,suspended,settleDelayMs])
  return <span ref={anchor} hidden/>
 }
 

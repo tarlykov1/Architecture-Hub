@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import os
+import base64
+import binascii
 import hashlib
 import json
 from contextlib import asynccontextmanager
 import re
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Any, Literal
 from uuid import UUID, uuid4
 
@@ -18,8 +20,8 @@ from .cmdb import ci_graph, potential_impact, CI_CLASSES, LIFECYCLE_STATES, LIFE
 from .cmdb_catalog import validate_class_schema, validate_custom_values, missing_required, assess_relation, RELATION_KINDS
 from .architecture_metamodel import get_logical_relation_types, logical_relation_validation_error, summarize_legacy_relations
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import DateTime, ForeignKey, JSON, String, Uuid, Index, Boolean, UniqueConstraint, create_engine, select, update, text as sql_text
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from sqlalchemy import Date, DateTime, ForeignKey, JSON, String, Uuid, Index, Boolean, UniqueConstraint, create_engine, select, update, text as sql_text
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
 from sqlalchemy.exc import IntegrityError
 
@@ -54,6 +56,83 @@ class ArchitectureObject(Base):
     description: Mapped[str] = mapped_column(String(4000), default="")
     status: Mapped[str] = mapped_column(String(40), default="active")
     attributes: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+
+
+class SystemContract(Base):
+    """Commercial agreement about an IS; no passwords, licence keys or documents stored."""
+    __tablename__ = "system_contracts"
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    system_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("objects.id", ondelete="CASCADE"), index=True, nullable=False)
+    title: Mapped[str] = mapped_column(String(250), nullable=False)
+    contract_number: Mapped[str] = mapped_column(String(120), default="")
+    agreement_type: Mapped[str] = mapped_column(String(32), default="purchase")
+    vendor: Mapped[str] = mapped_column(String(250), default="")
+    contractor: Mapped[str] = mapped_column(String(250), default="")
+    start_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    end_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    renewal_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    automatic_renewal: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    notice_days: Mapped[int | None] = mapped_column(nullable=True)
+    support_level: Mapped[str] = mapped_column(String(120), default="")
+    support_window: Mapped[str] = mapped_column(String(120), default="")
+    sla_response_hours: Mapped[float | None] = mapped_column(nullable=True)
+    sla_availability_percent: Mapped[float | None] = mapped_column(nullable=True)
+    support_contact: Mapped[str] = mapped_column(String(250), default="")
+    notes: Mapped[str] = mapped_column(String(2000), default="")
+
+
+class SystemLicense(Base):
+    """A licensed entitlement; multiple rows may reference a single contract."""
+    __tablename__ = "system_licenses"
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    system_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("objects.id", ondelete="CASCADE"), index=True, nullable=False)
+    contract_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True), ForeignKey("system_contracts.id"), index=True, nullable=True)
+    product: Mapped[str] = mapped_column(String(250), nullable=False)
+    license_type: Mapped[str] = mapped_column(String(36), default="named")
+    quantity: Mapped[int] = mapped_column(nullable=False, default=1)
+    valid_from: Mapped[date | None] = mapped_column(Date, nullable=True)
+    valid_until: Mapped[date | None] = mapped_column(Date, nullable=True)
+    notes: Mapped[str] = mapped_column(String(2000), default="")
+
+
+class SystemTechnology(Base):
+    """A technology/version deployed in one IS or one of its existing components.
+
+    These records are descriptive and never create VMs, data flows, or software
+    installations. Different versions in different environments remain separate.
+    """
+    __tablename__ = "system_technologies"
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    system_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("objects.id", ondelete="CASCADE"), index=True, nullable=False)
+    component_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("infrastructure_items.id"), index=True, nullable=True)
+    name: Mapped[str] = mapped_column(String(250), nullable=False)
+    category: Mapped[str] = mapped_column(String(36), nullable=False, default="other")
+    version: Mapped[str] = mapped_column(String(120), nullable=False, default="")
+    environment: Mapped[str] = mapped_column(String(24), nullable=False, default="unknown")
+    vendor: Mapped[str] = mapped_column(String(250), nullable=False, default="")
+    lifecycle: Mapped[str] = mapped_column(String(24), nullable=False, default="unknown")
+    support_end_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    verification: Mapped[str] = mapped_column(String(24), nullable=False, default="unverified")
+    source: Mapped[str] = mapped_column(String(500), nullable=False, default="")
+    notes: Mapped[str] = mapped_column(String(2000), nullable=False, default="")
+
+
+class SystemTechnologyObservation(Base):
+    """Append-only, source-reported observation. Not evidence that Hub scanned a host."""
+    __tablename__ = "system_technology_observations"
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    system_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("objects.id", ondelete="CASCADE"), index=True, nullable=False)
+    technology_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("system_technologies.id", ondelete="CASCADE"), index=True, nullable=False)
+    source_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("monitoring_sources.id"), index=True, nullable=False)
+    observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    observed_version: Mapped[str] = mapped_column(String(120), default="", nullable=False)
+    reachable: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    notes: Mapped[str] = mapped_column(String(1000), default="", nullable=False)
 
 
 class Relation(Base):
@@ -445,10 +524,157 @@ class ObjectCreate(BaseModel):
     status: str = Field(default="active", max_length=40)
     attributes: dict[str, Any] = Field(default_factory=dict)
 
+    @model_validator(mode="after")
+    def validate_system_logo(self):
+        """Keep uploaded IS icons small and self-contained; reject remote/SVG/HTML media."""
+        if "system_logo" not in self.attributes:
+            return self
+        logo = self.attributes["system_logo"]
+        if self.kind != "system":
+            raise ValueError("Only information systems can have a logo")
+        if not isinstance(logo, str):
+            raise ValueError("System logo must be an image data URL")
+        mime = next((media for media in ("png", "jpeg", "webp")
+                     if logo.startswith(f"data:image/{media};base64,")), None)
+        if mime is None or len(logo) > 140000:
+            raise ValueError("System logo must be a small PNG, JPEG or WebP image")
+        try:
+            raw = base64.b64decode(logo.split(",", 1)[1], validate=True)
+        except (binascii.Error, ValueError) as exc:
+            raise ValueError("System logo has invalid base64 encoding") from exc
+        signatures = {
+            "png": raw.startswith(b"\x89PNG\r\n\x1a\n"),
+            "jpeg": raw.startswith(b"\xff\xd8\xff"),
+            "webp": raw.startswith(b"RIFF") and raw[8:12] == b"WEBP",
+        }
+        if not raw or len(raw) > 100000 or not signatures[mime]:
+            raise ValueError("System logo image format or size is invalid")
+        return self
+
 
 class ObjectOut(ObjectCreate):
     model_config = ConfigDict(from_attributes=True)
     id: UUID
+
+
+class ContractInput(BaseModel):
+    title: str = Field(min_length=1, max_length=250)
+    contract_number: str = Field(default="", max_length=120)
+    agreement_type: Literal["purchase", "subscription", "support", "development", "other"] = "purchase"
+    vendor: str = Field(default="", max_length=250)
+    contractor: str = Field(default="", max_length=250)
+    start_date: date | None = None
+    end_date: date | None = None
+    renewal_date: date | None = None
+    automatic_renewal: bool = False
+    notice_days: int | None = Field(default=None, ge=0, le=365)
+    support_level: str = Field(default="", max_length=120)
+    support_window: str = Field(default="", max_length=120)
+    sla_response_hours: float | None = Field(default=None, ge=0, le=8760, allow_inf_nan=False)
+    sla_availability_percent: float | None = Field(default=None, ge=0, le=100, allow_inf_nan=False)
+    support_contact: str = Field(default="", max_length=250)
+    notes: str = Field(default="", max_length=2000)
+
+    @model_validator(mode="after")
+    def validate_dates(self):
+        if self.start_date and self.end_date and self.start_date > self.end_date:
+            raise ValueError("Contract end date must not precede start date")
+        return self
+
+
+class ContractOutput(ContractInput):
+    model_config = ConfigDict(from_attributes=True)
+    id: UUID
+    system_id: UUID
+
+
+class LicenseInput(BaseModel):
+    contract_id: UUID | None = None
+    product: str = Field(min_length=1, max_length=250)
+    license_type: Literal["named", "concurrent", "per_device", "per_core", "per_server", "site", "other"] = "named"
+    quantity: int = Field(ge=1, le=100000000)
+    valid_from: date | None = None
+    valid_until: date | None = None
+    notes: str = Field(default="", max_length=2000)
+
+    @model_validator(mode="after")
+    def validate_dates(self):
+        if self.valid_from and self.valid_until and self.valid_from > self.valid_until:
+            raise ValueError("License expiry must not precede start date")
+        return self
+
+
+class LicenseOutput(LicenseInput):
+    model_config = ConfigDict(from_attributes=True)
+    id: UUID
+    system_id: UUID
+
+
+class TechnologyInput(BaseModel):
+    name: str = Field(min_length=1, max_length=250)
+    category: Literal["language", "framework", "runtime", "database", "middleware",
+                      "platform", "os", "integration", "tool", "other"] = "other"
+    version: str = Field(default="", max_length=120)
+    environment: Literal["prod", "test", "dev", "stage", "other", "unknown"] = "unknown"
+    component_id: UUID | None = None
+    vendor: str = Field(default="", max_length=250)
+    lifecycle: Literal["current", "planned", "retired", "unknown"] = "unknown"
+    support_end_date: date | None = None
+    verification: Literal["verified", "unverified", "assumed"] = "unverified"
+    source: str = Field(default="", max_length=500)
+    notes: str = Field(default="", max_length=2000)
+
+    @model_validator(mode="after")
+    def validate_name(self):
+        if not self.name.strip():
+            raise ValueError("Technology name must not be blank")
+        return self
+
+
+class TechnologyOutput(TechnologyInput):
+    model_config = ConfigDict(from_attributes=True)
+    id: UUID
+    system_id: UUID
+
+
+class TechnologyObservationInput(BaseModel):
+    source_id: UUID
+    observed_at: datetime
+    observed_version: str = Field(default="", max_length=120)
+    reachable: bool | None = None
+    notes: str = Field(default="", max_length=1000)
+
+    @model_validator(mode="after")
+    def validate_observation(self):
+        if self.reachable is None and not self.observed_version.strip():
+            raise ValueError("A monitoring observation needs reachability or observed version")
+        if self.observed_at.tzinfo is None:
+            raise ValueError("Monitoring observation timestamp needs a timezone")
+        if self.observed_at > datetime.now(timezone.utc) + timedelta(minutes=5):
+            raise ValueError("Monitoring observation cannot be timestamped in the future")
+        return self
+
+
+class TechnologyObservationOutput(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: UUID
+    system_id: UUID
+    technology_id: UUID
+    source_id: UUID
+    observed_at: datetime
+    observed_version: str
+    reachable: bool | None
+    notes: str
+
+    @field_validator("observed_at", mode="before")
+    @classmethod
+    def normalize_sqlite_utc(cls, value):
+        # SQLAlchemy SQLite DateTime strips offsets on persistence.
+        # Inputs still require an explicit timezone, while saved UTC readings
+        # must serialize accurately without treating them as local time.
+        if isinstance(value, datetime) and value.tzinfo is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value
 
 
 class RelationCreate(BaseModel):
@@ -1288,11 +1514,306 @@ def update_object(object_id: UUID, payload: ObjectCreate, db: Session = Depends(
     return obj
 
 
+def _contract_system(db: Session, system_id: UUID) -> ArchitectureObject:
+    system = db.get(ArchitectureObject, system_id)
+    if system is None or system.kind != "system":
+        raise HTTPException(404, "Information system not found")
+    return system
+
+
+def _license_contract(db: Session, system_id: UUID, contract_id: UUID | None) -> None:
+    if contract_id is not None:
+        contract = db.get(SystemContract, contract_id)
+        if contract is None or contract.system_id != system_id:
+            raise HTTPException(422, "Contract must belong to the same information system")
+
+
+@app.get("/api/systems/{system_id}/contracts", response_model=list[ContractOutput])
+def list_system_contracts(system_id: UUID, db: Session = Depends(db_session)):
+    _contract_system(db, system_id)
+    return db.scalars(select(SystemContract).where(SystemContract.system_id == system_id).order_by(SystemContract.title, SystemContract.id)).all()
+
+
+@app.post("/api/systems/{system_id}/contracts", response_model=ContractOutput, status_code=201)
+def create_system_contract(system_id: UUID, payload: ContractInput, request: Request, db: Session = Depends(db_session)):
+    _contract_system(db, system_id)
+    row = SystemContract(system_id=system_id, **payload.model_dump())
+    db.add(row); db.flush()
+    audit_direct_edit(db, request, 'create_contract', row.id, None, payload.model_dump(), 'Создан договор ИС '+row.title)
+    db.commit(); db.refresh(row)
+    return row
+
+
+@app.put("/api/systems/{system_id}/contracts/{contract_id}", response_model=ContractOutput)
+def edit_system_contract(system_id: UUID, contract_id: UUID, payload: ContractInput, request: Request, db: Session = Depends(db_session)):
+    _contract_system(db, system_id)
+    row = db.get(SystemContract, contract_id)
+    if not row or row.system_id != system_id:
+        raise HTTPException(404, "Contract not found in this information system")
+    before = ContractOutput.model_validate(row).model_dump(mode='json')
+    for field, value in payload.model_dump().items():
+        setattr(row, field, value)
+    audit_direct_edit(db, request, 'update_contract', row.id, before, payload.model_dump(), 'Изменён договор ИС '+row.title)
+    db.commit(); db.refresh(row)
+    return row
+
+
+@app.delete("/api/systems/{system_id}/contracts/{contract_id}", status_code=204)
+def remove_system_contract(system_id: UUID, contract_id: UUID, request: Request, db: Session = Depends(db_session)):
+    _contract_system(db, system_id)
+    row = db.get(SystemContract, contract_id)
+    if not row or row.system_id != system_id:
+        raise HTTPException(404, "Contract not found in this information system")
+    if db.scalar(select(SystemLicense.id).where(SystemLicense.contract_id == contract_id)):
+        raise HTTPException(409, "Unlink associated licenses before removing the contract")
+    audit_direct_edit(db, request, 'delete_contract', row.id, ContractOutput.model_validate(row).model_dump(mode='json'), None, 'Удалён договор ИС '+row.title)
+    db.delete(row); db.commit()
+
+
+@app.get("/api/systems/{system_id}/licenses", response_model=list[LicenseOutput])
+def list_system_licenses(system_id: UUID, db: Session = Depends(db_session)):
+    _contract_system(db, system_id)
+    return db.scalars(select(SystemLicense).where(SystemLicense.system_id == system_id).order_by(SystemLicense.product, SystemLicense.id)).all()
+
+
+@app.post("/api/systems/{system_id}/licenses", response_model=LicenseOutput, status_code=201)
+def create_system_license(system_id: UUID, payload: LicenseInput, request: Request, db: Session = Depends(db_session)):
+    _contract_system(db, system_id)
+    _license_contract(db, system_id, payload.contract_id)
+    row = SystemLicense(system_id=system_id, **payload.model_dump())
+    db.add(row); db.flush()
+    audit_direct_edit(db, request, 'create_license', row.id, None, payload.model_dump(), 'Создана лицензия '+row.product)
+    db.commit(); db.refresh(row)
+    return row
+
+
+@app.put("/api/systems/{system_id}/licenses/{license_id}", response_model=LicenseOutput)
+def edit_system_license(system_id: UUID, license_id: UUID, payload: LicenseInput, request: Request, db: Session = Depends(db_session)):
+    _contract_system(db, system_id)
+    row = db.get(SystemLicense, license_id)
+    if not row or row.system_id != system_id:
+        raise HTTPException(404, "License not found in this information system")
+    _license_contract(db, system_id, payload.contract_id)
+    before = LicenseOutput.model_validate(row).model_dump(mode='json')
+    for field, value in payload.model_dump().items():
+        setattr(row, field, value)
+    audit_direct_edit(db, request, 'update_license', row.id, before, payload.model_dump(), 'Изменена лицензия '+row.product)
+    db.commit(); db.refresh(row)
+    return row
+
+
+@app.delete("/api/systems/{system_id}/licenses/{license_id}", status_code=204)
+def remove_system_license(system_id: UUID, license_id: UUID, request: Request, db: Session = Depends(db_session)):
+    _contract_system(db, system_id)
+    row = db.get(SystemLicense, license_id)
+    if not row or row.system_id != system_id:
+        raise HTTPException(404, "License not found in this information system")
+    audit_direct_edit(db, request, 'delete_license', row.id, LicenseOutput.model_validate(row).model_dump(mode='json'), None, 'Удалена лицензия '+row.product)
+    db.delete(row); db.commit()
+
+
+def _validate_technology_component(db: Session, system_id: UUID,
+                                   component_id: UUID | None) -> None:
+    if component_id is None:
+        return
+    component = db.get(InfrastructureItem, component_id)
+    if component is None or component.system_id != system_id:
+        raise HTTPException(422, "Technology component must belong to the same information system")
+
+
+def _check_technology_duplicate(db: Session, system_id: UUID, payload: TechnologyInput,
+                                excluding: UUID | None = None) -> None:
+    """Avoid accidental duplicate rows without merging versions or environments."""
+    for record in db.scalars(
+        select(SystemTechnology).where(SystemTechnology.system_id == system_id)
+    ).all():
+        if excluding is not None and record.id == excluding:
+            continue
+        if (record.name.strip().casefold() == payload.name.strip().casefold()
+                and record.category == payload.category
+                and record.version.strip().casefold() == payload.version.strip().casefold()
+                and record.environment == payload.environment
+                and record.component_id == payload.component_id):
+            raise HTTPException(409, "Technology already exists in this environment and component")
+
+
+@app.get("/api/systems/{system_id}/technologies", response_model=list[TechnologyOutput])
+def list_system_technologies(system_id: UUID, db: Session = Depends(db_session)):
+    _contract_system(db, system_id)
+    return db.scalars(
+        select(SystemTechnology).where(SystemTechnology.system_id == system_id)
+        .order_by(SystemTechnology.category, SystemTechnology.name, SystemTechnology.version)
+    ).all()
+
+
+@app.post("/api/systems/{system_id}/technologies", response_model=TechnologyOutput, status_code=201)
+def create_system_technology(system_id: UUID, payload: TechnologyInput, request: Request,
+                             db: Session = Depends(db_session)):
+    _contract_system(db, system_id)
+    _validate_technology_component(db, system_id, payload.component_id)
+    _check_technology_duplicate(db, system_id, payload)
+    row = SystemTechnology(system_id=system_id, **payload.model_dump())
+    db.add(row); db.flush()
+    audit_direct_edit(db, request, "create_technology", row.id, None,
+                      {"system_id":str(system_id), **payload.model_dump(mode="json")},
+                      "Добавлена технология ИС "+row.name)
+    db.commit(); db.refresh(row)
+    return row
+
+
+@app.put("/api/systems/{system_id}/technologies/{technology_id}", response_model=TechnologyOutput)
+def update_system_technology(system_id: UUID, technology_id: UUID, payload: TechnologyInput,
+                             request: Request, db: Session = Depends(db_session)):
+    _contract_system(db, system_id)
+    row = db.get(SystemTechnology, technology_id)
+    if row is None or row.system_id != system_id:
+        raise HTTPException(404, "Technology not found in this information system")
+    _validate_technology_component(db, system_id, payload.component_id)
+    _check_technology_duplicate(db, system_id, payload, excluding=row.id)
+    before = TechnologyOutput.model_validate(row).model_dump(mode="json")
+    for field, value in payload.model_dump().items():
+        setattr(row, field, value)
+    audit_direct_edit(db, request, "update_technology", row.id, before,
+                      payload.model_dump(mode="json"), "Изменена технология ИС "+row.name)
+    db.commit(); db.refresh(row)
+    return row
+
+
+@app.delete("/api/systems/{system_id}/technologies/{technology_id}", status_code=204)
+def delete_system_technology(system_id: UUID, technology_id: UUID, request: Request,
+                             db: Session = Depends(db_session)):
+    _contract_system(db, system_id)
+    row = db.get(SystemTechnology, technology_id)
+    if row is None or row.system_id != system_id:
+        raise HTTPException(404, "Technology not found in this information system")
+    before = TechnologyOutput.model_validate(row).model_dump(mode="json")
+    audit_direct_edit(db, request, "delete_technology", row.id, before, None,
+                      "Удалена технология из паспорта ИС "+row.name)
+    for observation in db.scalars(select(SystemTechnologyObservation)
+                                  .where(SystemTechnologyObservation.technology_id == row.id)).all():
+        db.delete(observation)
+    db.delete(row); db.commit()
+
+
+def _technology_monitor_link(db: Session, item: SystemTechnology, source_id: UUID) -> None:
+    """Require an enabled, previously approved monitor for exactly this scope.
+
+    The endpoint receives telemetry pushed by an authorized client and performs
+    NO DNS, ICMP, HTTP, SSH, port scans or fetching of user-provided URLs.
+    """
+    from .monitoring import MonitoringSource, MonitoringLink
+    source = db.get(MonitoringSource, source_id)
+    if source is None or not source.enabled:
+        raise HTTPException(422, "Monitoring source does not exist or is disabled")
+    links = db.scalars(select(MonitoringLink).where(
+        MonitoringLink.source_id == source_id,
+        MonitoringLink.relation_kind == "monitors",
+    )).all()
+    approved = any(
+        (link.target_type == "system" and link.target_id == item.system_id) or
+        (link.target_type == "component" and item.component_id is not None
+         and link.target_id == item.component_id)
+        for link in links
+    )
+    if not approved:
+        raise HTTPException(422, "Monitoring source has no approved monitoring link to this system or component")
+
+
+@app.get("/api/systems/{system_id}/technology-observations", response_model=list[TechnologyObservationOutput])
+def list_technology_observations(system_id: UUID, db: Session = Depends(db_session)):
+    _contract_system(db, system_id)
+    return db.scalars(select(SystemTechnologyObservation)
+                      .where(SystemTechnologyObservation.system_id == system_id)
+                      .order_by(SystemTechnologyObservation.observed_at.desc())
+                      .limit(300)).all()
+
+
+@app.post("/api/systems/{system_id}/technologies/{technology_id}/observations",
+          response_model=TechnologyObservationOutput, status_code=201)
+def record_technology_observation(system_id: UUID, technology_id: UUID,
+                                  payload: TechnologyObservationInput,
+                                  request: Request, db: Session = Depends(db_session)):
+    _contract_system(db, system_id)
+    item = db.get(SystemTechnology, technology_id)
+    if item is None or item.system_id != system_id:
+        raise HTTPException(404, "Technology does not belong to this system")
+    _technology_monitor_link(db, item, payload.source_id)
+    row = SystemTechnologyObservation(system_id=system_id, technology_id=technology_id,
+                                      **payload.model_dump())
+    db.add(row); db.flush()
+    audit_direct_edit(db, request, "record_technology_observation", row.id, None,
+                      {"technology_id":str(technology_id),"source_id":str(payload.source_id),
+                       "observed_at":payload.observed_at.isoformat(),
+                       "observed_version":payload.observed_version,
+                       "reachable":payload.reachable},
+                      "Получены сведения из разрешённого мониторинга")
+    db.commit(); db.refresh(row)
+    return row
+
+
+@app.get("/api/technology-inventory")
+def technology_inventory(q: str = Query(default="", max_length=200),
+                         environment: str = Query(default="", max_length=24),
+                         category: str = Query(default="", max_length=36),
+                         db: Session = Depends(db_session)):
+    """Cross-IS inventory for vulnerability triage – no host scans or CVE guesses.
+
+    Observations are explicitly labelled as monitor-reported, not verified by Hub.
+    """
+    from .monitoring import MonitoringSource
+    tech_rows = db.scalars(select(SystemTechnology).order_by(
+        SystemTechnology.name, SystemTechnology.version, SystemTechnology.id)).all()
+    systems = {row.id:row.name for row in db.scalars(select(ArchitectureObject)).all()}
+    components = {row.id:row.name for row in db.scalars(select(InfrastructureItem)).all()}
+    monitors = {row.id:row.name for row in db.scalars(select(MonitoringSource)).all()}
+    observations = db.scalars(select(SystemTechnologyObservation)
+                              .order_by(SystemTechnologyObservation.observed_at.desc(),
+                                        SystemTechnologyObservation.id.desc())).all()
+    latest = {}
+    for obs in observations:
+        latest.setdefault(obs.technology_id, obs)
+    today = datetime.now(timezone.utc).date()
+    output = []
+    for row in tech_rows:
+        if environment and row.environment != environment:
+            continue
+        if category and row.category != category:
+            continue
+        obs = latest.get(row.id)
+        values = (row.name, row.version, row.category, row.environment,
+                  systems.get(row.system_id, ""), components.get(row.component_id, ""),
+                  obs.observed_version if obs else "")
+        if q and q.strip().casefold() not in " ".join(str(value) for value in values).casefold():
+            continue
+        output.append({
+            "id":str(row.id), "system_id":str(row.system_id),
+            "system_name":systems.get(row.system_id, ""),
+            "component_id":str(row.component_id) if row.component_id else None,
+            "component_name":components.get(row.component_id, "") if row.component_id else "",
+            "name":row.name, "category":row.category,
+            "version":row.version, "environment":row.environment,
+            "lifecycle":row.lifecycle, "verification":row.verification,
+            "support_end_date":row.support_end_date.isoformat() if row.support_end_date else None,
+            "out_of_support":bool(row.support_end_date and row.support_end_date < today),
+            "observed_version":obs.observed_version if obs else "",
+            "reachable":obs.reachable if obs else None,
+            "observed_at":obs.observed_at.isoformat() if obs else None,
+            "observation_source":monitors.get(obs.source_id, "") if obs else "",
+            "version_mismatch":bool(obs and row.version and obs.observed_version
+                                    and obs.observed_version != row.version),
+        })
+    return {"count":len(output), "items":output}
+
+
 @app.delete("/api/objects/{object_id}", status_code=204)
 def delete_object(object_id: UUID, db: Session = Depends(db_session)):
     obj = db.get(ArchitectureObject, object_id)
     if obj is None:
         raise HTTPException(status_code=404, detail="Object not found")
+    if (db.scalar(select(SystemContract.id).where(SystemContract.system_id == object_id)) or
+            db.scalar(select(SystemLicense.id).where(SystemLicense.system_id == object_id)) or
+            db.scalar(select(SystemTechnology.id).where(SystemTechnology.system_id == object_id))):
+        raise HTTPException(409, "Remove IS contract, licence and technology records before deleting the system")
     for rel in db.scalars(select(Relation).where((Relation.source_id == object_id) | (Relation.target_id == object_id))).all():
         db.delete(rel)
     # Diagram positions may contain orphan IDs; UI filters them on load.
@@ -1986,6 +2507,31 @@ def update_flow(flow_id: UUID, payload: FlowInput, request: Request, db: Session
     return flow
 
 
+def prune_deleted_board_references(db: Session, item_id: UUID, kind: str) -> None:
+    """Remove orphan visual references, without touching other domain entities."""
+    target = str(item_id)
+    key = "network:" + target if kind == "network" else target
+    for board in db.scalars(select(BoardLayout)).all():
+        raw = board.positions if isinstance(board.positions, dict) else {}
+        if raw.get("_layout_schema") == 2:
+            positions = dict(raw.get("positions") or {})
+            anchors = dict(raw.get("flow_anchors") or {})
+            old_positions, old_anchors = dict(positions), dict(anchors)
+            if kind == "flow":
+                anchors.pop(target, None)
+            else:
+                positions.pop(key, None)
+                if kind == "network":
+                    positions = {name: ({k:v for k,v in point.items() if k != "parent_id"}
+                                        if isinstance(point, dict) and point.get("parent_id") == key
+                                        else point)
+                                 for name,point in positions.items()}
+            if positions != old_positions or anchors != old_anchors:
+                board.positions = {**raw, "positions": positions, "flow_anchors": anchors}
+        elif kind != "flow" and key in raw:
+            board.positions = {name:point for name,point in raw.items() if name != key}
+
+
 @app.delete("/api/flows/{flow_id}", status_code=204)
 def delete_flow(flow_id: UUID, request: Request, db: Session = Depends(db_session)):
     flow = db.get(DataFlow, flow_id)
@@ -1999,6 +2545,7 @@ def delete_flow(flow_id: UUID, request: Request, db: Session = Depends(db_sessio
                       {"name":flow.name,"source_id":flow.source_id,"target_id":flow.target_id},
                       None, "Удалён поток " + flow.name)
     db.delete(flow)
+    prune_deleted_board_references(db, flow_id, 'flow')
     db.commit()
 
 
@@ -2015,10 +2562,13 @@ def delete_infra(item_id: UUID, request: Request, db: Session = Depends(db_sessi
         raise HTTPException(status_code=409, detail="Delete connected data flows first")
     if db.scalars(select(NetworkInterface).where(NetworkInterface.item_id == item_id)).first():
         raise HTTPException(status_code=409, detail="Delete network interfaces first")
+    if db.scalar(select(SystemTechnology.id).where(SystemTechnology.component_id == item_id)):
+        raise HTTPException(status_code=409, detail="Unlink technology inventory before deleting component")
     audit_direct_edit(db, request, "delete_vm", item.id,
                       {"name":item.name,"kind":item.kind,"system_id":item.system_id},
                       None, "Удалён компонент " + item.name)
     db.delete(item)
+    prune_deleted_board_references(db, item_id, 'vm')
     db.commit()
 
 
@@ -2381,6 +2931,7 @@ def delete_network(segment_id: UUID, request: Request, db: Session = Depends(db_
     before = {"name": segment.name, "kind": segment.kind, "description": segment.description,
               "verification": segment.verification}
     db.delete(segment)
+    prune_deleted_board_references(db, segment_id, 'network')
     db.add(BoardAudit(reason="Удалена сеть " + segment.name, actor=board_actor(request),
                       changes=[{"action": "delete_network", "id": str(segment_id),
                                 "before": before, "after": None}]))
@@ -2441,6 +2992,21 @@ def add_process(payload: ProcessInput, db: Session = Depends(db_session)):
     x = BusinessProcess(**payload.model_dump()); db.add(x); db.commit(); db.refresh(x); return x
 
 
+@app.put("/api/business/processes/{process_id}", response_model=ProcessOutput)
+def update_process(process_id: UUID, payload: ProcessInput, db: Session = Depends(db_session)):
+    process = db.get(BusinessProcess, process_id)
+    if not process:
+        raise HTTPException(404, "Business process not found")
+    if not db.get(BusinessCategory, payload.category_id):
+        raise HTTPException(422, "Category not found")
+    process.category_id = payload.category_id
+    process.name = payload.name
+    process.description = payload.description
+    db.commit()
+    db.refresh(process)
+    return process
+
+
 @app.get("/api/business/system-links", response_model=list[ProcessSystemOutput])
 def business_links(db: Session = Depends(db_session)):
     return db.scalars(select(ProcessSystem)).all()
@@ -2448,8 +3014,9 @@ def business_links(db: Session = Depends(db_session)):
 
 @app.post("/api/business/system-links", response_model=ProcessSystemOutput, status_code=201)
 def add_business_link(payload: ProcessSystemInput, db: Session = Depends(db_session)):
-    if not db.get(BusinessProcess, payload.process_id) or not db.get(ArchitectureObject, payload.system_id):
-        raise HTTPException(422, "Process or system not found")
+    system = db.get(ArchitectureObject, payload.system_id)
+    if not db.get(BusinessProcess, payload.process_id) or not system or system.kind != "system":
+        raise HTTPException(422, "Business link requires an existing process and an information system")
     x = db.scalars(select(ProcessSystem).where(ProcessSystem.process_id == payload.process_id,ProcessSystem.system_id == payload.system_id)).first()
     if x: return x
     x = ProcessSystem(**payload.model_dump()); db.add(x); db.commit(); db.refresh(x); return x
@@ -2560,11 +3127,21 @@ class BoardFlowAnchor(BaseModel):
     target_handle: str = Field(min_length=5, max_length=20)
 
 
+class BoardNote(BaseModel):
+    # Presentation-only annotation: no CMDB, flow or network identity.
+    id: UUID
+    x: float = Field(ge=-100000, le=100000, allow_inf_nan=False)
+    y: float = Field(ge=-100000, le=100000, allow_inf_nan=False)
+    text: str = Field(min_length=1, max_length=2000)
+
+
 class BoardLayoutInput(BaseModel):
     # Network rectangles are stored as "network:<segment UUID>".
     positions: dict[str, BoardPoint] = Field(default_factory=dict, max_length=1000)
     # An omitted field preserves the previously saved anchor choices for older clients.
     flow_anchors: dict[str, BoardFlowAnchor] | None = Field(default=None, max_length=1000)
+    # Omitted notes preserve pre-existing annotations for older clients.
+    notes: list[BoardNote] | None = Field(default=None, max_length=100)
 
 
 def unpack_board_layout(raw: dict[str, Any] | None) -> tuple[dict[str, Any], dict[str, Any]]:
@@ -2582,7 +3159,8 @@ def read_board_layout(system_id: UUID, db: Session = Depends(db_session)):
         raise HTTPException(404, "System not found")
     stored = db.get(BoardLayout, system_id)
     positions, anchors = unpack_board_layout(stored.positions if stored else None)
-    return {"system_id": str(system_id), "positions": positions, "flow_anchors": anchors}
+    notes = list(stored.positions.get("notes") or []) if stored and isinstance(stored.positions, dict) and stored.positions.get("_layout_schema") == 2 else []
+    return {"system_id": str(system_id), "positions": positions, "flow_anchors": anchors, "notes": notes}
 
 
 @app.put("/api/board/layout/{system_id}")
@@ -2645,6 +3223,10 @@ def save_board_layout(system_id: UUID, payload: BoardLayoutInput,
     positions = {key: point.model_dump(exclude_none=True) for key, point in payload.positions.items()}
     stored = db.get(BoardLayout, system_id)
     before, previous_anchors = unpack_board_layout(stored.positions if stored else None)
+    previous_notes = list(stored.positions.get("notes") or []) if stored and isinstance(stored.positions, dict) and stored.positions.get("_layout_schema") == 2 else []
+    notes = previous_notes if payload.notes is None else [note.model_dump(mode="json") for note in payload.notes]
+    if len({note["id"] for note in notes}) != len(notes):
+        raise HTTPException(422, "Duplicate note IDs")
     anchors = previous_anchors.copy() if payload.flow_anchors is None else {
         key: item.model_dump() for key, item in payload.flow_anchors.items()
     }
@@ -2663,10 +3245,10 @@ def save_board_layout(system_id: UUID, payload: BoardLayoutInput,
         present = set(db.scalars(select(DataFlow.id).where(DataFlow.id.in_(flow_ids))).all())
         if len(present) != len(set(flow_ids)):
             raise HTTPException(422, "Unknown flow in layout")
-    if before == positions and previous_anchors == anchors:
-        return {"system_id": str(system_id), "positions": positions, "flow_anchors": anchors}
-    # Reuse existing JSON column without an incompatible SQLite migration.
-    encoded = {"_layout_schema": 2, "positions": positions, "flow_anchors": anchors}
+    if before == positions and previous_anchors == anchors and previous_notes == notes:
+        return {"system_id": str(system_id), "positions": positions, "flow_anchors": anchors, "notes": notes}
+    # Reuse existing JSON column; annotations do not require schema migration.
+    encoded = {"_layout_schema": 2, "positions": positions, "flow_anchors": anchors, "notes": notes}
     if stored is None:
         stored = BoardLayout(system_id=system_id, positions=encoded)
         db.add(stored)
@@ -2683,10 +3265,17 @@ def save_board_layout(system_id: UUID, payload: BoardLayoutInput,
         for key in sorted(set(previous_anchors) | set(anchors))
         if previous_anchors.get(key) != anchors.get(key)
     ]
-    db.add(BoardAudit(reason="Сохранено расположение элементов схемы и точек подключения потоков",
+    layout_changes += [
+        {"action": "update_note", "id": key,
+         "before": {note["id"]: note for note in previous_notes}.get(key),
+         "after": {note["id"]: note for note in notes}.get(key)}
+        for key in sorted({note["id"] for note in previous_notes} | {note["id"] for note in notes})
+        if {note["id"]: note for note in previous_notes}.get(key) != {note["id"]: note for note in notes}.get(key)
+    ]
+    db.add(BoardAudit(reason="Сохранено оформление схемы, точки подключения и заметки",
                       actor=board_actor(request), changes=layout_changes))
     db.commit()
-    return {"system_id": str(system_id), "positions": positions, "flow_anchors": anchors}
+    return {"system_id": str(system_id), "positions": positions, "flow_anchors": anchors, "notes": notes}
 
 
 class BoardBatch(BaseModel):

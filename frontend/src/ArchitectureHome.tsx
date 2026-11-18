@@ -1,10 +1,11 @@
 import React, {useEffect,useMemo,useRef,useState} from 'react'
 import {architectureIcon,DiagramNodeLabel,diagramCardStyle} from './DiagramVisual'
+import {logoFromAttributes} from './SystemLogo'
 export {architectureIcon} from './DiagramVisual'
 import {ReactFlow,Background,Controls,MarkerType,NodeResizer,useReactFlow,type NodeProps,type NodeChange} from '@xyflow/react'
 import {MousePointer2, Move, SquareDashed, Maximize2, Save, X, ClipboardList} from 'lucide-react'
 
-type System={id:string;name:string;kind:string}
+type System={id:string;name:string;kind:string;attributes?:Record<string,unknown>}
 type Component={id:string;system_id:string;name:string;kind:string;details:Record<string,unknown>}
 type Flow={id:string;source_id:string;target_id:string}
 type Process={id:string;name:string;category_id?:string}
@@ -155,7 +156,11 @@ export default function ArchitectureHome({systems,components,flows,processes,cat
  const [query,setQuery]=useState('')
  const [focus,setFocus]=useState('')
  const [selectedSystem,setSelectedSystem]=useState('')
- useEffect(()=>{if(focusSystemId)setSelectedSystem(focusSystemId)},[focusSystemId])
+ const validFocusSystemId=systems.some(system=>system.id===focusSystemId)?focusSystemId:''
+ useEffect(()=>{
+  if(validFocusSystemId)setSelectedSystem(validFocusSystemId)
+  else setSelectedSystem(previous=>previous&&systems.some(system=>system.id===previous)?previous:'')
+ },[validFocusSystemId,systems])
  const previousInspectorOpen=useRef(inspectorOpen)
  useEffect(()=>{
    if(previousInspectorOpen.current&&!inspectorOpen)setSelectedSystem('')
@@ -251,7 +256,7 @@ export default function ArchitectureHome({systems,components,flows,processes,cat
      data:{label:<span title={c.name}>{architectureIcon(c.kind)} {c.name}</span>},style:{width:136,fontSize:11,padding:'7px',borderRadius:6,border:'1px solid #cbd5e1',background:'#fff',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' as const},selectable:true,draggable:false,zIndex:20}]:[]
  }):[]
 
- const nodes=filteredSystems.map((s,i)=>({id:s.id,draggable:false,position:positions[s.id]||{x:(i%4)*320,y:Math.floor(i/4)*190},data:{label:<DiagramNodeLabel name={s.name} kind={s.kind} subtitle={components.filter(c=>c.system_id===s.id).length+' компонентов · '+links.filter(l=>l.system_id===s.id).length+' бизнес-связей'}/>},style:diagramCardStyle()}))
+ const nodes=filteredSystems.map((s,i)=>({id:s.id,draggable:false,initialWidth:245,initialHeight:86,position:positions[s.id]||{x:(i%4)*320,y:Math.floor(i/4)*190},data:{label:<DiagramNodeLabel name={s.name} kind={s.kind} logo={logoFromAttributes(s.attributes)} subtitle={components.filter(c=>c.system_id===s.id).length+' компонентов · '+links.filter(l=>l.system_id===s.id).length+' бизнес-связей'}/>},style:diagramCardStyle()}))
  const selectedSystemInfo=filteredSystems.find(s=>s.id===selectedSystem)
  const selectedNeighbors=new Set<string>([selectedSystem])
  for(const f of crossFlows)if(f.source===selectedSystem||f.target===selectedSystem){selectedNeighbors.add(f.source);selectedNeighbors.add(f.target)}
@@ -285,7 +290,7 @@ export default function ArchitectureHome({systems,components,flows,processes,cat
  </label>)}</div></details>
  </div>
  {activeOverlays.business&&selectedOverlayGroup&&<span className="homeLayerHint" role="status">Показана бизнес-область: {overlayGroups.find(group=>group.id===selectedOverlayGroup)?.name}. Для смены откройте список.</span>}
- <div className="homeMapTools"><input aria-label="Поиск на карте" value={query} onChange={e=>setQuery(e.target.value)} placeholder="Найти ИС или компонент…"/><Disclosure label="Фильтры и слои"><select aria-label="Контур карты" value={environment} onChange={e=>setEnvironment(e.target.value)}><option value="all">Все контуры</option>{environments.map(e=><option key={e} value={e}>{e}</option>)}</select><select aria-label="Фокус на ИС" value={focus} onChange={e=>setFocus(e.target.value)}><option value="">Все системы</option>{systems.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select>
+ <div className="homeMapTools"><input aria-label="Поиск на карте" value={query} onChange={e=>setQuery(e.target.value)} placeholder="Найти ИС или компонент…"/><Disclosure label="Фильтры и слои"><select aria-label="Контур карты" value={environment} onChange={e=>setEnvironment(e.target.value)}><option value="all">Все контуры</option>{environments.map(e=><option key={e} value={e}>{e}</option>)}</select><select aria-label="Фокус на ИС" value={focus} onChange={e=>{setFocus(e.target.value);if(!e.target.value){setSelectedSystem('');onCloseSystem()}}}><option value="">Все системы</option>{systems.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select>
   <details className="homeMapLayersDisclosure"><summary>Слои карты <span aria-hidden="true">▾</span></summary><div className="homeMapLayers" aria-label="Слои карты">{([['systems','Информационные системы'],['business','Бизнес-процессы']] as const).map(([key,label])=><label key={key}><input type="checkbox" checked={layers[key]} onChange={e=>setLayers(old=>({...old,[key]:e.target.checked}))}/>{label}</label>)}</div></details></Disclosure></div>
   {query.trim()&&<div className="homeMapSearchMatches" role="region" aria-label="Результаты поиска по архитектуре">
     <strong>Найденные ИС: {filteredSystems.length}</strong>
@@ -324,7 +329,7 @@ export default function ArchitectureHome({systems,components,flows,processes,cat
      const group=overlayGroups.find(item=>item.id===key)
      if(node&&group)updateDraft(key,change.position,{x:node.position.x,y:node.position.y,width:node.width,height:node.height,color:groupColor(group),opacity:(layerDrafts[key]||savedRegions[key])?.opacity??overlayOpacity/100,members:membersFor(group)})
     }
-   }} onNodeDragStop={(_,node)=>{if(layerTool!=='move'||!node.id.startsWith('overlay:'))return;const key=node.id.slice(8);const region=areaNodes.find(item=>item.id===node.id);const group=overlayGroups.find(item=>item.id===key);if(region&&group)updateDraft(key,node.position,{x:region.position.x,y:region.position.y,width:region.width,height:region.height,color:groupColor(group),opacity:(layerDrafts[key]||savedRegions[key])?.opacity??overlayOpacity/100,members:membersFor(group)})}} fitView fitViewOptions={{padding:0.15,minZoom:0.3,maxZoom:1}} nodesConnectable={false} onNodeClick={(_,node)=>{if(node.id.startsWith('component:')){onOpenComponent(node.id.slice('component:'.length));return}if(node.id.startsWith('overlay:')){setSelectedOverlayGroup(node.id.slice(8));return}setSelectedSystem(node.id);onOpenSystem(node.id)}} onPaneClick={()=>{setSelectedSystem('');onCloseSystem()}}><AutoFit layoutKey={inspectorOpen?'inspector-open':'inspector-closed'} ignoreNodePrefixes="overlay:,component:" focusIds={filteredSystems.map(s=>s.id)} suspended={editingLayers}/><Background gap={20}/><Controls showInteractive={false}/><LayerFitController trigger={fitTrigger} systemIds={filteredSystems.map(s=>s.id)}/>
+   }} onNodeDragStop={(_,node)=>{if(layerTool!=='move'||!node.id.startsWith('overlay:'))return;const key=node.id.slice(8);const region=areaNodes.find(item=>item.id===node.id);const group=overlayGroups.find(item=>item.id===key);if(region&&group)updateDraft(key,node.position,{x:region.position.x,y:region.position.y,width:region.width,height:region.height,color:groupColor(group),opacity:(layerDrafts[key]||savedRegions[key])?.opacity??overlayOpacity/100,members:membersFor(group)})}} fitView fitViewOptions={{padding:0.15,minZoom:0.3,maxZoom:1}} nodesConnectable={false} onNodeClick={(_,node)=>{if(node.id.startsWith('component:')){onOpenComponent(node.id.slice('component:'.length));return}if(node.id.startsWith('overlay:')){setSelectedOverlayGroup(node.id.slice(8));return}setSelectedSystem(node.id);onOpenSystem(node.id)}} onPaneClick={()=>{setSelectedSystem('');onCloseSystem()}}><AutoFit layoutKey={inspectorOpen?'inspector-open':'inspector-closed'} ignoreNodePrefixes="overlay:,component:" focusIds={selectedSystemInfo?[selectedSystemInfo.id]:filteredSystems.map(s=>s.id)} suspended={editingLayers}/><Background gap={20}/><Controls showInteractive={false}/><LayerFitController trigger={fitTrigger} systemIds={filteredSystems.map(s=>s.id)}/>
    <LayerRectangleDraw enabled={editingLayers&&layerTool==='draw'&&Boolean(selectedOverlayGroup)} onDraw={drawRegion}/>
    </ReactFlow></div>
 

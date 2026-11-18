@@ -357,7 +357,7 @@ test('an existing VRF is draggable and its saved geometry is audited',async({pag
   expect(geometry.width).toBeGreaterThanOrEqual(140)
   expect(geometry.height).toBeGreaterThanOrEqual(90)
   await editor.getByRole('toolbar').getByRole('button',{name:'История изменений'}).click()
-  await expect(editor.getByRole('dialog',{name:'Журнал изменений архитектуры'})).toContainText('Сохранено расположение элементов схемы')
+  await expect(editor.getByRole('dialog',{name:'Журнал изменений архитектуры'})).toContainText('Сохранено оформление схемы')
 })
 
 
@@ -637,7 +637,9 @@ test('saved flow edits are reviewed from VM passport and survive reloading the d
   await dock.getByPlaceholder('Например: актуализация схемы ИС после изменения сети').fill('Confirmed technical flow attributes')
   await dock.getByRole('button',{name:'Проверить изменения (1)'}).click()
   const review=editor.getByRole('dialog',{name:'Подтверждение изменений архитектуры'})
-  await expect(review).toContainText('update_flow')
+  await expect(review).toContainText('Изменение потока: HR data verified')
+  await expect(review).toContainText('Порт: 443 → 8443')
+  await expect(review).toContainText('Протокол: TCP → HTTPS')
   await review.getByRole('button',{name:'Подтвердить и записать в журнал'}).click()
   await expect(review).toHaveCount(0)
   const updated=(await (await page.request.get('http://127.0.0.1:8001/api/flows')).json()).find((x:{id:string})=>x.id===flowId)
@@ -674,7 +676,7 @@ test('one grouped arrow exposes its separate saved flow records',async({page})=>
   await page.getByRole('combobox',{name:'Выбрать ИС для редактора компонентов'}).selectOption(systemId)
   const editor=page.getByRole('region',{name:'Редактор архитектурной схемы'})
   await expect(editor.locator('.react-flow__edge')).toHaveCount(1)
-  await editor.locator('.react-flow__edge').first().click()
+  await editor.getByRole('button',{name:/Выбрать поток/}).first().click()
   const selection=editor.getByRole('region',{name:'Потоки выбранной стрелки'})
   await expect(selection).toBeVisible()
   await expect(selection.getByRole('button')).toHaveCount(2)

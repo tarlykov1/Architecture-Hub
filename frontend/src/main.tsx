@@ -18,6 +18,10 @@ import {canAccess,canOpenSection,sectionWriteLayer,type PermissionLayer} from '.
 import CmdbImpact from './CmdbImpact'
 import CmdbRecord from './CmdbRecord'
 import {DiagramNodeLabel,diagramCardStyle} from './DiagramVisual'
+import {SystemLogo,logoFromAttributes,prepareSystemLogo} from './SystemLogo'
+import SystemCommercial from './SystemCommercial'
+import SystemTechStack from './SystemTechStack'
+import TechnologyInventory from './TechnologyInventory'
 import {publicDemoResponse} from './publicDemo'
 import FlowDataCatalog from './FlowDataCatalog'
 import SystemDataMap from './SystemDataMap'
@@ -126,6 +130,7 @@ function App() {
     try{const saved=localStorage.getItem('architecture-hub-component-view-v1');return saved==='board'?'diagram':saved==='diagram'||saved==='registry'||saved==='cards'?saved:'registry'}catch{return 'registry'}
   })
   const [systemsShowDiagram,setSystemsShowDiagram]=useState(false)
+  const [systemsShowTechnologyInventory,setSystemsShowTechnologyInventory]=useState(false)
   const [flowEditMode,setFlowEditMode]=useState(false)
   const [flowView,setFlowView]=useState<'diagram'|'cards'>('cards')
   useEffect(()=>{
@@ -146,6 +151,15 @@ function App() {
   const [categories,setCategories] = useState<Category[]>([])
   const [processes,setProcesses] = useState<BusinessProcess[]>([])
   const [businessLinks,setBusinessLinks] = useState<BusinessLink[]>([])
+  const [businessEditorOpen,setBusinessEditorOpen] = useState(false)
+  const [businessEditId,setBusinessEditId] = useState('')
+  const [businessCategoryId,setBusinessCategoryId] = useState('')
+  const [businessNewCategory,setBusinessNewCategory] = useState('')
+  const [businessName,setBusinessName] = useState('')
+  const [businessDescription,setBusinessDescription] = useState('')
+  const [businessSystemId,setBusinessSystemId] = useState('')
+  const [businessSaving,setBusinessSaving] = useState(false)
+  const [businessError,setBusinessError] = useState('')
   const [segments,setSegments] = useState<Segment[]>([])
   const [nics,setNics] = useState<Nic[]>([])
   const [viewMode,setViewMode] = useState<'architecture'|'security'>('architecture')
@@ -268,7 +282,9 @@ function App() {
     setComponentEditing(false)
   }
   const [passportEditId,setPassportEditId]=useState('')
-  const [passportDraft,setPassportDraft]=useState<{name:string;description:string;status:string;fields:Record<string,string>}>({name:'',description:'',status:'draft',fields:{}})
+  const [passportDraft,setPassportDraft]=useState<{name:string;description:string;status:string;fields:Record<string,string>;logo:string}>({name:'',description:'',status:'draft',fields:{},logo:''})
+  const [passportLogoError,setPassportLogoError]=useState('')
+  const [passportLogoPreparing,setPassportLogoPreparing]=useState(false)
   const [passportSaving,setPassportSaving]=useState(false)
   const [kisExporting,setKisExporting]=useState(false)
   const [kisOpen,setKisOpen] = useState(false)
@@ -282,7 +298,8 @@ function App() {
       if(!(key in fields))fields[key]=''
     }
     fields['Название ИС']=obj.name
-    setPassportDraft({name:obj.name,description:obj.description,status:obj.status,fields})
+    setPassportDraft({name:obj.name,description:obj.description,status:obj.status,fields,logo:logoFromAttributes(obj.attributes)||''})
+    setPassportLogoError('')
     setPassportEditId(obj.id)
   }
   async function savePassport(event:React.FormEvent){
@@ -292,9 +309,12 @@ function App() {
     setPassportSaving(true);setError('')
     try{
       const fields={...passportDraft.fields,'Название ИС':passportDraft.name}
+      const attributes:Record<string,unknown>={...obj.attributes,kis_passport:fields}
+      if(passportDraft.logo)attributes.system_logo=passportDraft.logo
+      else delete attributes.system_logo
       await request('/api/objects/'+obj.id,{method:'PUT',body:JSON.stringify({
         name:passportDraft.name,kind:obj.kind,status:passportDraft.status,description:passportDraft.description,
-        attributes:{...obj.attributes,kis_passport:fields}
+        attributes
       })})
       await refresh();setPassportEditId('');setNotice('Паспорт ИС сохранён')
     }catch(e){setError('Не удалось сохранить паспорт: '+String(e))}
@@ -322,7 +342,7 @@ function App() {
   const [kbQuery,setKbQuery]=useState('')
   const [kbLoading,setKbLoading]=useState(false)
   const [kbMessage,setKbMessage]=useState('')
-  const [panelTab,setPanelTab] = useState<'overview'|'components'|'flows'|'monitoring'|'knowledge'|'incidents'|'edit'>('overview')
+  const [panelTab,setPanelTab] = useState<'overview'|'components'|'flows'|'monitoring'|'knowledge'|'incidents'|'contracts'|'technologies'|'edit'>('overview')
   const [inspectorOpen,setInspectorOpen] = useState(()=>Boolean(parseWorkspaceRoute(window.location).passportId))
   const [viewsMenuOpen,setViewsMenuOpen] = useState(false)
   const [inspectorExpanded,setInspectorExpanded] = useState(()=>parseWorkspaceRoute(window.location).passportExpanded)
@@ -379,6 +399,7 @@ function App() {
   const [flowSchedule,setFlowSchedule] = useState('')
   const [registryBusy,setRegistryBusy] = useState(false)
   const [registryError,setRegistryError] = useState('')
+  const [networkDeleteBlockers,setNetworkDeleteBlockers] = useState<string[]>([])
   const editNetwork = (n?: Segment) => {
     setPassportEditId('');setComponentInspectId('');setCreateObjectOpen(false);setKisOpen(false)
     setNetworkEditId(n?.id || '');setNetworkName(n?.name || '');setNetworkKind(n?.kind || 'zone')
@@ -475,7 +496,7 @@ function App() {
     if(!id||!registryOpen)return
     const label=isFlow?'поток данных':'сетевой сегмент'
     if(!window.confirm('Удалить '+label+'? Это действие нельзя отменить.'))return
-    setRegistryBusy(true);setRegistryError('')
+    setRegistryBusy(true);setRegistryError('');setNetworkDeleteBlockers([])
     try{
       await request((isFlow?'/api/flows/':'/api/networks/')+id,{method:'DELETE'})
       if(isFlow){
@@ -486,7 +507,11 @@ function App() {
         if(networkDetailId===id)setNetworkDetailId('')
       }
       setRegistryOpen(null);setNotice((isFlow?'Поток':'Сетевой сегмент')+' удалён')
-    }catch(e){setRegistryError('Не удалось удалить: '+String(e))}
+    }catch(e){
+      const blockers=!isFlow?nics.filter(n=>n.zone_id===id||n.vlan_id===id||n.vrf_id===id):[]
+      if(blockers.length){setNetworkDeleteBlockers(blockers.map(n=>n.id));setRegistryError('Удаление сети запрещено: к ней привязаны сетевые интерфейсы. Откройте компоненты ниже и измените привязку интерфейсов перед повторной попыткой.')}
+      else setRegistryError('Не удалось удалить: '+String(e))
+    }
     finally{setRegistryBusy(false)}
   }
   const [savedViews,setSavedViews]=useState<SavedWorkspaceView[]>(readSavedWorkspaceViews)
@@ -556,6 +581,9 @@ function App() {
     }
   },[layer,viewSystem,inspectorOpen,selected,inspectorExpanded,homeFocusSystemId])
   const [infraName,setInfraName] = useState('')
+  // The create form has its own explicit IS context; `selected` also points to passports.
+  const [infraSystemId,setInfraSystemId] = useState('')
+  const [infraCreating,setInfraCreating] = useState(false)
   const [infraKind,setInfraKind] = useState('vm')
   const [infraParent,setInfraParent] = useState('')
   const [infraDetails,setInfraDetails] = useState('')
@@ -674,7 +702,7 @@ function App() {
   const nodes = useMemo<Node[]>(() => visibleObjects.map((o, i) => ({
     id: o.id,
     position: positions[o.id] || { x: (i % 3) * 245 + 30, y: Math.floor(i / 3) * 140 + 40 },
-    data: { label: <div className="systemNode"><strong>{o.name}</strong><small>{infra.filter(x=>x.system_id===o.id).length} компонентов · {o.kind}</small></div> },
+    data: { label: <div className="systemNode"><strong className="systemNameWithLogo"><SystemLogo size="small" logo={logoFromAttributes(o.attributes)}/>{o.name}</strong><small>{infra.filter(x=>x.system_id===o.id).length} компонентов · {o.kind}</small></div> },
     style: {
       width: 210, padding: 14, borderRadius: 12, textAlign: 'left',
       background: selected === o.id ? '#e9f0ff' : '#fff',
@@ -754,18 +782,23 @@ function App() {
 
   async function addInfrastructure(event: React.FormEvent) {
     event.preventDefault()
-    if (!selected) {setError('Сначала выберите систему');return}
+    if (!infraSystemId || !objects.some(o=>o.id===infraSystemId)) {setError('Выберите информационную систему для компонента');return}
+    if (infraParent && !infra.some(i=>i.id===infraParent&&i.system_id===infraSystemId)) {setError('Родительский компонент должен принадлежать выбранной ИС');return}
+    setInfraCreating(true)
     setError('')
     try {
       let details:Record<string,unknown> = {}
       // Free-text network notes avoid inventing actual VLANs or IP addresses.
       if (infraDetails.trim()) details = {network_notes:infraDetails.trim()}
       await request('/api/infra',{method:'POST',body:JSON.stringify({
-        system_id:selected,parent_id:infraParent||null,kind:infraKind,name:infraName,
+        system_id:infraSystemId,parent_id:infraParent||null,kind:infraKind,name:infraName,
         description:'',details
       })})
-      setInfra(await request<Infra[]>('/api/infra'));setInfraName('');setInfraDetails('');setInfraParent('')
-    } catch(e){setError(String(e))}
+      setInfra(await request<Infra[]>('/api/infra'))
+      setInfraName('');setInfraDetails('');setInfraParent('')
+      setViewSystem(infraSystemId);setComponentView('registry');setLayer('infrastructure')
+      setEditorOpen(false);setNotice('Компонент создан в выбранной ИС')
+    } catch(e){setError(String(e))}finally{setInfraCreating(false)}
   }
   async function addFlow(event: React.FormEvent) {
     event.preventDefault();setError('')
@@ -849,6 +882,39 @@ function App() {
       setKisResult(result.message+' Создано систем: '+result.created_systems+', ВМ: '+result.created_vms+', БД: '+result.created_databases)
       const [o,i]=await Promise.all([request<Obj[]>('/api/objects'),request<Infra[]>('/api/infra')]);setObjects(o);setInfra(i)
     }catch(e){setKisError(String(e))}finally{setKisBusy(false)}
+  }
+  function openBusinessEditor(process?:BusinessProcess){
+    setBusinessEditId(process?.id||'')
+    setBusinessCategoryId(process?.category_id||categories[0]?.id||'')
+    setBusinessNewCategory('')
+    setBusinessName(process?.name||'')
+    setBusinessDescription(process?.description||'')
+    setBusinessSystemId('')
+    setBusinessError('');setBusinessEditorOpen(true)
+  }
+  async function saveBusinessProcess(event:React.FormEvent){
+    event.preventDefault()
+    if((!businessCategoryId&&!businessNewCategory.trim())||!businessName.trim()){setBusinessError('Укажите категорию и название бизнес-процесса');return}
+    setBusinessSaving(true);setBusinessError('')
+    try{
+      let categoryId=businessCategoryId
+      if(businessNewCategory.trim()){
+        const category=await request<Category>('/api/business/categories',{method:'POST',body:JSON.stringify({name:businessNewCategory.trim()})})
+        categoryId=category.id;setBusinessCategoryId(category.id);setBusinessNewCategory('')
+        setCategories(await request<Category[]>('/api/business/categories'))
+      }
+      const process=await request<BusinessProcess>(businessEditId?'/api/business/processes/'+businessEditId:'/api/business/processes',{
+        method:businessEditId?'PUT':'POST',body:JSON.stringify({category_id:categoryId,name:businessName.trim(),description:businessDescription})
+      })
+      setBusinessEditId(process.id) // If the link fails, retry updates this ID instead of creating a duplicate.
+      setProcesses(await request<BusinessProcess[]>('/api/business/processes'))
+      if(businessSystemId&&!businessLinks.some(l=>l.process_id===process.id&&l.system_id===businessSystemId)){
+        await request('/api/business/system-links',{method:'POST',body:JSON.stringify({process_id:process.id,system_id:businessSystemId,role:'supporting'})})
+        setBusinessLinks(await request<BusinessLink[]>('/api/business/system-links'))
+      }
+      setBusinessEditorOpen(false);setNotice('Бизнес-процесс сохранён')
+    }catch(e){setBusinessError('Не удалось завершить сохранение: '+String(e))}
+    finally{setBusinessSaving(false)}
   }
   async function loadBusiness(){
     setError('');setNotice('Загружаю бизнес-процессы…')
@@ -1085,7 +1151,7 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
       style:{stroke:focusActive&&highlighted?'#166cc2':pairFlows.some(f=>f.security==='unknown')?'#d58c40':'#369279',
         strokeWidth:focusActive&&highlighted?2:1.8,opacity:focusActive&&!highlighted?0.2:1},
       labelStyle:{fontSize:11,fontWeight:600},labelBgStyle:{fill:'#ffffff',fillOpacity:0.95},
-      labelBgPadding:[7,4],markerEnd:{type:MarkerType.ArrowClosed,width:13,height:13}}
+      labelBgPadding:[7,4],markerEnd:{type:MarkerType.ArrowClosed,width:13,height:13,color:focusActive&&highlighted?'#166cc2':pairFlows.some(f=>f.security==='unknown')?'#d58c40':'#369279'}}
   })
 
   const groupedDrillPositions=groupedComponents?dependencyLayout(groupedComponents.nodes.map(n=>n.id),groupedComponents.edges,285,175):{}
@@ -1145,7 +1211,7 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
           <summary title="Создание и импорт объектов" aria-label="Создать или импортировать">＋ <span className="navActionText">Создать</span></summary>
           <div className="layerActionMenu">
             {canWrite('systems')&&<button onClick={()=>{setPassportEditId('');setComponentInspectId('');setRegistryOpen(null);setCreateObjectOpen(true)}}>Система</button>}
-            {canWrite('infrastructure')&&<button onClick={()=>setEditorOpen(true)}>Компонент</button>}
+            {canWrite('infrastructure')&&<button onClick={()=>{setInfraSystemId(objects.some(o=>o.id===viewSystem)?viewSystem:'');setInfraParent('');setError('');setEditorOpen(true)}}>Компонент</button>}
             {canWrite('networks')&&<button onClick={()=>editNetwork()}>Сеть</button>}
             {canWrite('flows')&&<button onClick={()=>editFlow()}>Поток</button>}
             {canWrite('import')&&<button onClick={()=>{setPassportEditId('');setComponentInspectId('');setRegistryOpen(null);setKisOpen(true)}}>Импорт КИС</button>}
@@ -1181,7 +1247,7 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
         <div className="knowledgeWorkspaceHead"><div><h2>База знаний · Wiki.js</h2><p>Документация информационных систем и связи со статьями</p></div>{wikiPublicUrl&&<a href={wikiPublicUrl} target="_blank" rel="noopener noreferrer" className="knowledgeOpenLink">Открыть Wiki.js ↗</a>}</div>
         {wikiStatus==='connected'?<div className="knowledgeWorkspaceStatus" role="status"><strong>Интеграция подключена</strong><p>Выберите информационную систему, чтобы искать статьи и привязывать документацию к её паспорту.</p></div>:<div className="knowledgeWorkspaceStatus" role="status"><strong>{wikiStatus==='checking'?'Проверяем подключение…':wikiStatus==='unconfigured'?'Wiki.js ещё не подключена к Architecture Hub':'Подключение Wiki.js не удалось проверить'}</strong><p>{wikiStatus==='unconfigured'?'Для поиска и привязки статей настройте WIKI_API_TOKEN и WIKI_PUBLIC_URL в окружении backend. Для прямой ссылки также можно задать VITE_WIKI_URL при сборке frontend.':wikiStatus==='unavailable'?'Проверьте авторизацию и доступность /api/knowledge/status.':'Настройка и состояние Wiki.js проверяются через backend.'}</p></div>}
         <div className="knowledgeWorkspaceSystems"><h3>Документация по системам</h3><div className="knowledgeWorkspaceList">{objects.filter(o=>!search||o.name.toLowerCase().includes(search.toLowerCase())).map(o=><button key={o.id} type="button" onClick={()=>{setSelected(o.id);setInspectorOpen(true);setPanelTab('knowledge')}}><span>{o.name}</span><small>Открыть документацию</small></button>)}</div>{!objects.length&&<p>После входа здесь появятся информационные системы.</p>}</div>
-      </section>:layer==='home' ? <ArchitectureHome systems={objects} components={infra} flows={flows} processes={processes} categories={categories} links={businessLinks} networks={segments} interfaces={nics} focusSystemId={homeFocusSystemId} request={tokenReady?request:undefined} canEditLayers={canWrite('diagrams')} onOpenSystem={id=>{setSelected(id);setInspectorOpen(true);setPanelTab('overview')}} inspectorOpen={inspectorOpen} onCloseSystem={()=>{setInspectorOpen(false);setInspectorExpanded(false);setSelected('')}} onOpenComponents={id=>{setSelected(id);setViewSystem(id);setComponentView('diagram');setLayer('infrastructure');setInspectorOpen(false)}} onOpenComponent={id=>{setComponentInspectId(id);setComponentInspectTab('passport')}} onOpenFlows={()=>setLayer('flows')} onOpenNetworks={()=>setLayer('networks')}/> : layer==='incidents' ? <Incidents readOnly={!canWrite('incidents')} request={request} systems={objects} components={infra} networks={segments} flows={flows}/> : layer==='networks' ? <section className="infraPanel networkRegistry">
+      </section>:layer==='home' ? <ArchitectureHome systems={objects} components={infra} flows={flows} processes={processes} categories={categories} links={businessLinks} networks={segments} interfaces={nics} focusSystemId={homeFocusSystemId} request={tokenReady?request:undefined} canEditLayers={canWrite('diagrams')} onOpenSystem={id=>{setSelected(id);setInspectorOpen(true);setPanelTab('overview')}} inspectorOpen={inspectorOpen} onCloseSystem={()=>{setInspectorOpen(false);setInspectorExpanded(false);setSelected('');setHomeFocusSystemId('')}} onOpenComponents={id=>{setSelected(id);setViewSystem(id);setComponentView('diagram');setLayer('infrastructure');setInspectorOpen(false)}} onOpenComponent={id=>{setComponentInspectId(id);setComponentInspectTab('passport')}} onOpenFlows={()=>setLayer('flows')} onOpenNetworks={()=>setLayer('networks')}/> : layer==='incidents' ? <Incidents readOnly={!canWrite('incidents')} request={request} systems={objects} components={infra} networks={segments} flows={flows}/> : layer==='networks' ? <section className="infraPanel networkRegistry">
  <div className="registryHeader"><div><h2>Реестр сетей</h2><p className="hint">Зоны безопасности, VLAN, VRF и их фактические привязки к интерфейсам</p></div><div className="networkRegistryActions"><button type="button" onClick={()=>setNetworkPathOpen(true)}>Сетевые объекты и маршруты</button>{canWrite('networks')&&<button className="primary" onClick={()=>editNetwork()}>+ Создать сеть</button>}</div></div>
  <div className="networkRegistryFilters"><input aria-label="Поиск сети" placeholder="Поиск по имени и описанию" value={networkFilter} onChange={e=>setNetworkFilter(e.target.value)}/><select aria-label="Тип сети" value={networkTypeFilter} onChange={e=>setNetworkTypeFilter(e.target.value)}><option value="all">Все типы</option><option value="zone">Зоны</option><option value="vrf">VRF</option><option value="vlan">VLAN</option></select><span>{segments.filter(n=>(networkTypeFilter==='all'||n.kind===networkTypeFilter)&&[n.name,n.description].join(' ').toLowerCase().includes(networkFilter.toLowerCase())).length} записей</span></div>
  <div className="networkTableWrap"><table className="networkTable"><thead><tr><th>Имя сети</th><th>Тип</th><th>Достоверность</th>{registryColumnVisible('interfaces')&&<th>Интерфейсы</th>}<th>Описание</th><th>Действия</th></tr></thead><tbody>{segments.filter(n=>(networkTypeFilter==='all'||n.kind===networkTypeFilter)&&[n.name,n.description].join(' ').toLowerCase().includes(networkFilter.toLowerCase())).sort((a,b)=>a.kind.localeCompare(b.kind)||a.name.localeCompare(b.name)).map(n=>{
@@ -1194,10 +1260,11 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
       await request(uri,{method:id?'PUT':'POST',body:JSON.stringify(value)})
       setNics(await request<Nic[]>('/api/network-interfaces'))
     }} saveSegment={async (value,id)=>{await request(id?'/api/networks/'+id:'/api/networks',{method:id?'PUT':'POST',body:JSON.stringify(value)});setSegments(await request<Segment[]>('/api/networks'))}} saveFlow={async (value,id)=>{ await request(id?'/api/flows/'+id:'/api/flows',{method:id?'PUT':'POST',body:JSON.stringify(value)}); setFlows(await request<Flow[]>('/api/flows')) }}/> : layer==='business' ? <section className="infraPanel"><h2>Бизнес-архитектура</h2><p className="hint">Категория → процесс → поддерживающие системы. Достоверность связей проверяется отдельно.</p>
-      <div className="businessGrid">{categories.filter(cat=>!workspaceQuery||cat.name.toLowerCase().includes(workspaceQuery.toLowerCase())||processes.some(p=>p.category_id===cat.id&&[p.name,p.description].join(' ').toLowerCase().includes(workspaceQuery.toLowerCase()))).map(cat=><article className="businessCategory" key={cat.id}><h3>{cat.name}</h3>{processes.filter(p=>p.category_id===cat.id&&(!workspaceQuery||[p.name,p.description,cat.name].join(' ').toLowerCase().includes(workspaceQuery.toLowerCase()))).map(p=><div className="businessProcess" key={p.id}><strong>{p.name}</strong><p>{p.description}</p><div className="processSystems">{businessLinks.filter(l=>l.process_id===p.id).map(l=><button key={l.id} onClick={()=>{setSelected(l.system_id);setLayer('systems')}}>{objects.find(o=>o.id===l.system_id)?.name||'Система'}</button>)}</div></div>)}</article>)}</div>
+      {canWrite('systems')&&<button type="button" className="primary" onClick={()=>openBusinessEditor()}>+ Создать бизнес-процесс</button>}
+      <div className="businessGrid">{categories.filter(cat=>!workspaceQuery||cat.name.toLowerCase().includes(workspaceQuery.toLowerCase())||processes.some(p=>p.category_id===cat.id&&[p.name,p.description].join(' ').toLowerCase().includes(workspaceQuery.toLowerCase()))).map(cat=><article className="businessCategory" key={cat.id}><h3>{cat.name}</h3>{processes.filter(p=>p.category_id===cat.id&&(!workspaceQuery||[p.name,p.description,cat.name].join(' ').toLowerCase().includes(workspaceQuery.toLowerCase()))).map(p=><div className="businessProcess" key={p.id}><strong>{p.name}</strong>{canWrite('systems')&&<button type="button" onClick={()=>openBusinessEditor(p)}>Редактировать БП</button>}<p>{p.description}</p><div className="processSystems">{businessLinks.filter(l=>l.process_id===p.id).map(l=><button key={l.id} onClick={()=>{setSelected(l.system_id);setLayer('systems')}}>{objects.find(o=>o.id===l.system_id)?.name||'Система'}</button>)}</div></div>)}</article>)}</div>
       {!categories.length&&<p>Бизнес-процессы пока не добавлены.</p>}</section> : layer==='systems' ? <section className="systemsWorkspace" aria-label="Реестр информационных систем">
-        <div className="systemsWorkspaceHead"><div><h2>Информационные системы</h2><p>Реестр, паспорта и состав ИС. Общая карта связей находится в разделе «Обзор».</p></div><div className="systemsWorkspaceActions"><button type="button" onClick={()=>setLayer("home")}>Слои архитектуры</button><button type="button" onClick={()=>setSystemsShowDiagram(v=>!v)} aria-pressed={systemsShowDiagram}>{systemsShowDiagram?'Показать реестр':'Редактор схемы'}</button>{canWrite('systems')&&<button type="button" className="primary" onClick={()=>{setPassportEditId('');setCreateObjectOpen(true)}}>+ Создать ИС</button>}</div></div>
-        {systemsShowDiagram ? <section className="canvas" data-active-graph="systems">
+        <div className="systemsWorkspaceHead"><div><h2>Информационные системы</h2><p>Реестр, паспорта и состав ИС. Общая карта связей находится в разделе «Обзор».</p></div><div className="systemsWorkspaceActions"><button type="button" onClick={()=>setLayer("home")}>Слои архитектуры</button><button type="button" onClick={()=>{setSystemsShowTechnologyInventory(false);setSystemsShowDiagram(v=>!v)}} aria-pressed={systemsShowDiagram}>{systemsShowDiagram?'Показать реестр':'Редактор схемы'}</button><button type="button" onClick={()=>{setSystemsShowDiagram(false);setSystemsShowTechnologyInventory(v=>!v)}} aria-pressed={systemsShowTechnologyInventory}>{systemsShowTechnologyInventory?'Вернуться к реестру ИС':'Реестр технологий'}</button>{canWrite('systems')&&<button type="button" className="primary" onClick={()=>{setPassportEditId('');setCreateObjectOpen(true)}}>+ Создать ИС</button>}</div></div>
+        {systemsShowTechnologyInventory ? <TechnologyInventory request={request} onOpenSystem={id=>{setSystemsShowTechnologyInventory(false);setSelected(id);setInspectorOpen(true);setPanelTab('technologies')}}/> : systemsShowDiagram ? <section className="canvas" data-active-graph="systems">
         <div className="canvasMode">{canWrite('diagrams')&&<button aria-pressed={diagramEditMode} onClick={()=>setDiagramEditMode(v=>!v)}>{diagramEditMode?'Завершить редактирование':'Редактировать схему'}</button>}</div>
         <ReactFlow minZoom={0.08} nodes={nodes} edges={edges} onNodesChange={onNodesChange} onConnect={onConnect} nodesDraggable={diagramEditMode} nodesConnectable={diagramEditMode} deleteKeyCode={null}
           onNodeClick={(_event: React.MouseEvent, node: Node) => {setSelected(node.id);setInspectorOpen(true);setPanelTab("overview")}} onNodeDoubleClick={(_event: React.MouseEvent, node: Node) => {setViewSystem(node.id);setSelected(node.id);setComponentView('diagram');setLayer("infrastructure");setInspectorOpen(false);setInspectorExpanded(false)}} onPaneClick={() => setSelected('')} fitView>
@@ -1205,7 +1272,7 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
         </ReactFlow>
         {!objects.length && <div className="emptyHint">Создайте систему через меню «Создать». Для изменения связей включите редактирование схемы.</div>}
       </section> : <div className="systemsTableWrap"><table className="systemsTable"><thead><tr><th>Система</th><th>Тип</th><th>Статус</th><th>Компоненты</th><th>Действия</th></tr></thead><tbody>
-          {registrySystems.map(o=><tr key={o.id}><td><button type="button" className="systemNameLink" onClick={()=>{setSelected(o.id);setInspectorOpen(true);setPanelTab('overview')}}>{o.name}</button>{o.description&&<small className="systemDescription">{o.description}</small>}</td><td>{o.kind||'ИС'}</td><td><span className="tag">{o.status||'Не указан'}</span></td><td>{infra.filter(i=>i.system_id===o.id).length}</td><td><div className="systemRowActions"><button type="button" onClick={()=>{setSelected(o.id);setInspectorOpen(true);setPanelTab('overview')}}>Паспорт</button><button type="button" onClick={()=>{setViewSystem(o.id);setComponentView('diagram');setLayer('infrastructure');setInspectorOpen(false)}}>Компоненты</button></div></td></tr>)}
+          {registrySystems.map(o=><tr key={o.id}><td><button type="button" className="systemNameLink" onClick={()=>{setSelected(o.id);setInspectorOpen(true);setPanelTab('overview')}}><span className="systemNameWithLogo"><SystemLogo size="small" logo={logoFromAttributes(o.attributes)}/>{o.name}</span></button>{o.description&&<small className="systemDescription">{o.description}</small>}</td><td>{o.kind||'ИС'}</td><td><span className="tag">{o.status||'Не указан'}</span></td><td>{infra.filter(i=>i.system_id===o.id).length}</td><td><div className="systemRowActions"><button type="button" onClick={()=>{setSelected(o.id);setInspectorOpen(true);setPanelTab('overview')}}>Паспорт</button><button type="button" onClick={()=>{setViewSystem(o.id);setComponentView('diagram');setLayer('infrastructure');setInspectorOpen(false)}}>Компоненты</button></div></td></tr>)}
           {!registrySystems.length&&<tr><td colSpan={5} role="status">{workspaceQuery?'Системы не найдены.':'Информационные системы пока не добавлены.'}</td></tr>}
         </tbody></table></div>}
       </section> : <section className="infraPanel">
@@ -1280,7 +1347,7 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
                 nodes={flowSystemIds.map((id,index)=>({
                   id,
                   position:flowOverviewPositions[id]||{x:(index%3)*310,y:Math.floor(index/3)*170},
-                  data:{label:<DiagramNodeLabel name={objects.find(o=>o.id===id)?.name||'ИС'} kind={objects.find(o=>o.id===id)?.kind||'system'} subtitle={infra.filter(i=>i.system_id===id).length+' компонентов · '+visibleFlows.filter(f=>infra.some(i=>i.id===f.source_id&&i.system_id===id)||infra.some(i=>i.id===f.target_id&&i.system_id===id)).length+' потоков'}/>},
+                  data:{label:<DiagramNodeLabel name={objects.find(o=>o.id===id)?.name||'ИС'} kind={objects.find(o=>o.id===id)?.kind||'system'} logo={logoFromAttributes(objects.find(o=>o.id===id)?.attributes)} subtitle={infra.filter(i=>i.system_id===id).length+' компонентов · '+visibleFlows.filter(f=>infra.some(i=>i.id===f.source_id&&i.system_id===id)||infra.some(i=>i.id===f.target_id&&i.system_id===id)).length+' потоков'}/>},
                   style:diagramCardStyle()
                 }))}
                 edges={overviewPairs.map(pair=>{
@@ -1391,14 +1458,18 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
     {inspectorOpen&&<><aside className={inspectorExpanded ? "details detailsExpanded" : "details"} aria-label="Карточка архитектурного объекта">
       <div className="inspectorToolbar"><div className="sideLabel">КАРТОЧКА ОБЪЕКТА</div><button type="button" aria-label="Закрыть правую панель" onClick={()=>{setInspectorOpen(false);setInspectorExpanded(false)}}>Закрыть ×</button><button type="button" onClick={()=>setInspectorExpanded(v=>!v)} aria-label={inspectorExpanded?"Свернуть карточку":"Развернуть карточку"}>{inspectorExpanded?"Свернуть ↘":"Развернуть ↗"}</button></div>
       {detail ? <>
-        <h2>{detail.name}</h2><span className="tag">{detail.kind}</span>
+        <h2 className="systemPassportLogo"><SystemLogo size="normal" logo={logoFromAttributes(detail.attributes)}/>{detail.name}</h2><span className="tag">{detail.kind}</span>
         <div className="inspectorTabs">
           <button className={panelTab==='overview'?'current':''} onClick={()=>setPanelTab('overview')}>Обзор</button>
           <button className={panelTab==='components'?'current':''} onClick={()=>setPanelTab('components')}>Компоненты</button>
           <button className={panelTab==='flows'?'current':''} onClick={()=>setPanelTab('flows')}>Потоки</button>
+          <button className={panelTab==='contracts'?'current':''} onClick={()=>setPanelTab('contracts')}>Договоры и лицензии</button>
+          <button className={panelTab==='technologies'?'current':''} onClick={()=>setPanelTab('technologies')}>Технологический стек</button>
           <button className={panelTab==='monitoring'?'current':''} onClick={()=>setPanelTab('monitoring')}>Мониторинг</button>
           <button className={panelTab==='incidents'?'current':''} onClick={()=>setPanelTab('incidents')}>Инциденты</button><button className={panelTab==='knowledge'?'current':''} onClick={()=>{setKbMessage('');setPanelTab('knowledge')}}>База знаний</button>
         </div>
+        {panelTab==='contracts'&&detail&&<SystemCommercial key={detail.id} systemId={detail.id} request={request} readOnly={!canWrite('systems')}/>}
+        {panelTab==='technologies'&&detail&&<SystemTechStack key={detail.id} systemId={detail.id} components={infra} readOnly={!canWrite('systems')} request={request}/>}
         {panelTab==='monitoring'&&detail&&<MonitoringPanel targetType="system" targetId={detail.id} request={request} systems={objects.map(o=>({id:o.id,name:o.name}))}/>}
         {panelTab==='incidents'&&detail&&<Incidents readOnly={!canWrite('incidents')} request={request} systems={objects} components={infra} networks={segments} flows={flows} context={{entity_type:'system',entity_id:detail.id}}/>}
         {panelTab==='knowledge'&&<div className="knowledgePanel">
@@ -1446,10 +1517,11 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
         <form className="detailForm" onSubmit={savePassport}>
           <label>Название ИС<input required maxLength={250} value={passportDraft.name} onChange={e=>setPassportDraft({...passportDraft,name:e.target.value})}/></label>
           <label>Описание<textarea value={passportDraft.description} maxLength={4000} onChange={e=>setPassportDraft({...passportDraft,description:e.target.value})}/></label>
+          <div className="systemLogoUpload"><strong>Логотип ИС</strong><div className="systemLogoPreview"><SystemLogo size="large" logo={passportDraft.logo||undefined}/><div><label>Выбрать изображение<input type="file" accept="image/png,image/jpeg,image/webp" aria-label="Загрузить логотип ИС" disabled={passportSaving||passportLogoPreparing} onChange={async event=>{const field=event.currentTarget;const file=field.files?.[0];if(!file)return;setPassportLogoPreparing(true);setPassportLogoError('');try{const logo=await prepareSystemLogo(file);setPassportDraft(previous=>({...previous,logo}))}catch(error){setPassportLogoError(String(error instanceof Error?error.message:error))}finally{field.value='';setPassportLogoPreparing(false)}}}/></label><p className="logoHint">PNG, JPG или WebP до 4 МБ. Логотип автоматически уменьшается для схем и реестра.</p>{passportDraft.logo&&<button type="button" onClick={()=>{setPassportDraft(previous=>({...previous,logo:''}));setPassportLogoError('')}} disabled={passportSaving||passportLogoPreparing}>Удалить логотип</button>}</div></div>{passportLogoPreparing&&<small role="status">Подготавливаю изображение…</small>}{passportLogoError&&<p role="alert">{passportLogoError}</p>}</div>
           <label>Статус<select value={passportDraft.status} onChange={e=>setPassportDraft({...passportDraft,status:e.target.value})}><option value="active">Действует</option><option value="draft">Черновик</option><option value="planned">Планируется</option><option value="retired">Выведена</option></select></label>
           <h3>Поля карточки КИС</h3>
           {Object.entries(passportDraft.fields).filter(([key])=>key!=='Название ИС').map(([key,value])=><label key={key}>{key}<input value={value} onChange={e=>setPassportDraft({...passportDraft,fields:{...passportDraft.fields,[key]:e.target.value}})}/></label>)}
-          <button className="primary" disabled={passportSaving}>{passportSaving?'Сохранение…':'Сохранить паспорт'}</button>
+          <button className="primary" disabled={passportSaving||passportLogoPreparing}>{passportSaving?'Сохранение…':'Сохранить паспорт'}</button>
         </form>
       </div>
     </div>}
@@ -1475,6 +1547,7 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
         </div>
       </div>
     })()}
+    {businessEditorOpen&&<div className="editorBackdrop" onClick={()=>!businessSaving&&setBusinessEditorOpen(false)}><div className="editorDialog architectureDrawer" role="dialog" aria-modal="true" aria-label="Редактор бизнес-процесса" onClick={e=>e.stopPropagation()}><div className="dialogHead"><h2>{businessEditId?'Редактировать бизнес-процесс':'Новый бизнес-процесс'}</h2><button type="button" disabled={businessSaving} onClick={()=>setBusinessEditorOpen(false)}>Закрыть ×</button></div><form className="detailForm" onSubmit={saveBusinessProcess}><label>Категория<select aria-label="Категория бизнес-процесса" value={businessCategoryId} onChange={e=>setBusinessCategoryId(e.target.value)}><option value="">Выберите категорию</option>{categories.map(cat=><option key={cat.id} value={cat.id}>{cat.name}</option>)}</select></label><label>Новая категория (если отсутствует в списке)<input aria-label="Новая категория бизнес-процесса" value={businessNewCategory} onChange={e=>setBusinessNewCategory(e.target.value)} placeholder="Создать новую категорию"/></label><label>Название<input required value={businessName} onChange={e=>setBusinessName(e.target.value)}/></label><label>Описание<textarea value={businessDescription} onChange={e=>setBusinessDescription(e.target.value)}/></label><label>Связать с ИС (необязательно)<select value={businessSystemId} onChange={e=>setBusinessSystemId(e.target.value)}><option value="">Без новой связи</option>{objects.filter(o=>o.kind==='system').map(o=><option key={o.id} value={o.id}>{o.name}</option>)}</select></label>{businessError&&<p role="alert">{businessError}</p>}<button className="primary" disabled={businessSaving||(!businessCategoryId&&!businessNewCategory.trim())}>{businessSaving?'Сохранение…':'Сохранить бизнес-процесс'}</button></form></div></div>}
     {createObjectOpen&&<div className="editorBackdrop" onClick={()=>setCreateObjectOpen(false)}>
       <div className="editorDialog" role="dialog" aria-modal="true" aria-label="Создать объект архитектуры" onClick={event=>event.stopPropagation()}>
         <div className="dialogHead"><h2>Новый объект</h2><button type="button" onClick={()=>setCreateObjectOpen(false)}>Закрыть ×</button></div>
@@ -1482,7 +1555,7 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
         
         <input aria-label="Название" placeholder="Название системы" value={name} onChange={e => setName(e.target.value)} required />
         <select aria-label="Тип" value={kind} onChange={e => setKind(e.target.value)}>
-          <option value="system">ИТ-система</option><option value="process">Бизнес-процесс</option>
+          <option value="system">ИТ-система</option>
           <option value="database">База данных</option><option value="integration">Интеграция</option>
           <option value="service">Сервис</option><option value="other">Другое</option>
         </select>
@@ -1517,6 +1590,7 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
             <label>Достоверность<select value={flowVerification} onChange={e=>setFlowVerification(e.target.value)}><option value="draft">Черновик</option><option value="assumed">Предположение</option><option value="verified">Подтверждено</option></select></label>
           </>}
           {registryError&&<p role="alert" className="kisError">{registryError}</p>}
+          {networkDeleteBlockers.length>0&&<div role="region" aria-label="Интерфейсы, препятствующие удалению"><strong>Привязанные интерфейсы</strong>{nics.filter(n=>networkDeleteBlockers.includes(n.id)).map(n=>{const component=infra.find(i=>i.id===n.item_id);return <div key={n.id}><button type="button" onClick={()=>{if(!component)return;setRegistryOpen(null);setViewSystem(component.system_id);setComponentView('registry');setLayer('infrastructure');setComponentInspectId(component.id);setComponentInspectTab('network')}}>{component?.name||'Компонент'} · {n.name} – открыть компонент</button></div>})}</div>}
           {!accessToken&&<p className="hint demoWriteNotice" role="status">Демонстрационный режим – изменения нельзя сохранить. Для сохранения войдите по паролю и откройте форму повторно.</p>}
           <div className="registryFormActions">
             <button className="primary" disabled={registryBusy||!accessToken}>{registryBusy?'Сохранение…':'Сохранить'}</button>
@@ -1526,11 +1600,12 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
       </div>
     </div>}
     {editorOpen&&<div className="editorBackdrop" onClick={()=>setEditorOpen(false)}>
-      <div className="editorDialog" onClick={e=>e.stopPropagation()}>
+      <div className="editorDialog" role="dialog" aria-modal="true" aria-label="Создание компонента и потока" onClick={e=>e.stopPropagation()}>
         <div className="dialogHead"><h2>Добавление объектов и потоков</h2><button onClick={()=>setEditorOpen(false)}>Закрыть ×</button></div>
-        <p className="hint">Выберите систему слева, затем добавьте компонент или создайте обмен между существующими компонентами.</p>
+        <p className="hint">Для компонента укажите родительскую информационную систему. Потоки связывают уже созданные компоненты.</p>
         <h3>Новый компонент</h3>
         <form className="detailForm" onSubmit={addInfrastructure}>
+          <label>Родительская информационная система <select required aria-label="Родительская информационная система" value={infraSystemId} onChange={e=>{setInfraSystemId(e.target.value);setInfraParent('')}}><option value="">Выберите ИС</option>{objects.filter(o=>o.kind==='system').map(o=><option key={o.id} value={o.id}>{o.name}</option>)}</select></label>
           <input required placeholder="Имя ВМ / сервиса / API" value={infraName} onChange={e=>setInfraName(e.target.value)}/>
           <select aria-label="Тип компонента" value={infraKind} onChange={e=>setInfraKind(e.target.value)}>
              {Array.from(new Set([
@@ -1539,9 +1614,9 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
                  .map(item=>item.id)
              ])).map(id=><option key={id} value={id}>{cmdbKinds.find(x=>x.id===id)?.label||id} ({id})</option>)}
            </select>
-          <select value={infraParent} onChange={e=>setInfraParent(e.target.value)}><option value="">Без родителя</option>{infra.filter(i=>i.system_id===selected).map(i=><option key={i.id} value={i.id}>{i.name}</option>)}</select>
+          <select value={infraParent} onChange={e=>setInfraParent(e.target.value)}><option value="">Без родителя</option>{infra.filter(i=>i.system_id===infraSystemId).map(i=><option key={i.id} value={i.id}>{i.name}</option>)}</select>
           <textarea placeholder="Сетевая зона / VLAN / VRF – примечание" value={infraDetails} onChange={e=>setInfraDetails(e.target.value)}/>
-          <button className="primary">Добавить компонент</button>
+          <button className="primary" disabled={infraCreating||!infraSystemId}>{infraCreating?'Сохранение…':'Добавить компонент'}</button>
         </form>
         <h3>Новый направленный поток</h3>
         <form className="detailForm" onSubmit={addFlow}>

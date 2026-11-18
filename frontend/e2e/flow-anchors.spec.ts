@@ -84,7 +84,7 @@ test('move existing arrow endpoint to another of eight positions and see it on r
  expect(created.status()).toBe(201)
  const flowId=(await created.json()).id as string
  const editor=await openBoard(page,system)
- await editor.locator('.react-flow__edge').first().click()
+ await editor.getByRole('button',{name:/Выбрать поток/}).first().click()
  await expect(editor.getByRole('button',{name:'Перенести конец стрелки'})).toBeVisible()
  const targetNode=editor.locator('.react-flow__node[data-id="'+target.id+'"]')
  await drag(page,editor.getByRole('button',{name:'Перенести конец стрелки'}),
@@ -156,7 +156,7 @@ test('reconnect a saved flow to another VM and keep the chosen port after reopen
  const readFlows=async()=>(await (await page.request.get('http://127.0.0.1:8001/api/flows')).json()) as
   Array<{id:string;source_id:string;target_id:string;protocol:string;port:string}>
  const editor=await openBoard(page,system)
- await editor.locator('.react-flow__edge').first().click()
+ await editor.getByRole('button',{name:/Выбрать поток/}).first().click()
  const replacementNode=editor.locator('.react-flow__node[data-id="'+replacementId+'"]')
  const grip=editor.getByRole('button',{name:'Перенести конец стрелки'})
  await expect(grip).toBeVisible()
@@ -208,7 +208,7 @@ test('reconnecting one flow on a shared arrow preserves the other flow',async({p
  const dock=editor.getByRole('complementary',{name:'Свойства и изменения схемы'})
  const pickFlow=async()=>{
   await expect(edges).toHaveCount(1)
-  await edges.click()
+  await editor.getByRole('button',{name:/Выбрать поток/}).first().click()
   const choices=dock.getByRole('region',{name:'Потоки выбранной стрелки'})
   await expect(choices.getByRole('button')).toHaveCount(2)
   await choices.getByRole('button',{name:/Transfer this flow/}).click()

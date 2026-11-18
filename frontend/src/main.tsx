@@ -20,6 +20,7 @@ import CmdbRecord from './CmdbRecord'
 import {DiagramNodeLabel,diagramCardStyle} from './DiagramVisual'
 import {SystemLogo,logoFromAttributes,prepareSystemLogo} from './SystemLogo'
 import SystemCommercial from './SystemCommercial'
+import SystemTechStack from './SystemTechStack'
 import {publicDemoResponse} from './publicDemo'
 import FlowDataCatalog from './FlowDataCatalog'
 import SystemDataMap from './SystemDataMap'
@@ -339,7 +340,7 @@ function App() {
   const [kbQuery,setKbQuery]=useState('')
   const [kbLoading,setKbLoading]=useState(false)
   const [kbMessage,setKbMessage]=useState('')
-  const [panelTab,setPanelTab] = useState<'overview'|'components'|'flows'|'monitoring'|'knowledge'|'incidents'|'contracts'|'edit'>('overview')
+  const [panelTab,setPanelTab] = useState<'overview'|'components'|'flows'|'monitoring'|'knowledge'|'incidents'|'contracts'|'technologies'|'edit'>('overview')
   const [inspectorOpen,setInspectorOpen] = useState(()=>Boolean(parseWorkspaceRoute(window.location).passportId))
   const [viewsMenuOpen,setViewsMenuOpen] = useState(false)
   const [inspectorExpanded,setInspectorExpanded] = useState(()=>parseWorkspaceRoute(window.location).passportExpanded)
@@ -1461,10 +1462,12 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
           <button className={panelTab==='components'?'current':''} onClick={()=>setPanelTab('components')}>Компоненты</button>
           <button className={panelTab==='flows'?'current':''} onClick={()=>setPanelTab('flows')}>Потоки</button>
           <button className={panelTab==='contracts'?'current':''} onClick={()=>setPanelTab('contracts')}>Договоры и лицензии</button>
+          <button className={panelTab==='technologies'?'current':''} onClick={()=>setPanelTab('technologies')}>Технологический стек</button>
           <button className={panelTab==='monitoring'?'current':''} onClick={()=>setPanelTab('monitoring')}>Мониторинг</button>
           <button className={panelTab==='incidents'?'current':''} onClick={()=>setPanelTab('incidents')}>Инциденты</button><button className={panelTab==='knowledge'?'current':''} onClick={()=>{setKbMessage('');setPanelTab('knowledge')}}>База знаний</button>
         </div>
         {panelTab==='contracts'&&detail&&<SystemCommercial key={detail.id} systemId={detail.id} request={request} readOnly={!canWrite('systems')}/>}
+        {panelTab==='technologies'&&detail&&<SystemTechStack key={detail.id} systemId={detail.id} components={infra} readOnly={!canWrite('systems')} request={request}/>}
         {panelTab==='monitoring'&&detail&&<MonitoringPanel targetType="system" targetId={detail.id} request={request} systems={objects.map(o=>({id:o.id,name:o.name}))}/>}
         {panelTab==='incidents'&&detail&&<Incidents readOnly={!canWrite('incidents')} request={request} systems={objects} components={infra} networks={segments} flows={flows} context={{entity_type:'system',entity_id:detail.id}}/>}
         {panelTab==='knowledge'&&<div className="knowledgePanel">

@@ -95,6 +95,30 @@ class SystemLicense(Base):
     notes: Mapped[str] = mapped_column(String(2000), default="")
 
 
+class SystemTechnology(Base):
+    """A technology/version deployed in one IS or one of its existing components.
+
+    These records are descriptive and never create VMs, data flows, or software
+    installations. Different versions in different environments remain separate.
+    """
+    __tablename__ = "system_technologies"
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    system_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("objects.id", ondelete="CASCADE"), index=True, nullable=False)
+    component_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("infrastructure_items.id"), index=True, nullable=True)
+    name: Mapped[str] = mapped_column(String(250), nullable=False)
+    category: Mapped[str] = mapped_column(String(36), nullable=False, default="other")
+    version: Mapped[str] = mapped_column(String(120), nullable=False, default="")
+    environment: Mapped[str] = mapped_column(String(24), nullable=False, default="unknown")
+    vendor: Mapped[str] = mapped_column(String(250), nullable=False, default="")
+    lifecycle: Mapped[str] = mapped_column(String(24), nullable=False, default="unknown")
+    support_end_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    verification: Mapped[str] = mapped_column(String(24), nullable=False, default="unverified")
+    source: Mapped[str] = mapped_column(String(500), nullable=False, default="")
+    notes: Mapped[str] = mapped_column(String(2000), nullable=False, default="")
+
+
 class Relation(Base):
     __tablename__ = "relations"
     id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
@@ -565,6 +589,33 @@ class LicenseInput(BaseModel):
 
 
 class LicenseOutput(LicenseInput):
+    model_config = ConfigDict(from_attributes=True)
+    id: UUID
+    system_id: UUID
+
+
+class TechnologyInput(BaseModel):
+    name: str = Field(min_length=1, max_length=250)
+    category: Literal["language", "framework", "runtime", "database", "middleware",
+                      "platform", "os", "integration", "tool", "other"] = "other"
+    version: str = Field(default="", max_length=120)
+    environment: Literal["prod", "test", "dev", "stage", "other", "unknown"] = "unknown"
+    component_id: UUID | None = None
+    vendor: str = Field(default="", max_length=250)
+    lifecycle: Literal["current", "planned", "retired", "unknown"] = "unknown"
+    support_end_date: date | None = None
+    verification: Literal["verified", "unverified", "assumed"] = "unverified"
+    source: str = Field(default="", max_length=500)
+    notes: str = Field(default="", max_length=2000)
+
+    @model_validator(mode="after")
+    def validate_name(self):
+        if not self.name.strip():
+            raise ValueError("Technology name must not be blank")
+        return self
+
+
+class TechnologyOutput(TechnologyInput):
     model_config = ConfigDict(from_attributes=True)
     id: UUID
     system_id: UUID
@@ -1505,14 +1556,95 @@ def remove_system_license(system_id: UUID, license_id: UUID, request: Request, d
     db.delete(row); db.commit()
 
 
+def _validate_technology_component(db: Session, system_id: UUID,
+                                   component_id: UUID | None) -> None:
+    if component_id is None:
+        return
+    component = db.get(InfrastructureItem, component_id)
+    if component is None or component.system_id != system_id:
+        raise HTTPException(422, "Technology component must belong to the same information system")
+
+
+def _check_technology_duplicate(db: Session, system_id: UUID, payload: TechnologyInput,
+                                excluding: UUID | None = None) -> None:
+    """Avoid accidental duplicate rows without merging versions or environments."""
+    for record in db.scalars(
+        select(SystemTechnology).where(SystemTechnology.system_id == system_id)
+    ).all():
+        if excluding is not None and record.id == excluding:
+            continue
+        if (record.name.strip().casefold() == payload.name.strip().casefold()
+                and record.category == payload.category
+                and record.version.strip().casefold() == payload.version.strip().casefold()
+                and record.environment == payload.environment
+                and record.component_id == payload.component_id):
+            raise HTTPException(409, "Technology already exists in this environment and component")
+
+
+@app.get("/api/systems/{system_id}/technologies", response_model=list[TechnologyOutput])
+def list_system_technologies(system_id: UUID, db: Session = Depends(db_session)):
+    _contract_system(db, system_id)
+    return db.scalars(
+        select(SystemTechnology).where(SystemTechnology.system_id == system_id)
+        .order_by(SystemTechnology.category, SystemTechnology.name, SystemTechnology.version)
+    ).all()
+
+
+@app.post("/api/systems/{system_id}/technologies", response_model=TechnologyOutput, status_code=201)
+def create_system_technology(system_id: UUID, payload: TechnologyInput, request: Request,
+                             db: Session = Depends(db_session)):
+    _contract_system(db, system_id)
+    _validate_technology_component(db, system_id, payload.component_id)
+    _check_technology_duplicate(db, system_id, payload)
+    row = SystemTechnology(system_id=system_id, **payload.model_dump())
+    db.add(row); db.flush()
+    audit_direct_edit(db, request, "create_technology", row.id, None,
+                      {"system_id":str(system_id), **payload.model_dump(mode="json")},
+                      "Добавлена технология ИС "+row.name)
+    db.commit(); db.refresh(row)
+    return row
+
+
+@app.put("/api/systems/{system_id}/technologies/{technology_id}", response_model=TechnologyOutput)
+def update_system_technology(system_id: UUID, technology_id: UUID, payload: TechnologyInput,
+                             request: Request, db: Session = Depends(db_session)):
+    _contract_system(db, system_id)
+    row = db.get(SystemTechnology, technology_id)
+    if row is None or row.system_id != system_id:
+        raise HTTPException(404, "Technology not found in this information system")
+    _validate_technology_component(db, system_id, payload.component_id)
+    _check_technology_duplicate(db, system_id, payload, excluding=row.id)
+    before = TechnologyOutput.model_validate(row).model_dump(mode="json")
+    for field, value in payload.model_dump().items():
+        setattr(row, field, value)
+    audit_direct_edit(db, request, "update_technology", row.id, before,
+                      payload.model_dump(mode="json"), "Изменена технология ИС "+row.name)
+    db.commit(); db.refresh(row)
+    return row
+
+
+@app.delete("/api/systems/{system_id}/technologies/{technology_id}", status_code=204)
+def delete_system_technology(system_id: UUID, technology_id: UUID, request: Request,
+                             db: Session = Depends(db_session)):
+    _contract_system(db, system_id)
+    row = db.get(SystemTechnology, technology_id)
+    if row is None or row.system_id != system_id:
+        raise HTTPException(404, "Technology not found in this information system")
+    before = TechnologyOutput.model_validate(row).model_dump(mode="json")
+    audit_direct_edit(db, request, "delete_technology", row.id, before, None,
+                      "Удалена технология из паспорта ИС "+row.name)
+    db.delete(row); db.commit()
+
+
 @app.delete("/api/objects/{object_id}", status_code=204)
 def delete_object(object_id: UUID, db: Session = Depends(db_session)):
     obj = db.get(ArchitectureObject, object_id)
     if obj is None:
         raise HTTPException(status_code=404, detail="Object not found")
     if (db.scalar(select(SystemContract.id).where(SystemContract.system_id == object_id)) or
-            db.scalar(select(SystemLicense.id).where(SystemLicense.system_id == object_id))):
-        raise HTTPException(409, "Archive or remove IS contracts and licences before deleting the system")
+            db.scalar(select(SystemLicense.id).where(SystemLicense.system_id == object_id)) or
+            db.scalar(select(SystemTechnology.id).where(SystemTechnology.system_id == object_id))):
+        raise HTTPException(409, "Remove IS contract, licence and technology records before deleting the system")
     for rel in db.scalars(select(Relation).where((Relation.source_id == object_id) | (Relation.target_id == object_id))).all():
         db.delete(rel)
     # Diagram positions may contain orphan IDs; UI filters them on load.

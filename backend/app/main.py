@@ -796,6 +796,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Architecture Hub API", version="0.7.0", lifespan=lifespan)
+app.state.arch_hub_open_access = os.getenv("ARCH_HUB_OPEN_ACCESS", "").strip().lower() == "true"
 app.state.arch_hub_keys = configured_keys()
 app.state.arch_hub_password_auth = configured_password_auth()
 app.middleware("http")(access_middleware)
@@ -1386,6 +1387,12 @@ def password_login(payload: PasswordLoginInput, request: Request,
     return JSONResponse({"access_token": token, "token_type": "bearer",
                          "expires_in": SESSION_SECONDS},
                         headers={"Cache-Control": "no-store", "Pragma": "no-cache"})
+
+
+@app.get("/api/auth/mode")
+def auth_mode(request: Request):
+    return JSONResponse({"open_access": request.app.state.arch_hub_open_access},
+                        headers={"Cache-Control": "no-store"})
 
 
 @app.get("/api/auth/me")

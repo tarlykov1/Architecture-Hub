@@ -33,5 +33,5 @@ def test_commercial_migration_preserves_existing_systems(tmp_path, monkeypatch):
                             {"id":existing_id.hex}).scalar_one()=="QA-WORK-existing IS"
         assert conn.execute(text("SELECT count(*) FROM system_contracts")).scalar_one()==0
         assert conn.execute(text("SELECT count(*) FROM system_licenses")).scalar_one()==0
-        assert conn.execute(text("SELECT version_num FROM alembic_version")).scalar_one()=="0015_system_commercial"
+        assert conn.execute(text("SELECT version_num FROM alembic_version")).scalar_one()=="0017_technology_observations"
     engine.dispose()

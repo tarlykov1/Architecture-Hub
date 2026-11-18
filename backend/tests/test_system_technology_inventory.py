@@ -40,6 +40,13 @@ def test_versions_per_environment_component_monitoring_scope_and_append_only_evi
         stage=create(client,root+"/technologies",{**data,"environment":"test","version":"3.12.0"})
         assert stage["id"]!=techid
         assert stage["version"]=="3.12.0"
+        inventory=client.get("/api/technology-inventory?q=QA-WORK-Python&environment=prod",
+                             headers=VIEWER)
+        assert inventory.status_code==200,inventory.text
+        assert inventory.json()["count"]==1
+        assert inventory.json()["items"][0]["system_id"]==system["id"]
+        assert inventory.json()["items"][0]["component_id"]==component["id"]
+        assert inventory.json()["items"][0]["version"]=="3.11.9"
         records=client.get(root+"/technologies",headers=VIEWER)
         assert records.status_code==200,records.text
         assert {row["id"] for row in records.json()}=={techid,stage["id"]}
@@ -75,6 +82,14 @@ def test_versions_per_environment_component_monitoring_scope_and_append_only_evi
         assert results.status_code==200
         assert [item["id"] for item in results.json()]==[observed["id"]]
         assert client.get("/api/systems/"+other["id"]+"/technology-observations",headers=ADMIN).json()==[]
+        inventory=client.get("/api/technology-inventory?q=QA-WORK-Python&environment=prod",
+                             headers=VIEWER)
+        assert inventory.status_code==200,inventory.text
+        item=inventory.json()["items"][0]
+        assert item["observed_version"]=="3.11.8"
+        assert item["version_mismatch"] is True
+        assert item["reachable"] is True
+        assert item["observation_source"]==source["name"]
         invalid=[
             {**report,"observed_at":datetime.now().replace(microsecond=0).isoformat()},
             {**report,"observed_at":(datetime.now(timezone.utc)+timedelta(hours=3)).isoformat()},

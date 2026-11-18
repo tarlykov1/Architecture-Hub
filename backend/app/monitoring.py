@@ -15,7 +15,7 @@ from sqlalchemy import ForeignKey, String, Uuid, Boolean, UniqueConstraint, sele
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from .main import (Base, SessionLocal, ArchitectureObject, InfrastructureItem,
-                   audit_direct_edit)
+                   SystemTechnologyObservation, audit_direct_edit)
 
 router = APIRouter(prefix="/api/monitoring", tags=["monitoring"])
 
@@ -178,6 +178,9 @@ def delete_source(source_id: UUID, request: Request, db: Session = Depends(db_se
         raise HTTPException(404, "Monitoring source not found")
     if db.scalars(select(MonitoringLink.id).where(MonitoringLink.source_id == source_id)).first():
         raise HTTPException(409, "Remove monitoring links before deleting this source")
+    if db.scalars(select(SystemTechnologyObservation.id)
+                  .where(SystemTechnologyObservation.source_id == source_id)).first():
+        raise HTTPException(409, "Monitoring source has historical technology evidence; disable it instead of deleting")
     before = source_payload(source)
     db.delete(source)
     audit_direct_edit(db, request, "delete_monitoring_source", source_id, before, None,

@@ -1736,6 +1736,60 @@ def record_technology_observation(system_id: UUID, technology_id: UUID,
     return row
 
 
+@app.get("/api/technology-inventory")
+def technology_inventory(q: str = Query(default="", max_length=200),
+                         environment: str = Query(default="", max_length=24),
+                         category: str = Query(default="", max_length=36),
+                         db: Session = Depends(db_session)):
+    """Cross-IS inventory for vulnerability triage – no host scans or CVE guesses.
+
+    Observations are explicitly labelled as monitor-reported, not verified by Hub.
+    """
+    from .monitoring import MonitoringSource
+    tech_rows = db.scalars(select(SystemTechnology).order_by(
+        SystemTechnology.name, SystemTechnology.version, SystemTechnology.id)).all()
+    systems = {row.id:row.name for row in db.scalars(select(ArchitectureObject)).all()}
+    components = {row.id:row.name for row in db.scalars(select(InfrastructureItem)).all()}
+    monitors = {row.id:row.name for row in db.scalars(select(MonitoringSource)).all()}
+    observations = db.scalars(select(SystemTechnologyObservation)
+                              .order_by(SystemTechnologyObservation.observed_at.desc(),
+                                        SystemTechnologyObservation.id.desc())).all()
+    latest = {}
+    for obs in observations:
+        latest.setdefault(obs.technology_id, obs)
+    today = datetime.now(timezone.utc).date()
+    output = []
+    for row in tech_rows:
+        if environment and row.environment != environment:
+            continue
+        if category and row.category != category:
+            continue
+        obs = latest.get(row.id)
+        values = (row.name, row.version, row.category, row.environment,
+                  systems.get(row.system_id, ""), components.get(row.component_id, ""),
+                  obs.observed_version if obs else "")
+        if q and q.strip().casefold() not in " ".join(str(value) for value in values).casefold():
+            continue
+        output.append({
+            "id":str(row.id), "system_id":str(row.system_id),
+            "system_name":systems.get(row.system_id, ""),
+            "component_id":str(row.component_id) if row.component_id else None,
+            "component_name":components.get(row.component_id, "") if row.component_id else "",
+            "name":row.name, "category":row.category,
+            "version":row.version, "environment":row.environment,
+            "lifecycle":row.lifecycle, "verification":row.verification,
+            "support_end_date":row.support_end_date.isoformat() if row.support_end_date else None,
+            "out_of_support":bool(row.support_end_date and row.support_end_date < today),
+            "observed_version":obs.observed_version if obs else "",
+            "reachable":obs.reachable if obs else None,
+            "observed_at":obs.observed_at.isoformat() if obs else None,
+            "observation_source":monitors.get(obs.source_id, "") if obs else "",
+            "version_mismatch":bool(obs and row.version and obs.observed_version
+                                    and obs.observed_version != row.version),
+        })
+    return {"count":len(output), "items":output}
+
+
 @app.delete("/api/objects/{object_id}", status_code=204)
 def delete_object(object_id: UUID, db: Session = Depends(db_session)):
     obj = db.get(ArchitectureObject, object_id)

@@ -37,7 +37,7 @@ def test_versions_per_environment_component_monitoring_scope_and_append_only_evi
         assert rejected.status_code==409,rejected.text
         foreign=client.post(root+"/technologies",headers=ADMIN,json={**data,"component_id":foreign_component["id"]})
         assert foreign.status_code==422,foreign.text
-        stage=create(client,root+"/technologies",{**data,"environment":"test","version":"3.12.0"})
+        stage=create(client,root+"/technologies",{**data,"environment":"test","version":"3.12.0","support_end_date":"2020-01-01"})
         assert stage["id"]!=techid
         assert stage["version"]=="3.12.0"
         inventory=client.get("/api/technology-inventory?q=QA-WORK-Python&environment=prod",
@@ -47,6 +47,13 @@ def test_versions_per_environment_component_monitoring_scope_and_append_only_evi
         assert inventory.json()["items"][0]["system_id"]==system["id"]
         assert inventory.json()["items"][0]["component_id"]==component["id"]
         assert inventory.json()["items"][0]["version"]=="3.11.9"
+        outdated=client.get("/api/technology-inventory?q=QA-WORK-Python&environment=test",
+                            headers=VIEWER)
+        assert outdated.status_code==200,outdated.text
+        assert outdated.json()["items"][0]["id"]==stage["id"]
+        assert outdated.json()["items"][0]["out_of_support"] is True
+        assert outdated.json()["items"][0]["observed_version"]==""
+        assert outdated.json()["items"][0]["reachable"] is None
         records=client.get(root+"/technologies",headers=VIEWER)
         assert records.status_code==200,records.text
         assert {row["id"] for row in records.json()}=={techid,stage["id"]}

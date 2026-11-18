@@ -40,7 +40,7 @@ export default function SystemTechStack({systemId,components,readOnly,request}:{
  const load=async()=>{
   const [technologies,checks,monitorSources,monitorLinks]=await Promise.all([
    request<Technology[]>(base+'/technologies'),request<Observation[]>(base+'/technology-observations'),
-   request<Source[]>('/api/monitoring/sources'),request<Link[]>('/api/monitoring/links')
+   request<Source[]>('/api/monitoring/sources').catch(()=>[] as Source[]),request<Link[]>('/api/monitoring/links').catch(()=>[] as Link[])
   ])
   setRows(technologies);setObservations(checks);setSources(monitorSources);setLinks(monitorLinks)
  }
@@ -49,7 +49,7 @@ export default function SystemTechStack({systemId,components,readOnly,request}:{
   setLoading(true);setError('');setNotice('');setEditorOpen(false);setEditingId('')
   Promise.all([
    request<Technology[]>(base+'/technologies'),request<Observation[]>(base+'/technology-observations'),
-   request<Source[]>('/api/monitoring/sources'),request<Link[]>('/api/monitoring/links')
+   request<Source[]>('/api/monitoring/sources').catch(()=>[] as Source[]),request<Link[]>('/api/monitoring/links').catch(()=>[] as Link[])
   ]).then(([technologies,checks,monitorSources,monitorLinks])=>{
    if(active){setRows(technologies);setObservations(checks);setSources(monitorSources);setLinks(monitorLinks)}
   }).catch(e=>{if(active)setError('Не удалось загрузить технологический стек: '+String(e))})

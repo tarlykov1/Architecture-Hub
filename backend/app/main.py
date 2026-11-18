@@ -7,7 +7,7 @@ import hashlib
 import json
 from contextlib import asynccontextmanager
 import re
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Any, Literal
 from uuid import UUID, uuid4
 
@@ -117,6 +117,22 @@ class SystemTechnology(Base):
     verification: Mapped[str] = mapped_column(String(24), nullable=False, default="unverified")
     source: Mapped[str] = mapped_column(String(500), nullable=False, default="")
     notes: Mapped[str] = mapped_column(String(2000), nullable=False, default="")
+
+
+class SystemTechnologyObservation(Base):
+    """Append-only, source-reported observation. Not evidence that Hub scanned a host."""
+    __tablename__ = "system_technology_observations"
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    system_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("objects.id", ondelete="CASCADE"), index=True, nullable=False)
+    technology_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("system_technologies.id", ondelete="CASCADE"), index=True, nullable=False)
+    source_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("monitoring_sources.id"), index=True, nullable=False)
+    observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    observed_version: Mapped[str] = mapped_column(String(120), default="", nullable=False)
+    reachable: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    notes: Mapped[str] = mapped_column(String(1000), default="", nullable=False)
 
 
 class Relation(Base):
@@ -619,6 +635,31 @@ class TechnologyOutput(TechnologyInput):
     model_config = ConfigDict(from_attributes=True)
     id: UUID
     system_id: UUID
+
+
+class TechnologyObservationInput(BaseModel):
+    source_id: UUID
+    observed_at: datetime
+    observed_version: str = Field(default="", max_length=120)
+    reachable: bool | None = None
+    notes: str = Field(default="", max_length=1000)
+
+    @model_validator(mode="after")
+    def validate_observation(self):
+        if self.reachable is None and not self.observed_version.strip():
+            raise ValueError("A monitoring observation needs reachability or observed version")
+        if self.observed_at.tzinfo is None:
+            raise ValueError("Monitoring observation timestamp needs a timezone")
+        if self.observed_at > datetime.now(timezone.utc) + timedelta(minutes=5):
+            raise ValueError("Monitoring observation cannot be timestamped in the future")
+        return self
+
+
+class TechnologyObservationOutput(TechnologyObservationInput):
+    model_config = ConfigDict(from_attributes=True)
+    id: UUID
+    system_id: UUID
+    technology_id: UUID
 
 
 class RelationCreate(BaseModel):
@@ -1633,7 +1674,66 @@ def delete_system_technology(system_id: UUID, technology_id: UUID, request: Requ
     before = TechnologyOutput.model_validate(row).model_dump(mode="json")
     audit_direct_edit(db, request, "delete_technology", row.id, before, None,
                       "Удалена технология из паспорта ИС "+row.name)
+    for observation in db.scalars(select(SystemTechnologyObservation)
+                                  .where(SystemTechnologyObservation.technology_id == row.id)).all():
+        db.delete(observation)
     db.delete(row); db.commit()
+
+
+def _technology_monitor_link(db: Session, item: SystemTechnology, source_id: UUID) -> None:
+    """Require an enabled, previously approved monitor for exactly this scope.
+
+    The endpoint receives telemetry pushed by an authorized client and performs
+    NO DNS, ICMP, HTTP, SSH, port scans or fetching of user-provided URLs.
+    """
+    from .monitoring import MonitoringSource, MonitoringLink
+    source = db.get(MonitoringSource, source_id)
+    if source is None or not source.enabled:
+        raise HTTPException(422, "Monitoring source does not exist or is disabled")
+    links = db.scalars(select(MonitoringLink).where(
+        MonitoringLink.source_id == source_id,
+        MonitoringLink.relation_kind == "monitors",
+    )).all()
+    approved = any(
+        (link.target_type == "system" and link.target_id == item.system_id) or
+        (link.target_type == "component" and item.component_id is not None
+         and link.target_id == item.component_id)
+        for link in links
+    )
+    if not approved:
+        raise HTTPException(422, "Monitoring source has no approved monitoring link to this system or component")
+
+
+@app.get("/api/systems/{system_id}/technology-observations", response_model=list[TechnologyObservationOutput])
+def list_technology_observations(system_id: UUID, db: Session = Depends(db_session)):
+    _contract_system(db, system_id)
+    return db.scalars(select(SystemTechnologyObservation)
+                      .where(SystemTechnologyObservation.system_id == system_id)
+                      .order_by(SystemTechnologyObservation.observed_at.desc())
+                      .limit(300)).all()
+
+
+@app.post("/api/systems/{system_id}/technologies/{technology_id}/observations",
+          response_model=TechnologyObservationOutput, status_code=201)
+def record_technology_observation(system_id: UUID, technology_id: UUID,
+                                  payload: TechnologyObservationInput,
+                                  request: Request, db: Session = Depends(db_session)):
+    _contract_system(db, system_id)
+    item = db.get(SystemTechnology, technology_id)
+    if item is None or item.system_id != system_id:
+        raise HTTPException(404, "Technology does not belong to this system")
+    _technology_monitor_link(db, item, payload.source_id)
+    row = SystemTechnologyObservation(system_id=system_id, technology_id=technology_id,
+                                      **payload.model_dump())
+    db.add(row); db.flush()
+    audit_direct_edit(db, request, "record_technology_observation", row.id, None,
+                      {"technology_id":str(technology_id),"source_id":str(payload.source_id),
+                       "observed_at":payload.observed_at.isoformat(),
+                       "observed_version":payload.observed_version,
+                       "reachable":payload.reachable},
+                      "Получены сведения из разрешённого мониторинга")
+    db.commit(); db.refresh(row)
+    return row
 
 
 @app.delete("/api/objects/{object_id}", status_code=204)
@@ -2393,6 +2493,8 @@ def delete_infra(item_id: UUID, request: Request, db: Session = Depends(db_sessi
         raise HTTPException(status_code=409, detail="Delete connected data flows first")
     if db.scalars(select(NetworkInterface).where(NetworkInterface.item_id == item_id)).first():
         raise HTTPException(status_code=409, detail="Delete network interfaces first")
+    if db.scalar(select(SystemTechnology.id).where(SystemTechnology.component_id == item_id)):
+        raise HTTPException(status_code=409, detail="Unlink technology inventory before deleting component")
     audit_direct_edit(db, request, "delete_vm", item.id,
                       {"name":item.name,"kind":item.kind,"system_id":item.system_id},
                       None, "Удалён компонент " + item.name)

@@ -78,8 +78,9 @@ def test_versions_per_environment_component_monitoring_scope_and_append_only_evi
             "target_id":component["id"],"relation_kind":"monitors",
             "external_ref":"qa-host-id"})
         observed=create(client,path,report)
-        # Evidence keeps attribution: monitoring source must not disappear
-        # while its reported checks remain in architecture history.
+        # Even after removing the monitoring link, the original source must
+        # remain attributable to preserved historical observations.
+        assert client.delete("/api/monitoring/links/"+link["id"],headers=ADMIN).status_code==204
         assert client.delete("/api/monitoring/sources/"+source["id"],headers=ADMIN).status_code==409
         assert observed["system_id"]==system["id"]
         assert observed["technology_id"]==techid

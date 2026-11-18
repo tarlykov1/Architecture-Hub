@@ -20,7 +20,7 @@ from .cmdb import ci_graph, potential_impact, CI_CLASSES, LIFECYCLE_STATES, LIFE
 from .cmdb_catalog import validate_class_schema, validate_custom_values, missing_required, assess_relation, RELATION_KINDS
 from .architecture_metamodel import get_logical_relation_types, logical_relation_validation_error, summarize_legacy_relations
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from sqlalchemy import Date, DateTime, ForeignKey, JSON, String, Uuid, Index, Boolean, UniqueConstraint, create_engine, select, update, text as sql_text
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
 from sqlalchemy.exc import IntegrityError
@@ -655,11 +655,26 @@ class TechnologyObservationInput(BaseModel):
         return self
 
 
-class TechnologyObservationOutput(TechnologyObservationInput):
+class TechnologyObservationOutput(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: UUID
     system_id: UUID
     technology_id: UUID
+    source_id: UUID
+    observed_at: datetime
+    observed_version: str
+    reachable: bool | None
+    notes: str
+
+    @field_validator("observed_at", mode="before")
+    @classmethod
+    def normalize_sqlite_utc(cls, value):
+        # SQLAlchemy SQLite DateTime strips offsets on persistence.
+        # Inputs still require an explicit timezone, while saved UTC readings
+        # must serialize accurately without treating them as local time.
+        if isinstance(value, datetime) and value.tzinfo is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value
 
 
 class RelationCreate(BaseModel):

@@ -87,6 +87,16 @@ def configured_keys() -> dict[str, str] | None:
 
 async def access_middleware(request: Request, call_next):
     path = request.url.path
+    if path == "/api/auth/mode" and request.method == "GET":
+        return await call_next(request)
+    if getattr(request.app.state, "arch_hub_open_access", False) and path.startswith("/api/"):
+        # Explicit temporary server setting; retain account credentials for rollback.
+        if path.startswith("/api/auth/") and path != "/api/auth/me":
+            return JSONResponse({"detail": "Account management is disabled in open access mode"}, status_code=403)
+        request.state.role = "admin"
+        request.state.auth_kind = "open_access"
+        request.state.actor = "open-access"
+        return await call_next(request)
     keys = request.app.state.arch_hub_keys
     password_auth = request.app.state.arch_hub_password_auth
     if keys is None and password_auth is None:

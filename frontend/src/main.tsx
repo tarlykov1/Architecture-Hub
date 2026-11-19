@@ -64,6 +64,7 @@ function readAccessToken(): string {
   try { return sessionStorage.getItem(ACCESS_TOKEN_STORAGE_KEY) || '' }
   catch { return '' }
 }
+let openAccess = false
 let accessToken = readAccessToken()
 function saveAccessToken(value: string): void {
   accessToken = value.trim()
@@ -89,7 +90,7 @@ async function signInWithPassword(password:string,username=''):Promise<string>{
 }
 class ApiForbiddenError extends Error {}
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
-  if (!accessToken) {
+  if (!accessToken && !openAccess) {
     if ((init?.method || 'GET').toUpperCase() !== 'GET') throw new Error('Демонстрационный режим: изменения запрещены. Для редактирования войдите по паролю.')
     return publicDemoResponse(url) as T
   }
@@ -101,6 +102,7 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
       // data just because a stale token remains in sessionStorage.
       if(accessToken===requestToken){
         saveAccessToken('')
+        openAccess=false
         window.dispatchEvent(new Event('architecture-hub:session-expired'))
       }
       throw new Error('Сеанс завершился или ключ недействителен. Войдите снова.')
@@ -605,7 +607,7 @@ function App() {
   const [description, setDescription] = useState('')
   const [error, setError] = useState('')
   const [notice,setNotice] = useState('')
-  const [tokenReady, setTokenReady] = useState(Boolean(accessToken))
+  const [tokenReady, setTokenReady] = useState(Boolean(accessToken)||openAccess)
   useEffect(()=>{
     if(!tokenReady||!authProfile)return
     // Links from bookmarks and old tabs must not open a workspace outside
@@ -1220,8 +1222,8 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
         </details></div>}
       </nav>
       <div className="topActions">
-        {tokenReady ? <button type="button" title="Выйти из текущего сеанса в этой вкладке" onClick={()=>{saveAccessToken('');setTokenReady(false);setObjects([]);setRelations([]);setDiagrams([]);setInfra([]);setFlows([]);setSegments([]);setNics([]);setCategories([]);setProcesses([]);setBusinessLinks([]);setSelected('');setSelectedFlow('');setError('');setNotice('Демонстрационный режим – только вымышленные данные.');setAuthProfile(null);setUserManagerOpen(false);setChangePasswordOpen(false);void refresh()}}>Выйти</button> : <button type="button" onClick={()=>setAuthOpen(true)}>Войти для редактирования</button>}
-        {tokenReady&&authProfile?.role==='admin'&&<button type="button" className="accountTopAction" onClick={()=>setUserManagerOpen(true)}>Пользователи</button>}
+        {openAccess ? <span className="accountTopAction">Доступ без пароля</span> : tokenReady ? <button type="button" title="Выйти из текущего сеанса в этой вкладке" onClick={()=>{saveAccessToken('');setTokenReady(false);setObjects([]);setRelations([]);setDiagrams([]);setInfra([]);setFlows([]);setSegments([]);setNics([]);setCategories([]);setProcesses([]);setBusinessLinks([]);setSelected('');setSelectedFlow('');setError('');setNotice('Демонстрационный режим – только вымышленные данные.');setAuthProfile(null);setUserManagerOpen(false);setChangePasswordOpen(false);void refresh()}}>Выйти</button> : <button type="button" onClick={()=>setAuthOpen(true)}>Войти для редактирования</button>}
+        {!openAccess&&tokenReady&&authProfile?.role==='admin'&&<button type="button" className="accountTopAction" onClick={()=>setUserManagerOpen(true)}>Пользователи</button>}
         {tokenReady&&authProfile?.auth_kind==='named_user'&&<button type="button" className="accountTopAction" onClick={()=>setChangePasswordOpen(true)}>Сменить пароль</button>}
         {tokenReady&&authProfile?.username&&<span title={'Роль: '+roleLabel(authProfile.role)} className="accountTopAction">{authProfile.display_name||authProfile.username} · {roleLabel(authProfile.role)}</span>}
         {layer==='systems'&&<><select aria-label="Схема" value={diagramId} onChange={e => selectDiagram(e.target.value)}>
@@ -1591,10 +1593,10 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
           </>}
           {registryError&&<p role="alert" className="kisError">{registryError}</p>}
           {networkDeleteBlockers.length>0&&<div role="region" aria-label="Интерфейсы, препятствующие удалению"><strong>Привязанные интерфейсы</strong>{nics.filter(n=>networkDeleteBlockers.includes(n.id)).map(n=>{const component=infra.find(i=>i.id===n.item_id);return <div key={n.id}><button type="button" onClick={()=>{if(!component)return;setRegistryOpen(null);setViewSystem(component.system_id);setComponentView('registry');setLayer('infrastructure');setComponentInspectId(component.id);setComponentInspectTab('network')}}>{component?.name||'Компонент'} · {n.name} – открыть компонент</button></div>})}</div>}
-          {!accessToken&&<p className="hint demoWriteNotice" role="status">Демонстрационный режим – изменения нельзя сохранить. Для сохранения войдите по паролю и откройте форму повторно.</p>}
+          {!tokenReady&&<p className="hint demoWriteNotice" role="status">Демонстрационный режим – изменения нельзя сохранить. Для сохранения войдите по паролю и откройте форму повторно.</p>}
           <div className="registryFormActions">
-            <button className="primary" disabled={registryBusy||!accessToken}>{registryBusy?'Сохранение…':'Сохранить'}</button>
-            {(registryOpen==='flow'?Boolean(flowEditId):Boolean(networkEditId))&&<button type="button" className="dangerAction" disabled={registryBusy||!accessToken} onClick={()=>void deleteRegistryEntry()}>Удалить {registryOpen==='flow'?'поток':'сеть'}</button>}
+            <button className="primary" disabled={registryBusy||!tokenReady}>{registryBusy?'Сохранение…':'Сохранить'}</button>
+            {(registryOpen==='flow'?Boolean(flowEditId):Boolean(networkEditId))&&<button type="button" className="dangerAction" disabled={registryBusy||!tokenReady} onClick={()=>void deleteRegistryEntry()}>Удалить {registryOpen==='flow'?'поток':'сеть'}</button>}
           </div>
         </form>
       </div>
@@ -1642,4 +1644,16 @@ function BuildVersion() {
  </div>
 }
 
-createRoot(document.getElementById('root')!).render(<React.StrictMode><App /><BuildVersion /></React.StrictMode>)
+async function startApp(){
+  // Only the server can enable anonymous editing. Failure keeps the demo/login flow.
+  try{
+    const response=await fetch('/api/auth/mode',{cache:'no-store',credentials:'omit',signal:AbortSignal.timeout(5000)})
+    if(response.ok){
+      const mode=await response.json()
+      openAccess=mode.open_access===true
+      if(openAccess)saveAccessToken('')
+    }
+  }catch{/* Old or unavailable backend: keep password login. */}
+  createRoot(document.getElementById('root')!).render(<React.StrictMode><App /><BuildVersion /></React.StrictMode>)
+}
+void startApp()

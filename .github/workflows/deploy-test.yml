@@ -1,15 +1,17 @@
 name: Deploy Architecture Hub frontend (test)
 
-# Deploy only after the CI workflow has passed for a push to main.
-# Explicit repository variable DEPLOY_ENABLED=true is required to arm deployment.
-# Deployment smoke test: verify configured SSH secrets and frontend publishing.
+# CI (main push) -> guarded backend deploy -> frontend deploy. Never ship
+# UI requiring a migration before the corresponding backend has succeeded.
+# Both DEPLOY_ENABLED=true and BACKEND_DEPLOY_ENABLED=true are required.
+# The backend workflow itself runs only after successful Architecture Hub CI.
 on:
   workflow_run:
-    workflows: ["Architecture Hub CI"]
+    workflows: ["Deploy Architecture Hub backend (test)"]
     types: [completed]
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: architecture-hub-test-frontend-deploy
@@ -20,8 +22,9 @@ jobs:
     name: Publish verified frontend to test.web-tie.ru
     if: >-
       vars.DEPLOY_ENABLED == 'true' &&
+      vars.BACKEND_DEPLOY_ENABLED == 'true' &&
       github.event.workflow_run.conclusion == 'success' &&
-      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.event == 'workflow_run' &&
       github.event.workflow_run.head_branch == 'main'
     runs-on: ubuntu-24.04
     environment: test
@@ -35,10 +38,37 @@ jobs:
       DEPLOY_DIR: /var/www/webtie.ru/data/www/test.web-tie.ru
 
     steps:
-      - name: Checkout the exact commit that passed CI
+      - name: Download release revision from the successful backend workflow
+        uses: actions/download-artifact@v4
+        with:
+          name: backend-release-revision
+          path: ${{ runner.temp }}/backend-release
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify the backend revision matches the current main
+        id: revision
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          expected="$(cat "${{ runner.temp }}/backend-release/backend-release-sha.txt")"
+          if [[ ! "$expected" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::Invalid backend revision artifact"
+            exit 1
+          fi
+          current="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq '.object.sha')"
+          if [ "$current" != "$expected" ]; then
+            echo "::error::Main moved after backend deployment; refusing to publish stale frontend"
+            exit 1
+          fi
+          echo "sha=$expected" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout the exact commit deployed by the successful backend workflow
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}
+          ref: ${{ steps.revision.outputs.sha }}
           persist-credentials: false
 
       - name: Setup Node.js 22
@@ -52,7 +82,7 @@ jobs:
         working-directory: frontend
         env:
           VITE_WIKI_URL: ${{ vars.VITE_WIKI_URL }}
-          BUILD_REVISION: ${{ github.event.workflow_run.head_sha }}
+          BUILD_REVISION: ${{ steps.revision.outputs.sha }}
         run: |
           npm ci --no-audit --no-fund
           npm run build
@@ -99,7 +129,7 @@ jobs:
       - name: Verify deployed frontend revision matches the tested commit
         shell: bash
         env:
-          EXPECTED_REVISION: ${{ github.event.workflow_run.head_sha }}
+          EXPECTED_REVISION: ${{ steps.revision.outputs.sha }}
         run: |
           set -euo pipefail
           actual="$(curl --fail --show-error --silent --retry 5 --retry-delay 3 \

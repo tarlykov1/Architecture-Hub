@@ -32,6 +32,19 @@ jobs:
       DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
 
     steps:
+      - name: Verify the tested commit is still the current main revision
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          actual="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq '.object.sha')"
+          if [ "$actual" != "$EXPECTED_SHA" ]; then
+            echo "::error::Main changed after CI; refusing to deploy an outdated backend"
+            exit 1
+          fi
+
       - name: Checkout exact successful CI commit
         uses: actions/checkout@v4
         with:
@@ -65,6 +78,14 @@ jobs:
           rsync -r --delete --no-links --omit-dir-times backend/alembic/ "$DEPLOY_USER@$DEPLOY_HOST:backend-release/alembic/"
           rsync -r --no-links backend/alembic.ini backend/requirements.txt "$DEPLOY_USER@$DEPLOY_HOST:backend-release/"
 
+      - name: Ensure database migration opt-in exists on test VPS
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh -p "$DEPLOY_PORT" -o BatchMode=yes -o StrictHostKeyChecking=yes -o IdentitiesOnly=yes \
+            "$DEPLOY_USER@$DEPLOY_HOST" \
+            'test -f /etc/architecture-hub-enable-migrations || { echo "BLOCKED: backend migrations are not enabled for this database" >&2; exit 1; }'
+
       - name: Apply backed-up release using restricted root-owned script
         shell: bash
         run: |
@@ -74,3 +95,16 @@ jobs:
 
       - name: Validate public API
         run: curl --fail --silent --show-error --retry 3 --retry-delay 2 https://test.web-tie.ru/api/health
+
+      - name: Record the exact backend revision that was deployed
+        env:
+          DEPLOYED_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          printf '%s\n' "$DEPLOYED_SHA" > backend-release-sha.txt
+
+      - name: Provide verified backend revision to the frontend workflow
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-release-revision
+          path: backend-release-sha.txt
+          retention-days: 3

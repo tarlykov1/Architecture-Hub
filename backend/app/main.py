@@ -7,6 +7,7 @@ import hashlib
 import json
 from contextlib import asynccontextmanager
 import re
+import ipaddress
 from datetime import date, datetime, timedelta, timezone
 from typing import Any, Literal
 from uuid import UUID, uuid4
@@ -349,6 +350,24 @@ class InfraInput(BaseModel):
 class InfraOutput(InfraInput):
     model_config = ConfigDict(from_attributes=True)
     id: UUID
+
+
+def _require_valid_flow_port(value: str) -> None:
+    """Flow ports are a single optional TCP/UDP numeric port, never guessed."""
+    port = value.strip()
+    if port and (not re.fullmatch(r"[0-9]+", port) or not 1 <= int(port) <= 65535):
+        raise HTTPException(status_code=422, detail="Порт должен быть числом от 1 до 65535 или пустым")
+
+
+def _require_valid_interface_ip(value: str) -> None:
+    """Accept IPv4/IPv6 hosts or a single CIDR interface, never malformed octets."""
+    address = value.strip()
+    if not address:
+        return
+    try:
+        ipaddress.ip_interface(address)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail="Укажите корректный IPv4/IPv6-адрес, при необходимости с префиксом") from exc
 
 
 class FlowInput(BaseModel):
@@ -2473,6 +2492,7 @@ def list_flows(db: Session = Depends(db_session)):
 
 @app.post("/api/flows", response_model=FlowOutput, status_code=201)
 def create_flow(payload: FlowInput, request: Request, db: Session = Depends(db_session)):
+    _require_valid_flow_port(payload.port)
     if payload.source_id == payload.target_id:
         raise HTTPException(422, "Source and destination must differ")
     source = db.get(InfrastructureItem, payload.source_id)
@@ -2492,6 +2512,7 @@ def create_flow(payload: FlowInput, request: Request, db: Session = Depends(db_s
 
 @app.put("/api/flows/{flow_id}", response_model=FlowOutput)
 def update_flow(flow_id: UUID, payload: FlowInput, request: Request, db: Session = Depends(db_session)):
+    _require_valid_flow_port(payload.port)
     flow = db.get(DataFlow, flow_id)
     if not flow:
         raise HTTPException(404, "Flow not found")
@@ -2866,6 +2887,7 @@ def get_nics(db: Session = Depends(db_session)):
 
 @app.post("/api/network-interfaces", response_model=NICOutput, status_code=201)
 def add_nic(payload: NICInput, request: Request, db: Session = Depends(db_session)):
+    _require_valid_interface_ip(payload.ip_address)
     if not db.get(InfrastructureItem, payload.item_id):
         raise HTTPException(422, "Unknown VM/component")
     for field, kind in [("zone_id", "zone"), ("vlan_id", "vlan"), ("vrf_id", "vrf")]:
@@ -2886,6 +2908,7 @@ def add_nic(payload: NICInput, request: Request, db: Session = Depends(db_sessio
 
 @app.put("/api/network-interfaces/{interface_id}", response_model=NICOutput)
 def update_nic(interface_id: UUID, payload: NICInput, request: Request, db: Session = Depends(db_session)):
+    _require_valid_interface_ip(payload.ip_address)
     row = db.get(NetworkInterface, interface_id)
     if row is None:
         raise HTTPException(404, "Network interface not found")
@@ -3401,6 +3424,7 @@ def apply_board_changes(payload: BoardBatch, db: Session) -> list[dict[str, Any]
             if not source or not target:
                 raise HTTPException(422, "Flow endpoints not found")
             _check_relation_allowed(db, "supplies_data_to", source.kind, target.kind)
+            _require_valid_flow_port(change.port)
             flow = DataFlow(id=change.id, source_id=change.source_id, target_id=change.target_id, name=change.name.strip(),
                             protocol=change.protocol, port=change.port, security=change.security,
                             data_description=change.data_description, schedule=change.schedule, verification=change.verification)
@@ -3409,6 +3433,7 @@ def apply_board_changes(payload: BoardBatch, db: Session) -> list[dict[str, Any]
                            "after": {"source_id": str(flow.source_id), "target_id": str(flow.target_id),
                                      "name": flow.name, "protocol": flow.protocol, "port": flow.port, "security": flow.security}})
         elif change.action == "update_flow":
+            _require_valid_flow_port(change.port)
             if change.id is None:
                 raise HTTPException(422, "Flow id is required")
             flow = db.get(DataFlow, change.id)

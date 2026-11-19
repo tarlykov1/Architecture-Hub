@@ -3,6 +3,7 @@ import './board.css'
 import {DiagramNodeLabel,diagramCardStyle} from './DiagramVisual'
 import MonitoringPanel from './MonitoringPanel'
 import ExistingFlowEditor, {type FlowValues} from './ExistingFlowEditor'
+import {flowPortError} from './fieldValidation'
 import FlowAttributeMap from './FlowAttributeMap'
 import {AutoFit} from './WorkspaceUI'
 import {MousePointer2, Monitor, GitBranch, SquareDashed, StickyNote, Maximize2, Save, History, ClipboardCheck} from 'lucide-react'
@@ -720,6 +721,7 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
  const stageDirectedFlow=(source:string,target:string,anchors?:FlowPortPair)=>{
    setSelectedEdgeFlowIds([]);setSelectedExistingFlowId('')
    if(!source||!target||source===target){setError('Выберите два разных компонента для направления потока.');return}
+   if(flowPortError(port)){setError(flowPortError(port));return}
    if(!allVMs.some(vm=>vm.id===source)||!allVMs.some(vm=>vm.id===target)){setError('Источник или получатель отсутствует на схеме.');return}
    const id=makeId()
    // Store a chosen entry and exit immediately in the local layout draft.

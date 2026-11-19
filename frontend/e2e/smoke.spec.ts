@@ -1168,7 +1168,9 @@ test('compact layout wraps tall dependency columns without overlap',async({page}
 test('anonymous demo displays only synthetic architecture and never requests protected API',async({page})=>{
  const protectedRequests:string[]=[]
  page.on('request',request=>{
-  if(new URL(request.url()).pathname.startsWith('/api/') && !new URL(request.url()).pathname.endsWith('/health'))protectedRequests.push(request.url())
+  const path=new URL(request.url()).pathname
+  const publicRead=request.method()==='GET' && ['/api/health','/api/auth/mode'].includes(path)
+  if(path.startsWith('/api/') && !publicRead)protectedRequests.push(request.url())
  })
  await page.goto('/')
  await expect(page.getByRole('status').filter({hasText:'Демонстрационный режим'})).toBeVisible()

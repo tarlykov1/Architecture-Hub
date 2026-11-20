@@ -364,3 +364,21 @@
 .boardContextMenu button:disabled{opacity:.45;cursor:not-allowed}
 .boardContextBlockers{padding:8px;font-size:12px;color:#92400e;background:#fff7ed;border-radius:6px;overflow-wrap:anywhere}
 .boardContextBlockers strong{display:block;margin-bottom:4px}
+
+/* One-place management for flow attributes: catalog reuse and immediate creation. */
+.boardFlowAttributeTitle{display:flex;gap:6px;align-items:baseline;flex-wrap:wrap}
+.boardFlowDataOptionalFilters>summary{font-size:12px;color:#49627e;cursor:pointer}
+.boardFlowDataOptionalFilters .boardFlowDataMapFilters{margin-top:8px}
+.boardFlowQuickAdd{display:grid;gap:11px;border:1px solid #aac7e9;background:#f7fbff;border-radius:9px;padding:12px;min-width:0}
+.boardFlowQuickAddHeading{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.boardFlowQuickAddHeading strong{font-size:13px;color:#194b75}
+.boardFlowQuickAddHeading button{padding:4px 9px;border:0;background:transparent;font-size:18px;color:#52677a}
+.boardFlowQuickAddModes{display:flex;gap:7px;flex-wrap:wrap}
+.boardFlowQuickAddModes button{font-size:12px;padding:8px 10px;border:1px solid #cbd5e1;background:white;border-radius:7px}
+.boardFlowQuickAddModes button.current{color:#13579b;background:#e8f3ff;border-color:#8dbce9;font-weight:600}
+.boardFlowQuickAdd>label{display:grid;gap:5px;font-size:12px;font-weight:600;color:#334155;min-width:0}
+.boardFlowQuickAdd>label input,.boardFlowQuickAdd>label select,.boardFlowQuickAdd>label textarea{border:1px solid #cbd5e1;background:white;color:#1f344c;border-radius:7px;width:100%;min-width:0;padding:9px;font-size:12px;font-weight:400}
+.boardFlowQuickAdd>small{font-size:11px;color:#657b93;line-height:1.5}
+.boardFlowQuickAddActions{display:flex;justify-content:flex-end;flex-wrap:wrap;gap:8px}
+.boardFlowQuickAddActions button{padding:8px 12px;font-size:12px}
+.boardFlowQuickAddActions .primary{background:#2563eb;color:white}

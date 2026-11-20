@@ -18,15 +18,17 @@ from .password_auth import verify_session, verify_user_session
 # Permissions are enforced at API level, not by hiding frontend tabs.
 # 'read' and 'write' map to layers; no access is the default.
 ROLE_ACCESS = {
-    "admin": {"business": "write", "systems": "write", "infrastructure": "write", "networks": "write", "flows": "write", "diagrams": "write", "import": "write", "knowledge": "write", "incidents": "write", "views": "write"},
-    "architect": {"business": "write", "systems": "write", "infrastructure": "write", "networks": "read", "flows": "write", "diagrams": "write", "import": "write", "knowledge": "write", "views": "write", "incidents": "write"},
-    "engineer": {"systems": "read", "infrastructure": "write", "networks": "write", "flows": "read", "diagrams": "read", "incidents": "read", "views": "read"},
-    "security": {"systems": "read", "infrastructure": "read", "networks": "write", "flows": "read", "diagrams": "read", "views": "read"},
-    "business_owner": {"business": "write", "systems": "read", "diagrams": "read", "views": "read"},
-    "viewer": {"systems": "read", "business": "read", "diagrams": "read", "incidents": "read", "views": "read"},
+    "admin": {"business": "write", "systems": "write", "infrastructure": "write", "networks": "write", "flows": "write", "diagrams": "write", "import": "write", "knowledge": "write", "incidents": "write", "views": "write", "decisions": "write"},
+    "architect": {"business": "write", "systems": "write", "infrastructure": "write", "networks": "read", "flows": "write", "diagrams": "write", "import": "write", "knowledge": "write", "views": "write", "decisions": "write", "incidents": "write"},
+    "engineer": {"systems": "read", "infrastructure": "write", "networks": "write", "flows": "read", "diagrams": "read", "incidents": "read", "views": "read", "decisions": "write"},
+    "security": {"systems": "read", "infrastructure": "read", "networks": "write", "flows": "read", "diagrams": "read", "views": "read", "decisions": "write"},
+    "business_owner": {"business": "write", "systems": "read", "diagrams": "read", "views": "read", "decisions": "write"},
+    "viewer": {"systems": "read", "business": "read", "diagrams": "read", "incidents": "read", "views": "read", "decisions": "read"},
 }
 
 def classify(path: str) -> str | None:
+    if path.startswith("/api/technical-decisions"):
+        return "decisions"
     if path in ("/api/metamodel/relation-types", "/api/metamodel/relation-audit"):
         return "systems"  # Read-only typed link contract; no mutation endpoint.
     if path.startswith("/api/cmdb/"):

@@ -1,4 +1,18 @@
-import {test,expect} from '@playwright/test'
+import {test,expect,type Locator} from '@playwright/test'
+
+async function visibleNetworkHandle(node:Locator) {
+  // Grab the visible part of the container header. Independent VMs can overlap its left edge.
+  const dragArea=node.locator('.boardNetworkDragArea')
+  const handle=await dragArea.evaluate(area=>{
+    const box=area.getBoundingClientRect(),y=box.top+box.height/2
+    for(let x=box.left+8;x<Math.min(box.right,innerWidth)-8;x+=8){
+      if(area.contains(document.elementFromPoint(x,y)))return {x,y}
+    }
+    return null
+  })
+  expect(handle).not.toBeNull()
+  return handle!
+}
 
 // These tests use only the temporary SQLite database started by Browser CI.
 test.beforeEach(async ({page})=>{
@@ -61,7 +75,7 @@ test('flow editor uses the shared architecture tools without restoring a duplica
   await expect(tools.getByRole('button',{name:'▭ Сеть / контейнер'})).toBeVisible()
   await expect(editor.locator('.react-flow__node .homeNode')).toHaveCount(2)
   await tools.getByRole('button',{name:'▭ Сеть / контейнер'}).click()
-  await expect(editor.getByText(/протяните прямоугольник/)).toBeVisible()
+  await expect(editor.getByText(/Нажмите или протяните на схеме/)).toBeVisible()
   await page.getByRole('button',{name:'Вернуться в реестр',exact:true}).click()
   await expect(editor).toHaveCount(0)
   await expect(page.getByRole('region',{name:'Реестр технических потоков'})).toBeVisible()
@@ -295,7 +309,7 @@ test('network tool marks the required name and returns from history to the edito
   await editor.getByRole('toolbar',{name:'Инструменты архитектуры'}).getByRole('button',{name:'▭ Сеть / контейнер'}).click()
   const field=editor.getByRole('textbox',{name:/Название сети/})
   await expect(field).toHaveAttribute('aria-required','true')
-  await expect(editor.getByText(/Обязательное поле: сначала укажите название/)).toBeVisible()
+  await expect(editor.getByText(/Укажите название/)).toBeVisible()
   const layer=editor.getByRole('region',{name:'Поле рисования контейнера'})
   const box=await layer.boundingBox()
   expect(box).not.toBeNull()
@@ -338,9 +352,10 @@ test('an existing VRF is draggable and its saved geometry is audited',async({pag
   await expect(node).toBeVisible()
   const original=await node.boundingBox()
   expect(original).not.toBeNull()
-  await page.mouse.move(original!.x+35,original!.y+20)
+  const {x,y}=await visibleNetworkHandle(node)
+  await page.mouse.move(x,y)
   await page.mouse.down()
-  await page.mouse.move(original!.x+135,original!.y+100,{steps:8})
+  await page.mouse.move(x+100,y+80,{steps:8})
   await page.mouse.up()
   const moved=await node.boundingBox()
   expect(moved).not.toBeNull()
@@ -417,9 +432,7 @@ test('moving a VRF drags nested VLAN and independent VM while preserving network
   await expect(root).toBeVisible()
   await expect(child).toBeVisible()
   await expect(member).toBeVisible()
-  const rootBefore=await root.boundingBox()
-  expect(rootBefore).not.toBeNull()
-  const x=rootBefore!.x+45,y=rootBefore!.y+17
+  const {x,y}=await visibleNetworkHandle(root)
   await page.mouse.move(x,y)
   await page.mouse.down()
   await page.mouse.move(x+120,y+75,{steps:12})

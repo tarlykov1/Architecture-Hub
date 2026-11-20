@@ -177,6 +177,56 @@ class BoardLayout(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
 
+
+class TechnicalDecision(Base):
+    """Isolated proposed architecture; publishing does NOT alter live CMDB."""
+    __tablename__ = "technical_decisions"
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    title: Mapped[str] = mapped_column(String(250), nullable=False)
+    description: Mapped[str] = mapped_column(String(4000), default="", nullable=False)
+    system_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("objects.id"), index=True, nullable=False)
+    status: Mapped[str] = mapped_column(String(30), default="draft", nullable=False)
+    author: Mapped[str] = mapped_column(String(120), nullable=False)
+    revision: Mapped[int] = mapped_column(default=1, nullable=False)
+    base_hash: Mapped[str] = mapped_column(String(64), default="", nullable=False)
+    proposed_vms: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list, nullable=False)
+    proposed_flows: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list, nullable=False)
+    required_services: Mapped[list[str]] = mapped_column(JSON, default=lambda: ["engineer", "security"], nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class TechnicalDecisionComment(Base):
+    __tablename__ = "technical_decision_comments"
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    decision_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("technical_decisions.id", ondelete="CASCADE"), index=True, nullable=False)
+    actor: Mapped[str] = mapped_column(String(120), nullable=False)
+    body: Mapped[str] = mapped_column(String(2000), nullable=False)
+    anchor_kind: Mapped[str] = mapped_column(String(20), default="decision", nullable=False)
+    anchor_id: Mapped[str] = mapped_column(String(100), default="", nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+
+
+class TechnicalDecisionReview(Base):
+    __tablename__ = "technical_decision_reviews"
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    decision_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("technical_decisions.id", ondelete="CASCADE"), index=True, nullable=False)
+    revision: Mapped[int] = mapped_column(nullable=False)
+    service: Mapped[str] = mapped_column(String(30), nullable=False)
+    actor: Mapped[str] = mapped_column(String(120), nullable=False)
+    verdict: Mapped[str] = mapped_column(String(30), nullable=False)
+    note: Mapped[str] = mapped_column(String(2000), default="", nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+
+
 class InfrastructureItem(Base):
     __tablename__ = "infrastructure_items"
     id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)

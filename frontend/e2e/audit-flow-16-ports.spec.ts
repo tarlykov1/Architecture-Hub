@@ -40,7 +40,6 @@ test('QA-WORK: six parallel flows use distinct perimeter handles, 16 per VM',asy
   expect(new Set(geometries).size).toBe(6)
   // The read-only view must also retain six separately attached paths.
   await page.getByRole('button',{name:'Завершить редактирование',exact:true}).click()
-  const viewing=page.locator('.flowDiagramWorkspace .react-flow__edge')
   // View-specific layouts may hide a group; check after returning to editor.
   await page.getByRole('button',{name:'Редактор потоков',exact:true}).click()
   await expect(board.locator('.react-flow__edge')).toHaveCount(6)

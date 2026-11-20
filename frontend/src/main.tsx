@@ -134,7 +134,7 @@ function App() {
   const [systemsShowDiagram,setSystemsShowDiagram]=useState(false)
   const [systemsShowTechnologyInventory,setSystemsShowTechnologyInventory]=useState(false)
   const [flowEditMode,setFlowEditMode]=useState(false)
-  const [flowView,setFlowView]=useState<'diagram'|'cards'>('cards')
+  const [flowView,setFlowView]=useState<'diagram'|'cards'>(()=>parseWorkspaceRoute(window.location).flowId?'diagram':'cards')
   useEffect(()=>{
     try{localStorage.setItem('architecture-hub-component-view-v1',componentView)}catch{/* Storage unavailable. */}
   },[componentView])
@@ -165,7 +165,7 @@ function App() {
   const [segments,setSegments] = useState<Segment[]>([])
   const [nics,setNics] = useState<Nic[]>([])
   const [viewMode,setViewMode] = useState<'architecture'|'security'>('architecture')
-  const [selectedFlow,setSelectedFlow] = useState('')
+  const [selectedFlow,setSelectedFlow] = useState(()=>parseWorkspaceRoute(window.location).flowId)
   // The focus belongs to the overview URL so a link from the flow registry
   // works even across a reload, browser back/forward and a reopened tab.
   const [homeFocusSystemId,setHomeFocusSystemId]=useState(
@@ -175,14 +175,14 @@ function App() {
   const [flowDataOpen,setFlowDataOpen]=useState(false)
   const [networkPathOpen,setNetworkPathOpen]=useState(false)
   const [systemDataId,setSystemDataId]=useState('')
-  const [flowFocusOnly,setFlowFocusOnly] = useState(false)
+  const [flowFocusOnly,setFlowFocusOnly] = useState(()=>Boolean(parseWorkspaceRoute(window.location).flowId))
   const [groupFlowEdges,setGroupFlowEdges] = useState(true)
   const [expandedFlowPair,setExpandedFlowPair] = useState('')
   const [flowDirection,setFlowDirection] = useState<'both'|'incoming'|'outgoing'>('both')
   const [flowComponentQuery,setFlowComponentQuery] = useState('')
   const [flowComponentFocus,setFlowComponentFocus] = useState('')
   const [flowSystemOverview,setFlowSystemOverview] = useState(false)
-  const [flowDetailPreference,setFlowDetailPreference]=useState<'auto'|'systems'|'components'>('auto')
+  const [flowDetailPreference,setFlowDetailPreference]=useState<'auto'|'systems'|'components'>(()=>parseWorkspaceRoute(window.location).flowId?'components':'auto')
   const [flowLayoutDensity,setFlowLayoutDensity] = useState<'compact'|'normal'|'spacious'>('normal')
   const [flowLayoutOrientation,setFlowLayoutOrientation] = useState<'horizontal'|'vertical'>('horizontal')
   const [flowDepth,setFlowDepth] = useState(1)
@@ -553,6 +553,8 @@ function App() {
       setLayer(route.layer)
       setHomeFocusSystemId(route.layer==='home'?new URLSearchParams(window.location.search).get('focus')||'':'')
       setViewSystem(route.systemId)
+      setSelectedFlow(route.flowId)
+      if(route.flowId){setFlowView('diagram');setFlowEditMode(false);setFlowDetailPreference('components');setFlowFocusOnly(true);setFlowComponentFocus('');setWorkspaceQuery('');setWorkspaceVerified('all')}
       setSelected(route.passportId)
       setInspectorOpen(Boolean(route.passportId))
       setInspectorExpanded(route.passportExpanded)
@@ -562,7 +564,7 @@ function App() {
     return ()=>window.removeEventListener('popstate',onPopState)
   },[])
   useEffect(()=>{
-    const nextUrl=new URL(workspaceRouteUrl(layer,viewSystem,inspectorOpen?selected:'',inspectorExpanded),window.location.origin)
+    const nextUrl=new URL(workspaceRouteUrl(layer,viewSystem,inspectorOpen?selected:'',inspectorExpanded,layer==='flows'?selectedFlow:''),window.location.origin)
     if(layer==='home'&&homeFocusSystemId)nextUrl.searchParams.set('focus',homeFocusSystemId)
     // Preserve a direct link to a selected VM/flow while bootstrapping Topology.
     // The section router must not erase inspector-specific query parameters
@@ -581,7 +583,7 @@ function App() {
     }else{
       window.history.pushState(null,'',next)
     }
-  },[layer,viewSystem,inspectorOpen,selected,inspectorExpanded,homeFocusSystemId])
+  },[layer,viewSystem,inspectorOpen,selected,inspectorExpanded,homeFocusSystemId,selectedFlow])
   const [infraName,setInfraName] = useState('')
   // The create form has its own explicit IS context; `selected` also points to passports.
   const [infraSystemId,setInfraSystemId] = useState('')
@@ -1343,6 +1345,12 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
             <label>Глубина <select aria-label="Глубина связей" value={flowDepth} onChange={e=>setFlowDepth(Number(e.target.value))}><option value={1}>1 уровень</option><option value={2}>2 уровня</option><option value={3}>3 уровня</option></select></label>
             <button type="button" onClick={()=>{setFlowComponentFocus('');setHighlightedFlowComponent('');setSelectedFlow('');setExpandedFlowPair('')}}>Показать все потоки</button>
           </div>}
+          {flowView==='diagram'&&!flowEditMode&&activeSelectedFlow&&<div className="flowContextToolbar" role="status" aria-label="Выбранный технический поток">
+            <strong>Выбран поток: {activeSelectedFlow.name}</strong>
+            <span>{infra.find(i=>i.id===activeSelectedFlow.source_id)?.name||'Источник не найден'} → {infra.find(i=>i.id===activeSelectedFlow.target_id)?.name||'Получатель не найден'}</span>
+            <button type="button" onClick={()=>{setSelectedFlow('');setFlowFocusOnly(false);setExpandedFlowPair('')}}>Показать все потоки</button>
+          </div>}
+          {flowView==='diagram'&&!flowEditMode&&selectedFlow&&flows.length>0&&!activeSelectedFlow&&<div role="status" className="flowContextToolbar">Выбранный поток не найден в текущем списке или скрыт фильтрами. <button type="button" onClick={()=>{setSelectedFlow('');setFlowFocusOnly(false);setWorkspaceQuery('');setWorkspaceVerified('all');setViewSystem('')}}>Сбросить фильтры</button></div>}
           {flowView==='diagram'&&!flowEditMode&&<div className="miniArchitecture" data-active-graph="flows" role="region" aria-label="Схема потоков">
             {effectiveFlowOverview?
               <ReactFlow
@@ -1406,7 +1414,7 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
                     type:renderedFlows.some(item=>item.source_id===flow.target_id&&item.target_id===flow.source_id)?'reciprocal':'smoothstep',
                     data:{caption:groupFlowEdges?flowCountLabel(samePair.length):flow.name},
                     pathOptions:{borderRadius:12,offset:24},
-                    label:groupFlowEdges&&samePair.length>1?flowCountLabel(samePair.length):'',
+                    label:activeSelectedFlow?.id===flow.id||!groupFlowEdges?flow.name:groupFlowEdges&&samePair.length>1?flowCountLabel(samePair.length):'',
                     labelStyle:{fontSize:11,fill:'#475569'},
                     labelBgStyle:{fill:'#fff',fillOpacity:0.92},
                     style:{stroke:highlighted?'#2563eb':'#94a3b8',strokeWidth:highlighted?2.5:1.3,opacity:dimmed?0.2:1},
@@ -1449,7 +1457,7 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
           {flowView==='cards'&&<div className="infraGrid" role="region" aria-label="Реестр технических потоков">{visibleFlows.map(f=><article className="infraCard" key={f.id} role="button" tabIndex={0} aria-pressed={selectedFlow===f.id} onKeyDown={e=>{if(e.target===e.currentTarget&&(e.key==="Enter"||e.key===" ")){e.preventDefault();setSelectedFlow(selectedFlow===f.id?"":f.id)}}} onClick={()=>setSelectedFlow(selectedFlow===f.id?"":f.id)} style={{cursor:"pointer",borderColor:selectedFlow===f.id?"#2563eb":undefined}}>
             <span className="tag">{f.verification}</span><h3>{f.name}</h3>
             <strong>{infra.find(i=>i.id===f.source_id)?.name} → {infra.find(i=>i.id===f.target_id)?.name}</strong>
-            <p>{f.data_description}</p><a className="flowMapLink" href={'/?focus='+encodeURIComponent(infra.find(i=>i.id===f.source_id)?.system_id||'')} onClick={e=>e.stopPropagation()}>На карте</a><button type="button" onClick={e=>{e.stopPropagation();setSelectedFlow(f.id);setFlowDataOpen(true)}}>Атрибуты</button><button type="button" onClick={e=>{e.stopPropagation();setSelectedFlow(f.id);setNetworkPathOpen(true)}}>Сетевой маршрут</button><button type="button" onClick={e=>{e.stopPropagation();editFlow(f)}}>Редактировать</button><small>{f.protocol} · порт {f.port||'?'} · {f.security}</small>{selectedFlow===f.id&&<div className="flowDetails"><strong>Защита: {f.security}</strong><p>Достоверность: {f.verification}</p><p>Периодичность: {f.schedule||"Не указана"}</p><p>Зона источника: {segmentName(nics.find(n=>n.item_id===f.source_id)?.zone_id||null)}</p><p>Зона получателя: {segmentName(nics.find(n=>n.item_id===f.target_id)?.zone_id||null)}</p><p>Неизвестно, разрешён ли маршрут на межсетевом экране.</p></div>}
+            <p>{f.data_description}</p><a className="flowMapLink" href={workspaceRouteUrl('flows',infra.find(i=>i.id===f.source_id)?.system_id||'', '', false,f.id)} onClick={e=>e.stopPropagation()}>На карте</a><button type="button" onClick={e=>{e.stopPropagation();setSelectedFlow(f.id);setFlowDataOpen(true)}}>Атрибуты</button><button type="button" onClick={e=>{e.stopPropagation();setSelectedFlow(f.id);setNetworkPathOpen(true)}}>Сетевой маршрут</button><button type="button" onClick={e=>{e.stopPropagation();editFlow(f)}}>Редактировать</button><small>{f.protocol} · порт {f.port||'?'} · {f.security}</small>{selectedFlow===f.id&&<div className="flowDetails"><strong>Защита: {f.security}</strong><p>Достоверность: {f.verification}</p><p>Периодичность: {f.schedule||"Не указана"}</p><p>Зона источника: {segmentName(nics.find(n=>n.item_id===f.source_id)?.zone_id||null)}</p><p>Зона получателя: {segmentName(nics.find(n=>n.item_id===f.target_id)?.zone_id||null)}</p><p>Неизвестно, разрешён ли маршрут на межсетевом экране.</p></div>}
           </article>)}{visibleFlows.length===0&&<div className="flowRegistryEmptyState" role="status">Нет потоков для выбранной информационной системы или фильтра. Измените фильтр или выберите другую ИС.</div>}</div>}
         </>}
       </section>}

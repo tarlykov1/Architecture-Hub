@@ -1295,9 +1295,21 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
           <AutoFit layoutKey={diagramId}/><Background color="#d1dae5" gap={20} size={1}/><Controls showInteractive={false}/>
         </ReactFlow>
         {!objects.length && <div className="emptyHint">Создайте систему через меню «Создать». Для изменения связей включите редактирование схемы.</div>}
-      </section> : <div className="systemsTableWrap"><table className="systemsTable"><thead><tr><th>Система</th><th>Тип</th><th>Статус</th><th>Компоненты</th><th>Действия</th></tr></thead><tbody>
-          {registrySystems.map(o=><tr key={o.id}><td><button type="button" className="systemNameLink" onClick={()=>{setSelected(o.id);setInspectorOpen(true);setPanelTab('overview')}}><span className="systemNameWithLogo"><SystemLogo size="small" logo={logoFromAttributes(o.attributes)}/>{o.name}</span></button>{o.description&&<small className="systemDescription">{o.description}</small>}</td><td>{o.kind||'ИС'}</td><td><span className="tag">{o.status||'Не указан'}</span></td><td>{infra.filter(i=>i.system_id===o.id).length}</td><td><div className="systemRowActions"><button type="button" onClick={()=>{setSelected(o.id);setInspectorOpen(true);setPanelTab('overview')}}>Паспорт</button><button type="button" onClick={()=>{setViewSystem(o.id);setComponentView('diagram');setLayer('infrastructure');setInspectorOpen(false)}}>Компоненты</button></div></td></tr>)}
-          {!registrySystems.length&&<tr><td colSpan={5} role="status">{workspaceQuery?'Системы не найдены.':'Информационные системы пока не добавлены.'}</td></tr>}
+      </section> : <div className="systemsTableWrap">
+        <div className="systemSecurityFilterBar" role="group" aria-label="Фильтры защиты информации">
+          <strong>Обработка ПДн: {objects.filter(o=>readSystemSecurity(o.attributes).personal_data==='yes').length} ИС</strong>
+          <span>Не выяснено: {objects.filter(o=>readSystemSecurity(o.attributes).personal_data==='unknown').length}</span>
+          <label>ПДн <select aria-label="Фильтр обработки ПДн" value={systemPdFilter} onChange={event=>setSystemPdFilter(event.target.value as typeof systemPdFilter)}>
+            <option value="all">Все системы</option><option value="yes">Обрабатываются</option><option value="no">Не обрабатываются</option><option value="unknown">Не выяснено</option>
+          </select></label>
+          <label>Уровень ПДн <select aria-label="Фильтр уровня защищённости ПДн" value={systemProtectionFilter} onChange={event=>setSystemProtectionFilter(event.target.value)}>
+            <option value="all">Все уровни</option><option value="">Не определён</option><option value="UZ1">УЗ-1</option><option value="UZ2">УЗ-2</option><option value="UZ3">УЗ-3</option><option value="UZ4">УЗ-4</option>
+          </select></label>
+          <button type="button" disabled={systemPdFilter==='all'&&systemProtectionFilter==='all'} onClick={()=>{setSystemPdFilter('all');setSystemProtectionFilter('all')}}>Сбросить ИБ-фильтры</button>
+        </div>
+        <table className="systemsTable"><thead><tr><th>Система</th><th>Тип</th><th>Статус</th><th>ПДн</th><th>УЗ ПДн</th><th>Класс ГИС</th><th>Внутренний класс ИБ</th><th>Компоненты</th><th>Действия</th></tr></thead><tbody>
+          {registrySystems.map(o=><tr key={o.id}><td><button type="button" className="systemNameLink" onClick={()=>{setSelected(o.id);setInspectorOpen(true);setPanelTab('overview')}}><span className="systemNameWithLogo"><SystemLogo size="small" logo={logoFromAttributes(o.attributes)}/>{o.name}</span></button>{o.description&&<small className="systemDescription">{o.description}</small>}</td><td>{o.kind||'ИС'}</td><td><span className="tag">{o.status||'Не указан'}</span></td><td><SystemSecurityMarker profile={readSystemSecurity(o.attributes)}/></td><td>{readSystemSecurity(o.attributes).personal_data==='yes'?pdnLevelLabel(readSystemSecurity(o.attributes).pdn_level):'—'}</td><td>{gisClassLabel(readSystemSecurity(o.attributes).gis_class)}</td><td>{readSystemSecurity(o.attributes).internal_class||'—'}</td><td>{infra.filter(i=>i.system_id===o.id).length}</td><td><div className="systemRowActions"><button type="button" onClick={()=>{setSelected(o.id);setInspectorOpen(true);setPanelTab('overview')}}>Паспорт</button><button type="button" onClick={()=>{setViewSystem(o.id);setComponentView('diagram');setLayer('infrastructure');setInspectorOpen(false)}}>Компоненты</button></div></td></tr>)}
+          {!registrySystems.length&&<tr><td colSpan={9} role="status">{objects.length?'Нет систем по выбранным фильтрам. Сбросьте поиск или ИБ-фильтры.':'Информационные системы пока не добавлены.'}</td></tr>}
         </tbody></table></div>}
       </section> : <section className="infraPanel">
         {drill && <button onClick={()=>{setViewSystem("");setLayer("systems")}}>← К общей карте</button>}

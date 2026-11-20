@@ -1064,3 +1064,25 @@ button:disabled{cursor:not-allowed;opacity:.55}
  .globalHeader .topActions .accountTopAction{display:none}
  .globalHeader .topActions{flex:0 1 auto;min-width:0}
 }
+
+
+/* The generic miniArchitecture rule above adds margin-top:5px to every small.
+   Editor cards have only the purpose margin, so normalize intrinsic geometry. */
+.miniArchitecture .react-flow__node-readonlyFlowNode .architectureGraphNode small{margin-top:0}
+.miniArchitecture .react-flow__node-readonlyFlowNode .architectureGraphNode .componentNodePurpose{margin-top:7px}
+
+/* Read-only actions sit over the card: they must never change VM node geometry. */
+.miniArchitecture .react-flow__node-readonlyFlowNode .componentNodeOpenOverlay{
+ position:absolute;top:5px;right:5px;z-index:4;display:grid;place-items:center;
+ width:22px;height:22px;margin:0;padding:0;border-radius:50%;
+ border:1px solid #b2c9e6;background:#f3f8ff;color:#1455a0;
+ font-size:11px;font-weight:700;line-height:1
+}
+.miniArchitecture .react-flow__node-readonlyFlowNode .componentExternalMarker{
+ position:absolute;bottom:3px;right:6px;z-index:3;
+ font-size:9px;font-weight:700;letter-spacing:.025em;
+ color:#98611f;pointer-events:none
+}
+.miniArchitecture .react-flow__node-readonlyFlowNode .componentNodeOpenOverlay:focus-visible{
+ outline:2px solid #2563eb;outline-offset:2px
+}

@@ -63,16 +63,17 @@ test('AH-QA-04/05: VM cards and VRF/VLAN titles stay visible after editor to vie
   expect(updatedCard).not.toBeNull()
   expect(Math.abs(updatedCard!.width-firstCard!.width)).toBeLessThanOrEqual(4)
   expect(Math.abs(updatedCard!.height-firstCard!.height)).toBeLessThanOrEqual(4)
-  const canvas=await map.boundingBox()
-  const root=await viewVrf.boundingBox()
-  const nested=await viewVlan.boundingBox()
-  expect(canvas&&root&&nested).toBeTruthy()
-  for(const box of [root!,nested!]){
-    expect(box.y).toBeGreaterThanOrEqual(canvas!.y-3)
-    expect(box.x).toBeGreaterThanOrEqual(canvas!.x-3)
-    expect(box.y+box.height).toBeLessThanOrEqual(canvas!.y+canvas!.height+3)
-    expect(box.x+box.width).toBeLessThanOrEqual(canvas!.x+canvas!.width+3)
-  }
+  // React Flow measures newly mounted VRF/VLAN nodes after entering view mode.
+  // Assert the settled result rather than sampling the transient pre-fit frame.
+  await expect.poll(async()=>{
+    const canvas=await map.boundingBox()
+    const root=await viewVrf.boundingBox()
+    const nested=await viewVlan.boundingBox()
+    if(!canvas||!root||!nested)return false
+    return [root,nested].every(box=>box.y>=canvas.y-3&&box.x>=canvas.x-3
+      &&box.y+box.height<=canvas.y+canvas.height+3
+      &&box.x+box.width<=canvas.x+canvas.width+3)
+  },{timeout:10000,intervals:[100,300,500,750,1000]}).toBe(true)
 
   await page.reload()
   await expect(viewVrf).toBeVisible()

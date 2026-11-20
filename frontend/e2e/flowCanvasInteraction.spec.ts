@@ -28,7 +28,7 @@ async function navigate(page:Page,section:'Потоки'|'Компоненты')
   await page.getByRole('navigation',{name:'Разделы архитектуры'}).getByRole('button',{name:section,exact:true}).click()
 }
 
-test('flow registry opens the unified overview map with the original IS focused',async({page})=>{
+test('flow registry opens exact technical flow and overview remains independently focusable',async({page})=>{
   const errors:string[]=[]
   page.on('pageerror',error=>errors.push(error.message))
   const {system,systemName}=await seed(page)
@@ -38,7 +38,9 @@ test('flow registry opens the unified overview map with the original IS focused'
   await expect(registry.locator('.infraCard')).toHaveCount(2)
   await expect(page.locator('[data-active-graph="flows"]')).toHaveCount(0)
   await registry.getByRole('link',{name:'На карте'}).first().click()
-
+  await expect(page).toHaveURL(new RegExp('/flows\\?system='+system+'&flow='))
+  await expect(page.getByRole('status',{name:'Выбранный технический поток'})).toBeVisible()
+  await page.goto('/?focus='+system)
   const map=page.getByRole('region',{name:'Главная карта архитектуры'})
   await expect(map).toBeVisible()
   expect(errors).toEqual([])
@@ -82,14 +84,16 @@ test('flow utilities remain available from More while flow workspace is a regist
 })
 
 
-test('QA-WORK: mobile flow registry links to one shared architecture map',async({page})=>{
+test('QA-WORK: mobile registry opens technical flow and shared overview remains available',async({page})=>{
   await page.setViewportSize({width:390,height:844})
   const {system,systemName}=await seed(page)
   await page.goto('/flows?system='+system)
   const registry=page.getByRole('region',{name:'Реестр технических потоков'})
   await expect(registry.getByRole('link',{name:'На карте'}).first()).toBeVisible()
   await registry.getByRole('link',{name:'На карте'}).first().click()
-  await expect(page).toHaveURL(new RegExp('\\?focus='+system))
+  await expect(page).toHaveURL(new RegExp('/flows\\?system='+system+'&flow='))
+  await expect(page.getByRole('status',{name:'Выбранный технический поток'})).toBeVisible()
+  await page.goto('/?focus='+system)
   const map=page.getByRole('region',{name:'Главная карта архитектуры'})
   await expect(map).toBeVisible()
   await expect(map.locator('.react-flow__node').filter({hasText:systemName})).toHaveCount(1)

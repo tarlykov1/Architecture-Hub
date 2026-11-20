@@ -26,7 +26,11 @@ for(let batch=0;batch<4;batch++)test('QA-WORK: #164 focus transitions '+(batch*5
   await page.getByRole('combobox',{name:'Система потоков'}).selectOption(system)
   const registry=page.getByRole('region',{name:'Реестр технических потоков'})
   await expect(registry.locator('.infraCard')).toHaveCount(1)
-  await registry.getByRole('link',{name:'На карте'}).first().click()
+  // A record's «На карте» now opens that exact technical flow.
+  const link=registry.getByRole('link',{name:'На карте'}).first()
+  await expect(link).toHaveAttribute('href',new RegExp('^/flows\\?system='+system+'&flow='))
+  // The independent overview ?focus contract must still work for repeated IS navigation.
+  await page.goto('/?focus='+system)
   const map=page.getByRole('region',{name:'Главная карта архитектуры'})
   await expect(map).toBeVisible()
   const node=map.locator('.react-flow__node').filter({hasText:name})

@@ -15,7 +15,7 @@ export const SECTION_PATHS = {
 } as const
 
 export type Section = keyof typeof SECTION_PATHS
-export type WorkspaceRoute = {layer: Section; systemId: string; passportId: string; passportExpanded: boolean}
+export type WorkspaceRoute = {layer: Section; systemId: string; passportId: string; passportExpanded: boolean; flowId: string}
 
 const PATH_SECTIONS = Object.fromEntries(
   Object.entries(SECTION_PATHS).map(([section, path]) => [path, section])
@@ -30,13 +30,17 @@ export function parseWorkspaceRoute(location: Pick<Location, 'pathname' | 'searc
     ? (params.get('system') || '')
     : ''
   const passportId = layer === 'systems' ? params.get('passport') || '' : ''
-  return {layer, systemId, passportId, passportExpanded: Boolean(passportId) && params.get('expanded') === '1'}
+  const flowId = layer === 'flows' ? params.get('flow') || '' : ''
+  return {layer, systemId, passportId, passportExpanded: Boolean(passportId) && params.get('expanded') === '1', flowId}
 }
 
-export function workspaceRouteUrl(layer: Section, systemId = '', passportId = '', passportExpanded = false): string {
+export function workspaceRouteUrl(layer: Section, systemId = '', passportId = '', passportExpanded = false, flowId = ''): string {
   const path = SECTION_PATHS[layer]
   if (layer === 'systems' && passportId) {
     return path + '?passport=' + encodeURIComponent(passportId) + (passportExpanded ? '&expanded=1' : '')
+  }
+  if (layer === 'flows' && flowId) {
+    return path + (systemId ? '?system=' + encodeURIComponent(systemId) + '&' : '?') + 'flow=' + encodeURIComponent(flowId)
   }
   if ((layer !== 'infrastructure' && layer !== 'flows') || !systemId) return path
   return path + '?system=' + encodeURIComponent(systemId)

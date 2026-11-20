@@ -27,9 +27,6 @@ type Props={
  request:<T>(url:string,init?:RequestInit)=>Promise<T>
 }
 
-const statusLabel:Record<string,string>={
- draft:'Черновик',assumed:'Предположение',verified:'Подтверждено'
-}
 const sensitivityLabel:Record<string,string>={
  unclassified:'Не классифицировано',internal:'Внутренние данные',
  personal:'Персональные данные',restricted:'Ограниченный доступ'
@@ -94,7 +91,7 @@ export default function FlowAttributeMap({flowId,request}:Props){
     <div className="boardFlowDataMapList">
      {filtered.map(row=><article key={row.id}>
       <strong>{row.name}</strong><code>{row.code}</code>
-      <div><span>{row.data_type}</span><span>{sensitivityLabel[row.sensitivity]||row.sensitivity}</span><span>{statusLabel[row.verification]||row.verification}</span></div>
+      <div><span>{row.data_type}</span><span>{sensitivityLabel[row.sensitivity]||row.sensitivity}</span></div>
       <small>Процесс: {row.process_name||'Не указан'}</small>
       <small>Потребитель: {row.consumer_system_name||'Не указан'}</small>
       {row.purpose&&<p>Назначение: {row.purpose}</p>}

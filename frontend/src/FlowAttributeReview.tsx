@@ -29,7 +29,7 @@ export default function FlowAttributeReview({flowId,revision,action,entry,reques
  const [processId,setProcessId]=useState(entry?.process_id||'')
  const [consumerId,setConsumerId]=useState(entry?.consumer_system_id||'')
  const [purpose,setPurpose]=useState(entry?.purpose||'')
- const [verification,setVerification]=useState(entry?.verification||'draft')
+ const [verification]=useState(entry?.verification||'draft')
  const [reason,setReason]=useState('')
  const [preview,setPreview]=useState<Review|null>(null)
 
@@ -100,11 +100,6 @@ export default function FlowAttributeReview({flowId,revision,action,entry,reques
       </label>
       <label>Назначение атрибута
        <textarea aria-label="Назначение атрибута" value={purpose} maxLength={2000} disabled={loading||busy} onChange={e=>{setPurpose(e.target.value);changed()}}/>
-      </label>
-      <label>Статус подтверждения
-       <select aria-label="Статус подтверждения атрибута" value={verification} disabled={loading||busy} onChange={e=>{setVerification(e.target.value);changed()}}>
-        <option value="draft">Черновик</option><option value="assumed">Предположение</option><option value="verified">Подтверждено</option>
-       </select>
       </label>
      </div>}
    <label className="boardFlowReviewReason">Причина изменения

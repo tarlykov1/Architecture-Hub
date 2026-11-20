@@ -1203,7 +1203,7 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
     if(!key.startsWith('network:')||!Number.isFinite(geometry.width)||!Number.isFinite(geometry.height))return []
     const network=segments.find(n=>n.id===key.slice('network:'.length))
     if(!network)return []
-    return [{id:key,position:{x:geometry.x,y:geometry.y},zIndex:-10+networkDepth(key),
+    return [{id:key,position:{x:geometry.x,y:geometry.y},initialWidth:geometry.width,initialHeight:geometry.height,zIndex:-10+networkDepth(key),
       draggable:false,selectable:false,connectable:false,
       data:{label:<div className="boardNetworkLabel"><strong>{network.name} · {network.kind.toUpperCase()}</strong>{geometry.parent_id&&<small>Внутри {segments.find(n=>'network:'+n.id===geometry.parent_id)?.name||'сети'}</small>}</div>},
       style:{width:geometry.width,height:geometry.height,background:network.kind==='vlan'?'#e6f7efad':network.kind==='vrf'?'#dbeafe88':'#f1f5f9aa',

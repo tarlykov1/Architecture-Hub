@@ -2359,6 +2359,112 @@ def delete_flow_data_use(mapping_id: UUID, db: Session = Depends(db_session)):
     db.commit()
 
 
+class QuickFlowAttributeNew(BaseModel):
+    """Definition only: never the value of a person's field."""
+    name: str = Field(min_length=1, max_length=250)
+    description: str = Field(default="", max_length=4000)
+    data_type: str = Field(default="string", max_length=80)
+    sensitivity: Literal["unclassified", "internal", "personal", "restricted"] = "unclassified"
+
+
+class QuickFlowAttributeInput(BaseModel):
+    expected_revision: str = Field(pattern=r"^[a-f0-9]{64}$")
+    attribute_id: UUID | None = None
+    new_attribute: QuickFlowAttributeNew | None = None
+
+    @model_validator(mode="after")
+    def exactly_one_source(self):
+        if (self.attribute_id is None) == (self.new_attribute is None):
+            raise ValueError("Choose an existing attribute OR define a new attribute")
+        return self
+
+
+@app.post("/api/flows/{flow_id}/attributes", status_code=201)
+def add_attribute_to_flow(flow_id: UUID, payload: QuickFlowAttributeInput,
+                          request: Request, db: Session = Depends(db_session)):
+    """One-click atomic create/link with revision check and an audit trail."""
+    if db.get(DataFlow, flow_id) is None:
+        raise HTTPException(404, "Flow not found")
+    rows = db.scalars(select(FlowDataUse).where(FlowDataUse.flow_id == flow_id)).all()
+    if _flow_map_revision(rows) != payload.expected_revision:
+        raise HTTPException(409, "Состав данных изменился. Обновите список атрибутов.")
+    try:
+        attr_id = payload.attribute_id
+        created = None
+        if payload.new_attribute:
+            name = payload.new_attribute.name.strip()
+            if not name:
+                raise HTTPException(422, "Укажите название атрибута")
+            # Reuse existing definitions rather than silently duplicating the same field.
+            if db.scalars(select(DataAttribute).where(
+                func.lower(DataAttribute.name) == name.lower()
+            )).first():
+                raise HTTPException(409, "Атрибут с таким названием уже есть. Выберите его из справочника.")
+            created = DataAttribute(
+                id=uuid4(), code="attr_" + uuid4().hex,
+                name=name, description=payload.new_attribute.description.strip(),
+                data_type=payload.new_attribute.data_type,
+                sensitivity=payload.new_attribute.sensitivity
+            )
+            db.add(created)
+            db.flush()
+            attr_id = created.id
+        attr = db.get(DataAttribute, attr_id)
+        if attr is None:
+            raise HTTPException(422, "Атрибут не найден в справочнике")
+        if any(row.attribute_id == attr_id and row.process_id is None
+               and row.consumer_system_id is None for row in rows):
+            raise HTTPException(409, "Этот атрибут уже добавлен в поток")
+        row = FlowDataUse(
+            id=uuid4(), flow_id=flow_id, attribute_id=attr_id,
+            process_id=None, consumer_system_id=None, purpose="", verification="draft"
+        )
+        db.add(row)
+        db.flush()
+        audit_changes = []
+        if created:
+            audit_changes.append({"action": "create_data_attribute", "id": str(created.id),
+                                  "before": None, "after": {
+                                      "code": created.code, "name": created.name,
+                                      "data_type": created.data_type,
+                                      "sensitivity": created.sensitivity
+                                  }})
+        audit_changes.append({"action": "add_flow_attribute", "id": str(row.id),
+                              "before": None, "after": _flow_map_details(row)})
+        db.add(BoardAudit(reason="Добавлен атрибут «" + attr.name + "» в поток",
+                          actor=board_actor(request), changes=audit_changes))
+        db.commit()
+        return {"id": str(row.id), "attribute_id": str(attr.id),
+                "attribute_name": attr.name, "created_definition": bool(created)}
+    except Exception:
+        db.rollback()
+        raise
+
+
+@app.delete("/api/flows/{flow_id}/attributes/{mapping_id}", status_code=204)
+def remove_attribute_from_flow(flow_id: UUID, mapping_id: UUID, expected_revision: str,
+                               request: Request, db: Session = Depends(db_session)):
+    """Remove one mapping, not the reusable attribute definition."""
+    if not re.fullmatch(r"[a-f0-9]{64}", expected_revision):
+        raise HTTPException(422, "Invalid flow data revision")
+    if db.get(DataFlow, flow_id) is None:
+        raise HTTPException(404, "Flow not found")
+    rows = db.scalars(select(FlowDataUse).where(FlowDataUse.flow_id == flow_id)).all()
+    if _flow_map_revision(rows) != expected_revision:
+        raise HTTPException(409, "Состав данных изменился. Обновите список атрибутов.")
+    row = next((item for item in rows if item.id == mapping_id), None)
+    if row is None:
+        raise HTTPException(404, "Привязка атрибута к этому потоку не найдена")
+    attribute = db.get(DataAttribute, row.attribute_id)
+    before = _flow_map_details(row)
+    db.delete(row)
+    db.add(BoardAudit(reason="Атрибут «" + (attribute.name if attribute else str(row.attribute_id))
+                      + "» убран из потока", actor=board_actor(request),
+                      changes=[{"action": "remove_flow_attribute", "id": str(row.id),
+                                "before": before, "after": None}]))
+    db.commit()
+
+
 @app.get("/api/flows/{flow_id}/data-map")
 def flow_data_map(flow_id: UUID, db: Session = Depends(db_session)):
     flow = db.get(DataFlow, flow_id)

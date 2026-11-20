@@ -22,7 +22,7 @@ from .cmdb_catalog import validate_class_schema, validate_custom_values, missing
 from .architecture_metamodel import get_logical_relation_types, logical_relation_validation_error, summarize_legacy_relations
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
-from sqlalchemy import Date, DateTime, ForeignKey, JSON, String, Uuid, Index, Boolean, UniqueConstraint, create_engine, select, update, func, text as sql_text
+from sqlalchemy import Date, DateTime, ForeignKey, JSON, String, Uuid, Index, Boolean, UniqueConstraint, create_engine, select, update, text as sql_text
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
 from sqlalchemy.exc import IntegrityError
 
@@ -2396,9 +2396,8 @@ def add_attribute_to_flow(flow_id: UUID, payload: QuickFlowAttributeInput,
             if not name:
                 raise HTTPException(422, "Укажите название атрибута")
             # Reuse existing definitions rather than silently duplicating the same field.
-            if db.scalars(select(DataAttribute).where(
-                func.lower(DataAttribute.name) == name.lower()
-            )).first():
+            if any(existing.casefold() == name.casefold()
+                   for existing in db.scalars(select(DataAttribute.name)).all()):
                 raise HTTPException(409, "Атрибут с таким названием уже есть. Выберите его из справочника.")
             created = DataAttribute(
                 id=uuid4(), code="attr_" + uuid4().hex,

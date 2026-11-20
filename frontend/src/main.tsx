@@ -1393,6 +1393,9 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
                   const subdued=Boolean((activeSelectedFlow||nodeFocusId)&&!highlightedFlowNodes.has(i.id))
                   return {
                     id:i.id,
+                    // Keep the flow node measurable while data and filters update on a deep link.
+                    // React Flow may otherwise leave cards hidden and omit their edge handles.
+                    measured:{width:245,height:112},
                     sourcePosition:flowLayoutOrientation==='horizontal'?Position.Right:Position.Bottom,
                     targetPosition:flowLayoutOrientation==='horizontal'?Position.Left:Position.Top,
                     position:flowPositions[i.id]||{x:(idx%3)*310,y:Math.floor(idx/3)*170},

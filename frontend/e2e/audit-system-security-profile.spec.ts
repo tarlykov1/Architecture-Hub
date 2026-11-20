@@ -61,6 +61,7 @@ test('QA-WORK: PDn flags and protection classes are editable in the IS passport 
   await expect(firstRow).toHaveCount(0)
   await expect(rows).toContainText('Нет систем по выбранным фильтрам')
   await systems.getByRole('button',{name:'Очистить отбор ИБ'}).click()
+  await expect(passport).toBeVisible()
   await expect(firstRow).toBeVisible()
   await expect(secondRow).toBeVisible()
 

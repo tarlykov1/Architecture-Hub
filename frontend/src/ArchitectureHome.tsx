@@ -86,6 +86,9 @@ export default function ArchitectureHome({systems,components,flows,processes,cat
  const [mapMode,setMapMode]=useState<'business'|'flows'>('business')
  const [activeOverlays,setActiveOverlays]=useState({business:false})
  const [selectedOverlayGroup,setSelectedOverlayGroup]=useState('')
+ // The user can enable the layer before the async category/link collections arrive.
+ // Queue one initial selection, but never override an explicit "clear selection".
+ const pendingInitialOverlaySelection=useRef(false)
  const [savedRegions,setSavedRegions]=useState<Record<string,LayerRegion>>({})
  const [layerDrafts,setLayerDrafts]=useState<Record<string,LayerDraft>>({})
  const [editingLayers,setEditingLayers]=useState(false)
@@ -211,6 +214,12 @@ export default function ArchitectureHome({systems,components,flows,processes,cat
  const palette=['#a78bfa','#f59e0b','#10b981','#60a5fa','#f472b6','#22d3ee','#f97316','#84cc16']
  const groupColor=(group:OverlayGroup)=>layerDrafts[group.id]?.color||savedRegions[group.id]?.color||overlayColors[group.id]||palette[Math.max(0,overlayGroups.findIndex(item=>item.id===group.id))%palette.length]
  const membersFor=(group:OverlayGroup)=>layerDrafts[group.id]?.members||savedRegions[group.id]?.members||[...group.members]
+ const firstAvailableOverlayGroup=overlayGroups.find(group=>membersFor(group).length>0)?.id||''
+ useEffect(()=>{
+  if(!activeOverlays.business||!pendingInitialOverlaySelection.current||!firstAvailableOverlayGroup)return
+  pendingInitialOverlaySelection.current=false
+  setSelectedOverlayGroup(current=>current||firstAvailableOverlayGroup)
+ },[activeOverlays.business,firstAvailableOverlayGroup])
  const defaultDraftFor=(group:OverlayGroup):LayerDraft=>{
   const memberIds=membersFor(group)
   const points=memberIds.map(id=>positions[id]).filter(Boolean)
@@ -281,12 +290,18 @@ export default function ArchitectureHome({systems,components,flows,processes,cat
     {([['business','Бизнес-связи'],['flows','Потоки данных']] as const).map(([id,label])=><button key={id} type="button" aria-pressed={mapMode===id} className={mapMode===id?'current':''} onClick={()=>setMapMode(id)}>{label}</button>)}
    </div>
   <div className="homeLayerToolbar" role="group" aria-label="Бизнес-области">
- <label><input type="checkbox" checked={activeOverlays.business} onChange={e=>{setActiveOverlays({business:e.target.checked});setSelectedOverlayGroup(e.target.checked?(selectedOverlayGroup||overlayGroups.find(group=>membersFor(group).length>0)?.id||overlayGroups[0]?.id||''):'')}}/> Показать бизнес-области</label>
+ <label><input type="checkbox" checked={activeOverlays.business} onChange={e=>{
+   const checked=e.target.checked
+   const target=checked?(selectedOverlayGroup||firstAvailableOverlayGroup):''
+   pendingInitialOverlaySelection.current=checked&&!target
+   setActiveOverlays({business:checked})
+   setSelectedOverlayGroup(target)
+ }}/> Показать бизнес-области</label>
  {activeOverlays.business&&canEditLayers&&layerApiReady&&!editingLayers&&<button type="button" onClick={()=>{setEditingLayers(true);setLayerTool('select');setLayerError('');setSelectedOverlayGroup(old=>old||overlayGroups[0]?.id||'')}}>Редактировать бизнес-области</button>}
  {layerError&&<p role="alert">{layerError}</p>}
  <details className="homeLayerCatalog"><summary>Выбрать бизнес-область</summary><div className="homeLayerColorList">{overlayGroups.map(group=><label key={group.id}>
  <input type="checkbox" aria-label={'Показать область '+group.name} checked={!hiddenOverlayGroups.includes(group.id)} onChange={e=>setHiddenOverlayGroups(old=>e.target.checked?old.filter(id=>id!==group.id):[...old,group.id])}/>
- <button type="button" aria-pressed={selectedOverlayGroup===group.id} onClick={()=>{setSelectedOverlayGroup(group.id);setActiveOverlays({business:true})}}>{group.name}</button><small>{membersFor(group).length} ИС</small>
+ <button type="button" aria-pressed={selectedOverlayGroup===group.id} onClick={()=>{pendingInitialOverlaySelection.current=false;setSelectedOverlayGroup(group.id);setActiveOverlays({business:true})}}>{group.name}</button><small>{membersFor(group).length} ИС</small>
  </label>)}</div></details>
  </div>
  {activeOverlays.business&&selectedOverlayGroup&&<span className="homeLayerHint" role="status">Показана бизнес-область: {overlayGroups.find(group=>group.id===selectedOverlayGroup)?.name}. Для смены откройте список.</span>}

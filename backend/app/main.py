@@ -2974,6 +2974,54 @@ def delete_nic(interface_id: UUID, request: Request, db: Session = Depends(db_se
     db.commit()
 
 
+@app.get("/api/networks/{segment_id}/deletion-blockers")
+def network_deletion_blockers(segment_id: UUID, db: Session = Depends(db_session)):
+    """Explain the exact references that block a delete, without modifying any data."""
+    segment = db.get(NetworkSegment, segment_id)
+    if segment is None:
+        raise HTTPException(404, "Network not found")
+    interfaces = db.scalars(select(NetworkInterface).where(
+        (NetworkInterface.zone_id == segment_id) |
+        (NetworkInterface.vlan_id == segment_id) |
+        (NetworkInterface.vrf_id == segment_id)
+    ).order_by(NetworkInterface.name)).all()
+    hops = db.scalars(select(FlowNetworkHop).where(
+        FlowNetworkHop.segment_id == segment_id
+    ).order_by(FlowNetworkHop.position)).all()
+    nic_details = []
+    for nic in interfaces:
+        component = db.get(InfrastructureItem, nic.item_id)
+        system = db.get(ArchitectureObject, component.system_id) if component else None
+        attached_as = [label for column, label in (
+            ("zone_id", "Зона"), ("vlan_id", "VLAN"), ("vrf_id", "VRF")
+        ) if getattr(nic, column) == segment_id]
+        nic_details.append({
+            "id": str(nic.id), "name": nic.name, "ip_address": nic.ip_address,
+            "component_id": str(nic.item_id),
+            "component_name": component.name if component else "Компонент не найден",
+            "system_id": str(component.system_id) if component else None,
+            "system_name": system.name if system else "ИС не найдена",
+            "attached_as": attached_as,
+        })
+    flow_details = []
+    for hop in hops:
+        flow = db.get(DataFlow, hop.flow_id)
+        source = db.get(InfrastructureItem, flow.source_id) if flow else None
+        target = db.get(InfrastructureItem, flow.target_id) if flow else None
+        flow_details.append({
+            "hop_id": str(hop.id), "flow_id": str(hop.flow_id),
+            "flow_name": flow.name if flow else "Поток не найден",
+            "source_name": source.name if source else "Источник не найден",
+            "target_name": target.name if target else "Получатель не найден",
+            "position": hop.position,
+        })
+    return {
+        "network_id": str(segment.id), "network_name": segment.name,
+        "can_delete": not nic_details and not flow_details,
+        "interfaces": nic_details, "flow_paths": flow_details,
+    }
+
+
 @app.delete("/api/networks/{segment_id}", status_code=204)
 def delete_network(segment_id: UUID, request: Request, db: Session = Depends(db_session)):
     segment = db.get(NetworkSegment, segment_id)

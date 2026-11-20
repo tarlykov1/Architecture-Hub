@@ -1,4 +1,5 @@
 import React, {useCallback,useEffect,useState} from 'react'
+import {createPortal} from 'react-dom'
 export type Incident = {id:string;title:string;description:string;status:string;severity:string;owner:string;assignee:string;resolution:string;links:{entity_type:string;entity_id:string}[];created_at:string;updated_at:string}
 type Entity = {id:string;name:string;kind?:string}
 type Props={request:<T>(url:string,init?:RequestInit)=>Promise<T>;systems:Entity[];components:(Entity&{system_id:string})[];networks:Entity[];flows:(Entity&{source_id:string;target_id:string})[];context?:{entity_type:string;entity_id:string}|null;onClose?:()=>void;readOnly?:boolean}
@@ -19,6 +20,22 @@ export default function Incidents({request,systems,components,networks,flows,con
   useEffect(()=>{load()},[load])
   function open(item:Incident){setCurrent(item);setForm({title:item.title,description:item.description,status:item.status,severity:item.severity,owner:item.owner,assignee:item.assignee,resolution:item.resolution,links:item.links});setEditing(false);setAffected([]);setError('');request<{potentially_affected:{name:string;entity_id:string}[]}>(`/api/incidents/${item.id}/impact`).then(r=>setAffected(r.potentially_affected)).catch(()=>setAffected([]))}
   function close(){const original=current?{title:current.title,description:current.description,status:current.status,severity:current.severity,owner:current.owner,assignee:current.assignee,resolution:current.resolution,links:current.links}:fresh();const dirty=editing&&JSON.stringify(form)!==JSON.stringify(original);if(dirty&&!window.confirm('Отменить несохранённые изменения?'))return;setCurrent(null);setEditing(false);setError('')}
+  useEffect(()=>{
+    if(!current&&!editing)return
+    const onEscape=(event:KeyboardEvent)=>{
+      if(event.key!=='Escape')return
+      event.preventDefault()
+      event.stopImmediatePropagation()
+      const original=current?{
+        title:current.title,description:current.description,status:current.status,severity:current.severity,
+        owner:current.owner,assignee:current.assignee,resolution:current.resolution,links:current.links
+      }:fresh()
+      if(editing&&JSON.stringify(form)!==JSON.stringify(original)&&!window.confirm('Отменить несохранённые изменения?'))return
+      setCurrent(null);setEditing(false);setError('')
+    }
+    document.addEventListener('keydown',onEscape,true)
+    return()=>document.removeEventListener('keydown',onEscape,true)
+  },[current,editing,form])
   function create(){if(readOnly)return;setCurrent(null);setForm({...fresh(),links:context?[context]:[]});setEditing(true);setAffected([]);setError('')}
   async function save(e:React.FormEvent){e.preventDefault();if(readOnly)return;setBusy(true);setError('');try{const saved=await request<Incident>(current?`/api/incidents/${current.id}`:'/api/incidents',{method:current?'PUT':'POST',body:JSON.stringify(form)});await request<Incident[]>('/api/incidents').then(setItems);open(saved)}catch(e){setError(String(e))}finally{setBusy(false)}}
   function name(type:string,id:string){return ({system:systems,component:components,network:networks,flow:flows} as Record<string,Entity[]>)[type]?.find(e=>e.id===id)?.name||id.slice(0,8)}
@@ -31,7 +48,7 @@ export default function Incidents({request,systems,components,networks,flows,con
     <div className="incidentTable">{selected.map(item=><button className={'incidentRow '+(current?.id===item.id?'incidentActive':'')} key={item.id} onClick={()=>open(item)}><span className={'incidentSeverity severity-'+item.severity}>{levels[item.severity]||item.severity}</span><span><strong>{item.title}</strong><small>{item.links.map(l=>name(l.entity_type,l.entity_id)).join(' · ')||'Нет привязанных объектов'}</small></span><span>{statuses[item.status]||item.status}</span><small>{new Date(item.updated_at).toLocaleDateString('ru-RU')}</small></button>)}</div>
     {error&&!editing&&<p role="alert" className="kisError">{error}</p>}
     {!error&&!selected.length&&<p className="hint">Нет инцидентов по выбранному фильтру.</p>}
-    {(editing||current)&&<div className="architectureDrawerBackdrop" onMouseDown={e=>{if(e.target===e.currentTarget)close()}}><aside className="incidentDetail architectureDrawer" role="dialog" aria-modal="true" aria-label={editing?'Редактор инцидента':'Просмотр инцидента'}>
+    {(editing||current)&&createPortal(<div className="architectureDrawerBackdrop" onClick={e=>e.stopPropagation()} onMouseDown={e=>{e.stopPropagation();if(e.target===e.currentTarget)close()}}><aside className="incidentDetail architectureDrawer" role="dialog" aria-modal="true" aria-label={editing?'Редактор инцидента':'Просмотр инцидента'}>
       <div className="registryHeader"><h3>{editing?(current?'Изменить инцидент':'Новый инцидент'):current?.title}</h3><div className="incidentActions">{current&&!editing&&!readOnly&&<button onClick={()=>setEditing(true)}>Редактировать</button>}<button type="button" onClick={close}>{editing?'Отмена':'Закрыть'} ×</button></div></div>
       {editing?<form className="incidentForm" onSubmit={save}>
         <label>Название<input required minLength={2} value={form.title} onChange={e=>setForm({...form,title:e.target.value})}/></label>
@@ -43,6 +60,6 @@ export default function Incidents({request,systems,components,networks,flows,con
         <div className="incidentChips">{form.links.map(l=><button type="button" key={l.entity_type+l.entity_id} onClick={()=>setForm({...form,links:form.links.filter(x=>x!==l)})}>{name(l.entity_type,l.entity_id)} ×</button>)}</div>
         {error&&<p className="kisError" role="alert">{error}</p>}<div className="drawerFormActions"><button type="button" onClick={close}>Отмена</button><button className="primary" disabled={busy}>{busy?'Сохранение…':'Сохранить инцидент'}</button></div>
       </form>:current&&<><p>{current.description||'Описание не заполнено'}</p><p><strong>Статус:</strong> {statuses[current.status]} · <strong>Критичность:</strong> {levels[current.severity]}</p><p><strong>Владелец:</strong> {current.owner||'Не указан'} · <strong>Ответственный:</strong> {current.assignee||'Не назначен'}</p><p><strong>Решение:</strong> {current.resolution||'Не указано'}</p><h4>Связанные объекты</h4><div className="incidentChips">{current.links.map(l=><span key={l.entity_type+l.entity_id}>{name(l.entity_type,l.entity_id)}</span>)}</div><h4>Потенциально затронутые системы</h4><p className="hint">Расчёт по текущим связям и потокам – гипотеза, а не подтверждение отказа.</p><div className="incidentChips">{affected.map(x=><span key={x.entity_id}>{x.name}</span>)}{!affected.length&&<small>Дополнительное влияние не обнаружено</small>}</div></>}
-    </aside></div>}
+    </aside></div>,document.body)}
   </section>
 }

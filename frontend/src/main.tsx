@@ -7,6 +7,7 @@ import { ReactFlow, Background, Controls, applyNodeChanges, type Connection, typ
 import '@xyflow/react/dist/style.css'
 import './style.css'
 import Topology from './Topology'
+import {flowPortError} from './fieldValidation'
 import {dependencyLayout,compactComponentLayout,overviewGridPositions,flowCountLabel} from './graphLayout'
 import {downstreamImpact,impactRoutes} from './dependencyImpact'
 import Incidents from './Incidents'
@@ -356,12 +357,12 @@ function App() {
       // Modal passport editing must not dismiss the underlying IS drawer.
       if(passportEditId)return
       const target=event.target
-      if(!(target instanceof Element)||target.closest('.details, .editorBackdrop, .homeMapSearchMatches button, .react-flow__node, .systemNameLink, .systemRowActions button, .knowledgeWorkspaceList button'))return
+      if(!(target instanceof Element)||target.closest('.details, .architectureDrawerBackdrop, .editorBackdrop, .homeMapSearchMatches button, .react-flow__node, .systemNameLink, .systemRowActions button, .knowledgeWorkspaceList button'))return
       setInspectorOpen(false)
       setInspectorExpanded(false)
     }
     const onKeyDown=(event:KeyboardEvent)=>{
-      if(event.key!=='Escape'||passportEditId)return
+      if(event.key!=='Escape'||passportEditId||document.querySelector('.architectureDrawerBackdrop [role="dialog"]'))return
       setInspectorOpen(false)
       setInspectorExpanded(false)
     }
@@ -417,8 +418,8 @@ function App() {
     setExchangeOverrides({})
     setFlowEditId(f?.id || '');setFlowName(f?.name || '');setFlowSource(f?.source_id || '')
     setFlowTarget(f?.target_id || '');setFlowData(f?.data_description || '')
-    setFlowProtocol(f?.protocol || 'HTTPS');setFlowPort(f?.port || '443')
-    setFlowSecurity(f?.security || 'TLS');setFlowVerification(f?.verification || 'draft')
+    setFlowProtocol(f?.protocol ?? '');setFlowPort(f?.port ?? '')
+    setFlowSecurity(f?.security ?? 'unknown');setFlowVerification(f?.verification || 'draft')
     setFlowSchedule(f?.schedule || '');setRegistryError('');setRegistryOpen('flow')
   }
   function connectComponents(connection:Connection){
@@ -445,6 +446,8 @@ function App() {
         })})
         setSegments(await request<Segment[]>('/api/networks'))
       } else if(registryOpen==='flow'){
+        const invalidPort=[flowPort,...Object.values(exchangeOverrides).map(value=>value.port)].map(flowPortError).find(Boolean)
+        if(invalidPort)throw new Error(invalidPort)
         if(!multiExchange&&(!flowSource||!flowTarget))throw new Error('Выберите источник и получателя')
         if(!multiExchange&&flowSource===flowTarget)throw new Error('Источник и получатель должны отличаться')
         if(multiExchange&&!flowEditId){
@@ -593,9 +596,9 @@ function App() {
   const [flowTarget,setFlowTarget] = useState('')
   const [flowName,setFlowName] = useState('')
   const [flowData,setFlowData] = useState('')
-  const [flowProtocol,setFlowProtocol] = useState('HTTPS')
-  const [flowPort,setFlowPort] = useState('443')
-  const [flowSecurity,setFlowSecurity] = useState('TLS')
+  const [flowProtocol,setFlowProtocol] = useState('')
+  const [flowPort,setFlowPort] = useState('')
+  const [flowSecurity,setFlowSecurity] = useState('unknown')
   const [flowVerification,setFlowVerification] = useState('draft')
   const [relations, setRelations] = useState<Rel[]>([])
   const [diagrams, setDiagrams] = useState<Diagram[]>([])
@@ -1586,7 +1589,7 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
             {multiExchange&&!flowEditId&&exchangeSources.length>0&&exchangeTargets.length>0&&<section className="exchangePairOverrides"><h3>Параметры отдельных потоков</h3><p>Поля ниже применяются к каждой связи независимо. Изначально используются общие значения; изменение одного потока не влияет на другие.</p>{exchangeSources.flatMap(source=>exchangeTargets.filter(target=>target!==source).map(target=>{const key=source+'|'+target;const base={protocol:flowProtocol,port:flowPort,security:flowSecurity,data_description:flowData,schedule:flowSchedule,verification:flowVerification};const current=exchangeOverrides[key]||base;const update=(field:keyof typeof base,value:string)=>setExchangeOverrides(prev=>({...prev,[key]:{...(prev[key]||base),[field]:value}}));return <details className="exchangePairCard" key={key}><summary>{infra.find(i=>i.id===source)?.name||source} → {infra.find(i=>i.id===target)?.name||target}{exchangeOverrides[key]?' · настроен':''}</summary><div className="formPair"><label>Протокол<input aria-label={'Протокол '+key} value={current.protocol} onChange={e=>update('protocol',e.target.value)}/></label><label>Порт<input aria-label={'Порт '+key} value={current.port} onChange={e=>update('port',e.target.value)}/></label></div><label>Состав данных<textarea value={current.data_description} onChange={e=>update('data_description',e.target.value)}/></label><label>Защита<select value={current.security} onChange={e=>update('security',e.target.value)}>{['unknown','TLS','mTLS','VPN','private_connector','none'].map(v=><option key={v}>{v}</option>)}</select></label><label>Периодичность<input value={current.schedule} onChange={e=>update('schedule',e.target.value)}/></label><label>Достоверность<select value={current.verification} onChange={e=>update('verification',e.target.value)}><option value="draft">Черновик</option><option value="assumed">Предположение</option><option value="verified">Подтверждено</option></select></label><button type="button" onClick={()=>setExchangeOverrides(prev=>{const next={...prev};delete next[key];return next})}>Вернуть общие значения</button></details>}))}</section>}
             <label>Название<input required value={flowName} onChange={e=>setFlowName(e.target.value)}/></label>
             <label>Состав данных<textarea value={flowData} onChange={e=>setFlowData(e.target.value)}/></label>
-            <div className="formPair"><label>Протокол<input value={flowProtocol} onChange={e=>setFlowProtocol(e.target.value)}/></label><label>Порт<input value={flowPort} onChange={e=>setFlowPort(e.target.value)}/></label></div>
+            <div className="formPair"><label>Протокол<input value={flowProtocol} onChange={e=>setFlowProtocol(e.target.value)}/></label><label>Порт<input aria-invalid={Boolean(flowPortError(flowPort))} value={flowPort} onChange={e=>setFlowPort(e.target.value)} placeholder="Не указан"/>{flowPortError(flowPort)&&<small role="alert">{flowPortError(flowPort)}</small>}</label></div>
             <label>Защита<select value={flowSecurity} onChange={e=>setFlowSecurity(e.target.value)}>{['unknown','TLS','mTLS','VPN','private_connector','none'].map(v=><option key={v}>{v}</option>)}</select></label>
             <label>Периодичность<input value={flowSchedule} onChange={e=>setFlowSchedule(e.target.value)} placeholder="По событию, ежедневно…"/></label>
             <label>Достоверность<select value={flowVerification} onChange={e=>setFlowVerification(e.target.value)}><option value="draft">Черновик</option><option value="assumed">Предположение</option><option value="verified">Подтверждено</option></select></label>

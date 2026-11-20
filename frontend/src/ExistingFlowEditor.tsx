@@ -1,4 +1,5 @@
 import {useState, type FormEvent} from 'react'
+import {flowPortError} from './fieldValidation'
 
 /** Technical attributes edited in the flow form. */
 export type FlowValues = {
@@ -30,6 +31,7 @@ export default function ExistingFlowEditor({original,current,sourceName,targetNa
   event.preventDefault()
   const next={...values,name:values.name.trim()}
   if(!next.name){setInvalid('Название потока обязательно.');return}
+  if(flowPortError(next.port)){setInvalid(flowPortError(next.port));return}
   if((Object.keys(next) as Array<keyof FlowValues>).every(k=>next[k]===original[k])){
    setInvalid('Параметры не изменились.');return
   }
@@ -42,7 +44,7 @@ export default function ExistingFlowEditor({original,current,sourceName,targetNa
   <label>Название потока<input required maxLength={250} value={values.name} onChange={e=>set('name',e.target.value)}/></label>
   <div className="boardExistingFlowFields">
    <label>Протокол<input maxLength={80} value={values.protocol} placeholder="Не указан" onChange={e=>set('protocol',e.target.value)}/></label>
-   <label>Порт<input maxLength={80} value={values.port} placeholder="Не указан" onChange={e=>set('port',e.target.value)}/></label>
+   <label>Порт<input maxLength={80} aria-invalid={Boolean(flowPortError(values.port))} value={values.port} placeholder="Не указан" onChange={e=>set('port',e.target.value)}/>{flowPortError(values.port)&&<small role="alert">{flowPortError(values.port)}</small>}</label>
   </div>
   <label>Защита<input maxLength={80} value={values.security} placeholder="unknown" onChange={e=>set('security',e.target.value)}/></label>
   <label>Описание данных<textarea maxLength={4000} rows={3} value={values.data_description} onChange={e=>set('data_description',e.target.value)}/></label>

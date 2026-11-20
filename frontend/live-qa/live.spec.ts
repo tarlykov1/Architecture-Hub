@@ -10,25 +10,19 @@ test.beforeEach(async ({ page }) => {
   }, token)
 })
 
-test('test server: public demo navigation, viewport and build revision', async ({ page }, testInfo) => {
+test('test server: navigation, viewport and deployed build revision', async ({ page }, testInfo) => {
   const errors: string[] = []
   page.on('pageerror', error => errors.push(error.message))
   await page.goto('/', { waitUntil: 'domcontentloaded' })
   await expect(page.getByLabel('Версия сборки')).toBeVisible()
-  await expect(page.getByText('Демонстрационный режим').first()).toBeVisible()
+  // Test servers can use authenticated or open-access mode and need not contain any demo seed.
+  await expect(page.getByRole('navigation', { name: 'Разделы архитектуры' })).toBeVisible()
+  await expect(page.getByRole('region', { name: 'Главная карта архитектуры' })).toBeVisible()
   await page.screenshot({ path: testInfo.outputPath('01-overview.png'), fullPage: true })
 
   const sections = ['Системы', 'Компоненты', 'Потоки', 'Обзор']
   for (const section of sections) {
-    const navigation = page.getByRole('navigation', { name: 'Разделы архитектуры' })
-    const mobileSelector = navigation.getByLabel('Выбрать раздел')
-    if (await mobileSelector.isVisible()) {
-      await mobileSelector.click()
-      await navigation.locator('.mobileSectionOptions')
-        .getByRole('button', { name: section, exact: true }).click()
-    } else {
-      await navigation.getByRole('button', { name: section, exact: true }).click()
-    }
+    await switchSection(page, section)
     await expect(page.getByLabel('Версия сборки')).toBeVisible()
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 2)
     expect(overflow, `Horizontal overflow in ${section} at ${testInfo.project.name}`).toBe(false)
@@ -50,12 +44,14 @@ test('test server: deployed revision is available without authentication', async
 
 async function switchSection(page: import('@playwright/test').Page, section: string) {
   const nav = page.getByRole('navigation', { name: 'Разделы архитектуры' })
-  const mobile = nav.getByLabel('Выбрать раздел')
+  const mobile = nav.locator('details.mobileSectionMenu > summary')
   if (await mobile.isVisible()) {
     await mobile.click()
     await nav.locator('.mobileSectionOptions').getByRole('button', { name: section, exact: true }).click()
   } else {
-    await nav.getByRole('button', { name: section, exact: true }).click()
+    const desktop = nav.getByRole('button', { name: section, exact: true })
+    await expect(desktop, 'The '+section+' navigation must be accessible on the current viewport').toBeVisible()
+    await desktop.click()
   }
 }
 
@@ -64,10 +60,17 @@ test('test server: system passport and navigation remain clickable', async ({ pa
   await switchSection(page, 'Системы')
   const registry = page.getByRole('region', { name: 'Реестр информационных систем' })
   await expect(registry).toBeVisible()
-  const row = registry.locator('tr').filter({ hasText: 'Демо: портал сотрудников' })
-  await expect(row).toBeVisible()
-  await row.getByRole('button', { name: 'Паспорт', exact: true }).click()
-  await expect(page.getByText('Демо: портал сотрудников').first()).toBeVisible()
+  const passportAction = registry.getByRole('button', { name: 'Паспорт', exact: true }).first()
+  if (await passportAction.count()) {
+    await passportAction.click()
+    const inspector = page.getByLabel('Карточка архитектурного объекта')
+    await expect(inspector).toBeVisible()
+    // PDn metadata is intentionally optional for older IS records.
+    await expect(inspector.getByRole('region', { name: 'ПДн и классы защиты' })).toBeVisible()
+  } else {
+    // No seeded objects is a valid state; record actions cannot be smoke-tested.
+    await expect(registry.getByRole('status')).toBeVisible()
+  }
   await page.screenshot({ path: testInfo.outputPath('system-passport.png'), fullPage: true })
   // Regression: opening an inspector must not block the top navigation.
   await switchSection(page, 'Компоненты')
@@ -81,10 +84,13 @@ test('test server: component registry exposes a passport action', async ({ page 
     .getByRole('button', { name: 'Реестр', exact: true }).click()
   const registry = page.getByRole('region', { name: 'Архитектурный реестр' })
   await expect(registry).toBeVisible()
-  const row = registry.locator('tr').filter({ hasText: 'DEMO-WEB-01' })
-  await expect(row).toBeVisible()
-  await row.getByRole('button', { name: 'Открыть' }).click()
-  await expect(page.getByText('DEMO-WEB-01').first()).toBeVisible()
+  const openAction = registry.getByRole('button', { name: 'Открыть', exact: true }).first()
+  if (await openAction.count()) {
+    await openAction.click()
+    await expect(page.getByRole('dialog', { name: /^Карточка компонента / })).toBeVisible()
+  } else {
+    await expect(registry.getByText('Компонентов: 0')).toBeVisible()
+  }
   await page.screenshot({ path: testInfo.outputPath('component-passport.png'), fullPage: true })
 })
 

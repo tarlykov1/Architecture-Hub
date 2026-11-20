@@ -151,3 +151,29 @@ body {
   .homeMap .homeLayerToolbar > .overviewAreaChips { order: 1; flex-basis: 100% }
   .shell .systemSecurityFilterBar { align-items: stretch }
 }
+.shell .systemsWorkspaceHead { padding: 10px 16px; background: white; border-color: var(--hub-line) }
+.shell .systemsWorkspaceHead h2 { margin: 0; color: var(--hub-ink); font-size: 17px }
+.architectureGraphNode .architectureGraphIcon {
+  width: 26px; height: 26px; border-radius: 5px; background: var(--hub-accent-soft); color: #484357;
+}
+.architectureGraphIcon .systemLogo { margin: 0 }
+.flowRegisterRows.infraGrid { display: flex; flex-direction: column; gap: 0; border-top: 1px solid var(--hub-line) }
+.flowRegisterRows .infraCard {
+  display: grid; align-items: center; gap: 8px 14px; cursor: pointer;
+  grid-template-columns: minmax(110px,1fr) minmax(145px,1.3fr) minmax(120px,1fr) minmax(170px,auto);
+  border: 0; border-bottom: 1px solid var(--hub-line); border-radius: 0; padding: 9px 10px; margin: 0;
+}
+.flowRegisterRows .infraCard[aria-pressed=true] { background: var(--hub-accent-soft) }
+.flowRegisterRows .infraCard h3 { margin: 0; font-size: 13px; color: var(--hub-ink) }
+.flowRegisterRows .infraCard small { display: block; margin: 2px 0 0; font-size: 11px; color: var(--hub-muted) }
+.flowRegisterRows .infraCard strong, .flowRegisterData { font-size: 12px; overflow-wrap: anywhere }
+.flowRegisterActions { display: flex; justify-content: flex-end; gap: 4px; flex-wrap: wrap }
+.flowRegisterActions :is(button,a.flowMapLink) { padding: 4px 6px; margin: 0; font-size: 11px }
+.flowRegisterRows .flowDetails { grid-column: 1 / -1 }
+@media(max-width:1050px) {
+  .flowRegisterRows .infraCard { grid-template-columns: repeat(2,minmax(0,1fr)) }
+}
+@media(max-width:540px) {
+  .flowRegisterRows .infraCard { grid-template-columns: 1fr }
+  .flowRegisterActions { justify-content: flex-start }
+}

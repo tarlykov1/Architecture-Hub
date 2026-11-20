@@ -386,6 +386,7 @@ function App() {
     return ()=>{active=false}
   },[editorOpen])
   const [registryOpen,setRegistryOpen] = useState<'network'|'flow'|null>(null)
+  const [registryDirty,setRegistryDirty] = useState(false)
   const [networkFilter,setNetworkFilter] = useState('')
   const [networkTypeFilter,setNetworkTypeFilter] = useState('all')
   const [networkDetailId,setNetworkDetailId] = useState('')
@@ -404,11 +405,16 @@ function App() {
   const [registryBusy,setRegistryBusy] = useState(false)
   const [registryError,setRegistryError] = useState('')
   const [networkDeleteBlockers,setNetworkDeleteBlockers] = useState<string[]>([])
+  const dismissRegistryEditor=()=>{
+    if(registryBusy)return
+    if(registryDirty&&!window.confirm('Закрыть редактор и отменить несохранённые изменения?'))return
+    setRegistryOpen(null);setRegistryDirty(false)
+  }
   const editNetwork = (n?: Segment) => {
     setPassportEditId('');setComponentInspectId('');setCreateObjectOpen(false);setKisOpen(false)
     setNetworkEditId(n?.id || '');setNetworkName(n?.name || '');setNetworkKind(n?.kind || 'zone')
     setNetworkDescription(n?.description || '');setNetworkVerification(n?.verification || 'draft')
-    setRegistryError('');setRegistryOpen('network')
+    setRegistryDirty(false);setRegistryError('');setRegistryOpen('network')
   }
   const editFlow = (f?: Flow) => {
     setPassportEditId('');setComponentInspectId('');setCreateObjectOpen(false);setKisOpen(false)
@@ -421,7 +427,7 @@ function App() {
     setFlowTarget(f?.target_id || '');setFlowData(f?.data_description || '')
     setFlowProtocol(f?.protocol ?? '');setFlowPort(f?.port ?? '')
     setFlowSecurity(f?.security ?? 'unknown');setFlowVerification(f?.verification || 'draft')
-    setFlowSchedule(f?.schedule || '');setRegistryError('');setRegistryOpen('flow')
+    setFlowSchedule(f?.schedule || '');setRegistryDirty(false);setRegistryError('');setRegistryOpen('flow')
   }
   function connectComponents(connection:Connection){
     const source=infra.find(i=>i.id===connection.source)
@@ -1610,9 +1616,11 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
       </form>
       </div>
     </div>}
-    {registryOpen&&<div className="editorBackdrop" onClick={()=>setRegistryOpen(null)}>
-      <div className="editorDialog registryDialog architectureDrawer" role="dialog" aria-modal="true" aria-label={registryOpen==='network'?'Редактор сети':'Редактор потока'} onClick={e=>e.stopPropagation()}>
-        <div className="dialogHead"><h2>{registryOpen==='network'?(networkEditId?'Редактировать сеть':'Создать сеть'):(flowEditId?'Редактировать поток':'Создать поток')}</h2><button onClick={()=>setRegistryOpen(null)}>Закрыть ×</button></div>
+    {registryOpen&&<div className="editorBackdrop" onClick={dismissRegistryEditor}>
+      <div className="editorDialog registryDialog architectureDrawer" role="dialog" aria-modal="true" aria-label={registryOpen==='network'?'Редактор сети':'Редактор потока'}
+        onClick={e=>e.stopPropagation()} onChangeCapture={()=>setRegistryDirty(true)}
+        onKeyDownCapture={event=>{if(event.key!=='Escape')return;event.preventDefault();event.stopPropagation();dismissRegistryEditor()}}>
+        <div className="dialogHead"><h2>{registryOpen==='network'?(networkEditId?'Редактировать сеть':'Создать сеть'):(flowEditId?'Редактировать поток':'Создать поток')}</h2><button onClick={dismissRegistryEditor}>Закрыть ×</button></div>
         <form className="detailForm" onSubmit={saveRegistry}>
           {registryOpen==='network'?<>
             <label>Название<input required maxLength={250} value={networkName} onChange={e=>setNetworkName(e.target.value)}/></label>
@@ -1624,7 +1632,7 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
             {multiExchange&&!flowEditId?<div className="exchangeEndpoints"><p>Выберите участников. Будет создан отдельный направленный поток для каждой пары «источник → получатель».</p>{([['Источники',exchangeSources,setExchangeSources],['Получатели',exchangeTargets,setExchangeTargets]] as const).map(([title,values,setValues])=><fieldset key={title}><legend>{title}</legend>{infra.map(i=><label key={i.id}><input type="checkbox" checked={values.includes(i.id)} onChange={e=>setValues(e.target.checked?[...values,i.id]:values.filter(id=>id!==i.id))}/>{i.name}</label>)}</fieldset>)}</div>:<>
             <label>Источник<select required value={flowSource} onChange={e=>setFlowSource(e.target.value)}><option value="">Выберите компонент</option>{infra.map(i=><option key={i.id} value={i.id}>{i.name}</option>)}</select></label>
             <label>Получатель<select required value={flowTarget} onChange={e=>setFlowTarget(e.target.value)}><option value="">Выберите компонент</option>{infra.map(i=><option key={i.id} value={i.id}>{i.name}</option>)}</select></label>
-            <div className="flowDirectionActions"><span>Направление обмена: <strong>{infra.find(i=>i.id===flowSource)?.name||'Источник'} → {infra.find(i=>i.id===flowTarget)?.name||'Получатель'}</strong></span><button type="button" disabled={!flowSource||!flowTarget} onClick={()=>{setFlowSource(flowTarget);setFlowTarget(flowSource);if(!flowEditId)setFlowName((infra.find(i=>i.id===flowTarget)?.name||'Источник')+' → '+(infra.find(i=>i.id===flowSource)?.name||'Получатель'))}}>⇄ Поменять направление</button></div>
+            <div className="flowDirectionActions"><span>Направление обмена: <strong>{infra.find(i=>i.id===flowSource)?.name||'Источник'} → {infra.find(i=>i.id===flowTarget)?.name||'Получатель'}</strong></span><button type="button" disabled={!flowSource||!flowTarget} onClick={()=>{setRegistryDirty(true);setFlowSource(flowTarget);setFlowTarget(flowSource);if(!flowEditId)setFlowName((infra.find(i=>i.id===flowTarget)?.name||'Источник')+' → '+(infra.find(i=>i.id===flowSource)?.name||'Получатель'))}}>⇄ Поменять направление</button></div>
             {!flowEditId&&!multiExchange&&<label className="reverseFlowOption"><input type="checkbox" checked={createReverseFlow} onChange={e=>setCreateReverseFlow(e.target.checked)}/> Создать также обратный поток (две независимые связи)</label>}
             </>}
             {multiExchange&&!flowEditId&&exchangeSources.length>0&&exchangeTargets.length>0&&<section className="exchangePairOverrides"><h3>Параметры отдельных потоков</h3><p>Поля ниже применяются к каждой связи независимо. Изначально используются общие значения; изменение одного потока не влияет на другие.</p>{exchangeSources.flatMap(source=>exchangeTargets.filter(target=>target!==source).map(target=>{const key=source+'|'+target;const base={protocol:flowProtocol,port:flowPort,security:flowSecurity,data_description:flowData,schedule:flowSchedule,verification:flowVerification};const current=exchangeOverrides[key]||base;const update=(field:keyof typeof base,value:string)=>setExchangeOverrides(prev=>({...prev,[key]:{...(prev[key]||base),[field]:value}}));return <details className="exchangePairCard" key={key}><summary>{infra.find(i=>i.id===source)?.name||source} → {infra.find(i=>i.id===target)?.name||target}{exchangeOverrides[key]?' · настроен':''}</summary><div className="formPair"><label>Протокол<input aria-label={'Протокол '+key} value={current.protocol} onChange={e=>update('protocol',e.target.value)}/></label><label>Порт<input aria-label={'Порт '+key} value={current.port} onChange={e=>update('port',e.target.value)}/></label></div><label>Состав данных<textarea value={current.data_description} onChange={e=>update('data_description',e.target.value)}/></label><label>Защита<select value={current.security} onChange={e=>update('security',e.target.value)}>{['unknown','TLS','mTLS','VPN','private_connector','none'].map(v=><option key={v}>{v}</option>)}</select></label><label>Периодичность<input value={current.schedule} onChange={e=>update('schedule',e.target.value)}/></label><label>Достоверность<select value={current.verification} onChange={e=>update('verification',e.target.value)}><option value="draft">Черновик</option><option value="assumed">Предположение</option><option value="verified">Подтверждено</option></select></label><button type="button" onClick={()=>setExchangeOverrides(prev=>{const next={...prev};delete next[key];return next})}>Вернуть общие значения</button></details>}))}</section>}

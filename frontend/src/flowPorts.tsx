@@ -6,17 +6,20 @@ export type FlowPortPair={source_handle:string;target_handle:string}
 export type FlowEnd='source'|'target'
 export type FlowPortSide='top'|'right'|'bottom'|'left'
 
-type Port={side:FlowPortSide;index:1|2;position:Position;style:React.CSSProperties}
-export const FLOW_PORTS:Port[]=[
- {side:'top',index:1,position:Position.Top,style:{top:0,left:'33.333%'}},
- {side:'top',index:2,position:Position.Top,style:{top:0,left:'66.667%'}},
- {side:'right',index:1,position:Position.Right,style:{right:0,top:'33.333%'}},
- {side:'right',index:2,position:Position.Right,style:{right:0,top:'66.667%'}},
- {side:'bottom',index:1,position:Position.Bottom,style:{bottom:0,left:'33.333%'}},
- {side:'bottom',index:2,position:Position.Bottom,style:{bottom:0,left:'66.667%'}},
- {side:'left',index:1,position:Position.Left,style:{left:0,top:'33.333%'}},
- {side:'left',index:2,position:Position.Left,style:{left:0,top:'66.667%'}}
-]
+type Port={side:FlowPortSide;index:1|2|3|4;position:Position;style:React.CSSProperties}
+// Existing indices 1 and 2 must keep their physical positions after an upgrade:
+// manually saved attachment points must not jump when two new handles are added.
+export const FLOW_PORTS:Port[]=(['top','right','bottom','left'] as const).flatMap(side=>
+  ([1,2,3,4] as const).map(index=>{
+    const percent=({1:'33.333%',2:'66.667%',3:'16.667%',4:'83.333%'} as const)[index]
+    return {
+      side,index,
+      position:side==='top'?Position.Top:side==='right'?Position.Right:side==='bottom'?Position.Bottom:Position.Left,
+      style:side==='top'?{top:0,left:percent}:side==='right'?{right:0,top:percent}:
+        side==='bottom'?{bottom:0,left:percent}:{left:0,top:percent},
+    }
+  })
+)
 export const sourcePort=(port:Port)=>'out-'+port.side+'-'+port.index
 export const targetPort=(port:Port)=>'in-'+port.side+'-'+port.index
 export const validSourcePort=(value:string)=>FLOW_PORTS.some(p=>sourcePort(p)===value)
@@ -31,6 +34,62 @@ export function autoFlowPorts(a:{x:number;y:number},b:{x:number;y:number}):FlowP
                 {source_handle:'out-left-1',target_handle:'in-right-1'}
  return dy>=0?{source_handle:'out-bottom-1',target_handle:'in-top-1'}:
               {source_handle:'out-top-1',target_handle:'in-bottom-1'}
+}
+
+/**
+ * Resolve ALL visible flows together instead of routing every automatic flow
+ * to the first handle of its preferred side. Incoming and outgoing flows share
+ * the same physical perimeter point and therefore the same occupancy counter.
+ *
+ * Explicit saved anchors win unless two existing flows claim the same physical
+ * point: the first keeps it, the others are placed on available handles.
+ * This is only a rendering decision; editing a technical flow remains explicit.
+ */
+export function distributeFlowPorts(
+ flows:readonly {id:string;source_id:string;target_id:string}[],
+ positions:Record<string,{x:number;y:number}>,
+ saved:Record<string,FlowPortPair>={}
+):Record<string,FlowPortPair>{
+ const occupied=new Map<string,number>()
+ const result:Record<string,FlowPortPair>={}
+ const sorted=[...flows].sort((a,b)=>a.id.localeCompare(b.id))
+ const location=(vm:string,handle:string)=>vm+'|'+handle.replace(/^(in|out)-/,'')
+ const count=(vm:string,handle:string)=>occupied.get(location(vm,handle))||0
+ const reserve=(vm:string,handle:string)=>occupied.set(location(vm,handle),count(vm,handle)+1)
+ // Keep every valid, collision-free saved point fixed before allocating
+ // unassigned endpoints. Saved duplicates are repaired deterministically.
+ for(const flow of sorted){
+  const pair=saved[flow.id]
+  if(!pair||!validSourcePort(pair.source_handle)||!validTargetPort(pair.target_handle))continue
+  if(count(flow.source_id,pair.source_handle)||count(flow.target_id,pair.target_handle))continue
+  result[flow.id]=pair
+  reserve(flow.source_id,pair.source_handle)
+  reserve(flow.target_id,pair.target_handle)
+ }
+ const preference=(a:string,b:string)=>{
+  const from=positions[a]||{x:0,y:0},to=positions[b]||{x:0,y:0}
+  return autoFlowPorts(from,to)
+ }
+ const choose=(vm:string,end:FlowEnd,preferred:string)=>{
+  const prefix=end==='source'?'out-':'in-'
+  const side=sideOfPort(preferred)
+  const candidates=FLOW_PORTS.map((port,index)=>({
+    id:prefix+port.side+'-'+port.index,
+    score:count(vm,prefix+port.side+'-'+port.index)*1000+
+      (port.side===side?0:100)+(port.index===1?0:port.index===2?5:port.index===3?12:17)+index/100
+  })).sort((a,b)=>a.score-b.score)
+  return candidates[0].id
+ }
+ for(const flow of sorted){
+  if(result[flow.id])continue
+  const preferred=preference(flow.source_id,flow.target_id)
+  const source_handle=choose(flow.source_id,'source',preferred.source_handle)
+  reserve(flow.source_id,source_handle)
+  const target_handle=choose(flow.target_id,'target',preferred.target_handle)
+  reserve(flow.target_id,target_handle)
+  result[flow.id]={source_handle,target_handle}
+ }
+ return result
 }
 
 /** Geometry is measured from real React Flow handles, never guessed from the VM size. */

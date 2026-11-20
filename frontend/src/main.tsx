@@ -34,7 +34,7 @@ import {shouldShowSystemsOverview} from './flowDetail'
 import {groupComponents,type ComponentGroupMode} from './componentGroups'
 import {ReciprocalEdge} from './ReciprocalEdge'
 import {ObstacleAwareEdge} from './ObstacleAwareEdge'
-import {ReadonlyFlowNode,autoFlowPorts,type FlowPortPair} from './flowPorts'
+import {ReadonlyFlowNode,autoFlowPorts,distributeFlowPorts,type FlowPortPair} from './flowPorts'
 
 import {AutoFit, Disclosure, InspectorErrorBoundary, useWorkspaceKeyboard} from './WorkspaceUI'
 
@@ -1155,12 +1155,13 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
   const drillNodes:Node[] = scopedItems.map((i,n)=>({id:i.id,type:'readonlyFlowNode',position:(draggedComponentPositions[i.id]||boardViewLayout[i.id]||componentCanvasPositions[viewSystem]?.[i.id]||drillPositions[i.id]||{x:(n%4)*260,y:Math.floor(n/4)*155}),data:{label:<DiagramNodeLabel name={i.name} kind={i.kind} subtitle={objects.find(o=>o.id===i.system_id)?.name||'ИС не указана'} detail={i.kind+' · '+String(i.details.environment||'Среда не задана')}><small className="componentNodePurpose">{i.description?.trim()||String(i.details.purpose||i.details.role||'Назначение не описано')}</small>{externalIds.has(i.id)&&<small>ВНЕШНЯЯ ИС</small>}<button type="button" className="componentNodeOpen nodrag nopan" onClick={e=>{e.preventDefault();e.stopPropagation();setComponentEditing(false);setComponentInspectId(i.id);setComponentInspectTab('passport')}} aria-label={'Открыть паспорт компонента: '+i.name}>Подробнее</button></DiagramNodeLabel>},style:{width:245,padding:12,background:i.details.environment==='TEST'?'#fff5e7':viewMode==='security'?'#eaf5f2':'#ffffff',border:i.id===focusedComponent?'2px solid #1377d5':externalIds.has(i.id)?'2px dashed #c48a4d':'1px solid #bac8d8',borderRadius:12,opacity:focusActive&&!visibleFocus.has(i.id)?0.28:1}}))
   // Multiple technical flows between the same components share one visual lane.
   // Individual flow records remain available in the component flow inspector.
+  const diagramFlowPortPositions=Object.fromEntries(drillNodes.map(n=>[n.id,{x:n.position.x+120,y:n.position.y+55}]))
+  const assignedViewFlowPorts=distributeFlowPorts(visibleDrillFlows,diagramFlowPortPositions,boardViewFlowAnchors)
   const flowAnchorFor=(flow:Flow):FlowPortPair=>{
-    const saved=boardViewFlowAnchors[flow.id]
-    if(saved)return saved
-    const a=drillNodes.find(n=>n.id===flow.source_id)?.position||{x:0,y:0}
-    const b=drillNodes.find(n=>n.id===flow.target_id)?.position||{x:0,y:0}
-    return autoFlowPorts({x:a.x+120,y:a.y+55},{x:b.x+120,y:b.y+55})
+    if(assignedViewFlowPorts[flow.id])return assignedViewFlowPorts[flow.id]
+    const a=diagramFlowPortPositions[flow.source_id]||{x:0,y:0}
+    const b=diagramFlowPortPositions[flow.target_id]||{x:0,y:0}
+    return autoFlowPorts(a,b)
   }
   const drillFlowGroups=new Map<string,Flow[]>()
   for(const flow of visibleDrillFlows){

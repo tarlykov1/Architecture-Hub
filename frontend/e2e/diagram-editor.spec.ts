@@ -417,9 +417,17 @@ test('moving a VRF drags nested VLAN and independent VM while preserving network
   await expect(root).toBeVisible()
   await expect(child).toBeVisible()
   await expect(member).toBeVisible()
-  const rootBefore=await root.boundingBox()
-  expect(rootBefore).not.toBeNull()
-  const x=rootBefore!.x+45,y=rootBefore!.y+17
+  // Grab the visible part of the container header. Independent VMs can overlap its left edge.
+  const dragArea=root.locator('.boardNetworkDragArea')
+  const handle=await dragArea.evaluate(area=>{
+    const box=area.getBoundingClientRect(),y=box.top+box.height/2
+    for(let x=box.left+8;x<Math.min(box.right,innerWidth)-8;x+=8){
+      if(area.contains(document.elementFromPoint(x,y)))return {x,y}
+    }
+    return null
+  })
+  expect(handle).not.toBeNull()
+  const {x,y}=handle!
   await page.mouse.move(x,y)
   await page.mouse.down()
   await page.mouse.move(x+120,y+75,{steps:12})

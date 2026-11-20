@@ -3643,3 +3643,359 @@ def list_board_audit(limit: int = 50, db: Session = Depends(db_session)):
 # Module registration happens after BoardAudit and CI models are defined.
 from .monitoring import router as monitoring_router
 app.include_router(monitoring_router)
+
+
+# Technical decisions are a separate proposed architecture, not live CMDB edits.
+# "Published" publishes an approved document/diagram, never deploys a VM or flow.
+REVIEW_SERVICES = {"engineer", "security", "business_owner", "architect"}
+
+
+class ProposedDecisionVM(BaseModel):
+    id: UUID
+    system_id: UUID
+    name: str = Field(min_length=1, max_length=250)
+    kind: Literal["vm", "server", "host"] = "vm"
+    x: float = Field(ge=-100000, le=100000, allow_inf_nan=False)
+    y: float = Field(ge=-100000, le=100000, allow_inf_nan=False)
+
+
+class ProposedDecisionFlow(BaseModel):
+    id: UUID
+    source_id: UUID
+    target_id: UUID
+    name: str = Field(min_length=1, max_length=250)
+    protocol: str = Field(default="", max_length=80)
+    port: str = Field(default="", max_length=80)
+
+
+class TechnicalDecisionCreate(BaseModel):
+    title: str = Field(min_length=1, max_length=250)
+    description: str = Field(default="", max_length=4000)
+    system_id: UUID
+
+
+class TechnicalDecisionDraftInput(BaseModel):
+    expected_revision: int = Field(ge=1)
+    title: str = Field(min_length=1, max_length=250)
+    description: str = Field(default="", max_length=4000)
+    proposed_vms: list[ProposedDecisionVM] = Field(default_factory=list, max_length=150)
+    proposed_flows: list[ProposedDecisionFlow] = Field(default_factory=list, max_length=250)
+    required_services: list[Literal["engineer", "security", "business_owner", "architect"]] = Field(
+        default_factory=lambda: ["engineer", "security"], min_length=1, max_length=4)
+
+
+class TechnicalDecisionTransition(BaseModel):
+    expected_revision: int = Field(ge=1)
+
+
+class TechnicalDecisionCommentInput(BaseModel):
+    body: str = Field(min_length=1, max_length=2000)
+    anchor_kind: Literal["decision", "vm", "flow"] = "decision"
+    anchor_id: str = Field(default="", max_length=100)
+
+
+class TechnicalDecisionReviewInput(BaseModel):
+    expected_revision: int = Field(ge=1)
+    verdict: Literal["approved", "changes_requested"]
+    note: str = Field(default="", max_length=2000)
+
+
+def _decision_item(decision_id: UUID, db: Session) -> TechnicalDecision:
+    item = db.get(TechnicalDecision, decision_id)
+    if item is None:
+        raise HTTPException(404, "Technical decision not found")
+    return item
+
+
+def _decision_editor(row: TechnicalDecision, request: Request):
+    actor = board_actor(request)
+    role = getattr(request.state, "role", None)
+    if actor != row.author and role not in ("architect", "admin"):
+        raise HTTPException(403, "Only the author or architecture team can change this proposal")
+
+
+def _decision_named_reviewer(request: Request):
+    if getattr(request.state, "auth_kind", None) != "named_user":
+        raise HTTPException(403, "Review requires a named user account to record who approved")
+
+
+def _decision_current_baseline(row: TechnicalDecision, db: Session) -> str:
+    """Stable fingerprint of selected IS, its registered components and one-hop flows."""
+    sys = db.get(ArchitectureObject, row.system_id)
+    if sys is None:
+        raise HTTPException(409, "Selected information system was removed")
+    local = db.scalars(select(InfrastructureItem).where(
+        InfrastructureItem.system_id == row.system_id)).all()
+    ids = {item.id for item in local}
+    connected_flows = db.scalars(select(DataFlow).where(
+        (DataFlow.source_id.in_(ids)) | (DataFlow.target_id.in_(ids)))).all() if ids else []
+    remote_ids = {identifier for flow in connected_flows
+                  for identifier in (flow.source_id, flow.target_id)}
+    all_connected = db.scalars(select(InfrastructureItem).where(
+        InfrastructureItem.id.in_(remote_ids))).all() if remote_ids else []
+    body = {
+        "system": [str(sys.id), sys.name, sys.kind, sys.status],
+        "components": sorted([{
+            "id": str(c.id), "system": str(c.system_id), "name": c.name,
+            "kind": c.kind, "description": c.description,
+        } for c in all_connected + [c for c in local if c.id not in remote_ids]],
+            key=lambda item: item["id"]),
+        "flows": sorted([{
+            "id": str(flow.id), "source": str(flow.source_id),
+            "target": str(flow.target_id), "name": flow.name,
+            "protocol": flow.protocol, "port": flow.port,
+        } for flow in connected_flows], key=lambda item: item["id"]),
+    }
+    return hashlib.sha256(json.dumps(body, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+
+
+def _decision_validate_draft(row: TechnicalDecision, payload: TechnicalDecisionDraftInput,
+                             db: Session):
+    if len(set(payload.required_services)) != len(payload.required_services):
+        raise HTTPException(422, "Duplicate review services")
+    vms = payload.proposed_vms
+    new_ids = [vm.id for vm in vms]
+    if len(set(new_ids)) != len(new_ids):
+        raise HTTPException(422, "Duplicate proposed VM")
+    if any(vm.system_id != row.system_id for vm in vms):
+        raise HTTPException(422, "New VMs must belong to the selected IS")
+    if any(db.get(InfrastructureItem, vm.id) for vm in vms):
+        raise HTTPException(409, "Proposed VM ID already exists in the live register")
+    flows = payload.proposed_flows
+    if len({flow.id for flow in flows}) != len(flows):
+        raise HTTPException(422, "Duplicate proposed flow")
+    if any(db.get(DataFlow, flow.id) for flow in flows):
+        raise HTTPException(409, "Proposed flow ID already exists in the live register")
+    endpoints = {item.id for item in db.scalars(select(InfrastructureItem.id)).all()}
+    endpoints.update(new_ids)
+    for flow in flows:
+        if flow.source_id == flow.target_id:
+            raise HTTPException(422, "A flow cannot connect a VM to itself")
+        if flow.source_id not in endpoints or flow.target_id not in endpoints:
+            raise HTTPException(422, "A proposed flow references an unknown VM")
+        _require_valid_flow_port(flow.port)
+    if any(flow.source_id not in new_ids and flow.target_id not in new_ids and
+           not (db.get(InfrastructureItem, flow.source_id).system_id == row.system_id or
+                db.get(InfrastructureItem, flow.target_id).system_id == row.system_id)
+           for flow in flows):
+        raise HTTPException(422, "At least one flow endpoint must belong to the selected IS")
+
+
+def _decision_response(row: TechnicalDecision, db: Session, include_details: bool = False):
+    reviews = db.scalars(select(TechnicalDecisionReview).where(
+        TechnicalDecisionReview.decision_id == row.id,
+        TechnicalDecisionReview.revision == row.revision
+    ).order_by(TechnicalDecisionReview.created_at)).all()
+    current_reviews = {item.service: {
+        "service": item.service, "actor": item.actor, "verdict": item.verdict,
+        "note": item.note, "created_at": item.created_at.isoformat(),
+    } for item in reviews}
+    result = {
+        "id": str(row.id), "title": row.title, "description": row.description,
+        "system_id": str(row.system_id), "status": row.status,
+        "author": row.author, "revision": row.revision,
+        "required_services": row.required_services,
+        "approvals": list(current_reviews.values()),
+        "base_changed": bool(row.base_hash) and
+            _decision_current_baseline(row, db) != row.base_hash,
+        "created_at": row.created_at.isoformat(),
+        "updated_at": row.updated_at.isoformat(),
+        "published_at": row.published_at.isoformat() if row.published_at else None,
+    }
+    if include_details:
+        comments = db.scalars(select(TechnicalDecisionComment).where(
+            TechnicalDecisionComment.decision_id == row.id
+        ).order_by(TechnicalDecisionComment.created_at)).all()
+        result["proposed_vms"] = row.proposed_vms
+        result["proposed_flows"] = row.proposed_flows
+        result["comments"] = [{
+            "id": str(item.id), "actor": item.actor, "body": item.body,
+            "anchor_kind": item.anchor_kind, "anchor_id": item.anchor_id,
+            "created_at": item.created_at.isoformat(),
+        } for item in comments]
+    return result
+
+
+@app.get("/api/technical-decisions")
+def list_technical_decisions(db: Session = Depends(db_session)):
+    rows = db.scalars(select(TechnicalDecision).order_by(TechnicalDecision.updated_at.desc())).all()
+    return [_decision_response(row, db) for row in rows]
+
+
+@app.post("/api/technical-decisions", status_code=201)
+def create_technical_decision(payload: TechnicalDecisionCreate, request: Request,
+                              db: Session = Depends(db_session)):
+    if getattr(request.state, "role", None) not in ("admin", "architect", None):
+        raise HTTPException(403, "Only architects may create technical decisions")
+    system = db.get(ArchitectureObject, payload.system_id)
+    if system is None or system.kind != "system":
+        raise HTTPException(422, "Select an existing information system")
+    row = TechnicalDecision(
+        title=payload.title.strip(), description=payload.description.strip(),
+        system_id=payload.system_id, author=board_actor(request)
+    )
+    db.add(row)
+    db.flush()
+    audit_direct_edit(db, request, "create_technical_decision", row.id, None,
+                      {"title": row.title, "system_id": str(row.system_id)},
+                      "Создано техническое решение " + row.title)
+    db.commit()
+    return _decision_response(row, db, True)
+
+
+@app.get("/api/technical-decisions/{decision_id}")
+def get_technical_decision(decision_id: UUID, db: Session = Depends(db_session)):
+    return _decision_response(_decision_item(decision_id, db), db, True)
+
+
+@app.put("/api/technical-decisions/{decision_id}")
+def edit_technical_decision(decision_id: UUID, payload: TechnicalDecisionDraftInput,
+                            request: Request, db: Session = Depends(db_session)):
+    row = _decision_item(decision_id, db)
+    _decision_editor(row, request)
+    if row.status not in ("draft", "changes_requested"):
+        raise HTTPException(409, "Decision is in review or is already approved")
+    if payload.expected_revision != row.revision:
+        raise HTTPException(409, "Decision changed in another session")
+    _decision_validate_draft(row, payload, db)
+    old = {"title": row.title, "vms": len(row.proposed_vms), "flows": len(row.proposed_flows)}
+    row.title = payload.title.strip()
+    row.description = payload.description.strip()
+    row.proposed_vms = [item.model_dump(mode="json") for item in payload.proposed_vms]
+    row.proposed_flows = [item.model_dump(mode="json") for item in payload.proposed_flows]
+    row.required_services = payload.required_services
+    row.status = "draft"
+    row.base_hash = ""
+    row.revision += 1
+    row.updated_at = datetime.now(timezone.utc)
+    audit_direct_edit(db, request, "update_technical_decision", row.id, old,
+                      {"title": row.title, "vms": len(row.proposed_vms), "flows": len(row.proposed_flows)},
+                      "Изменён проект технического решения " + row.title)
+    db.commit()
+    return _decision_response(row, db, True)
+
+
+@app.post("/api/technical-decisions/{decision_id}/submit")
+def submit_technical_decision(decision_id: UUID, payload: TechnicalDecisionTransition,
+                              request: Request, db: Session = Depends(db_session)):
+    row = _decision_item(decision_id, db)
+    _decision_editor(row, request)
+    if row.status not in ("draft", "changes_requested"):
+        raise HTTPException(409, "Only a draft or reworked decision can be submitted")
+    if row.revision != payload.expected_revision:
+        raise HTTPException(409, "Decision changed in another session")
+    if not row.proposed_vms and not row.proposed_flows:
+        raise HTTPException(422, "Add at least one proposed VM or flow")
+    row.base_hash = _decision_current_baseline(row, db)
+    row.status = "in_review"
+    row.revision += 1
+    row.updated_at = datetime.now(timezone.utc)
+    audit_direct_edit(db, request, "submit_technical_decision", row.id,
+                      {"status": "draft"}, {"status": "in_review", "revision": row.revision},
+                      "Направлено на согласование: " + row.title)
+    db.commit()
+    return _decision_response(row, db, True)
+
+
+@app.post("/api/technical-decisions/{decision_id}/comments", status_code=201)
+def comment_on_technical_decision(decision_id: UUID, payload: TechnicalDecisionCommentInput,
+                                  request: Request, db: Session = Depends(db_session)):
+    row = _decision_item(decision_id, db)
+    role = getattr(request.state, "role", None)
+    if role == "viewer":
+        raise HTTPException(403, "View-only users cannot comment")
+    if payload.anchor_kind == "decision" and payload.anchor_id:
+        raise HTTPException(422, "Decision comments do not have an object ID")
+    if payload.anchor_kind != "decision":
+        ids = (
+            {str(vm["id"]) for vm in row.proposed_vms}
+            if payload.anchor_kind == "vm" else
+            {str(flow["id"]) for flow in row.proposed_flows}
+        )
+        if payload.anchor_id not in ids:
+            raise HTTPException(422, "Comment anchor must belong to this proposal")
+    body = payload.body.strip()
+    if not body:
+        raise HTTPException(422, "Comment cannot be blank")
+    comment = TechnicalDecisionComment(
+        decision_id=row.id, actor=board_actor(request), body=body,
+        anchor_kind=payload.anchor_kind, anchor_id=payload.anchor_id
+    )
+    db.add(comment)
+    db.flush()
+    audit_direct_edit(db, request, "comment_technical_decision", row.id, None,
+                      {"comment_id": str(comment.id), "anchor_id": comment.anchor_id},
+                      "Комментарий к техническому решению " + row.title)
+    db.commit()
+    return _decision_response(row, db, True)
+
+
+@app.post("/api/technical-decisions/{decision_id}/review")
+def review_technical_decision(decision_id: UUID, payload: TechnicalDecisionReviewInput,
+                              request: Request, db: Session = Depends(db_session)):
+    _decision_named_reviewer(request)
+    row = _decision_item(decision_id, db)
+    role = getattr(request.state, "role", None)
+    actor = board_actor(request)
+    if role not in row.required_services:
+        raise HTTPException(403, "This service is not on the approval route")
+    if actor == row.author:
+        raise HTTPException(403, "Author cannot approve their own solution")
+    if row.status != "in_review":
+        raise HTTPException(409, "Decision is not open for review")
+    if row.revision != payload.expected_revision:
+        raise HTTPException(409, "Decision changed in another session")
+    if payload.verdict == "changes_requested" and len(payload.note.strip()) < 3:
+        raise HTTPException(422, "Give a reason for the required changes")
+    existing = db.scalars(select(TechnicalDecisionReview).where(
+        TechnicalDecisionReview.decision_id == decision_id,
+        TechnicalDecisionReview.revision == row.revision,
+        TechnicalDecisionReview.service == role
+    )).all()
+    for item in existing:
+        db.delete(item)
+    db.flush()
+    review = TechnicalDecisionReview(
+        decision_id=decision_id, revision=row.revision, service=role,
+        actor=actor, verdict=payload.verdict, note=payload.note.strip()
+    )
+    db.add(review)
+    if payload.verdict == "changes_requested":
+        row.status = "changes_requested"
+    else:
+        approved = {item.service for item in db.scalars(select(TechnicalDecisionReview).where(
+            TechnicalDecisionReview.decision_id == decision_id,
+            TechnicalDecisionReview.revision == row.revision,
+            TechnicalDecisionReview.verdict == "approved"
+        )).all()}
+        approved.add(role)
+        if all(service in approved for service in row.required_services):
+            row.status = "approved"
+    row.updated_at = datetime.now(timezone.utc)
+    audit_direct_edit(db, request, "review_technical_decision", row.id, None,
+                      {"service": role, "verdict": payload.verdict},
+                      "Согласование ТР: " + row.title)
+    db.commit()
+    return _decision_response(row, db, True)
+
+
+@app.post("/api/technical-decisions/{decision_id}/publish")
+def publish_technical_decision(decision_id: UUID, payload: TechnicalDecisionTransition,
+                               request: Request, db: Session = Depends(db_session)):
+    _decision_named_reviewer(request)
+    row = _decision_item(decision_id, db)
+    _decision_editor(row, request)
+    if row.status != "approved":
+        raise HTTPException(409, "All required services must approve this decision first")
+    if row.revision != payload.expected_revision:
+        raise HTTPException(409, "Decision changed in another session")
+    if _decision_current_baseline(row, db) != row.base_hash:
+        raise HTTPException(409, "Live architecture changed after review; rework the proposal")
+    row.status = "published"
+    row.published_at = datetime.now(timezone.utc)
+    row.updated_at = row.published_at
+    audit_direct_edit(db, request, "publish_technical_decision", row.id,
+                      {"status": "approved"}, {"status": "published"},
+                      "Опубликовано согласованное техническое решение " + row.title)
+    db.commit()
+    return _decision_response(row, db, True)

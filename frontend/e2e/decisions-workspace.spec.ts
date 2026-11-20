@@ -64,6 +64,7 @@ test('QA-WORK: withdraw, draw and edit a proposed flow from a registered VM',asy
   await page.getByLabel('Название потока').fill('QA-WORK-Журнал')
   await page.getByLabel('Протокол',{exact:true}).fill('HTTPS')
   await page.getByLabel('Порт',{exact:true}).fill('443')
+  await expect(page.locator('.decisionCanvas .react-flow__node:visible')).toHaveCount(2)
   await page.getByRole('button',{name:'Добавить в черновик'}).click()
   const inspector=page.getByRole('complementary',{name:'Карточка технического решения'})
   await expect(inspector).toContainText('HTTPS 443')

@@ -2,7 +2,7 @@ import {useEffect, useState} from 'react'
 import {ArrowLeft, FileText, Plus, X} from 'lucide-react'
 import {Background, ConnectionMode, Controls, MarkerType, ReactFlow, type Connection} from '@xyflow/react'
 import {DiagramNodeLabel, diagramCardStyle} from './DiagramVisual'
-import {diagramPortNodes} from './DiagramPortNode'
+import {diagramPortNodes,useDiagramMeasurements} from './DiagramPortNode'
 import {autoFlowPorts} from './flowPorts'
 import {flowPortError} from './fieldValidation'
 import {ObstacleAwareEdge} from './ObstacleAwareEdge'
@@ -84,6 +84,7 @@ export default function TechnicalDecisions({request, profile, systems, items, fl
 }
 
 function DecisionInspector({id,request,profile,items,flows,schema,openSchema,close,update}:{id:string;request:Api;profile:AuthProfile|null;items:Item[];flows:Link[];schema:boolean;openSchema:()=>void;close:()=>void;update:(row:Decision)=>void}) {
+ const measurements=useDiagramMeasurements()
   const [row,setRow]=useState<Details|null>(null)
   const [tab,setTab]=useState<'items'|'review'>('items')
   const [busy,setBusy]=useState(false)
@@ -169,7 +170,7 @@ function DecisionInspector({id,request,profile,items,flows,schema,openSchema,clo
   }
   return <>
     {schema&&<div className="decisionDrawing"><header><button aria-label="Вернуться к списку" disabled={busy} onClick={close}><ArrowLeft size={16}/></button><h2>{row.title}</h2><Status value={row.status}/></header>
-      <div className="decisionCanvas">{nodes.length?<ReactFlow nodes={nodes} edges={edges} nodeTypes={diagramPortNodes} edgeTypes={decisionEdgeTypes} connectionMode={ConnectionMode.Loose} nodesDraggable={false} nodesConnectable={editable&&!busy} deleteKeyCode={null}
+      <div className="decisionCanvas">{nodes.length?<ReactFlow nodes={measurements.apply(nodes)} edges={edges} onNodesChange={measurements.record} nodeTypes={diagramPortNodes} edgeTypes={decisionEdgeTypes} connectionMode={ConnectionMode.Loose} nodesDraggable={false} nodesConnectable={editable&&!busy} deleteKeyCode={null}
         onConnectStart={()=>setDrawing(true)} onConnectEnd={()=>setDrawing(false)} onConnect={connect}
         onEdgeClick={(_,edge)=>{const f=lines.find(f=>f.id===edge.id);if(f)inspectFlow(f)}}
         isValidConnection={c=>c.source!==c.target} fitView><AutoFit layoutKey={id} suspended={drawing}/><Background gap={20}/><Controls showInteractive={false}/></ReactFlow>:<p>В этой системе пока нет компонентов.</p>}
@@ -193,7 +194,7 @@ function DecisionInspector({id,request,profile,items,flows,schema,openSchema,clo
           <label>{tool==='vm'?'Название ВМ':'Название потока'}<input autoFocus required maxLength={250} value={tool==='vm'?name:draft.name} onChange={e=>tool==='vm'?setName(e.target.value):setDraft({...draft,name:e.target.value})}/></label>
           {tool==='flow'&&<>
             {!draft.source_id&&!draft.target_id&&<small>Выберите компоненты в списках или протяните стрелку между точками на схеме.</small>}
-            {(['source','target'] as const).map(end=><label key={end}>{end==='source'?'Источник':'Получатель'}<select required value={draft[`${end}_id`]} onChange={e=>setDraft({...draft,[end+'_id']:e.target.value,[end+'_handle']:''})}><option value="">Выберите компонент</option>{choices.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></label>)}
+            {(['source','target'] as const).map(end=><label key={end}>{end==='source'?'Источник':'Получатель'}<select aria-label={end==='source'?'Источник':'Получатель'} required value={draft[`${end}_id`]} onChange={e=>setDraft({...draft,[end+'_id']:e.target.value,[end+'_handle']:''})}><option value="">Выберите компонент</option>{choices.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></label>)}
             <button type="button" disabled={!draft.source_id||!draft.target_id} onClick={()=>setDraft({...draft,source_id:draft.target_id,target_id:draft.source_id,source_handle:draft.target_handle?.replace('in-','out-'),target_handle:draft.source_handle?.replace('out-','in-')})}>Поменять направление</button>
             <div className="decisionFlowFields"><label>Протокол<input maxLength={80} value={draft.protocol} onChange={e=>setDraft({...draft,protocol:e.target.value})}/></label><label>Порт<input maxLength={80} inputMode="numeric" value={draft.port} onChange={e=>setDraft({...draft,port:e.target.value})}/></label></div>
             {(sameEnds||outside||flowError)&&<small role="alert">{sameEnds?'Выберите два разных компонента.':outside?'Один из компонентов должен принадлежать системе решения.':flowError}</small>}

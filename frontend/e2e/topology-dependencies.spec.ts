@@ -21,6 +21,18 @@ test('QA-WORK: parallel and reverse flows have distinct selectable lanes next to
   await expect(canvas.locator('.react-flow__edge')).toHaveCount(3)
   const count=canvas.getByRole('button',{name:'QA-WORK-Центр → QA-WORK-Адаптер · 2 потока',exact:true})
   await expect(count).toBeVisible()
+  const contained=()=>canvas.evaluate(root=>{
+    const box=root.getBoundingClientRect()
+    return [...root.querySelectorAll('.react-flow__node')].every(node=>{
+      const r=node.getBoundingClientRect()
+      return r.left>=box.left&&r.right<=box.right&&r.top>=box.top&&r.bottom<=box.bottom
+    })
+  })
+  await expect.poll(contained).toBe(true)
+  await panel.getByRole('button',{name:'Связи',exact:true}).click()
+  await panel.getByRole('button',{name:'Обзор',exact:true}).click()
+  await expect(canvas.locator('.react-flow__node:visible')).toHaveCount(3)
+  await expect(canvas.locator('.topologyFlowCount')).toHaveCount(3)
   const collisions=()=>canvas.evaluate(root=>{
     const labels=[...root.querySelectorAll('.topologyFlowCount')].map(n=>n.getBoundingClientRect())
     const cards=[...root.querySelectorAll('.react-flow__node')].map(n=>n.getBoundingClientRect())
@@ -48,6 +60,7 @@ test('QA-WORK: parallel and reverse flows have distinct selectable lanes next to
   await expect(page).toHaveURL(new RegExp(logs))
   await expect(panel.getByRole('heading',{name:'Журнал приложения'})).toBeVisible()
   await page.setViewportSize({width:390,height:844})
+  await expect.poll(contained).toBe(true)
   await expect.poll(async()=>{
     const map=await canvas.boundingBox(),properties=await panel.boundingBox()
     return !!map&&!!properties&&map.y+map.height<=properties.y+1

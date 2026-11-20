@@ -3766,7 +3766,7 @@ def _decision_validate_draft(row: TechnicalDecision, payload: TechnicalDecisionD
         raise HTTPException(422, "Duplicate proposed flow")
     if any(db.get(DataFlow, flow.id) for flow in flows):
         raise HTTPException(409, "Proposed flow ID already exists in the live register")
-    endpoints = {item.id for item in db.scalars(select(InfrastructureItem.id)).all()}
+    endpoints = set(db.scalars(select(InfrastructureItem.id)).all())
     endpoints.update(new_ids)
     for flow in flows:
         if flow.source_id == flow.target_id:

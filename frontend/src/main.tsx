@@ -7,6 +7,7 @@ import { ReactFlow, Background, Controls, applyNodeChanges, type Connection, typ
 import '@xyflow/react/dist/style.css'
 import './style.css'
 import Topology from './Topology'
+import TechnicalDecisions from './TechnicalDecisions'
 import {flowPortError} from './fieldValidation'
 import {dependencyLayout,compactComponentLayout,overviewGridPositions,flowCountLabel} from './graphLayout'
 import {downstreamImpact,impactRoutes} from './dependencyImpact'
@@ -1222,15 +1223,16 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
       <div className="globalBrand"><span className="globalBrandMark">◆</span><strong>Architecture Hub</strong></div>
       <nav className="layerTabs" aria-label="Разделы архитектуры">
         <details className="mobileSectionMenu">
-          <summary aria-label="Выбрать раздел">{({home:'Обзор',systems:'Системы',infrastructure:'Компоненты',flows:'Потоки',business:'Бизнес-процессы',networks:'Реестр сетей',topology:'Топология сетей',incidents:'Инциденты',knowledge:'Wiki.js'} as Record<string,string>)[layer]}</summary>
+          <summary aria-label="Выбрать раздел">{({home:'Обзор',decisions:'Техрешения',systems:'Системы',infrastructure:'Компоненты',flows:'Потоки',business:'Бизнес-процессы',networks:'Реестр сетей',topology:'Топология сетей',incidents:'Инциденты',knowledge:'Wiki.js'} as Record<string,string>)[layer]}</summary>
           <div className="mobileSectionOptions">
-            {([['home','Обзор'],['systems','Системы'],['infrastructure','Компоненты'],['flows','Потоки'],['business','Бизнес-процессы'],['networks','Реестр сетей'],['topology','Топология сетей'],['incidents','Инциденты'],['knowledge','Wiki.js · База знаний']] as const).filter(([id])=>canSee(id)).map(([id,label])=><button key={id} type="button" className={layer===id?'current':''} onClick={e=>{if(id==='home'||id==='systems'||id==='flows')setViewSystem('');if(id==='flows')setFlowComponentFocus('');if(id==='infrastructure'){setInspectorOpen(false);setInspectorExpanded(false)}setLayer(id);e.currentTarget.closest('details')?.removeAttribute('open')}}>{label}</button>)}
+            {([['home','Обзор'],['systems','Системы'],['infrastructure','Компоненты'],['flows','Потоки'],['decisions','Техрешения'],['business','Бизнес-процессы'],['networks','Реестр сетей'],['topology','Топология сетей'],['incidents','Инциденты'],['knowledge','Wiki.js · База знаний']] as const).filter(([id])=>canSee(id)).map(([id,label])=><button key={id} type="button" className={layer===id?'current':''} onClick={e=>{if(id==='home'||id==='systems'||id==='flows')setViewSystem('');if(id==='flows')setFlowComponentFocus('');if(id==='infrastructure'){setInspectorOpen(false);setInspectorExpanded(false)}setLayer(id);e.currentTarget.closest('details')?.removeAttribute('open')}}>{label}</button>)}
           </div>
         </details>
         <button className={layer==='home'?'current':''} onClick={()=>{setViewSystem('');setLayer('home')}}>Обзор</button>
         {canSee('systems')&&<button className={layer==='systems'?'current':''} onClick={()=>{setViewSystem('');setLayer('systems')}}>Системы</button>}
         {canSee('infrastructure')&&<button className={layer==='infrastructure'?'current':''} onClick={()=>{setLayer('infrastructure');setInspectorOpen(false);setInspectorExpanded(false)}}>Компоненты</button>}
         {canSee('flows')&&<button className={layer==='flows'?'current':''} onClick={()=>{setViewSystem('');setFlowComponentFocus('');setLayer('flows')}}>Потоки</button>}
+        {canSee('decisions')&&<button className={layer==='decisions'?'current':''} onClick={()=>{setInspectorOpen(false);setLayer('decisions')}}>Техрешения</button>}
         <details className="layerActions secondaryNavigation">
           <summary aria-label="Другие разделы">{({business:'Бизнес-процессы',networks:'Реестр сетей',topology:'Топология сетей',incidents:'Инциденты',knowledge:'Wiki.js'} as Record<string,string>)[layer]||'Ещё'} ▾</summary>
           <div className="layerActionMenu">
@@ -1273,7 +1275,7 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
       {error && <div className="error" role="alert">{error}<button onClick={() => setError('')}>×</button></div>}
 
       {['business','systems','infrastructure','flows'].includes(layer)&&!diagramEditing&&workspaceFilters}
-      {layer==='knowledge'?<section className="knowledgeWorkspace" aria-label="База знаний Wiki.js">
+      {layer==='decisions'?<TechnicalDecisions key={authProfile?.id||authProfile?.auth_kind||'demo'} request={request} profile={tokenReady?authProfile:null} systems={objects} items={infra} flows={flows}/>:layer==='knowledge'?<section className="knowledgeWorkspace" aria-label="База знаний Wiki.js">
         <div className="knowledgeWorkspaceHead"><div><h2>База знаний · Wiki.js</h2><p>Документация информационных систем и связи со статьями</p></div>{wikiPublicUrl&&<a href={wikiPublicUrl} target="_blank" rel="noopener noreferrer" className="knowledgeOpenLink">Открыть Wiki.js ↗</a>}</div>
         {wikiStatus==='connected'?<div className="knowledgeWorkspaceStatus" role="status"><strong>Интеграция подключена</strong><p>Выберите информационную систему, чтобы искать статьи и привязывать документацию к её паспорту.</p></div>:<div className="knowledgeWorkspaceStatus" role="status"><strong>{wikiStatus==='checking'?'Проверяем подключение…':wikiStatus==='unconfigured'?'Wiki.js ещё не подключена к Architecture Hub':'Подключение Wiki.js не удалось проверить'}</strong><p>{wikiStatus==='unconfigured'?'Для поиска и привязки статей настройте WIKI_API_TOKEN и WIKI_PUBLIC_URL в окружении backend. Для прямой ссылки также можно задать VITE_WIKI_URL при сборке frontend.':wikiStatus==='unavailable'?'Проверьте авторизацию и доступность /api/knowledge/status.':'Настройка и состояние Wiki.js проверяются через backend.'}</p></div>}
         <div className="knowledgeWorkspaceSystems"><h3>Документация по системам</h3><div className="knowledgeWorkspaceList">{objects.filter(o=>!search||o.name.toLowerCase().includes(search.toLowerCase())).map(o=><button key={o.id} type="button" onClick={()=>{setSelected(o.id);setInspectorOpen(true);setPanelTab('knowledge')}}><span>{o.name}</span><small>Открыть документацию</small></button>)}</div>{!objects.length&&<p>После входа здесь появятся информационные системы.</p>}</div>

@@ -3,7 +3,7 @@
  */
 import type {Section} from './workspaceRoutes'
 
-export type PermissionLayer='business'|'systems'|'infrastructure'|'networks'|'flows'|'diagrams'|'import'|'knowledge'|'incidents'|'views'|'board'
+export type PermissionLayer='business'|'systems'|'infrastructure'|'networks'|'flows'|'diagrams'|'import'|'knowledge'|'incidents'|'views'|'board'|'decisions'
 export type Grant='read'|'write'
 export type AccessProfile={role:string;permissions?:Partial<Record<PermissionLayer,Grant>>}
 
@@ -19,7 +19,7 @@ const roleGrants:Record<string,Partial<Record<PermissionLayer,Grant>>>={
 }
 
 const sectionResource:Record<Section,PermissionLayer|null>={
- home:null,systems:'systems',infrastructure:'infrastructure',flows:'flows',
+ home:null,decisions:'decisions',systems:'systems',infrastructure:'infrastructure',flows:'flows',
  business:'business',networks:'networks',topology:'networks',incidents:'incidents',knowledge:'knowledge',
 }
 

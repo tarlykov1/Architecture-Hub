@@ -7,6 +7,7 @@ export const SECTION_PATHS = {
   systems: '/systems',
   infrastructure: '/components',
   flows: '/flows',
+  decisions: '/decisions',
   business: '/business',
   networks: '/networks',
   topology: '/topology',

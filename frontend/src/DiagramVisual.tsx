@@ -36,3 +36,17 @@ export function DiagramNodeLabel({name,kind,subtitle,detail,logo,children}:{
     {children}
   </div>
 }
+
+
+/** One component card contract for both the saved diagram and its editor.
+ * Detailed descriptions and actions belong to the inspector, not the card
+ * geometry: a mode switch must never push nodes outside network rectangles.
+ */
+export function ComponentDiagramLabel({name,kind,systemName,environment,purpose}:{
+  name:string;kind:string;systemName?:string;environment?:string;purpose?:string
+}){
+  return <DiagramNodeLabel name={name} kind={kind} subtitle={systemName}
+    detail={kind+' · '+(environment||'Среда не задана')}>
+    <small className="componentNodePurpose">{purpose?.trim()||'Назначение не описано'}</small>
+  </DiagramNodeLabel>
+}

@@ -48,7 +48,7 @@ test('flow registry opens exact technical flow and overview remains independentl
   await expect(source).toBeVisible()
   // Focus must survive the first map mount; it used to be cleared by an
   // unrelated inspector-close effect.
-  await expect(source).toHaveCSS('border-top-color','rgb(37, 99, 235)')
+  await expect(source).toHaveCSS('border-top-color','rgb(83, 70, 199)')
   const rect=await source.boundingBox(),canvas=await map.locator('.homeMapGraph').boundingBox()
   expect(rect&&canvas&&rect.x>=canvas.x&&rect.y>=canvas.y&&rect.x+rect.width<=canvas.x+canvas.width+2).toBeTruthy()
 })

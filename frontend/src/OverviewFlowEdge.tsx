@@ -17,13 +17,16 @@ export function OverviewFlowEdge(props: EdgeProps<FlowEdge>) {
       if (!menu.current?.contains(event.target as Node)) data.close()
     }
     const escape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') { data.close(); trigger.current?.focus() }
+      if (event.key === 'Escape') {
+        event.preventDefault(); event.stopPropagation(); data.close()
+        requestAnimationFrame(()=>trigger.current?.focus({preventScroll:true}))
+      }
     }
     document.addEventListener('pointerdown', outside)
-    document.addEventListener('keydown', escape)
+    document.addEventListener('keydown', escape, true)
     return () => {
       document.removeEventListener('pointerdown', outside)
-      document.removeEventListener('keydown', escape)
+      document.removeEventListener('keydown', escape, true)
     }
   }, [data])
   return <>

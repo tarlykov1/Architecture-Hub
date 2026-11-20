@@ -35,7 +35,7 @@ for(let batch=0;batch<4;batch++)test('QA-WORK: #164 focus transitions '+(batch*5
   await expect(map).toBeVisible()
   const node=map.locator('.react-flow__node').filter({hasText:name})
   await expect(node, 'Iteration '+iteration+' must render selected IS').toBeVisible()
-  await expect(node).toHaveCSS('border-top-color','rgb(37, 99, 235)')
+  await expect(node).toHaveCSS('border-top-color','rgb(83, 70, 199)')
   const rect=await node.boundingBox()
   const canvas=await map.locator('.homeMapGraph').boundingBox()
   expect(rect,'Iteration '+iteration+' selected IS has bounds').not.toBeNull()

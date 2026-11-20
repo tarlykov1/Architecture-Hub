@@ -177,3 +177,5 @@ body {
   .flowRegisterRows .infraCard { grid-template-columns: 1fr }
   .flowRegisterActions { justify-content: flex-start }
 }
+.homeMap .homeLayerToolbar > .homeLayerCatalog { width: auto; margin: 0 }
+.homeMap .homeLayerCatalog .homeLayerColorList { max-width: min(360px,90vw) }

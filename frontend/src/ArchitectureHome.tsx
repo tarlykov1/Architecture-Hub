@@ -3,7 +3,7 @@ import {architectureIcon,DiagramNodeLabel,diagramCardStyle} from './DiagramVisua
 import {OverviewFlowEdge, type OverviewFlow} from './OverviewFlowEdge'
 import {logoFromAttributes} from './SystemLogo'
 export {architectureIcon} from './DiagramVisual'
-import {ReactFlow,Background,Controls,MarkerType,NodeResizer,useReactFlow,type NodeProps,type NodeChange} from '@xyflow/react'
+import {ReactFlow,Background,Controls,MarkerType,Position,NodeResizer,useReactFlow,type NodeProps,type NodeChange} from '@xyflow/react'
 import {MousePointer2, Move, SquareDashed, Maximize2, Save, X, ClipboardList} from 'lucide-react'
 
 type System={id:string;name:string;kind:string;attributes?:Record<string,unknown>}
@@ -19,6 +19,11 @@ function LayerRegionNode({data,selected}:NodeProps){
  const region=data as unknown as LayerRegionNodeData
  return <div className="homeEditableRegion"><NodeResizer isVisible={region.editing&&selected} minWidth={140} minHeight={80} onResize={(_,bounds)=>region.resize(bounds)} onResizeEnd={(_,bounds)=>region.resize(bounds)}/><div className="homeLayerRegionLabel"><strong>{region.name}</strong><small>{region.count} ИС</small></div></div>
 }
+// Supply initial handle geometry as well as dimensions while React Flow measures cards.
+const systemHandles = [
+ {type:'source' as const, position:Position.Right, x:245, y:43, width:1, height:1},
+ {type:'target' as const, position:Position.Left, x:0, y:43, width:1, height:1},
+]
 const homeEdgeTypes={overviewFlow:OverviewFlowEdge}
 const homeNodeTypes={layerRegion:LayerRegionNode}
 type RegionRect={x:number;y:number;width:number;height:number}
@@ -81,7 +86,7 @@ type Network={id:string;name:string;kind:string}
 type Interface={item_id:string;zone_id:string|null;vlan_id:string|null;vrf_id:string|null}
 
 import {AutoFit,Disclosure} from './WorkspaceUI'
-import {overviewGridPositions} from './graphLayout'
+import {overviewGridPositions,flowCountLabel} from './graphLayout'
 
 export default function ArchitectureHome({systems,components,flows,processes,categories,links,onOpenSystem,onCloseSystem,inspectorOpen,onOpenComponents,onOpenComponent,onOpenFlows,focusSystemId='',request,canEditLayers=false}:{systems:System[];components:Component[];flows:Flow[];processes:Process[];categories:Category[];links:Link[];networks:Network[];interfaces:Interface[];onOpenSystem:(id:string)=>void;onCloseSystem:()=>void;inspectorOpen:boolean;onOpenComponents:(id:string)=>void;onOpenComponent:(id:string)=>void;onOpenFlows:()=>void;onOpenNetworks:()=>void;focusSystemId?:string;request?:<T>(url:string,init?:RequestInit)=>Promise<T>;canEditLayers?:boolean}){
  const [layers,setLayers]=useState({systems:true,components:false,flows:false,business:false})
@@ -277,7 +282,7 @@ export default function ArchitectureHome({systems,components,flows,processes,cat
      data:{label:<span title={c.name}>{architectureIcon(c.kind)} {c.name}</span>},style:{width:136,fontSize:11,padding:'7px',borderRadius:6,border:'1px solid #cbd5e1',background:'#fff',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' as const},selectable:true,draggable:false,zIndex:20}]:[]
  }):[]
 
- const nodes=filteredSystems.map((s,i)=>({id:s.id,draggable:false,initialWidth:245,initialHeight:86,position:positions[s.id]||{x:(i%4)*320,y:Math.floor(i/4)*190},data:{label:<DiagramNodeLabel name={s.name} kind={s.kind} logo={logoFromAttributes(s.attributes)} subtitle={components.filter(c=>c.system_id===s.id).length+' компонентов · '+links.filter(l=>l.system_id===s.id).length+' бизнес-связей'}/>},style:diagramCardStyle()}))
+ const nodes=filteredSystems.map((s,i)=>({id:s.id,draggable:false,initialWidth:245,initialHeight:86,handles:systemHandles,sourcePosition:Position.Right,targetPosition:Position.Left,position:positions[s.id]||{x:(i%4)*320,y:Math.floor(i/4)*190},data:{label:<DiagramNodeLabel name={s.name} kind={s.kind} logo={logoFromAttributes(s.attributes)} subtitle={components.filter(c=>c.system_id===s.id).length+' компонентов · '+links.filter(l=>l.system_id===s.id).length+' бизнес-связей'}/>},style:diagramCardStyle()}))
  const selectedSystemInfo=filteredSystems.find(s=>s.id===selectedSystem)
  const selectedNeighbors=new Set<string>([selectedSystem])
  for(const f of crossFlows)if(f.source===selectedSystem||f.target===selectedSystem){selectedNeighbors.add(f.source);selectedNeighbors.add(f.target)}
@@ -418,7 +423,7 @@ export default function ArchitectureHome({systems,components,flows,processes,cat
   {!layers.systems&&<div className="homeMapEmpty">Включите слой «Информационные системы», чтобы показать карту связей.</div>}
   {selectedOverlayGroup&&focusedLayer&&<div className="homeLayerMembers" role="status"><strong>{focusedLayer.name}</strong><span>В этой области: {membersFor(focusedLayer).map(id=>systems.find(sys=>sys.id===id)?.name||id).join(', ')}</span><button type="button" onClick={()=>setSelectedOverlayGroup('')}>Снять выделение</button></div>}
 
-  <details className="overviewLegend"><summary>О карте · {systems.length} ИС · {flows.length} потоков</summary>
+  <details className="overviewLegend"><summary>О карте · {systems.length} ИС · {flowCountLabel(flows.length)}</summary>
     <p>{mapMode==='business'?'Пунктир показывает участие систем в общих бизнес-процессах, а не направление передачи данных.':'Стрелка показывает направление передачи данных. Нажмите на число потоков, чтобы выбрать поток.'}</p>
   </details>
   <div className="homeMapDetails">

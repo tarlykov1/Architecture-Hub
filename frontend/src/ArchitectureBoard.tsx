@@ -11,7 +11,7 @@ import {ReactFlow, ReactFlowProvider, Background, Controls, Handle, NodeResizer,
 import {compactComponentLayout,flowCountLabel} from './graphLayout'
 import {ReciprocalEdge} from './ReciprocalEdge'
 import {ObstacleAwareEdge} from './ObstacleAwareEdge'
-import {FlowPortHandles, autoFlowPorts, closestVisiblePort, type FlowPortPair, type FlowEnd} from './flowPorts'
+import {FlowPortHandles, autoFlowPorts, distributeFlowPorts, closestVisiblePort, type FlowPortPair, type FlowEnd} from './flowPorts'
 
 type VM = {id:string;system_id:string;parent_id?:string|null;kind:string;name:string;description?:string;details:Record<string,unknown>}
 type Network = {id:string;name:string;kind:string}
@@ -355,7 +355,9 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
      {x:(b?.position.x||0)+110,y:(b?.position.y||0)+50}
    )
  }
- const portsForFlow=(flow:Flow):FlowPortPair=>flowAnchors[flow.id]||automaticPorts(flow.source_id,flow.target_id)
+ const flowPortPositions=Object.fromEntries(nodes.map(n=>[n.id,{x:n.position.x+110,y:n.position.y+50}]))
+ const assignedFlowPorts=distributeFlowPorts(effectiveFlows,flowPortPositions,flowAnchors)
+ const portsForFlow=(flow:Flow):FlowPortPair=>assignedFlowPorts[flow.id]||automaticPorts(flow.source_id,flow.target_id)
  // Two flows share a painted arrow only if both actual endpoint handles match.
  const flowGroupKey=(flow:Flow)=>{
    const anchors=portsForFlow(flow)
@@ -725,7 +727,11 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
    if(!allVMs.some(vm=>vm.id===source)||!allVMs.some(vm=>vm.id===target)){setError('Источник или получатель отсутствует на схеме.');return}
    const id=makeId()
    // Store a chosen entry and exit immediately in the local layout draft.
-   setFlowAnchors(previous=>({...previous,[id]:anchors||automaticPorts(source,target)}))
+   const assigned=distributeFlowPorts(
+     [...effectiveFlows,{id,source_id:source,target_id:target}],
+     flowPortPositions,flowAnchors
+   )[id]||automaticPorts(source,target)
+   setFlowAnchors(previous=>({...previous,[id]:anchors||assigned}))
    setPreferredSourceHandle('')
    const sourceName=allVMs.find(vm=>vm.id===source)?.name||'Источник'
    const targetName=allVMs.find(vm=>vm.id===target)?.name||'Получатель'

@@ -35,6 +35,11 @@ jobs:
           E2E_BASE_URL: ${{ vars.E2E_BASE_URL || secrets.E2E_BASE_URL || 'https://test.web-tie.ru' }}
           E2E_AUTH_TOKEN: ${{ secrets.E2E_AUTH_TOKEN }}
         run: npx playwright test --config=playwright.live.config.ts
+      - name: Setup Python for failure diagnostics
+        if: failure() && steps.live_test.outcome == 'failure'
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
       - name: AI triage of failed Live QA Playwright tests
         if: failure() && steps.live_test.outcome == 'failure'
         env:

@@ -59,3 +59,10 @@
 .decisionFilterTabs { display: flex; gap: 3px; flex-wrap: wrap }
 .decisionFilterTabs button { border: 0; font-size: 12px; color: #515360 }
 .decisionFilterTabs button[aria-pressed=true] { background: #eeedfc; color: #483bb3 }
+.decisionFlowFields { display: grid; grid-template-columns: 1fr 1fr; gap: 10px }
+.decisionFlowFields label { min-width: 0 }
+.decisionFlowSummary { flex-basis: 100%; overflow-wrap: anywhere }
+.react-flow .diagramPort { width: 7px; height: 7px; background: #8990a3; border: 1px solid white }
+.react-flow .diagramPort.connectable { width: 10px; height: 10px; background: #6558bc }
+.decisionTools { z-index: 5 }
+.decisionFlowDetails { display: grid; gap: 8px }

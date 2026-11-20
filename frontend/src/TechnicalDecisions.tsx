@@ -1,15 +1,21 @@
 import {useEffect, useState} from 'react'
 import {ArrowLeft, FileText, Plus, X} from 'lucide-react'
-import {Background, Controls, MarkerType, ReactFlow} from '@xyflow/react'
+import {Background, ConnectionMode, Controls, MarkerType, ReactFlow, type Connection} from '@xyflow/react'
 import {DiagramNodeLabel, diagramCardStyle} from './DiagramVisual'
+import {diagramPortNodes} from './DiagramPortNode'
+import {autoFlowPorts} from './flowPorts'
+import {flowPortError} from './fieldValidation'
+import {ObstacleAwareEdge} from './ObstacleAwareEdge'
 import {AutoFit} from './WorkspaceUI'
 import type {AuthProfile} from './UserManagement'
 import './technicalDecisions.css'
 
 type Api = <T>(url: string, init?: RequestInit) => Promise<T>
 type Item = {id: string; name: string; system_id: string; kind: string}
-type Link = {id: string; name: string; source_id: string; target_id: string; protocol: string; port: string}
+type Link = {id: string; name: string; source_id: string; target_id: string; protocol: string; port: string; source_handle?:string; target_handle?:string}
 type ProposedVM = Item & {x: number; y: number}
+const decisionEdgeTypes={proposal:ObstacleAwareEdge}
+const emptyFlow:Link={id:'',source_id:'',target_id:'',source_handle:'',target_handle:'',name:'',protocol:'',port:''}
 const states = {draft:'Черновик', in_review:'На согласовании', changes_requested:'На доработке', approved:'Согласовано', published:'Опубликовано'}
 const services = {architect:'Архитектура', engineer:'Инфраструктура', security:'Информационная безопасность', business_owner:'Владелец процесса'}
 type Service = keyof typeof services
@@ -85,8 +91,9 @@ function DecisionInspector({id,request,profile,items,flows,schema,openSchema,clo
   const [attempt,retry]=useState(0)
   const [tool,setTool]=useState<'vm'|'flow'|null>(null)
   const [name,setName]=useState('')
-  const [source,setSource]=useState('')
-  const [target,setTarget]=useState('')
+  const [draft,setDraft]=useState<Link>(emptyFlow)
+  const [viewFlowId,setViewFlowId]=useState('')
+  const [drawing,setDrawing]=useState(false)
   const [comment,setComment]=useState('')
   useEffect(()=>{
     let current=true
@@ -98,7 +105,7 @@ function DecisionInspector({id,request,profile,items,flows,schema,openSchema,clo
     setBusy(true);setError('')
     try {
       const next=await request<Details>(path+'/'+id+suffix,{method,body:JSON.stringify(body)})
-      setRow(next);update(next);setTool(null);setName('');setComment('')
+      setRow(next);update(next);setViewFlowId('');setTool(null);setName('');setComment('')
     }catch(err){setError((err as Error).message)}finally{setBusy(false)}
   }
   if(!row)return <aside className="decisionSide"><header><h3>Решение</h3><button aria-label="Закрыть решение" onClick={close}><X size={16}/></button></header>{error?<p role="alert">{error} <button onClick={()=>retry(v=>v+1)}>Повторить</button></p>:<p role="status">Загрузка…</p>}</aside>
@@ -115,21 +122,58 @@ function DecisionInspector({id,request,profile,items,flows,schema,openSchema,clo
   const baseline=items.filter(i=>localIds.has(i.id)||linkedIds.has(i.id))
   const choices=[...items,...row.proposed_vms]
   const position=(n:number)=>({x:n%3*305,y:Math.floor(n/3)*140})
-  const nodes=[...baseline.map((i,n)=>({id:i.id,position:position(n),data:{label:<DiagramNodeLabel name={i.name} kind={i.kind}/>},style:diagramCardStyle()})),
-    ...row.proposed_vms.map(vm=>({id:vm.id,position:{x:vm.x,y:vm.y},data:{label:<DiagramNodeLabel name={vm.name} kind={vm.kind} subtitle="Новая ВМ"/>},style:diagramCardStyle({border:'1px dashed #a46c26'})}))]
-  const edges=lines.map((f,i)=>({id:f.id,source:f.source_id,target:f.target_id,label:f.name,markerEnd:{type:MarkerType.ArrowClosed},style:{stroke:i<baseFlows.length?'#777b87':'#7351be',strokeDasharray:i<baseFlows.length?undefined:'5 4'}}))
-  function saveProposal() {
-    if(!row||!tool||!name.trim())return
-    const vm={id:crypto.randomUUID(),system_id:row.system_id,kind:'vm',name:name.trim(),...position(nodes.length)}
-    const flow={id:crypto.randomUUID(),source_id:source,target_id:target,name:name.trim(),protocol:'',port:''}
-    void change('',{...revision,title:row.title,description:row.description,required_services:row.required_services,
-      proposed_vms:tool==='vm'?[...row.proposed_vms,vm]:row.proposed_vms,proposed_flows:tool==='flow'?[...row.proposed_flows,flow]:row.proposed_flows},'PUT')
+  const nodes=[...baseline.map((i,n)=>({type:'diagramPort',id:i.id,position:position(n),data:{label:<DiagramNodeLabel name={i.name} kind={i.kind}/>},style:diagramCardStyle()})),
+    ...row.proposed_vms.map(vm=>({type:'diagramPort',id:vm.id,position:{x:vm.x,y:vm.y},data:{label:<DiagramNodeLabel name={vm.name} kind={vm.kind} subtitle="Новая ВМ"/>},style:diagramCardStyle({border:'1px dashed #a46c26'})}))]
+  const positions=new Map(nodes.map(n=>[n.id,n.position]))
+  const proposedIds=new Set(row.proposed_flows.map(f=>f.id))
+  function openFlow(flow:Link) {
+    setViewFlowId('');setTool('flow');setDraft({...flow});setTab('items');setError('')
   }
-  const start=(next:'vm'|'flow')=>{setTool(next);setName('');setSource('');setTarget('');setTab('items')}
+  const viewedFlow=lines.find(f=>f.id===viewFlowId)
+  function inspectFlow(f:Link){
+    if(busy)return
+    if(editable&&proposedIds.has(f.id)){openFlow(f);return}
+    setTool(null);setViewFlowId(f.id);setTab('items')
+  }
+  const edges=lines.flatMap(f=>{
+    const a=positions.get(f.source_id),b=positions.get(f.target_id)
+    if(!a||!b)return []
+    const ports=autoFlowPorts(a,b)
+    const proposed=proposedIds.has(f.id)
+    return [{id:f.id,source:f.source_id,target:f.target_id,type:'proposal',
+      sourceHandle:f.source_handle||ports.source_handle,targetHandle:(f.target_handle||ports.target_handle).replace('in-','out-'),
+      markerEnd:{type:MarkerType.ArrowClosed,color:proposed?'#6652ae':'#737786'},
+      ariaLabel:f.name,data:{caption:proposed||viewFlowId===f.id?f.name:'',onSelect:()=>inspectFlow(f)},
+      style:{stroke:proposed?'#6652ae':'#737786',strokeDasharray:proposed?'6 4':undefined}}]
+  })
+  const flowError=flowPortError(draft.port)
+  const sameEnds=!!draft.source_id&&draft.source_id===draft.target_id
+  const outside=!!draft.source_id&&!!draft.target_id&&!choices.some(i=>i.system_id===row.system_id&&(i.id===draft.source_id||i.id===draft.target_id))
+  function connect(c:Connection){
+    if(!editable||busy||c.source===c.target)return
+    openFlow({...emptyFlow,source_id:c.source,target_id:c.target,source_handle:c.sourceHandle||'',target_handle:(c.targetHandle||'').replace('out-','in-')})
+  }
+  function persist(vms:ProposedVM[],links:Link[]) {
+    if(!row||!editable||busy)return
+    void change('',{...revision,title:row.title,description:row.description,required_services:row.required_services,proposed_vms:vms,proposed_flows:links},'PUT')
+  }
+  function saveProposal() {
+    if(!row)return
+    if(tool==='vm'&&name.trim()){
+      const vm={id:crypto.randomUUID(),system_id:row.system_id,kind:'vm',name:name.trim(),...position(nodes.length)}
+      persist([...row.proposed_vms,vm],row.proposed_flows)
+    }else if(tool==='flow'&&draft.name.trim()&&draft.source_id&&draft.target_id&&!sameEnds&&!outside&&!flowError){
+      const flow={...draft,id:draft.id||crypto.randomUUID(),name:draft.name.trim(),protocol:draft.protocol.trim(),port:draft.port.trim()}
+      persist(row.proposed_vms,draft.id?row.proposed_flows.map(f=>f.id===draft.id?flow:f):[...row.proposed_flows,flow])
+    }
+  }
   return <>
     {schema&&<div className="decisionDrawing"><header><button aria-label="Вернуться к списку" disabled={busy} onClick={close}><ArrowLeft size={16}/></button><h2>{row.title}</h2><Status value={row.status}/></header>
-      <div className="decisionCanvas">{nodes.length?<ReactFlow nodes={nodes} edges={edges} nodesDraggable={false} nodesConnectable={false} fitView><AutoFit layoutKey={id+':'+row.revision}/><Background gap={20}/><Controls showInteractive={false}/></ReactFlow>:<p>В этой системе пока нет компонентов.</p>}
-        {editable&&<div role="toolbar" aria-label="Инструменты решения" className="decisionTools"><button disabled={busy} onClick={()=>start('vm')}>＋ ВМ</button><button disabled={busy} onClick={()=>start('flow')}>＋ Поток</button></div>}
+      <div className="decisionCanvas">{nodes.length?<ReactFlow nodes={nodes} edges={edges} nodeTypes={diagramPortNodes} edgeTypes={decisionEdgeTypes} connectionMode={ConnectionMode.Loose} nodesDraggable={false} nodesConnectable={editable&&!busy} deleteKeyCode={null}
+        onConnectStart={()=>setDrawing(true)} onConnectEnd={()=>setDrawing(false)} onConnect={connect}
+        onEdgeClick={(_,edge)=>{const f=lines.find(f=>f.id===edge.id);if(f)inspectFlow(f)}}
+        isValidConnection={c=>c.source!==c.target} fitView><AutoFit layoutKey={id} suspended={drawing}/><Background gap={20}/><Controls showInteractive={false}/></ReactFlow>:<p>В этой системе пока нет компонентов.</p>}
+        {editable&&<div role="toolbar" aria-label="Инструменты решения" className="decisionTools"><button disabled={busy} onClick={()=>{setViewFlowId('');setTool('vm');setTab('items');setName('')}}>＋ ВМ</button><button disabled={busy} onClick={()=>openFlow(emptyFlow)}>＋ Поток</button></div>}
       </div>
     </div>}
     <aside className="decisionSide" aria-label="Карточка технического решения">
@@ -139,16 +183,34 @@ function DecisionInspector({id,request,profile,items,flows,schema,openSchema,clo
       {row.base_changed&&<p role="status">Исходная архитектура изменилась после отправки на согласование.</p>}
       {tab==='items'?<>
         {row.description&&<p>{row.description}</p>}
-        {row.proposed_vms.map(vm=><div className="decisionItem" key={vm.id}><span>{vm.name}</span><small>Новая ВМ</small></div>)}
-        {row.proposed_flows.map(f=><div className="decisionItem" key={f.id}><span>{f.name}</span><small>Новый поток</small></div>)}
-        {!row.proposed_vms.length&&!row.proposed_flows.length&&<p>В черновике пока нет изменений.</p>}
-        {schema&&tool&&editable&&<form onSubmit={e=>{e.preventDefault();saveProposal()}}>
-          <label>{tool==='vm'?'Название ВМ':'Название потока'}<input autoFocus required maxLength={250} value={name} onChange={e=>setName(e.target.value)}/></label>
-          {tool==='flow'&&<>{(['Источник','Получатель'] as const).map((label,i)=><label key={label}>{label}<select aria-label={label} required value={i?target:source} onChange={e=>i?setTarget(e.target.value):setSource(e.target.value)}><option value="">Выберите компонент</option>{choices.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></label>)}</>}
-          <button className="primary" disabled={busy||!name.trim()||(tool==='flow'&&(!source||!target||source===target))}>Добавить в черновик</button>
-        </form>}
+        {schema&&viewedFlow?<section className="decisionFlowDetails">
+          <strong>{viewedFlow.name}</strong>
+          <small>{proposedIds.has(viewedFlow.id)?'Проектируемый поток':'Поток из реестра'}</small>
+          <p>{choices.find(c=>c.id===viewedFlow.source_id)?.name} → {choices.find(c=>c.id===viewedFlow.target_id)?.name}</p>
+          <small>{[viewedFlow.protocol,viewedFlow.port].filter(Boolean).join(' ')||'Протокол и порт не указаны'}</small>
+          <button onClick={()=>setViewFlowId('')}>К составу решения</button>
+        </section>:schema&&tool&&editable?<form key={tool} onSubmit={e=>{e.preventDefault();saveProposal()}}>
+          <label>{tool==='vm'?'Название ВМ':'Название потока'}<input autoFocus required maxLength={250} value={tool==='vm'?name:draft.name} onChange={e=>tool==='vm'?setName(e.target.value):setDraft({...draft,name:e.target.value})}/></label>
+          {tool==='flow'&&<>
+            {!draft.source_id&&!draft.target_id&&<small>Выберите компоненты в списках или протяните стрелку между точками на схеме.</small>}
+            {(['source','target'] as const).map(end=><label key={end}>{end==='source'?'Источник':'Получатель'}<select required value={draft[`${end}_id`]} onChange={e=>setDraft({...draft,[end+'_id']:e.target.value,[end+'_handle']:''})}><option value="">Выберите компонент</option>{choices.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></label>)}
+            <button type="button" disabled={!draft.source_id||!draft.target_id} onClick={()=>setDraft({...draft,source_id:draft.target_id,target_id:draft.source_id,source_handle:draft.target_handle?.replace('in-','out-'),target_handle:draft.source_handle?.replace('out-','in-')})}>Поменять направление</button>
+            <div className="decisionFlowFields"><label>Протокол<input maxLength={80} value={draft.protocol} onChange={e=>setDraft({...draft,protocol:e.target.value})}/></label><label>Порт<input maxLength={80} inputMode="numeric" value={draft.port} onChange={e=>setDraft({...draft,port:e.target.value})}/></label></div>
+            {(sameEnds||outside||flowError)&&<small role="alert">{sameEnds?'Выберите два разных компонента.':outside?'Один из компонентов должен принадлежать системе решения.':flowError}</small>}
+          </>}
+          <div className="decisionActions"><button className="primary" disabled={busy||(tool==='vm'?!name.trim():!draft.name.trim()||!draft.source_id||!draft.target_id||sameEnds||outside||!!flowError)}>{tool==='flow'&&draft.id?'Сохранить поток':'Добавить в черновик'}</button>
+          <button type="button" disabled={busy} onClick={()=>setTool(null)}>Отмена</button>
+          {tool==='flow'&&draft.id&&<button type="button" disabled={busy} onClick={()=>{if(window.confirm('Удалить поток из этого черновика?'))persist(row.proposed_vms,row.proposed_flows.filter(f=>f.id!==draft.id))}}>Удалить поток</button>}</div>
+        </form>:<>
+          {row.proposed_vms.map(vm=><div className="decisionItem" key={vm.id}><span>{vm.name}</span><small>Новая ВМ</small></div>)}
+          {row.proposed_flows.map(f=><div className="decisionItem" key={f.id}>
+            <button onClick={()=>{openSchema();inspectFlow(f)}}>{f.name}</button><small>Новый поток</small>
+            <small className="decisionFlowSummary">{choices.find(i=>i.id===f.source_id)?.name||'Компонент'} → {choices.find(i=>i.id===f.target_id)?.name||'Компонент'}{[f.protocol,f.port].some(Boolean)&&' · '+[f.protocol,f.port].filter(Boolean).join(' ')}</small>
+          </div>)}
+          {!row.proposed_vms.length&&!row.proposed_flows.length&&<p>В черновике пока нет изменений.</p>}
+        </>}
         {!schema&&<button onClick={openSchema}>Открыть схему</button>}
-        {editable&&(row.proposed_vms.length+row.proposed_flows.length>0)&&<button className="primary" disabled={busy} onClick={()=>void change('/submit',revision)}>На согласование</button>}
+        {editable&&!tool&&(row.proposed_vms.length+row.proposed_flows.length>0)&&<button className="primary" disabled={busy} onClick={()=>void change('/submit',revision)}>На согласование</button>}
       </>:<>
         {row.required_services.map(service=>{
           const approval=row.approvals.find(a=>a.service===service)
@@ -157,7 +219,8 @@ function DecisionInspector({id,request,profile,items,flows,schema,openSchema,clo
         {reviewer&&<><label>Комментарий<textarea value={comment} maxLength={2000} onChange={e=>setComment(e.target.value)}/></label><div className="decisionActions"><button disabled={busy||comment.trim().length<3} onClick={()=>void change('/review',{...revision,verdict:'changes_requested',note:comment})}>На доработку</button><button className="primary" disabled={busy} onClick={()=>void change('/review',{...revision,verdict:'approved',note:comment})}>Согласовать</button></div></>}
         {editor&&profile?.auth_kind==='named_user'&&row.status==='approved'&&<button className="primary" disabled={busy||row.base_changed} onClick={()=>void change('/publish',revision)}>Опубликовать</button>}
       </>}
-      {error&&<div role="alert" className="decisionError">{error} <button onClick={()=>retry(v=>v+1)}>Обновить</button></div>}
+      {row.status==='in_review'&&(editor?<button disabled={busy} onClick={()=>{if(window.confirm('Вернуть решение в черновик? Изменённую версию потребуется согласовать заново.'))void change('/withdraw',revision)}}>Отозвать в черновик</button>:<small>Редактирование доступно после возврата в черновик.</small>)}
+      {error&&<div role="alert" className="decisionError">{error} <button onClick={()=>{setTool(null);setViewFlowId('');retry(v=>v+1)}}>Обновить</button></div>}
     </aside>
   </>
 }

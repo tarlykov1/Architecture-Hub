@@ -2,7 +2,7 @@ import React, {useEffect, useMemo, useRef, useState} from 'react'
 import {AutoFit,Disclosure} from './WorkspaceUI'
 import {flowPortError,ipAddressError} from './fieldValidation'
 import {DiagramNodeLabel,diagramCardStyle} from './DiagramVisual'
-import {ReactFlow,Background,Controls,MarkerType,Position,useReactFlow,type Node,type Edge} from '@xyflow/react'
+import {ReactFlow,ConnectionMode,Background,Controls,MarkerType,Position,useReactFlow,type Node,type Edge} from '@xyflow/react'
 
 type Item={id:string;system_id:string;kind:string;name:string;description?:string;parent_id?:string|null;details:Record<string,unknown>}
 type System={id:string;name:string}
@@ -10,6 +10,11 @@ type Segment={id:string;kind:string;name:string;description?:string;verification
 type Nic={id:string;item_id:string;name:string;ip_address:string;vrf_id:string|null;vlan_id:string|null;zone_id:string|null}
 type Flow={id:string;source_id:string;target_id:string;name:string;protocol:string;port:string;security:string;data_description:string;verification:string;schedule:string}
 type Props={systems:System[];items:Item[];segments:Segment[];interfaces:Nic[];flows:Flow[];saveInterface:(value:Omit<Nic,"id">,id?:string)=>Promise<void>;saveFlow:(value:Omit<Flow,"id">,id?:string)=>Promise<void>;saveSegment:(value:Omit<Segment,"id">,id?:string)=>Promise<void>;onEditComponent?:(id:string)=>void;canEditNetworks?:boolean;canEditFlows?:boolean}
+import {diagramPortNodes} from './DiagramPortNode'
+import {topologyEdgeTypes} from './TopologyDependencyEdge'
+import {flowCountLabel} from './graphLayout'
+import './topologyDependencies.css'
+
 const unknown='Не определено'
 const colors={verified:'#15805c',unverified:'#bc8323'}
 /** Fit declared parent group rectangles instead of relying on nested node measurements.
@@ -95,10 +100,12 @@ export default function Topology({systems,items,segments,interfaces,flows,saveIn
 
  const [inspectorTab,setInspectorTab]=useState<'overview'|'network'|'connections'>('overview')
   const [system,setSystem]=useState(''),[vrf,setVrf]=useState(''),[vlan,setVlan]=useState(''),[environment,setEnvironment]=useState(''),[search,setSearch]=useState(''),[mode,setMode]=useState<'all'|'internal'|'external'>('all'),[selected,setSelected]=useState(''),[flowId,setFlowId]=useState('')
+ const [bundle,setBundle]=useState<{source:string;target:string}|null>(null)
  const [inspectorTrail,setInspectorTrail]=useState<Array<{item:string;flow:string}>>([])
  const inspectorRef=useRef({item:'',flow:''})
  inspectorRef.current={item:selected,flow:flowId}
  function openInspector(itemId:string,flowIdNext=''){
+   setBundle(null)
    const current=inspectorRef.current
    if(current.item===itemId&&current.flow===flowIdNext)return
    if(current.item||current.flow)setInspectorTrail(trail=>[...trail,current])
@@ -110,6 +117,7 @@ export default function Topology({systems,items,segments,interfaces,flows,saveIn
    window.history.pushState({topologyInspector:true},'',url)
  }
  function closeInspector(){
+   setBundle(null)
    if(inspectorTrail.length){window.history.back();return}
    setSelected('');setFlowId('');setFocusMode('overview')
    const url=new URL(window.location.href)
@@ -117,7 +125,7 @@ export default function Topology({systems,items,segments,interfaces,flows,saveIn
    window.history.replaceState(null,'',url)
  }
  useEffect(()=>{
-   const restore=()=>{const url=new URL(window.location.href);const item=url.searchParams.get('component')||'';const flow=url.searchParams.get('flow')||'';setSelected(item);setFlowId(flow);setInspectorTab('overview');setFocusMode(item||flow?'dependencies':'overview');setInspectorTrail(trail=>trail.slice(0,-1))}
+   const restore=()=>{setBundle(null);const url=new URL(window.location.href);const item=url.searchParams.get('component')||'';const flow=url.searchParams.get('flow')||'';setSelected(item);setFlowId(flow);setInspectorTab('overview');setFocusMode(item||flow?'dependencies':'overview');setInspectorTrail(trail=>trail.slice(0,-1))}
    restore()
    window.addEventListener('popstate',restore)
    return()=>window.removeEventListener('popstate',restore)
@@ -212,26 +220,49 @@ export default function Topology({systems,items,segments,interfaces,flows,saveIn
  const focusFlows=activeFlow?[activeFlow]:selected?directedFlows.filter(f=>f.source_id===selected||f.target_id===selected):[]
  const focusGraph=focusMode==='dependencies'&&Boolean(selected||activeFlow)
  const focusIds=Array.from(new Set([...(selected?[selected]:[]),...focusFlows.flatMap(f=>[f.source_id,f.target_id])]))
- const incomingIds=focusIds.filter(id=>id!==selected&&focusFlows.some(f=>f.target_id===selected&&f.source_id===id))
- const outgoingIds=focusIds.filter(id=>id!==selected&&focusFlows.some(f=>f.source_id===selected&&f.target_id===id))
  const focusPositions=new Map<string,{x:number;y:number}>()
- if(activeFlow){focusPositions.set(activeFlow.source_id,{x:40,y:90});focusPositions.set(activeFlow.target_id,{x:490,y:90})}
- else if(selected){
-  focusPositions.set(selected,{x:300,y:Math.max(80,Math.ceil(Math.max(incomingIds.length,outgoingIds.length,1)/2)*130)})
-  incomingIds.forEach((id,i)=>focusPositions.set(id,{x:10,y:40+i*170}))
-  outgoingIds.forEach((id,i)=>focusPositions.set(id,{x:610,y:40+i*170}))
+ if(activeFlow){
+   focusPositions.set(activeFlow.source_id,{x:0,y:0})
+   focusPositions.set(activeFlow.target_id,{x:455,y:0})
+ }else if(selected){
+   const incoming=new Set(focusFlows.filter(f=>f.target_id===selected).map(f=>f.source_id))
+   const outgoing=new Set(focusFlows.filter(f=>f.source_id===selected).map(f=>f.target_id))
+   const peers=focusIds.filter(id=>id!==selected).sort((a,b)=>(itemById.get(a)?.name||a).localeCompare(itemById.get(b)?.name||b))
+   const left=peers.filter(id=>!outgoing.has(id)),right=peers.filter(id=>!incoming.has(id))
+   for(const id of peers.filter(id=>incoming.has(id)&&outgoing.has(id))){
+     (left.length<=right.length?left:right).push(id)
+   }
+   focusPositions.set(selected,{x:455,y:0})
+   for(const [column,x] of [[left,0],[right,910]] as const){
+     column.forEach((id,i)=>focusPositions.set(id,{x,y:(i-(column.length-1)/2)*110}))
+   }
  }
-  const focusNodes:Node[]=focusIds.filter(id=>itemById.has(id)).map(id=>{
-    const value=itemById.get(id)!
-    const ips=(nicsByItem.get(id)||[]).map(n=>n.ip_address).filter(Boolean)
-    return {id,position:focusPositions.get(id)||{x:300,y:100},sourcePosition:Position.Right,targetPosition:Position.Left,
-      data:{label:<DiagramNodeLabel name={value.name} kind={value.kind} subtitle={systemById.get(value.system_id)?.name||'Система не указана'} detail={value.kind+' · '+String(value.details.environment||'Контур не указан')}>
-        <small className="topologyVmPurpose">{value.description?.trim()||String(value.details.purpose||value.details.role||'Назначение не описано')}</small>
-        <small>{ips.length?ips.join(', '):'IP не указан'}</small>
-      </DiagramNodeLabel>},
-      style:diagramCardStyle({background:id===selected?'#eff6ff':'#fff',border:id===selected?'2px solid #2563eb':'1px solid #94a3b8'})}
-  })
- const focusEdges:Edge[]=focusFlows.map(f=>({id:f.id,source:f.source_id,target:f.target_id,type:'smoothstep',label:f.name,markerEnd:{type:MarkerType.ArrowClosed,color:f.verification==='verified'?colors.verified:colors.unverified},style:{stroke:f.verification==='verified'?colors.verified:colors.unverified,strokeWidth:activeFlow?.id===f.id?2:1.3},labelStyle:{fontSize:12,fontWeight:600},labelBgStyle:{fill:'#fff',fillOpacity:0.96},labelBgPadding:[6,4]}))
+ const focusNodes:Node[]=focusIds.filter(id=>itemById.has(id)).map(id=>{
+   const value=itemById.get(id)!
+   return {id,type:'diagramPort',position:focusPositions.get(id)!,className:'topologyFocusNode',
+     data:{label:<DiagramNodeLabel name={value.name} kind={value.kind} subtitle={systemById.get(value.system_id)?.name}/>},
+     style:diagramCardStyle({height:80,...(id===selected?{border:'2px solid var(--hub-accent, #6251bd)'}:{})})}
+ })
+ const byDirection=new Map<string,Flow[]>()
+ for(const f of focusFlows){
+   const key=f.source_id+'>'+f.target_id
+   const group=byDirection.get(key)
+   if(group)group.push(f);else byDirection.set(key,[f])
+ }
+ function openDependencies(group:Flow[]){
+   const first=group[0]
+   if(group.length===1){openInspector('',first.id);setShowConnections(false);return}
+   setBundle({source:first.source_id,target:first.target_id});setInspectorTab('connections')
+ }
+ const focusEdges:Edge[]=Array.from(byDirection.values()).map(group=>{
+   const f=group[0],right=focusPositions.get(f.source_id)!.x<focusPositions.get(f.target_id)!.x
+   const stroke=group.every(v=>v.verification==='verified')?colors.verified:colors.unverified
+   return {id:f.id,source:f.source_id,target:f.target_id,type:'dependency',
+     sourceHandle:right?'out-right-1':'out-left-2',targetHandle:right?'out-left-1':'out-right-2',
+     markerEnd:{type:MarkerType.ArrowClosed,color:stroke},style:{stroke,strokeWidth:1.7},
+     data:{count:group.length,peerAtSource:f.source_id!==selected,open:()=>openDependencies(group),
+       description:(itemById.get(f.source_id)?.name||'')+' → '+(itemById.get(f.target_id)?.name||'')+' · '+(group.length===1?f.name:flowCountLabel(group.length))}}
+ })
  const item=itemById.get(selected),flow=flows.find(f=>f.id===flowId)
  return <section className="topologyWorkspace">
   <div style={{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center'}}>{(canEditNetworks||canEditFlows)&&<button type="button" className={editing?'primary':''} onClick={()=>{setEditing(!editing);setFlowDraft(null);setSegmentDraft(null);setNicDraft(null)}}>{editing?'Завершить редактирование':'Редактировать топологию'}</button>}{editing&&<>{canEditFlows&&<button type="button" onClick={()=>editFlowDraft()}>+ Создать поток</button>}{canEditNetworks&&<button type="button" onClick={()=>editSegment()}>+ Создать сеть</button>}</>}
@@ -251,16 +282,16 @@ export default function Topology({systems,items,segments,interfaces,flows,saveIn
     <label className="topologyConnectionToggle"><input type="checkbox" checked={showAllComponents} onChange={e=>setShowAllComponents(e.target.checked)}/> Показать компоненты без потоков</label>
     <small>Без известных потоков: {matching.filter(i=>!visibleFlows.some(f=>f.source_id===i.id||f.target_id===i.id)).length}. Отсутствие потока в реестре не доказывает отсутствие зависимости.</small>
   </div>
-  </Disclosure>{focusGraph&&<small role='status'>Слева – источники входящих потоков, справа – получатели исходящих. Нажмите на стрелку для просмотра параметров.</small>}
+  </Disclosure>
   <div className="topologyCanvas">
-   {(focusGraph?focusNodes.length:displayed.length)?<ReactFlow minZoom={0.08} key={focusGraph?'focus:'+selected+':'+flowId+':'+flowDirection:'overview:'+system+':'+vrf+':'+vlan+':'+environment+':'+displayed.length} nodes={focusGraph?focusNodes:nodes} edges={focusGraph?focusEdges:edges} nodesDraggable={false} nodesConnectable={editing&&canEditFlows} onConnect={connection=>{if(!editing||!canEditFlows)return;const source=focusGraph?connection.source:connection.source?.split(':')[1],target=focusGraph?connection.target:connection.target?.split(':')[1];if(source&&target&&source!==target){editFlowDraft(undefined,source,target)}}} onNodeClick={(_,n)=>{if(focusGraph&&itemById.has(n.id)){openInspector(n.id)}else if(n.id.startsWith('host:')){const id=String((n.data as {item_id?:string}).item_id||'');const found=id||displayed.find(i=>n.id.startsWith('host:'+i.id+':'))?.id||'';if(found)openInspector(found)}}} onEdgeClick={(_,e)=>{openInspector('',e.id);setShowConnections(false)}}>{focusGraph?<AutoFit layoutKey={focusIds.join('|')+':'+flowDirection} maxFitZoom={0.9}/>:<TopologyGroupFit groups={nodes.filter(n=>!n.parentId)}/>}<Background/><Controls showInteractive={false}/></ReactFlow>:<p style={{padding:20}}>Нет компонентов для выбранных фильтров. Проверьте систему, контур и сетевые привязки.</p>}
+   {(focusGraph?focusNodes.length:displayed.length)?<ReactFlow nodeTypes={diagramPortNodes} edgeTypes={topologyEdgeTypes} connectionMode={focusGraph?ConnectionMode.Loose:ConnectionMode.Strict} minZoom={0.08} key={focusGraph?'focus:'+selected+':'+flowId+':'+flowDirection:'overview:'+system+':'+vrf+':'+vlan+':'+environment+':'+displayed.length} nodes={focusGraph?focusNodes:nodes} edges={focusGraph?focusEdges:edges} nodesDraggable={false} nodesConnectable={editing&&canEditFlows} onConnect={connection=>{if(!editing||!canEditFlows)return;const source=focusGraph?connection.source:connection.source?.split(':')[1],target=focusGraph?connection.target:connection.target?.split(':')[1];if(source&&target&&source!==target){editFlowDraft(undefined,source,target)}}} onNodeClick={(_,n)=>{if(focusGraph&&itemById.has(n.id)){openInspector(n.id)}else if(n.id.startsWith('host:')){const id=String((n.data as {item_id?:string}).item_id||'');const found=id||displayed.find(i=>n.id.startsWith('host:'+i.id+':'))?.id||'';if(found)openInspector(found)}}} onEdgeClick={(_,e)=>{const group=focusGraph&&byDirection.get(e.source+'>'+e.target);if(group)openDependencies(group);else {openInspector('',e.id);setShowConnections(false)}}}>{focusGraph?<AutoFit layoutKey={focusIds.join('|')+':'+flowDirection} maxFitZoom={0.9}/>:<TopologyGroupFit groups={nodes.filter(n=>!n.parentId)}/>}<Background/><Controls showInteractive={false}/></ReactFlow>:<p style={{padding:20}}>Нет компонентов для выбранных фильтров. Проверьте систему, контур и сетевые привязки.</p>}
   </div>
   {(item||flow)&&<div className="topologyInspectorShell"><aside className="topologyInspector architectureDrawer" role="complementary" aria-label="Выбранный объект топологии">
    <button style={{float:'right'}} onClick={closeInspector} aria-label="Закрыть">×</button>{inspectorTrail.length>0&&<button type="button" onClick={closeInspector} aria-label="Назад к предыдущему объекту">← Назад</button>}
-   {item&&<><div className="topologyInspectorTitle"><h3>{item.name}</h3><small>{systemById.get(item.system_id)?.name||unknown}</small>{onEditComponent&&<button type="button" onClick={()=>onEditComponent(item.id)}>Редактировать паспорт</button>}</div><nav className="topologyInspectorTabs" aria-label="Разделы компонента">{([['overview','Обзор'],['network','Сеть'],['connections','Связи']] as const).map(([tab,label])=><button type="button" key={tab} className={inspectorTab===tab?'active':''} aria-current={inspectorTab===tab?'page':undefined} onClick={()=>setInspectorTab(tab)}>{label}</button>)}</nav>
+   {item&&<><div className="topologyInspectorTitle"><h3>{item.name}</h3><small>{systemById.get(item.system_id)?.name||unknown}</small>{onEditComponent&&<button type="button" onClick={()=>onEditComponent(item.id)}>Редактировать паспорт</button>}</div><nav className="topologyInspectorTabs" aria-label="Разделы компонента">{([['overview','Обзор'],['network','Сеть'],['connections','Связи']] as const).map(([tab,label])=><button type="button" key={tab} className={inspectorTab===tab?'active':''} aria-current={inspectorTab===tab?'page':undefined} onClick={()=>{setBundle(null);setInspectorTab(tab)}}>{label}</button>)}</nav>
 {inspectorTab==='overview'&&<dl className="topologyInspectorFacts"><dt>Назначение</dt><dd>{item.description?.trim()||String(item.details.purpose||item.details.role||'Не описано')}</dd><dt>Контур</dt><dd>{String(item.details.environment||unknown)}</dd><dt>Родительский компонент</dt><dd>{items.find(x=>x.id===item.parent_id)?.name||'Не указан'}</dd><dt>Тип</dt><dd>{item.kind}</dd></dl>}
 {inspectorTab==='network'&&<section><div className="topologyInspectorSectionHeader"><h4>Сетевые интерфейсы</h4>{editing&&canEditNetworks&&<button type="button" onClick={()=>editNic(item)}>+ Интерфейс</button>}</div>{(nicsByItem.get(item.id)||[]).map(n=><article className="topologyInspectorEntry" key={n.id}><div className="topologyInspectorSectionHeader"><strong>{n.name}</strong>{editing&&canEditNetworks&&<button type="button" onClick={()=>editNic(item,n)}>Изменить</button>}</div><dl className="topologyInspectorFacts"><dt>IP</dt><dd>{n.ip_address||unknown}</dd><dt>VRF</dt><dd>{name(n.vrf_id)}</dd><dt>VLAN</dt><dd>{name(n.vlan_id)}</dd><dt>Зона</dt><dd>{name(n.zone_id)}</dd></dl></article>)}{!(nicsByItem.get(item.id)||[]).length&&<p className="hint">Интерфейсы не описаны.</p>}</section>}
-{inspectorTab==='connections'&&<section><div className="topologyImpactStats"><span>Исходящие: <b>{flows.filter(f=>f.source_id===item.id).length}</b></span><span>Входящие: <b>{flows.filter(f=>f.target_id===item.id).length}</b></span></div><div className="topologyInspectorSectionHeader"><h4>Потоки и компоненты</h4>{editing&&canEditFlows&&<button type="button" onClick={()=>editFlowDraft(undefined,item.id,'')}>+ Поток</button>}</div>{flows.filter(f=>f.source_id===item.id||f.target_id===item.id).map(f=>{const outgoing=f.source_id===item.id;const peer=itemById.get(outgoing?f.target_id:f.source_id);return <article className="topologyInspectorEntry" key={f.id}><button type="button" className="topologyDependency" onClick={()=>openInspector(peer?.id||'')}><strong>{outgoing?'→':'←'} {peer?.name||'Неизвестный компонент'}</strong><small>{systemById.get(peer?.system_id||'')?.name||'Система не указана'}</small></button><button type="button" className="topologyInspectorFlowLink" onClick={()=>openInspector('',f.id)}>{f.name||f.protocol||'Поток'} · {f.protocol||'Протокол не задан'} {f.port||''}</button></article>})}{!flows.some(f=>f.source_id===item.id||f.target_id===item.id)&&<p className="hint">Связи не описаны.</p>}</section>}</>}
+{inspectorTab==='connections'&&<section><div className="topologyImpactStats"><span>Исходящие: <b>{flows.filter(f=>f.source_id===item.id).length}</b></span><span>Входящие: <b>{flows.filter(f=>f.target_id===item.id).length}</b></span></div><div className="topologyInspectorSectionHeader"><h4>Потоки и компоненты</h4>{editing&&canEditFlows&&<button type="button" onClick={()=>editFlowDraft(undefined,item.id,'')}>+ Поток</button>}</div>{bundle&&<div className="topologyBundleFilter"><strong>{itemById.get(bundle.source)?.name} → {itemById.get(bundle.target)?.name}</strong><button onClick={()=>setBundle(null)}>Все связи компонента</button></div>}{flows.filter(f=>bundle?f.source_id===bundle.source&&f.target_id===bundle.target:f.source_id===item.id||f.target_id===item.id).map(f=>{const outgoing=f.source_id===item.id;const peer=itemById.get(outgoing?f.target_id:f.source_id);return <article className="topologyInspectorEntry" key={f.id}><button type="button" className="topologyDependency" onClick={()=>openInspector(peer?.id||'')}><strong>{outgoing?'→':'←'} {peer?.name||'Неизвестный компонент'}</strong><small>{systemById.get(peer?.system_id||'')?.name||'Система не указана'}</small></button><button type="button" className="topologyInspectorFlowLink" onClick={()=>openInspector('',f.id)}>{f.name||f.protocol||'Поток'} · {f.protocol||'Протокол не задан'} {f.port||''}</button></article>})}{!flows.some(f=>f.source_id===item.id||f.target_id===item.id)&&<p className="hint">Связи не описаны.</p>}</section>}</>}
 {flow&&<><h3>{flow.name||'Поток данных'}</h3><p>{itemById.get(flow.source_id)?.name||unknown} → {itemById.get(flow.target_id)?.name||unknown}</p><p>Данные: {flow.data_description||unknown}</p><p>Протокол: {flow.protocol||unknown}; порт: {flow.port||unknown}</p><p>Защита: {flow.security||unknown}</p><p>Проверка: {flow.verification||unknown}</p><p>Расписание: {flow.schedule||unknown}</p>{editing&&canEditFlows&&<button type="button" onClick={()=>editFlowDraft(flow)}>Редактировать поток</button>}</>}
   </aside></div>}
   {segmentDraft&&<div className="topologyNicBackdrop" onClick={()=>{if(window.confirm('Отменить несохранённые изменения сети?'))setSegmentDraft(null)}}><div className="topologyNicDialog architectureDrawer" role="dialog" aria-modal="true" aria-label="Редактор сети" onClick={e=>e.stopPropagation()}><div className="registryHeader"><h3>{segmentEditId?'Изменить сеть':'Создать сеть'}</h3><button type="button" onClick={()=>setSegmentDraft(null)}>Закрыть ×</button></div><form className="detailForm" onSubmit={submitSegment}><label>Тип<select value={segmentDraft.kind} onChange={e=>setSegmentDraft({...segmentDraft,kind:e.target.value})}>{['vrf','vlan','zone'].map(k=><option key={k} value={k}>{k.toUpperCase()}</option>)}</select></label><label>Название<input required value={segmentDraft.name} onChange={e=>setSegmentDraft({...segmentDraft,name:e.target.value})}/></label><label>Описание<input value={segmentDraft.description} onChange={e=>setSegmentDraft({...segmentDraft,description:e.target.value})}/></label><label>Статус<select value={segmentDraft.verification} onChange={e=>setSegmentDraft({...segmentDraft,verification:e.target.value})}><option value="draft">Черновик</option><option value="verified">Подтверждено</option></select></label>{segmentError&&<p role="alert">{segmentError}</p>}<button className="primary" disabled={segmentSaving}>{segmentSaving?'Сохранение…':'Сохранить сеть'}</button></form></div></div>}

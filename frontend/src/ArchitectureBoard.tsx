@@ -126,6 +126,7 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
  const [selectedDraftFlowId,setSelectedDraftFlowId]=useState('')
  const [selectedExistingFlowId,setSelectedExistingFlowId]=useState('')
  const [selectedEdgeFlowIds,setSelectedEdgeFlowIds]=useState<string[]>([])
+ const [flowListQuery,setFlowListQuery]=useState('')
  const [to,setTo]=useState('')
  const [direction,setDirection]=useState<'forward'|'reverse'|'both'>('forward')
  const [protocol,setProtocol]=useState('') // Unknown until an architect confirms the transport.
@@ -368,6 +369,21 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
    flowGroups.set(key,[...(flowGroups.get(key)||[]),flow])
  }
  const selectableFlows=effectiveFlows.filter(flow=>allVMs.some(vm=>vm.id===flow.source_id)&&allVMs.some(vm=>vm.id===flow.target_id))
+ const searchedFlows=selectableFlows.filter(flow=>{
+   if(!flowListQuery.trim())return true
+   const source=allVMs.find(vm=>vm.id===flow.source_id)?.name||''
+   const target=allVMs.find(vm=>vm.id===flow.target_id)?.name||''
+   return [flow.name,source,target,flow.protocol,flow.port,flow.id].join(' ').toLowerCase().includes(flowListQuery.trim().toLowerCase())
+ })
+ const flowPickerLabel=(flow:Flow)=>{
+   const source=allVMs.find(vm=>vm.id===flow.source_id)?.name||'Источник'
+   const target=allVMs.find(vm=>vm.id===flow.target_id)?.name||'Получатель'
+   const endpointTitle=source+' → '+target
+   const title=(flow.name||'').trim()
+   const readable=title===endpointTitle?endpointTitle:title?title+' ('+endpointTitle+')':endpointTitle
+   const transport=[flow.protocol,flow.port].filter(Boolean).join(':')
+   return readable+' · '+(transport||'протокол ?')+' · '+flow.id.slice(0,8)
+ }
  const outOfScopeFlowCount=effectiveFlows.length-selectableFlows.length
  const selectedFlowId=selectedExistingFlowId||selectedDraftFlowId
  // The selected record is authoritative; visual edge grouping is derived
@@ -1278,15 +1294,24 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
           {tool==='vm'&&<div className="boardToolFields"><p>Введите название и нажмите на холст для размещения ВМ.</p><label>Имя ВМ <input value={name} onChange={e=>setName(e.target.value)} placeholder="Новая ВМ"/></label><button onClick={()=>addVM()}>Разместить на схеме</button></div>}
    {tool==='network'&&<div className="boardToolFields"><label>Название сети * <input ref={networkNameInput} required aria-required="true" aria-invalid={!name.trim()} value={name} onChange={e=>{setName(e.target.value);if(e.target.value.trim())setError('')}} placeholder="Название VRF / VLAN / зоны"/></label>{!name.trim()&&<p className="boardRequiredHint" role="alert">Обязательное поле: сначала укажите название, затем нарисуйте контейнер.</p>}<label>Тип <select value={kind} onChange={e=>setKind(e.target.value as typeof kind)}><option value="zone">Зона</option><option value="vlan">VLAN</option><option value="vrf">VRF</option></select></label><p role="status">{drawing?'Продолжайте тянуть – контур контейнера виден на схеме':'Нажмите на холст – появится стандартный контейнер 540 × 340. Или протяните прямоугольник нужного размера. Затем подтвердите изменения в черновике.'}</p></div>}
    {tool==='flow'&&<section className="boardFlowCatalog" aria-label="Выбор технического потока">
+     <p className="boardFlowModeHint">{selectedFlow
+        ?'Режим: редактирование существующей связи. Изменения источника и получателя не создают новый поток.'
+        :'Режим: новый поток. Чтобы изменить существующую связь, выберите её из списка ниже.'}</p>
+     {selectedFlow&&<button type="button" className="boardNewFlowButton" onClick={()=>{
+       setSelectedExistingFlowId('');setSelectedDraftFlowId('');setSelectedEdgeFlowIds([])
+       setFrom('');setTo('');setLayoutMessage('Новый поток: выберите источник и получателя.')
+     }}>+ Новый поток</button>}
+     <label>Найти поток
+       <input type="search" aria-label="Поиск потоков на схеме" value={flowListQuery} onChange={event=>setFlowListQuery(event.target.value)} placeholder="Название, ВМ, протокол…"/>
+     </label>
      <label>Поток на текущем холсте
        <select aria-label="Выбрать поток на схеме" value={selectedFlowId} onChange={event=>{
          if(event.target.value)selectFlowInDock(event.target.value)
          else{setSelectedExistingFlowId('');setSelectedDraftFlowId('');setSelectedEdgeFlowIds([]);setFrom('');setTo('')}
        }}>
          <option value="">Выберите поток для редактирования ({selectableFlows.length})</option>
-         {selectableFlows.slice().sort((a,b)=>a.name.localeCompare(b.name,'ru')).map(flow=><option key={flow.id} value={flow.id}>
-           {flow.name||'Без названия'} · {allVMs.find(vm=>vm.id===flow.source_id)?.name||'Источник'} → {allVMs.find(vm=>vm.id===flow.target_id)?.name||'Получатель'} · {[flow.protocol,flow.port].filter(Boolean).join(':')||'протокол не указан'} · {flow.id.slice(0,8)}
-         </option>)}
+         {searchedFlows.slice().sort((a,b)=>a.name.localeCompare(b.name,'ru')).map(flow=><option key={flow.id} value={flow.id}>{flowPickerLabel(flow)}</option>)}
+         {selectedFlow&&!searchedFlows.some(flow=>flow.id===selectedFlow.id)&&<option value={selectedFlow.id}>{flowPickerLabel(selectedFlow)}</option>}
        </select>
      </label>
      {outOfScopeFlowCount>0&&<p className="boardFlowScopeHint">{outOfScopeFlowCount} потоков других систем не входят в открытую схему. Выберите соответствующую ИС сверху, чтобы редактировать их.</p>}
@@ -1307,7 +1332,7 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
          onClick={reassignSelectedFlow}>Изменить подключение выбранного потока</button>
      </div>}
    </section>}
-   {tool==='flow'&&<div className="boardToolFields"><p><strong>8 точек подключения на каждой ВМ.</strong> Начните стрелку от любой точки по периметру и отпустите на нужной точке другой ВМ. Можно нажать на две карточки по очереди. Чтобы изменить подключение, выберите поток и перетащите жёлтый маркер на нужную точку текущей или другой ВМ.</p><div className="boardFlowHint">Сначала источник → затем получатель. Сохранение в реестр – через «Сохранить всё».</div><label>Откуда <select aria-label="Откуда" value={from} onChange={e=>setFrom(e.target.value)}><option value="">Выберите</option>{allVMs.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}</select></label><label>Куда <select aria-label="Куда" value={to} onChange={e=>setTo(e.target.value)}><option value="">Выберите</option>{allVMs.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}</select></label><label>Направление (при выборе вручную) <select value={direction} onChange={e=>setDirection(e.target.value as typeof direction)}><option value="forward">→</option><option value="reverse">←</option><option value="both">↔ (два потока)</option></select></label><label>Протокол <input value={protocol} onChange={e=>setProtocol(e.target.value)}/></label><label>Порт <input value={port} onChange={e=>setPort(e.target.value)}/></label><label>Защита <input value={security} onChange={e=>setSecurity(e.target.value)}/></label><button onClick={()=>{addFlow()}}>Добавить поток по выбранным компонентам</button>{selectedDraftFlow&&<section className="boardFlowDraftEditor" aria-label="Параметры нарисованного потока"><h4>Нарисованный поток · черновик</h4><p>{allVMs.find(v=>v.id===selectedDraftFlow.source_id)?.name||'Источник'} → {allVMs.find(v=>v.id===selectedDraftFlow.target_id)?.name||'Получатель'}</p><label>Название <input value={selectedDraftFlow.name||''} onChange={e=>updateSelectedDraftFlow({name:e.target.value})}/></label><label>Протокол <input value={selectedDraftFlow.protocol||''} onChange={e=>updateSelectedDraftFlow({protocol:e.target.value})}/></label><label>Порт <input value={selectedDraftFlow.port||''} onChange={e=>updateSelectedDraftFlow({port:e.target.value})} placeholder="Необязательно"/></label><label>Защита <input value={selectedDraftFlow.security||''} onChange={e=>updateSelectedDraftFlow({security:e.target.value})}/></label><button type="button" onClick={()=>{setChanges(p=>p.filter(c=>c.id!==selectedDraftFlowId));setFlowAnchors(p=>{const copy={...p};delete copy[selectedDraftFlowId];return copy});setSelectedDraftFlowId('');setPreview(null)}}>Удалить стрелку из черновика</button></section>}</div>}
+   {tool==='flow'&&!selectedFlow&&<div className="boardToolFields"><p><strong>8 точек подключения на каждой ВМ.</strong> Начните стрелку от любой точки по периметру и отпустите на нужной точке другой ВМ. Можно нажать на две карточки по очереди. Чтобы изменить подключение, выберите поток и перетащите жёлтый маркер на нужную точку текущей или другой ВМ.</p><div className="boardFlowHint">Сначала источник → затем получатель. Сохранение в реестр – через «Сохранить всё».</div><label>Откуда <select aria-label="Откуда" value={from} onChange={e=>setFrom(e.target.value)}><option value="">Выберите</option>{allVMs.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}</select></label><label>Куда <select aria-label="Куда" value={to} onChange={e=>setTo(e.target.value)}><option value="">Выберите</option>{allVMs.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}</select></label><label>Направление (при выборе вручную) <select value={direction} onChange={e=>setDirection(e.target.value as typeof direction)}><option value="forward">→</option><option value="reverse">←</option><option value="both">↔ (два потока)</option></select></label><label>Протокол <input value={protocol} onChange={e=>setProtocol(e.target.value)}/></label><label>Порт <input value={port} onChange={e=>setPort(e.target.value)}/></label><label>Защита <input value={security} onChange={e=>setSecurity(e.target.value)}/></label><button onClick={()=>{addFlow()}}>Добавить поток по выбранным компонентам</button>{selectedDraftFlow&&<section className="boardFlowDraftEditor" aria-label="Параметры нарисованного потока"><h4>Нарисованный поток · черновик</h4><p>{allVMs.find(v=>v.id===selectedDraftFlow.source_id)?.name||'Источник'} → {allVMs.find(v=>v.id===selectedDraftFlow.target_id)?.name||'Получатель'}</p><label>Название <input value={selectedDraftFlow.name||''} onChange={e=>updateSelectedDraftFlow({name:e.target.value})}/></label><label>Протокол <input value={selectedDraftFlow.protocol||''} onChange={e=>updateSelectedDraftFlow({protocol:e.target.value})}/></label><label>Порт <input value={selectedDraftFlow.port||''} onChange={e=>updateSelectedDraftFlow({port:e.target.value})} placeholder="Необязательно"/></label><label>Защита <input value={selectedDraftFlow.security||''} onChange={e=>updateSelectedDraftFlow({security:e.target.value})}/></label><button type="button" onClick={()=>{setChanges(p=>p.filter(c=>c.id!==selectedDraftFlowId));setFlowAnchors(p=>{const copy={...p};delete copy[selectedDraftFlowId];return copy});setSelectedDraftFlowId('');setPreview(null)}}>Удалить стрелку из черновика</button></section>}</div>}
    {tool==='flow'&&activeEdgeFlowIds.length>0&&<section className="boardFlowEdgeList" aria-label="Потоки выбранной стрелки">
      <h4>Связи на стрелке ({activeEdgeFlowIds.length})</h4>
      <p>{activeEdgeFlowIds.length>1&&!selectedFlow?'На одной стрелке находятся '+activeEdgeFlowIds.length+' отдельных потока. Сначала выберите нужную запись ниже – появятся оранжевые маркеры для переноса её начала или конца.': 'Чтобы изменить подключение выбранного потока, перетащите оранжевый маркер на другую точку этой или другой ВМ.'}</p>

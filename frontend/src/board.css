@@ -269,7 +269,8 @@
 .boardCanvas .react-flow__node-boardNetwork .boardNetworkDragArea:active{cursor:grabbing}
 .boardCanvas .react-flow__node-boardNetwork .boardNetworkLabel{pointer-events:auto;cursor:inherit}
 .boardCanvas .react-flow__node-boardNetwork .react-flow__resize-control.handle{pointer-events:auto}
-.boardComponentClickArea{cursor:pointer}
+/* Do not let the editor-only click wrapper add height to shared VM cards. */
+.boardComponentClickArea{display:contents;cursor:pointer}
 .boardFlowGesturePreview{
  position:absolute;inset:0;z-index:15;
  pointer-events:none;overflow:visible

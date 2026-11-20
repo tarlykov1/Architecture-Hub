@@ -1030,8 +1030,11 @@ button:disabled{cursor:not-allowed;opacity:.55}
 @media(max-width:900px){
   .homeLayerEditorStage.editing{grid-template-columns:75px minmax(0,1fr);grid-template-rows:minmax(380px,65vh) minmax(220px,auto);height:auto}
   .homeLayerEditorStage.editing>.homeMapGraph{grid-column:2;grid-row:1;min-height:380px}
-  .homeLayerTools{grid-column:1;grid-row:1}
-  .homeLayerTools>button{width:65px;min-height:52px;font-size:9px}
+  /* On touch widths the canvas must not mask the tool rail or clip its last controls. */
+  .homeLayerEditorStage.editing{position:relative;overflow:visible;isolation:isolate}
+  .homeLayerEditorStage.editing>.homeMapGraph{z-index:0}
+  .homeLayerTools{grid-column:1;grid-row:1;position:relative;z-index:30;overscroll-behavior:contain;overflow-y:auto}
+  .homeLayerTools>button{width:65px;min-height:52px;font-size:9px;flex-shrink:0}
   .homeLayerDock{grid-column:1/-1;grid-row:2;border-left:0;border-top:1px solid #dce4ec;max-height:350px}
   .homeLayerDock .homeLayerMemberGrid{grid-template-columns:repeat(auto-fit,minmax(180px,1fr))}
 }

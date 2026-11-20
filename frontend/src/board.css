@@ -364,3 +364,8 @@
 .boardContextMenu button:disabled{opacity:.45;cursor:not-allowed}
 .boardContextBlockers{padding:8px;font-size:12px;color:#92400e;background:#fff7ed;border-radius:6px;overflow-wrap:anywhere}
 .boardContextBlockers strong{display:block;margin-bottom:4px}
+
+/* A selected flow is edited in its own inspector; creation fields are shown only in new-flow mode. */
+.boardFlowModeHint{margin:0 0 10px;font-size:12px;line-height:1.5;color:#42627e;background:#f0f6ff;border-left:3px solid #4a90d2;padding:9px 11px;border-radius:4px}
+.boardNewFlowButton{width:100%;margin:0 0 10px;background:#eef5ff;color:#175b99;border:1px solid #c5daf0;font-size:12px;font-weight:650}
+.boardFlowCatalog input[type="search"]{width:100%;min-width:0;border:1px solid #cbd5e1;border-radius:7px;padding:9px;font-size:12px}

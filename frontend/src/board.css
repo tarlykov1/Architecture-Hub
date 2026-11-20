@@ -419,3 +419,6 @@
  .boardEditorStage>.boardTools>button,.boardEditorStage>.boardTools>.boardChangeCount{width:48px;min-width:48px;height:43px;min-height:43px}
  .boardEditorStage>.boardTools .boardToolCaption{font-size:8px}
 }
+
+/* Hints should not cover VM cards or consume the work surface for long. */
+.boardEditorStage .boardCanvasToast{max-width:min(325px,calc(100% - var(--board-tools-width) - 12px));font-size:11px;line-height:1.25;padding:7px 9px}

@@ -31,7 +31,7 @@ test('QA-WORK: grouped flow click never creates a fourth flow; individually sele
  await expect(editor.locator('.boardEndpointGrip')).toHaveCount(2)
  // Clicking another VM while a flow is selected must not stage a new, unrelated flow.
  await editor.locator('.react-flow__node-boardComponent').filter({hasText:'QA-WORK-Other '+suffix}).click()
- await expect(editor.getByText('Выбран поток «QA-WORK-Group-1-'+suffix+'»')).toBeVisible()
+ await expect(picker).toHaveValue(ids[1])
  await expect(editor.getByRole('button',{name:'Черновик: 0 изменений'})).toBeDisabled()
  // Move the orange endpoint of exactly one of three overlapping records.
  const grip=editor.locator('.boardEndpointGrip[data-flow-end="target"]')

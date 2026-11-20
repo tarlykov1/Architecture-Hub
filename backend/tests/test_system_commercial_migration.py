@@ -3,6 +3,7 @@ from pathlib import Path
 from uuid import uuid4
 from alembic import command
 from alembic.config import Config
+from alembic.script import ScriptDirectory
 from sqlalchemy import create_engine, inspect, text
 
 
@@ -33,5 +34,5 @@ def test_commercial_migration_preserves_existing_systems(tmp_path, monkeypatch):
                             {"id":existing_id.hex}).scalar_one()=="QA-WORK-existing IS"
         assert conn.execute(text("SELECT count(*) FROM system_contracts")).scalar_one()==0
         assert conn.execute(text("SELECT count(*) FROM system_licenses")).scalar_one()==0
-        assert conn.execute(text("SELECT version_num FROM alembic_version")).scalar_one()=="0017_technology_observations"
+        assert conn.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == ScriptDirectory.from_config(config).get_current_head()
     engine.dispose()

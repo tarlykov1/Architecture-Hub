@@ -57,7 +57,7 @@ export function readSystemSecurity(attributes:Record<string,unknown>|null|undefi
 }
 
 export const pdnLevelLabel=(level:PdnProtectionLevel)=>level?level.replace('UZ','УЗ-'):'Не определён'
-export const gisClassLabel=(value:GisProtectionClass)=>value==='not_applicable'?'Не применяется':value||'Не указан'
+export const gisClassLabel=(value:GisProtectionClass)=>value==='not_applicable'?'Не применяется':value?value.replace(/^K/,'К'):'Не указан'
 
 export function SystemSecurityMarker({profile}: {profile:SystemSecurityProfile}){
   return <span className={'systemSecurityMarker systemSecurityMarker-'+profile.personal_data}

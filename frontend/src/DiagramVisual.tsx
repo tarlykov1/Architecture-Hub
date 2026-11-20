@@ -20,8 +20,8 @@ export const diagramCardStyle = (overrides:CSSProperties={}):CSSProperties=>({
   width:245,
   padding:12,
   background:'#fff',
-  border:'1px solid #94a3b8',
-  borderRadius:12,
+  border:'1px solid var(--hub-line)',
+  borderRadius:8,
   textAlign:'left',
   ...overrides,
 })

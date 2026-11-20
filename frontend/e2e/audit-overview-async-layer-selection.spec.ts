@@ -31,7 +31,6 @@ test('QA-WORK: business area enabled before async catalogs load selects the firs
   // Initial selection must exist, but need not be our newly created category.
   await expect(info).toContainText('Показана бизнес-область:')
   await expect(map.locator('.react-flow__node-layerRegion')).toHaveCount(1)
-  await map.getByText('Выбрать бизнес-область').click()
   await map.getByRole('button',{name:'QA-WORK-LATE-GROUP-'+suffix}).click()
   await expect(info).toContainText('QA-WORK-LATE-GROUP-'+suffix)
   const clear=map.getByRole('button',{name:'Снять выделение'})

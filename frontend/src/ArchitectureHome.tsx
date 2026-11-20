@@ -1,5 +1,6 @@
 import React, {useEffect,useMemo,useRef,useState} from 'react'
 import {architectureIcon,DiagramNodeLabel,diagramCardStyle} from './DiagramVisual'
+import {OverviewFlowEdge, type OverviewFlow} from './OverviewFlowEdge'
 import {logoFromAttributes} from './SystemLogo'
 export {architectureIcon} from './DiagramVisual'
 import {ReactFlow,Background,Controls,MarkerType,NodeResizer,useReactFlow,type NodeProps,type NodeChange} from '@xyflow/react'
@@ -7,7 +8,7 @@ import {MousePointer2, Move, SquareDashed, Maximize2, Save, X, ClipboardList} fr
 
 type System={id:string;name:string;kind:string;attributes?:Record<string,unknown>}
 type Component={id:string;system_id:string;name:string;kind:string;details:Record<string,unknown>}
-type Flow={id:string;source_id:string;target_id:string}
+type Flow=OverviewFlow & {source_id:string;target_id:string}
 type Process={id:string;name:string;category_id?:string}
 type Category={id:string;name:string}
 type OverlayGroup={id:string;name:string;type:'business';members:Set<string>}
@@ -18,6 +19,7 @@ function LayerRegionNode({data,selected}:NodeProps){
  const region=data as unknown as LayerRegionNodeData
  return <div className="homeEditableRegion"><NodeResizer isVisible={region.editing&&selected} minWidth={140} minHeight={80} onResize={(_,bounds)=>region.resize(bounds)} onResizeEnd={(_,bounds)=>region.resize(bounds)}/><div className="homeLayerRegionLabel"><strong>{region.name}</strong><small>{region.count} ИС</small></div></div>
 }
+const homeEdgeTypes={overviewFlow:OverviewFlowEdge}
 const homeNodeTypes={layerRegion:LayerRegionNode}
 type RegionRect={x:number;y:number;width:number;height:number}
 type LayerTool='select'|'move'|'draw'
@@ -156,6 +158,7 @@ export default function ArchitectureHome({systems,components,flows,processes,cat
   try{const value=JSON.parse(localStorage.getItem('architecture-hub-layer-colors-v1')||'{}');return value&&typeof value==='object'&&!Array.isArray(value)?value:{}}catch{return {}}
  })
  
+ const [openFlowPair,setOpenFlowPair]=useState('')
  const [query,setQuery]=useState('')
  const [focus,setFocus]=useState('')
  const [selectedSystem,setSelectedSystem]=useState('')
@@ -173,9 +176,18 @@ export default function ArchitectureHome({systems,components,flows,processes,cat
  const systemByComponent=useMemo(()=>new Map(components.map(c=>[c.id,c.system_id])),[components])
  const filteredSystems=systems.filter(s=>(!query||s.name.toLowerCase().includes(query.toLowerCase())||components.some(c=>c.system_id===s.id&&c.name.toLowerCase().includes(query.toLowerCase())))&&(!focus||focus===s.id)&& (environment==='all'||components.some(c=>c.system_id===s.id&&String(c.details.environment||'').toLowerCase()===environment)))
  const visibleIds=new Set(filteredSystems.map(s=>s.id))
- const crossFlows=flows.map(f=>({source:systemByComponent.get(f.source_id),target:systemByComponent.get(f.target_id)})).filter((f):f is {source:string;target:string}=>!!f.source&&!!f.target&&f.source!==f.target&&visibleIds.has(f.source)&&visibleIds.has(f.target))
- const flowCounts=new Map<string,number>()
- for(const f of crossFlows){const key=f.source+'|'+f.target;flowCounts.set(key,(flowCounts.get(key)||0)+1)}
+ const crossFlows=flows.flatMap(flow=>{
+   const source=systemByComponent.get(flow.source_id),target=systemByComponent.get(flow.target_id)
+   return source&&target&&source!==target&&visibleIds.has(source)&&visibleIds.has(target)?[{source,target,flow}]:[]
+ })
+ const groupedFlows=new Map<string,Flow[]>()
+ for(const {source,target,flow} of crossFlows){
+   const key=source+'|'+target
+   const group=groupedFlows.get(key)
+   if(group)group.push(flow)
+   else groupedFlows.set(key,[flow])
+ }
+ const flowCounts=new Map(Array.from(groupedFlows,([key,group])=>[key,group.length]))
  // Systems participating in the same business process are associated, not
  // necessarily connected by a technical data flow. Keep those semantics separate.
  const processSystems=new Map<string,Set<string>>()
@@ -272,23 +284,27 @@ export default function ArchitectureHome({systems,components,flows,processes,cat
  const selectedComponents=components.filter(c=>c.system_id===selectedSystem)
  const selectedFlowCount=crossFlows.filter(f=>f.source===selectedSystem||f.target===selectedSystem).length
  const focusedLayer=overlayGroups.find(group=>group.id===selectedOverlayGroup)
- const highlightedNodes=nodes.map(n=>({...n,zIndex:10,style:{...n.style,border:selectedSystem===n.id?'2px solid #2563eb':n.style.border,opacity:focusedLayer&&!membersFor(focusedLayer).includes(n.id)?0.2:selectedSystem&&!selectedNeighbors.has(n.id)?0.28:1}}))
+ const highlightedNodes=nodes.map(n=>({...n,zIndex:10,style:{...n.style,border:selectedSystem===n.id?'2px solid var(--hub-accent)':n.style.border,opacity:focusedLayer&&!membersFor(focusedLayer).includes(n.id)?0.2:selectedSystem&&!selectedNeighbors.has(n.id)?0.28:1}}))
  const canvasNodes=[...areaNodes,...highlightedNodes,...componentNodes]
  const connectionCounts=mapMode==='business'?businessCounts:flowCounts
  const edges=[...connectionCounts].map(([key,count])=>{
    const [source,target]=key.split('|')
-   const related=selectedSystem&&(source===selectedSystem||target===selectedSystem)
-   const color=mapMode==='business'?'#8264a8':'#64748b'
-   return {id:mapMode+':'+key,source,target,type:'smoothstep',label:mapMode==='flows'?count+' поток'+(count===1?'':count<5?'а':'ов'):count+' БП',
+   const related=(selectedSystem&&(source===selectedSystem||target===selectedSystem))||(mapMode==='flows'&&openFlowPair===key)
+   const color=mapMode==='business'?'#79738c':'#69707e'
+   return {id:mapMode+':'+key,source,target,type:mapMode==='flows'?'overviewFlow':'smoothstep',label:mapMode==='business'?count+' БП':undefined,
+     data:{flows:groupedFlows.get(key)||[],open:openFlowPair===key,toggle:()=>setOpenFlowPair(old=>old===key?'':key),close:()=>setOpenFlowPair('')},
      ...(mapMode==='flows'?{markerEnd:{type:MarkerType.ArrowClosed,width:13,height:13,color}}:{}),
-     style:{stroke:related?'#2563eb':color,strokeWidth:related?2.5:1.4,strokeDasharray:mapMode==='business'?'5 5':undefined,opacity:selectedSystem&&!related?0.18:1}}
+     style:{stroke:related?'var(--hub-accent)':color,strokeWidth:related?2.5:1.4,strokeDasharray:mapMode==='business'?'5 5':undefined,opacity:selectedSystem&&!related?0.18:1}}
  })
  const environments=[...new Set(components.map(c=>String(c.details.environment||'').toLowerCase()).filter(Boolean))].sort()
  return <section className="homeMap" aria-label="Главная карта архитектуры">
-  <header className="homeMapHead"><div className="homeMapStats"><span>{systems.length} ИС</span><span>{components.length} компонентов</span><span>{flows.length} потоков</span></div></header>
+  <div className="overviewToolbar">
+ <div className="homeMapTools"><input aria-label="Поиск на карте" value={query} onChange={e=>setQuery(e.target.value)} placeholder="Найти систему или ВМ…"/><Disclosure label="Фильтры и слои"><select aria-label="Контур карты" value={environment} onChange={e=>setEnvironment(e.target.value)}><option value="all">Все контуры</option>{environments.map(e=><option key={e} value={e}>{e}</option>)}</select><select aria-label="Фокус на ИС" value={focus} onChange={e=>{setFocus(e.target.value);if(!e.target.value){setSelectedSystem('');onCloseSystem()}}}><option value="">Все системы</option>{systems.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select>
+  <details className="homeMapLayersDisclosure"><summary>Слои карты <span aria-hidden="true">▾</span></summary><div className="homeMapLayers" aria-label="Слои карты">{([['systems','Информационные системы'],['business','Бизнес-процессы']] as const).map(([key,label])=><label key={key}><input type="checkbox" checked={layers[key]} onChange={e=>setLayers(old=>({...old,[key]:e.target.checked}))}/>{label}</label>)}</div></details></Disclosure></div>
   <div className="homeMapMode" role="group" aria-label="Тип связей на архитектурной карте">
     {([['business','Бизнес-связи'],['flows','Потоки данных']] as const).map(([id,label])=><button key={id} type="button" aria-pressed={mapMode===id} className={mapMode===id?'current':''} onClick={()=>setMapMode(id)}>{label}</button>)}
    </div>
+  </div>
   <div className="homeLayerToolbar" role="group" aria-label="Бизнес-области">
  <label><input type="checkbox" checked={activeOverlays.business} onChange={e=>{
    const checked=e.target.checked
@@ -299,14 +315,23 @@ export default function ArchitectureHome({systems,components,flows,processes,cat
  }}/> Показать бизнес-области</label>
  {activeOverlays.business&&canEditLayers&&layerApiReady&&!editingLayers&&<button type="button" onClick={()=>{setEditingLayers(true);setLayerTool('select');setLayerError('');setSelectedOverlayGroup(old=>old||overlayGroups[0]?.id||'')}}>Редактировать бизнес-области</button>}
  {layerError&&<p role="alert">{layerError}</p>}
- <details className="homeLayerCatalog"><summary>Выбрать бизнес-область</summary><div className="homeLayerColorList">{overlayGroups.map(group=><label key={group.id}>
- <input type="checkbox" aria-label={'Показать область '+group.name} checked={!hiddenOverlayGroups.includes(group.id)} onChange={e=>setHiddenOverlayGroups(old=>e.target.checked?old.filter(id=>id!==group.id):[...old,group.id])}/>
- <button type="button" aria-pressed={selectedOverlayGroup===group.id} onClick={()=>{pendingInitialOverlaySelection.current=false;setSelectedOverlayGroup(group.id);setActiveOverlays({business:true})}}>{group.name}</button><small>{membersFor(group).length} ИС</small>
+ <div className="overviewAreaChips">{overlayGroups.map(group=>
+   <button key={group.id} type="button" aria-pressed={activeOverlays.business&&selectedOverlayGroup===group.id} onClick={()=>{
+     pendingInitialOverlaySelection.current=false
+     setHiddenOverlayGroups(old=>old.filter(id=>id!==group.id))
+     setSelectedOverlayGroup(group.id);setActiveOverlays({business:true})
+   }}>{group.name}</button>)}</div>
+ <details className="homeLayerCatalog"><summary>Видимость областей</summary><div className="homeLayerColorList">{overlayGroups.map(group=><label key={group.id}>
+   <input type="checkbox" aria-label={'Показать область '+group.name} checked={!hiddenOverlayGroups.includes(group.id)} onChange={e=>setHiddenOverlayGroups(old=>e.target.checked?old.filter(id=>id!==group.id):[...old,group.id])}/>{group.name}
  </label>)}</div></details>
+ <button type="button" className="overviewReset" onClick={()=>{
+   pendingInitialOverlaySelection.current=false
+   setQuery('');setEnvironment('all');setFocus('');setSelectedSystem('');onCloseSystem()
+   setOpenFlowPair('');setActiveOverlays({business:false});setSelectedOverlayGroup('');setHiddenOverlayGroups([])
+   setLayers({systems:true,components:false,flows:false,business:false})
+ }}>Сбросить фильтры</button>
  </div>
- {activeOverlays.business&&selectedOverlayGroup&&<span className="homeLayerHint" role="status">Показана бизнес-область: {overlayGroups.find(group=>group.id===selectedOverlayGroup)?.name}. Для смены откройте список.</span>}
- <div className="homeMapTools"><input aria-label="Поиск на карте" value={query} onChange={e=>setQuery(e.target.value)} placeholder="Найти ИС или компонент…"/><Disclosure label="Фильтры и слои"><select aria-label="Контур карты" value={environment} onChange={e=>setEnvironment(e.target.value)}><option value="all">Все контуры</option>{environments.map(e=><option key={e} value={e}>{e}</option>)}</select><select aria-label="Фокус на ИС" value={focus} onChange={e=>{setFocus(e.target.value);if(!e.target.value){setSelectedSystem('');onCloseSystem()}}}><option value="">Все системы</option>{systems.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select>
-  <details className="homeMapLayersDisclosure"><summary>Слои карты <span aria-hidden="true">▾</span></summary><div className="homeMapLayers" aria-label="Слои карты">{([['systems','Информационные системы'],['business','Бизнес-процессы']] as const).map(([key,label])=><label key={key}><input type="checkbox" checked={layers[key]} onChange={e=>setLayers(old=>({...old,[key]:e.target.checked}))}/>{label}</label>)}</div></details></Disclosure></div>
+ {activeOverlays.business&&selectedOverlayGroup&&<span className="homeLayerHint" role="status">Показана бизнес-область: {overlayGroups.find(group=>group.id===selectedOverlayGroup)?.name}.</span>}
   {query.trim()&&<div className="homeMapSearchMatches" role="region" aria-label="Результаты поиска по архитектуре">
     <strong>Найденные ИС: {filteredSystems.length}</strong>
     {!filteredSystems.length&&<span>Системы не найдены.</span>}
@@ -334,7 +359,7 @@ export default function ArchitectureHome({systems,components,flows,processes,cat
      <div className="homeLayerToolsDraft" aria-live="polite"><ClipboardList size={17}/><span>Черновик: {Object.keys(layerDrafts).length}</span></div>
    </div>}
 
-  <div className="homeMapGraph"><ReactFlow minZoom={0.08} nodes={canvasNodes} edges={edges} nodeTypes={homeNodeTypes} nodesDraggable={editingLayers&&canEditLayers&&layerTool==='move'}
+  <div className="homeMapGraph"><ReactFlow minZoom={0.08} nodes={canvasNodes} edges={edges} nodeTypes={homeNodeTypes} edgeTypes={homeEdgeTypes} nodesDraggable={editingLayers&&canEditLayers&&layerTool==='move'}
    onNodesChange={(changes:NodeChange[])=>{
     if(!editingLayers||!canEditLayers||layerTool!=='move')return
     for(const change of changes){
@@ -393,8 +418,9 @@ export default function ArchitectureHome({systems,components,flows,processes,cat
   {!layers.systems&&<div className="homeMapEmpty">Включите слой «Информационные системы», чтобы показать карту связей.</div>}
   {selectedOverlayGroup&&focusedLayer&&<div className="homeLayerMembers" role="status"><strong>{focusedLayer.name}</strong><span>В этой области: {membersFor(focusedLayer).map(id=>systems.find(sys=>sys.id===id)?.name||id).join(', ')}</span><button type="button" onClick={()=>setSelectedOverlayGroup('')}>Снять выделение</button></div>}
 
-  <p className="homeMapModeHint">Полупрозрачные области показывают принадлежность ИС к категориям, а не технические маршруты. Пересекающиеся рамки означают одновременное участие; для точного состава смотрите подписи и реестры.</p>
-  <p className="homeMapModeHint">{mapMode==='business'?'Пунктир показывает участие систем в общих бизнес-процессах, а не направление передачи данных.':'Стрелки показывают реальные зарегистрированные потоки между компонентами разных ИС. Количество указано на связи.'}</p>
+  <details className="overviewLegend"><summary>О карте · {systems.length} ИС · {flows.length} потоков</summary>
+    <p>{mapMode==='business'?'Пунктир показывает участие систем в общих бизнес-процессах, а не направление передачи данных.':'Стрелка показывает направление передачи данных. Нажмите на число потоков, чтобы выбрать поток.'}</p>
+  </details>
   <div className="homeMapDetails">
    
    {(layers.business||mapMode==='business')&&<article><h3>Бизнес-процессы</h3><p>{processes.length} процессов · {links.length} связей с ИС</p><div>{processes.slice(0,12).map(p=><span className="homeMapChip" key={p.id}>{p.name}</span>)}</div></article>}

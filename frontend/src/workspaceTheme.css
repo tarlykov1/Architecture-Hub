@@ -1,0 +1,153 @@
+:root {
+  --hub-ink: #22232c;
+  --hub-muted: #626575;
+  --hub-line: #dedee7;
+  --hub-surface: #fff;
+  --hub-canvas: #f8f8fb;
+  --hub-accent: #5346c7;
+  --hub-accent-soft: #eeedfc;
+  --hub-blue: var(--hub-accent);
+  --hub-blue-dark: #4035a6;
+  --hub-header-height: 52px;
+  --hub-shadow: 0 4px 16px #20203312;
+}
+body {
+  font-family: Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
+  background: var(--hub-canvas);
+  color: var(--hub-ink);
+}
+.shell .globalHeader {
+  height: var(--hub-header-height);
+  min-height: var(--hub-header-height);
+  background: white;
+  color: var(--hub-ink);
+  border-bottom: 1px solid var(--hub-line);
+  box-shadow: none;
+}
+.globalHeader .globalBrand {
+  border-right: 1px solid var(--hub-line);
+  padding-right: 16px;
+}
+.globalHeader .globalBrand strong { color: var(--hub-ink); font-size: 18px; letter-spacing: -.6px }
+.globalHeader .globalBrandMark {
+  display: inline-flex; position: relative; width: 26px; height: 26px;
+  color: var(--hub-accent); background: transparent;
+}
+.globalBrandMark::before, .globalBrandMark::after {
+  content: ""; position: absolute; top: 3px; left: 2px; width: 13px; height: 13px;
+  border: 2px solid currentColor; border-radius: 3px;
+}
+.globalBrandMark::after { top: 9px; left: 9px; background: white }
+.globalHeader .layerTabs > button,
+.globalHeader .layerTabs .layerActions summary,
+.globalHeader .mobileSectionMenu > summary,
+.globalHeader .topActions button {
+  color: var(--hub-muted); background: white; font-weight: 550;
+}
+.globalHeader .layerTabs > button.current {
+  color: var(--hub-ink); background: white; border-bottom-color: var(--hub-accent);
+}
+.globalHeader .layerTabs > button:hover,
+.globalHeader .layerTabs .layerActions summary:hover,
+.globalHeader .topActions button:hover { background: var(--hub-canvas); color: var(--hub-ink) }
+.globalHeader .topActions button, .globalHeader .mobileSectionMenu > summary { border-color: var(--hub-line) }
+.globalHeader .globalHeaderActions a, .globalHeader .topActions .accountTopAction { color: var(--hub-muted) }
+.globalHeader .layerTabs .navEnd { margin-left: auto }
+.globalHeader .topActions .primary, .shell button.primary:not(:disabled) {
+  background: var(--hub-accent); border-color: var(--hub-accent); color: white;
+}
+.workspaceAccessNotice { padding: 5px 16px; background: #fbf7ec; color: #715622; font-size: 12px }
+.shell :is(button, summary, a, input, select, textarea):focus-visible {
+  outline: 2px solid var(--hub-accent); outline-offset: 2px;
+}
+.shell .homeMap {
+  padding: 0; gap: 0; display: flex; flex-direction: column;
+  min-width: 0; background: white;
+}
+.overviewToolbar, .homeMap .homeLayerToolbar {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 8px;
+  padding: 7px 16px; margin: 0; border: 0; border-bottom: 1px solid var(--hub-line);
+  background: white; border-radius: 0; flex: none;
+}
+.homeMap .homeMapTools { display: flex; flex: 1 1 300px; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 }
+.overviewToolbar .homeMapTools > input {
+  width: min(250px,100%); flex: 0 1 250px; min-width: 0; height: 32px;
+  padding: 5px 10px; border: 1px solid var(--hub-line); border-radius: 6px; background: var(--hub-canvas);
+}
+.overviewToolbar .workspaceDisclosure { margin: 0; padding: 0; border: 0; background: transparent }
+.overviewToolbar .workspaceDisclosure summary { padding: 6px; color: var(--hub-muted); font-size: 12px }
+.homeMap .homeMapMode { display: inline-flex; width: auto; padding: 2px; gap: 2px; background: var(--hub-canvas); border: 1px solid var(--hub-line); border-radius: 7px; margin: 0 }
+.homeMap .homeMapMode > button { padding: 5px 9px; font-size: 12px; border-radius: 5px; color: var(--hub-muted); background: transparent }
+.homeMap .homeMapMode > button.current { color: var(--hub-accent); background: var(--hub-accent-soft); box-shadow: none }
+.homeMap .homeLayerToolbar { padding-block: 5px; font-size: 12px; color: var(--hub-muted) }
+.homeLayerToolbar .overviewAreaChips { display: flex; flex: 1 1 160px; min-width: 0; overflow-x: auto; gap: 4px; scrollbar-width: thin }
+.overviewAreaChips > button { flex: none; white-space: nowrap }
+.homeMap .homeLayerToolbar button { background: white; color: var(--hub-ink); font-size: 12px; padding: 4px 8px; border: 1px solid var(--hub-line); border-radius: 6px }
+.homeLayerToolbar .overviewAreaChips button[aria-pressed=true] { color: var(--hub-accent); border-color: #bdb7f3; background: var(--hub-accent-soft) }
+.homeLayerToolbar .overviewReset { border-color: transparent; color: var(--hub-muted) }
+.homeMap .homeLayerHint { margin: 0; padding: 3px 16px; color: var(--hub-accent); font-size: 12px }
+.homeMap .homeLayerEditorStage:not(.editing) { flex: 1 0 340px; display: flex; min-height: 340px }
+.homeMap .homeLayerEditorStage:not(.editing) > .homeMapGraph {
+  flex: 1; height: auto; min-height: 340px; margin: 0; border: 0; border-radius: 0;
+}
+.homeMapGraph, .boardEditorStage > .boardCanvas, .miniArchitecture, .topologyCanvas { background: var(--hub-canvas) }
+.homeMap .homeMapDetails { margin: 0; padding: 0 14px 6px }
+.overviewLegend { padding: 5px 16px; border-top: 1px solid var(--hub-line); color: var(--hub-muted); font-size: 12px }
+.overviewLegend summary, .homeLayerCatalog summary { cursor: pointer }
+.overviewLegend p { margin: 6px 0 }
+.overviewEdgeControl { position: absolute; pointer-events: all }
+.overviewEdgeControl:has(.overviewFlowList) { z-index: 5 }
+.overviewEdgeControl > button {
+  min-height: 28px; padding: 3px 8px; border: 1px solid var(--hub-line);
+  border-radius: 6px; color: var(--hub-ink); background: white; font-size: 12px;
+}
+.overviewEdgeControl > button[aria-expanded=true] { color: var(--hub-accent); border-color: var(--hub-accent) }
+.overviewFlowList {
+  position: absolute; top: calc(100% + 5px); left: 50%; transform: translateX(-50%);
+  width: max-content; max-width: 260px; max-height: 180px; overflow: auto;
+  background: white; border: 1px solid var(--hub-line); border-radius: 7px; padding: 4px; box-shadow: var(--hub-shadow);
+}
+.overviewFlowList a { display: flex; gap: 12px; justify-content: space-between; color: var(--hub-ink); text-decoration: none; padding: 6px 8px; font-size: 12px; overflow-wrap: anywhere }
+.overviewFlowList a:hover { background: var(--hub-accent-soft) }
+.architectureGraphNode strong { display: flex; align-items: center; gap: 8px; color: var(--hub-ink) }
+.architectureGraphIcon { display: inline-grid; place-items: center; flex: none; color: var(--hub-muted) }
+.architectureGraphNode small { color: var(--hub-muted) }
+.shell .workspaceFilters, .shell .systemSecurityFilterBar, .shell .viewHead {
+  background: white; border-color: var(--hub-line); color: var(--hub-ink);
+}
+.shell .workspaceFilters, .shell .systemSecurityFilterBar { padding: 7px 14px; gap: 8px }
+.shell .infraPanel { background: white }
+.shell .systemsTable thead th { background: var(--hub-canvas); color: var(--hub-muted); font-weight: 550 }
+.shell .systemsTable td { padding-block: 9px; border-color: var(--hub-line) }
+.shell .systemsTable .inspectedRow > td { background: var(--hub-accent-soft) }
+.shell .systemNameLink { color: var(--hub-ink) }
+.shell .systemNameLink:hover, .shell .flowMapLink { color: var(--hub-accent) }
+.shell .flowMapLink { background: white; border-color: var(--hub-line) }
+.shell .infraCard, .shell .architectureRegistry, .shell .systemsTableWrap {
+  border-color: var(--hub-line); border-radius: 8px; box-shadow: none;
+}
+.shell .details, .shell .architectureDrawer, .shell .boardDock { color: var(--hub-ink); border-color: var(--hub-line); background: white }
+.shell .inspectorTabs button.current, .shell .componentInspectorTabs button.current {
+  color: var(--hub-accent); border-bottom: 2px solid var(--hub-accent); background: white;
+}
+.boardEditorStage > .boardTools, .shell .homeLayerTools { background: white; border-color: var(--hub-line); box-shadow: var(--hub-shadow) }
+.boardEditorStage > .boardTools > button[aria-pressed=true], .shell .homeLayerTools > button[aria-pressed=true] {
+  color: var(--hub-accent); background: var(--hub-accent-soft); border-color: #c5bff5;
+}
+.boardEditorStage > .boardTools > button[aria-pressed=true] .boardToolCaption { color: var(--hub-accent) }
+.boardCanvas .react-flow__node .flowPortHandle.flowPortSource.boardConnectionHandleActive {
+  background: white; border-color: white; box-shadow: 0 0 0 1.5px var(--hub-accent);
+}
+.boardCanvas .react-flow__node .flowPortHandle.flowPortSource.boardConnectionHandleActive:hover {
+  background: var(--hub-accent); box-shadow: 0 0 0 3px #b7adf0;
+}
+.shell .react-flow__controls { box-shadow: var(--hub-shadow); overflow: hidden; border: 1px solid var(--hub-line); border-radius: 6px }
+.shell .react-flow__controls-button { color: var(--hub-ink); background: white; border-color: var(--hub-line) }
+@media (max-width: 650px) {
+  .globalHeader .globalBrand { padding-right: 4px; border: 0 }
+  .overviewToolbar, .homeMap .homeLayerToolbar { padding-inline: 8px; gap: 5px }
+  .overviewToolbar .homeMapTools { flex-basis: 100% }
+  .overviewToolbar .homeMapTools > input { flex: 1 1 150px }
+  .homeMap .homeLayerToolbar > .overviewAreaChips { order: 1; flex-basis: 100% }
+  .shell .systemSecurityFilterBar { align-items: stretch }
+}

@@ -3177,8 +3177,8 @@ class BoardPoint(BaseModel):
 
 # Eight reusable anchors per component: two on each side. These identify
 # presentation geometry only, never infrastructure interfaces or network ports.
-SOURCE_ANCHORS = {f"out-{side}-{index}" for side in ("top", "right", "bottom", "left") for index in (1, 2)}
-TARGET_ANCHORS = {f"in-{side}-{index}" for side in ("top", "right", "bottom", "left") for index in (1, 2)}
+SOURCE_ANCHORS = {f"out-{side}-{index}" for side in ("top", "right", "bottom", "left") for index in (1, 2, 3, 4)}
+TARGET_ANCHORS = {f"in-{side}-{index}" for side in ("top", "right", "bottom", "left") for index in (1, 2, 3, 4)}
 
 
 class BoardFlowAnchor(BaseModel):

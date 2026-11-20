@@ -358,7 +358,7 @@ function App() {
       // Modal passport editing must not dismiss the underlying IS drawer.
       if(passportEditId)return
       const target=event.target
-      if(!(target instanceof Element)||target.closest('.details, .architectureDrawerBackdrop, .editorBackdrop, .homeMapSearchMatches button, .react-flow__node, .systemNameLink, .systemRowActions button, .knowledgeWorkspaceList button'))return
+      if(!(target instanceof Element)||target.closest('.details, .systemSecurityFilterBar, .architectureDrawerBackdrop, .editorBackdrop, .homeMapSearchMatches button, .react-flow__node, .systemNameLink, .systemRowActions button, .knowledgeWorkspaceList button'))return
       setInspectorOpen(false)
       setInspectorExpanded(false)
     }

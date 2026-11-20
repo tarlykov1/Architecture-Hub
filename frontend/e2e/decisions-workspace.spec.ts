@@ -34,10 +34,13 @@ test('QA-WORK: withdraw, draw and edit a proposed flow from a registered VM',asy
   const systemId=(await system.json()).id
   const registered=await request.post(base+'/infra',{data:{kind:'vm',name:'QA-WORK-Источник',system_id:systemId}})
   const source=(await registered.json()).id
+  const externalSystem=await request.post(base+'/objects',{data:{kind:'system',name:title+'-внешняя'}})
+  const externalVm=await request.post(base+'/infra',{data:{kind:'vm',name:'QA-WORK-Архив',system_id:(await externalSystem.json()).id}})
+  const external=(await externalVm.json()).id
   const decision=await request.post(base+'/technical-decisions',{data:{title,system_id:systemId}})
   const row=await decision.json(),target=crypto.randomUUID()
   const url=base+'/technical-decisions/'+row.id
-  const vm={id:target,system_id:systemId,name:'QA-WORK-OpenSearch',kind:'vm',x:400,y:0}
+  const vm={id:target,system_id:systemId,name:'QA-WORK-OpenSearch',kind:'vm',x:305,y:0}
   const draft=await request.put(url,{data:{title,proposed_vms:[vm],expected_revision:row.revision}})
   expect(draft.ok()).toBeTruthy()
   const review=await request.post(url+'/submit',{data:{expected_revision:(await draft.json()).revision}})
@@ -77,6 +80,19 @@ test('QA-WORK: withdraw, draw and edit a proposed flow from a registered VM',asy
   await page.getByRole('button',{name:'Поменять направление'}).click()
   await page.getByRole('button',{name:'Сохранить поток'}).click()
   await expect(inspector).toContainText('QA-WORK-OpenSearch → QA-WORK-Источник')
+  await page.getByRole('toolbar',{name:'Инструменты решения'}).getByRole('button',{name:'＋ Поток'}).click()
+  await page.getByLabel('Название потока').fill('QA-WORK-Архивация')
+  await page.getByRole('combobox',{name:'Источник',exact:true}).selectOption(target)
+  await page.getByRole('combobox',{name:'Получатель',exact:true}).selectOption(external)
+  await page.getByRole('button',{name:'Добавить в черновик'}).click()
+  await expect(page.locator('.decisionCanvas .react-flow__node:visible')).toHaveCount(3)
+  const card=(id:string)=>page.locator(`.decisionCanvas .react-flow__node[data-id="${id}"]`)
+  const left=await card(target).boundingBox(),right=await card(external).boundingBox()
+  expect(left&&right&&(left.x+left.width<=right.x||right.x+right.width<=left.x||left.y+left.height<=right.y||right.y+right.height<=left.y)).toBeTruthy()
+  await inspector.getByRole('button',{name:'QA-WORK-Архивация'}).click()
+  page.once('dialog',dialog=>dialog.accept())
+  await inspector.getByRole('button',{name:'Удалить поток'}).click()
+  await expect(card(external)).toHaveCount(0)
   await inspector.getByRole('button',{name:'На согласование',exact:true}).click()
   await expect(page.locator('.decisionDrawing .decisionStatus')).toHaveText('На согласовании')
   const stored=await (await request.get(url)).json()

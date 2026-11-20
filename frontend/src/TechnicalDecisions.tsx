@@ -122,8 +122,18 @@ function DecisionInspector({id,request,profile,items,flows,schema,openSchema,clo
   const linkedIds=new Set(lines.flatMap(f=>[f.source_id,f.target_id]))
   const baseline=items.filter(i=>localIds.has(i.id)||linkedIds.has(i.id))
   const choices=[...items,...row.proposed_vms]
-  const position=(n:number)=>({x:n%3*305,y:Math.floor(n/3)*140})
-  const nodes=[...baseline.map((i,n)=>({type:'diagramPort',id:i.id,position:position(n),data:{label:<DiagramNodeLabel name={i.name} kind={i.kind}/>},style:diagramCardStyle()})),
+  const proposedPositions=row.proposed_vms
+  let cell=0
+  function nextGridPosition(){
+    // An external endpoint can join the canvas after a VM already occupies its grid cell.
+    let point:{x:number;y:number}
+    do {
+      point={x:cell%3*305,y:Math.floor(cell/3)*140}
+      cell++
+    }while(proposedPositions.some(vm=>Math.abs(vm.x-point.x)<260&&Math.abs(vm.y-point.y)<110))
+    return point
+  }
+  const nodes=[...baseline.map(i=>({type:'diagramPort',id:i.id,position:nextGridPosition(),data:{label:<DiagramNodeLabel name={i.name} kind={i.kind}/>},style:diagramCardStyle()})),
     ...row.proposed_vms.map(vm=>({type:'diagramPort',id:vm.id,position:{x:vm.x,y:vm.y},data:{label:<DiagramNodeLabel name={vm.name} kind={vm.kind} subtitle="Новая ВМ"/>},style:diagramCardStyle({border:'1px dashed #a46c26'})}))]
   const positions=new Map(nodes.map(n=>[n.id,n.position]))
   const proposedIds=new Set(row.proposed_flows.map(f=>f.id))
@@ -161,7 +171,7 @@ function DecisionInspector({id,request,profile,items,flows,schema,openSchema,clo
   function saveProposal() {
     if(!row)return
     if(tool==='vm'&&name.trim()){
-      const vm={id:crypto.randomUUID(),system_id:row.system_id,kind:'vm',name:name.trim(),...position(nodes.length)}
+      const vm={id:crypto.randomUUID(),system_id:row.system_id,kind:'vm',name:name.trim(),...nextGridPosition()}
       persist([...row.proposed_vms,vm],row.proposed_flows)
     }else if(tool==='flow'&&draft.name.trim()&&draft.source_id&&draft.target_id&&!sameEnds&&!outside&&!flowError){
       const flow={...draft,id:draft.id||crypto.randomUUID(),name:draft.name.trim(),protocol:draft.protocol.trim(),port:draft.port.trim()}

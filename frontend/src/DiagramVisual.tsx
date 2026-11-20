@@ -36,3 +36,16 @@ export function DiagramNodeLabel({name,kind,subtitle,detail,logo,children}:{
     {children}
   </div>
 }
+
+
+/** Shared intrinsic component layout for read-only and editing React Flow nodes.
+ * Context controls are overlaid, never inserted in this flow-measured content.
+ */
+export function ComponentDiagramLabel({name,kind,systemName,environment,purpose}:{
+  name:string;kind:string;systemName?:string;environment?:string;purpose?:string
+}){
+  return <DiagramNodeLabel name={name} kind={kind} subtitle={systemName}
+    detail={kind+' · '+(environment||'Среда не задана')}>
+    <small className="componentNodePurpose">{purpose?.trim()||'Назначение не описано'}</small>
+  </DiagramNodeLabel>
+}

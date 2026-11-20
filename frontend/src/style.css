@@ -1066,6 +1066,11 @@ button:disabled{cursor:not-allowed;opacity:.55}
 }
 
 
+/* The generic miniArchitecture rule above adds margin-top:5px to every small.
+   Editor cards have only the purpose margin, so normalize intrinsic geometry. */
+.miniArchitecture .react-flow__node-readonlyFlowNode .architectureGraphNode small{margin-top:0}
+.miniArchitecture .react-flow__node-readonlyFlowNode .architectureGraphNode .componentNodePurpose{margin-top:7px}
+
 /* Read-only actions sit over the card: they must never change VM node geometry. */
 .miniArchitecture .react-flow__node-readonlyFlowNode .componentNodeOpenOverlay{
  position:absolute;top:5px;right:5px;z-index:4;display:grid;place-items:center;

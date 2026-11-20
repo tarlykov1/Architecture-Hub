@@ -1,4 +1,4 @@
-/* Eight anchors at 1/3 and 2/3 of each edge; source and target share each point. */
+/* Sixteen physical ports: preserve the legacy 1/3 and 2/3 positions and add 1/6 and 5/6 on each edge. */
 .react-flow__node .flowPortHandle{
  width:12px;height:12px;box-sizing:border-box;border-radius:50%;
  transform:translate(-50%,-50%);

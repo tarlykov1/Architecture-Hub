@@ -1064,3 +1064,21 @@ button:disabled{cursor:not-allowed;opacity:.55}
  .globalHeader .topActions .accountTopAction{display:none}
  .globalHeader .topActions{flex:0 1 auto;min-width:0}
 }
+
+/* QA-WORK: mobile map must fit its viewport, including nested flex/grid wrappers. */
+.homeMapGraph,.homeLayerEditorStage{box-sizing:border-box;min-width:0;max-width:100%}
+@media(max-width:650px){
+ .homeMapGraph{width:100%;max-width:100%;min-width:0}
+ .homeLayerEditorStage{width:100%;max-width:100%;min-width:0}
+ .homeLayerEditorStage.editing{width:100%;max-width:100%;min-width:0;grid-template-columns:75px minmax(0,1fr)}
+ .homeLayerEditorStage.editing>.homeMapGraph{min-width:0;max-width:100%;z-index:0}
+ /* Keep the editor's cancel/save actions above the canvas, property dock,
+    map filters and region-membership controls on narrow screens. */
+ .homeLayerEditorStage.editing>.homeLayerTools{
+   position:relative;z-index:60;isolation:isolate;overflow-y:auto;overflow-x:hidden
+ }
+ .homeLayerEditorStage.editing>.homeLayerTools>button{
+   position:relative;z-index:61;flex-shrink:0;pointer-events:auto
+ }
+ .homeLayerEditorStage.editing>.homeLayerDock{position:relative;z-index:1}
+}

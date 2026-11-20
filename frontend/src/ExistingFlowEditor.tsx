@@ -38,9 +38,8 @@ export default function ExistingFlowEditor({original,current,sourceName,targetNa
   onStage(next)
  }
  return <form className="boardExistingFlowEditor" aria-label="Редактирование существующего потока" onSubmit={submit}>
-  <div className="boardExistingFlowHeading"><div><strong>Паспорт сохранённого потока</strong><small>{sourceName} → {targetName}</small></div><button type="button" onClick={onClose} aria-label="Закрыть редактирование потока">✕</button></div>
-  <p>Чтобы изменить подключение, перетащите маркер на конце стрелки. Для смены компонента подтвердите изменения в черновике.</p>
-  {staged&&<p className="boardExistingFlowStaged" role="status">Изменение этого потока уже добавлено в черновик.</p>}
+  <div className="boardExistingFlowHeading"><div><strong>Параметры потока</strong><small>{sourceName} → {targetName}</small></div><button type="button" onClick={onClose} aria-label="Закрыть редактирование потока">✕</button></div>
+  {staged&&<small className="boardExistingFlowStaged" role="status">Есть несохранённая правка</small>}
   <label>Название потока<input required maxLength={250} value={values.name} onChange={e=>set('name',e.target.value)}/></label>
   <div className="boardExistingFlowFields">
    <label>Протокол<input maxLength={80} value={values.protocol} placeholder="Не указан" onChange={e=>set('protocol',e.target.value)}/></label>

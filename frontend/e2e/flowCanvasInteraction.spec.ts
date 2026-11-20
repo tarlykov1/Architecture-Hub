@@ -64,7 +64,7 @@ test('components diagram opens its right-side passport and keeps selected node h
   await expect(node).toBeVisible()
   await node.click()
   await expect(page.getByRole('dialog',{name:'Карточка компонента '+names[0]})).toBeVisible()
-  await expect(node).toHaveCSS('border-top-color','rgb(19, 119, 213)')
+  await expect(node).toHaveCSS('border-top-color','rgb(83, 70, 199)')
 })
 
 test('flow utilities remain available from More while flow workspace is a registry',async({page})=>{

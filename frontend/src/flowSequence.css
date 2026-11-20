@@ -1,0 +1,22 @@
+.flowSequence {display:flex; flex-direction:column; min-width:0; min-height:0; flex:1; background:white}
+.sequenceTools, .sequenceEmpty, .componentScopePrompt {padding:12px 16px; color:var(--hub-muted); font-size:13px}
+.sequenceTools {display:flex; align-items:center; gap:10px; flex-wrap:wrap}
+.sequenceTools button, .sequenceActions button {border:1px solid var(--hub-line); background:white; color:var(--hub-ink); border-radius:6px; padding:4px 8px}
+.sequenceScroll {overflow:auto; max-width:100%; min-height:0; max-height:72vh; overscroll-behavior:contain}
+.sequenceSheet {min-width:calc(var(--lanes) * 230px); padding:0 10px 20px}
+.sequenceHead {position:sticky; top:0; z-index:1; display:grid; grid-template-columns:repeat(var(--lanes),1fr); padding:5px 0; background:white}
+.sequenceHead strong {justify-self:center; text-align:center; width:80%; padding:8px; background:#e0f0ec; color:#214947; border-radius:7px; overflow-wrap:anywhere}
+.sequenceSteps {list-style:none; margin:0; padding:0; background-image:linear-gradient(to right, transparent calc(50% - .6px),#c3d1d4 calc(50% - .6px),#c3d1d4 calc(50% + .6px),transparent calc(50% + .6px)); background-size:calc(100% / var(--lanes)) 100%}
+.sequenceRow {display:grid; grid-template-columns:repeat(calc(var(--lanes) * 2),minmax(0,1fr)); padding:8px 0 6px}
+.sequenceMessage {min-width:0; color:#387f82; text-align:center}
+.sequenceMessage a {display:inline-block; max-width:100%; margin-bottom:4px; padding:0 5px; background:white; color:var(--hub-ink); font-size:13px; line-height:1.4; overflow-wrap:anywhere; text-decoration:none}
+.sequenceMessage a:hover {text-decoration:underline}
+.sequenceMessage a span {color:var(--hub-muted); font-variant-numeric:tabular-nums}
+.sequenceArrow {position:relative; border-bottom:2px solid currentColor}
+.sequenceArrow::after {content:''; position:absolute; right:1px; bottom:-5px; width:7px; height:7px; border:solid currentColor; border-width:2px 2px 0 0; transform:rotate(45deg)}
+.sequenceMessage.backwards .sequenceArrow::after, .sequenceMessage.self .sequenceArrow::after {right:auto; left:1px; transform:rotate(-135deg)}
+.sequenceMessage.self .sequenceArrow {height:14px; border-top:2px solid; border-right:2px solid; margin-right:15px}
+.sequenceMessage.reply .sequenceArrow {border-bottom-style:dashed}
+.sequenceActions {display:flex; justify-content:center; flex-wrap:wrap; align-items:center; gap:4px; padding-top:6px; font-size:12px}
+.sequenceActions button {display:inline-flex; padding:4px}
+.sequenceActions label {background:white; color:var(--hub-ink)}

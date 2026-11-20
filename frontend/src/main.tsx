@@ -524,9 +524,8 @@ function App() {
   const [teamViewSelection,setTeamViewSelection]=useState('')
   const [teamViewError,setTeamViewError]=useState('')
   const [viewSelection,setViewSelection]=useState('')
-  const [workspaceQuery,setWorkspaceQuery] = useState('')
-  const [workspaceKind,setWorkspaceKind] = useState('all')
-  const [workspaceVerified,setWorkspaceVerified] = useState('all')
+  // Search and filters belong to each section. A flow search must never hide business processes.
+  const [workspaceFiltersBySection,setWorkspaceFiltersBySection] = useState<Partial<Record<Section,{query:string;kind:string;verification:string}>>>({})
   const [search,setSearch] = useState('')
   const [viewSystem,setViewSystem] = useState(()=>parseWorkspaceRoute(window.location).systemId)
 
@@ -535,6 +534,15 @@ function App() {
   const [infra, setInfra] = useState<Infra[]>([])
   const [flows, setFlows] = useState<Flow[]>([])
   const [layer, setLayer] = useState<Section>(()=>parseWorkspaceRoute(window.location).layer)
+  const activeWorkspaceFilters=workspaceFiltersBySection[layer]??{query:'',kind:'all',verification:'all'}
+  const {query:workspaceQuery,kind:workspaceKind,verification:workspaceVerified}=activeWorkspaceFilters
+  const updateWorkspaceFilters=(patch:Partial<typeof activeWorkspaceFilters>)=>setWorkspaceFiltersBySection(previous=>({
+    ...previous,
+    [layer]:{query:'',kind:'all',verification:'all',...previous[layer],...patch},
+  }))
+  const setWorkspaceQuery=(query:string)=>updateWorkspaceFilters({query})
+  const setWorkspaceKind=(kind:string)=>updateWorkspaceFilters({kind})
+  const setWorkspaceVerified=(verification:string)=>updateWorkspaceFilters({verification})
   const [boardViewLayout,setBoardViewLayout]=useState<Record<string,{x:number;y:number;width?:number;height?:number;parent_id?:string}>>({})
   const [boardViewFlowAnchors,setBoardViewFlowAnchors]=useState<Record<string,FlowPortPair>>({})
   useEffect(()=>{
@@ -1269,7 +1277,7 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
     }} saveSegment={async (value,id)=>{await request(id?'/api/networks/'+id:'/api/networks',{method:id?'PUT':'POST',body:JSON.stringify(value)});setSegments(await request<Segment[]>('/api/networks'))}} saveFlow={async (value,id)=>{ await request(id?'/api/flows/'+id:'/api/flows',{method:id?'PUT':'POST',body:JSON.stringify(value)}); setFlows(await request<Flow[]>('/api/flows')) }}/> : layer==='business' ? <section className="infraPanel"><h2>Бизнес-архитектура</h2><p className="hint">Категория → процесс → поддерживающие системы. Достоверность связей проверяется отдельно.</p>
       {canWrite('systems')&&<button type="button" className="primary" onClick={()=>openBusinessEditor()}>+ Создать бизнес-процесс</button>}
       <div className="businessGrid">{categories.filter(cat=>!workspaceQuery||cat.name.toLowerCase().includes(workspaceQuery.toLowerCase())||processes.some(p=>p.category_id===cat.id&&[p.name,p.description].join(' ').toLowerCase().includes(workspaceQuery.toLowerCase()))).map(cat=><article className="businessCategory" key={cat.id}><h3>{cat.name}</h3>{processes.filter(p=>p.category_id===cat.id&&(!workspaceQuery||[p.name,p.description,cat.name].join(' ').toLowerCase().includes(workspaceQuery.toLowerCase()))).map(p=><div className="businessProcess" key={p.id}><strong>{p.name}</strong>{canWrite('systems')&&<button type="button" onClick={()=>openBusinessEditor(p)}>Редактировать БП</button>}<p>{p.description}</p><div className="processSystems">{businessLinks.filter(l=>l.process_id===p.id).map(l=><button key={l.id} onClick={()=>{setSelected(l.system_id);setLayer('systems')}}>{objects.find(o=>o.id===l.system_id)?.name||'Система'}</button>)}</div></div>)}</article>)}</div>
-      {!categories.length&&<p>Бизнес-процессы пока не добавлены.</p>}</section> : layer==='systems' ? <section className="systemsWorkspace" aria-label="Реестр информационных систем">
+      {!categories.length?<p>Бизнес-процессы пока не добавлены.</p>:!categories.some(cat=>!workspaceQuery||cat.name.toLowerCase().includes(workspaceQuery.toLowerCase())||processes.some(p=>p.category_id===cat.id&&[p.name,p.description].join(' ').toLowerCase().includes(workspaceQuery.toLowerCase())))&&<p role="status">Нет бизнес-процессов по фильтру «{workspaceQuery}». <button type="button" onClick={()=>setWorkspaceQuery('')}>Сбросить поиск</button></p>}</section> : layer==='systems' ? <section className="systemsWorkspace" aria-label="Реестр информационных систем">
         <div className="systemsWorkspaceHead"><div><h2>Информационные системы</h2><p>Реестр, паспорта и состав ИС. Общая карта связей находится в разделе «Обзор».</p></div><div className="systemsWorkspaceActions"><button type="button" onClick={()=>setLayer("home")}>Слои архитектуры</button><button type="button" onClick={()=>{setSystemsShowTechnologyInventory(false);setSystemsShowDiagram(v=>!v)}} aria-pressed={systemsShowDiagram}>{systemsShowDiagram?'Показать реестр':'Редактор схемы'}</button><button type="button" onClick={()=>{setSystemsShowDiagram(false);setSystemsShowTechnologyInventory(v=>!v)}} aria-pressed={systemsShowTechnologyInventory}>{systemsShowTechnologyInventory?'Вернуться к реестру ИС':'Реестр технологий'}</button>{canWrite('systems')&&<button type="button" className="primary" onClick={()=>{setPassportEditId('');setCreateObjectOpen(true)}}>+ Создать ИС</button>}</div></div>
         {systemsShowTechnologyInventory ? <TechnologyInventory request={request} onOpenSystem={id=>{setSystemsShowTechnologyInventory(false);setSelected(id);setInspectorOpen(true);setPanelTab('technologies')}}/> : systemsShowDiagram ? <section className="canvas" data-active-graph="systems">
         <div className="canvasMode">{canWrite('diagrams')&&<button aria-pressed={diagramEditMode} onClick={()=>setDiagramEditMode(v=>!v)}>{diagramEditMode?'Завершить редактирование':'Редактировать схему'}</button>}</div>

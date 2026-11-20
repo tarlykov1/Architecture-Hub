@@ -49,11 +49,6 @@ export default function ExistingFlowEditor({original,current,sourceName,targetNa
   <label>Защита<input maxLength={80} value={values.security} placeholder="unknown" onChange={e=>set('security',e.target.value)}/></label>
   <label>Описание данных<textarea maxLength={4000} rows={3} value={values.data_description} onChange={e=>set('data_description',e.target.value)}/></label>
   <label>Периодичность<input maxLength={160} value={values.schedule} placeholder="По событию / ежедневно" onChange={e=>set('schedule',e.target.value)}/></label>
-  <label>Достоверность<select value={values.verification} onChange={e=>set('verification',e.target.value)}>
-   <option value="draft">Черновик</option>
-   <option value="assumed">Предположение</option>
-   <option value="verified">Подтверждено</option>
-  </select></label>
   {invalid&&<p role="alert" className="boardFlowValidation">{invalid}</p>}
   <div className="boardExistingFlowActions"><button type="submit">Добавить изменение в черновик</button>{staged&&<button type="button" onClick={()=>{setValues(original);onUndo()}}>Отменить правку потока</button>}</div>
  </form>

@@ -69,7 +69,7 @@ export default function TechnicalDecisions({request, profile, systems, items, fl
     {creating&&<form className="decisionSide" onSubmit={e=>{e.preventDefault();void create()}}>
       <header><h3>Новое решение</h3><button type="button" aria-label="Закрыть создание" disabled={saving} onClick={()=>setCreating(false)}><X size={16}/></button></header>
       <label>Название<input required maxLength={250} value={title} onChange={e=>setTitle(e.target.value)} autoFocus/></label>
-      <label>Информационная система<select required value={system} onChange={e=>setSystem(e.target.value)}><option value="">Выберите систему</option>{systems.filter(s=>s.kind==='system').map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select></label>
+      <label>Информационная система<select aria-label="Информационная система" required value={system} onChange={e=>setSystem(e.target.value)}><option value="">Выберите систему</option>{systems.filter(s=>s.kind==='system').map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select></label>
       <button className="primary" disabled={saving||!title.trim()||!system}>Создать черновик</button>
     </form>}
     {selection&&!creating&&<DecisionInspector key={selection} id={selection} request={request} profile={profile} items={items} flows={flows} schema={schema} openSchema={()=>setSchema(true)} close={close} update={update}/>}
@@ -144,7 +144,7 @@ function DecisionInspector({id,request,profile,items,flows,schema,openSchema,clo
         {!row.proposed_vms.length&&!row.proposed_flows.length&&<p>В черновике пока нет изменений.</p>}
         {schema&&tool&&editable&&<form onSubmit={e=>{e.preventDefault();saveProposal()}}>
           <label>{tool==='vm'?'Название ВМ':'Название потока'}<input autoFocus required maxLength={250} value={name} onChange={e=>setName(e.target.value)}/></label>
-          {tool==='flow'&&<>{(['Источник','Получатель'] as const).map((label,i)=><label key={label}>{label}<select required value={i?target:source} onChange={e=>i?setTarget(e.target.value):setSource(e.target.value)}><option value="">Выберите компонент</option>{choices.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></label>)}</>}
+          {tool==='flow'&&<>{(['Источник','Получатель'] as const).map((label,i)=><label key={label}>{label}<select aria-label={label} required value={i?target:source} onChange={e=>i?setTarget(e.target.value):setSource(e.target.value)}><option value="">Выберите компонент</option>{choices.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></label>)}</>}
           <button className="primary" disabled={busy||!name.trim()||(tool==='flow'&&(!source||!target||source===target))}>Добавить в черновик</button>
         </form>}
         {!schema&&<button onClick={openSchema}>Открыть схему</button>}

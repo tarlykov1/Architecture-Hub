@@ -292,7 +292,7 @@ test('three grouped saved flows require a specific record then allow its endpoin
  const dock=editor.getByRole('complementary',{name:'Свойства и изменения схемы'})
  const choices=dock.getByRole('region',{name:'Потоки выбранной стрелки'})
  await expect(choices.getByRole('button')).toHaveCount(3)
- await expect(choices).toContainText('Сначала выберите нужную запись')
+ await expect(choices).toContainText('Выберите нужную связь')
  await expect(editor.getByRole('button',{name:'Перенести конец стрелки'})).toHaveCount(0)
  await choices.getByRole('button',{name:/Flow B/}).click()
  const grip=editor.getByRole('button',{name:'Перенести конец стрелки'})

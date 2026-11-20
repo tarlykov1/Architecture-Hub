@@ -536,12 +536,41 @@ class ProcessSystemOutput(ProcessSystemInput):
     id: UUID
 
 
+class SystemSecurityProfileInput(BaseModel):
+    """Only classification metadata; personal records must never enter this field."""
+    model_config = ConfigDict(extra="forbid")
+    personal_data: Literal["unknown", "yes", "no"] = "unknown"
+    pdn_level: Literal["", "UZ1", "UZ2", "UZ3", "UZ4"] = ""
+    gis_class: Literal["", "K1", "K2", "K3", "not_applicable"] = ""
+    internal_class: str = Field(default="", max_length=80)
+    categories: list[Literal["general", "special", "biometric", "other"]] = Field(default_factory=list, max_length=4)
+    verification: Literal["unverified", "verified"] = "unverified"
+    notes: str = Field(default="", max_length=1000)
+
+    @model_validator(mode="after")
+    def validate_personal_data_consistency(self):
+        if self.personal_data != "yes" and (self.pdn_level or self.categories):
+            raise ValueError("PD protection level and categories are allowed only when personal data is processed")
+        if len(set(self.categories)) != len(self.categories):
+            raise ValueError("Duplicate personal data categories")
+        return self
+
+
 class ObjectCreate(BaseModel):
     kind: str = Field(default="system", max_length=60)
     name: str = Field(min_length=1, max_length=250)
     description: str = Field(default="", max_length=4000)
     status: str = Field(default="active", max_length=40)
     attributes: dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def validate_security_profile(self):
+        if "security_profile" not in self.attributes:
+            return self
+        if self.kind != "system":
+            raise ValueError("Only information systems can have a security profile")
+        SystemSecurityProfileInput.model_validate(self.attributes["security_profile"])
+        return self
 
     @model_validator(mode="after")
     def validate_system_logo(self):

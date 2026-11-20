@@ -46,3 +46,9 @@ export function workspaceRouteUrl(layer: Section, systemId = '', passportId = ''
   if ((layer !== 'infrastructure' && layer !== 'flows') || !systemId) return path
   return path + '?system=' + encodeURIComponent(systemId)
 }
+
+export type OverviewMode = 'business' | 'flows' | 'sequence' | 'logical'
+export function readOverviewMode(search: string): OverviewMode {
+  const mode = new URLSearchParams(search).get('map')
+  return mode === 'flows' || mode === 'sequence' || mode === 'logical' ? mode : 'business'
+}

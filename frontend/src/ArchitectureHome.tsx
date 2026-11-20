@@ -1,6 +1,9 @@
 import React, {useEffect,useMemo,useRef,useState} from 'react'
 import {architectureIcon,DiagramNodeLabel,diagramCardStyle} from './DiagramVisual'
 import {OverviewFlowEdge, type OverviewFlow} from './OverviewFlowEdge'
+import type {OverviewMode} from './workspaceRoutes'
+import {FlowSequence} from './FlowSequence'
+import type {Connection, Edge} from '@xyflow/react'
 import {logoFromAttributes} from './SystemLogo'
 export {architectureIcon} from './DiagramVisual'
 import {ReactFlow,Background,Controls,MarkerType,Position,NodeResizer,useReactFlow,type NodeProps,type NodeChange} from '@xyflow/react'
@@ -88,9 +91,22 @@ type Interface={item_id:string;zone_id:string|null;vlan_id:string|null;vrf_id:st
 import {AutoFit,Disclosure} from './WorkspaceUI'
 import {overviewGridPositions,flowCountLabel} from './graphLayout'
 
-export default function ArchitectureHome({systems,components,flows,processes,categories,links,onOpenSystem,onCloseSystem,inspectorOpen,onOpenComponents,onOpenComponent,onOpenFlows,focusSystemId='',request,canEditLayers=false}:{systems:System[];components:Component[];flows:Flow[];processes:Process[];categories:Category[];links:Link[];networks:Network[];interfaces:Interface[];onOpenSystem:(id:string)=>void;onCloseSystem:()=>void;inspectorOpen:boolean;onOpenComponents:(id:string)=>void;onOpenComponent:(id:string)=>void;onOpenFlows:()=>void;onOpenNetworks:()=>void;focusSystemId?:string;request?:<T>(url:string,init?:RequestInit)=>Promise<T>;canEditLayers?:boolean}){
+type LogicalMap = {
+ relations: {id:string; source_id:string; target_id:string; kind:string}[]
+ positions: Record<string,{x:number;y:number}>
+ controls: React.ReactNode
+ editing: boolean
+ toggleEdit: ()=>void
+ move: (id:string, point:{x:number;y:number})=>void
+ onConnect: (connection:Connection)=>void
+}
+export default function ArchitectureHome({mode,onModeChange,logical,systems,components,flows,processes,categories,links,onOpenSystem,onCloseSystem,inspectorOpen,onOpenComponents,onOpenComponent,onOpenFlows,focusSystemId='',request,canEditLayers=false}:{mode:OverviewMode;onModeChange:(mode:OverviewMode)=>void;logical:LogicalMap;systems:System[];components:Component[];flows:Flow[];processes:Process[];categories:Category[];links:Link[];networks:Network[];interfaces:Interface[];onOpenSystem:(id:string)=>void;onCloseSystem:()=>void;inspectorOpen:boolean;onOpenComponents:(id:string)=>void;onOpenComponent:(id:string)=>void;onOpenFlows:()=>void;onOpenNetworks:()=>void;focusSystemId?:string;request?:<T>(url:string,init?:RequestInit)=>Promise<T>;canEditLayers?:boolean}){
  const [layers,setLayers]=useState({systems:true,components:false,flows:false,business:false})
- const [mapMode,setMapMode]=useState<'business'|'flows'>('business')
+ const sequence=mode==='sequence'
+ const mapMode=sequence?'flows':mode
+ const flowPresentation=sequence?'sequence':'map'
+ const logicalMode=mapMode==='logical'
+ const editingSystems=logicalMode&&logical.editing&&canEditLayers
  const [activeOverlays,setActiveOverlays]=useState({business:false})
  const [selectedOverlayGroup,setSelectedOverlayGroup]=useState('')
  // The user can enable the layer before the async category/link collections arrive.
@@ -181,10 +197,15 @@ export default function ArchitectureHome({systems,components,flows,processes,cat
  const systemByComponent=useMemo(()=>new Map(components.map(c=>[c.id,c.system_id])),[components])
  const filteredSystems=systems.filter(s=>(!query||s.name.toLowerCase().includes(query.toLowerCase())||components.some(c=>c.system_id===s.id&&c.name.toLowerCase().includes(query.toLowerCase())))&&(!focus||focus===s.id)&& (environment==='all'||components.some(c=>c.system_id===s.id&&String(c.details.environment||'').toLowerCase()===environment)))
  const visibleIds=new Set(filteredSystems.map(s=>s.id))
- const crossFlows=flows.flatMap(flow=>{
+ const knownSystemIds=new Set(systems.map(s=>s.id))
+ const exchanges=flows.flatMap(flow=>{
    const source=systemByComponent.get(flow.source_id),target=systemByComponent.get(flow.target_id)
-   return source&&target&&source!==target&&visibleIds.has(source)&&visibleIds.has(target)?[{source,target,flow}]:[]
+   return source&&target&&knownSystemIds.has(source)&&knownSystemIds.has(target)?[{source,target,flow}]:[]
  })
+ const visibleExchanges=exchanges.filter(row=>visibleIds.has(row.source)||visibleIds.has(row.target))
+ const crossFlows=visibleExchanges.filter(row=>row.source!==row.target)
+ const neighborIds=new Set(crossFlows.flatMap(row=>[row.source,row.target]))
+ const mapSystems=mapMode==='flows'?systems.filter(s=>visibleIds.has(s.id)||neighborIds.has(s.id)):filteredSystems
  const groupedFlows=new Map<string,Flow[]>()
  for(const {source,target,flow} of crossFlows){
    const key=source+'|'+target
@@ -215,7 +236,7 @@ export default function ArchitectureHome({systems,components,flows,processes,cat
  const basePositions=overviewGridPositions(systems.map(s=>s.id))
  const positions=Object.fromEntries(systems.map((sys,index)=>{
    const original=basePositions[sys.id]||{x:(index%3)*320,y:Math.floor(index/3)*190}
-   return [sys.id,{x:original.x/310*410,y:original.y/170*systemRowGap}]
+   return [sys.id,(logicalMode&&logical.positions[sys.id])||{x:original.x/310*410,y:original.y/170*systemRowGap}]
  }))
  const overlayGroups:OverlayGroup[]=[]
  for(const cat of categories){
@@ -282,17 +303,17 @@ export default function ArchitectureHome({systems,components,flows,processes,cat
      data:{label:<span title={c.name}>{architectureIcon(c.kind)} {c.name}</span>},style:{width:136,fontSize:11,padding:'7px',borderRadius:6,border:'1px solid #cbd5e1',background:'#fff',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' as const},selectable:true,draggable:false,zIndex:20}]:[]
  }):[]
 
- const nodes=filteredSystems.map((s,i)=>({id:s.id,draggable:false,initialWidth:245,initialHeight:86,handles:systemHandles,sourcePosition:Position.Right,targetPosition:Position.Left,position:positions[s.id]||{x:(i%4)*320,y:Math.floor(i/4)*190},data:{label:<DiagramNodeLabel name={s.name} kind={s.kind} logo={logoFromAttributes(s.attributes)} subtitle={components.filter(c=>c.system_id===s.id).length+' компонентов · '+links.filter(l=>l.system_id===s.id).length+' бизнес-связей'}/>},style:diagramCardStyle()}))
- const selectedSystemInfo=filteredSystems.find(s=>s.id===selectedSystem)
+ const nodes=mapSystems.map((s,i)=>({id:s.id,draggable:editingSystems,initialWidth:245,initialHeight:86,handles:systemHandles,sourcePosition:Position.Right,targetPosition:Position.Left,position:positions[s.id]||{x:(i%4)*320,y:Math.floor(i/4)*190},data:{label:<DiagramNodeLabel name={s.name} kind={s.kind} logo={logoFromAttributes(s.attributes)} subtitle={components.filter(c=>c.system_id===s.id).length+' компонентов · '+links.filter(l=>l.system_id===s.id).length+' бизнес-связей'}/>},style:diagramCardStyle()}))
+ const selectedSystemInfo=mapSystems.find(s=>s.id===selectedSystem)
  const selectedNeighbors=new Set<string>([selectedSystem])
  for(const f of crossFlows)if(f.source===selectedSystem||f.target===selectedSystem){selectedNeighbors.add(f.source);selectedNeighbors.add(f.target)}
  const selectedComponents=components.filter(c=>c.system_id===selectedSystem)
  const selectedFlowCount=crossFlows.filter(f=>f.source===selectedSystem||f.target===selectedSystem).length
  const focusedLayer=overlayGroups.find(group=>group.id===selectedOverlayGroup)
- const highlightedNodes=nodes.map(n=>({...n,zIndex:10,style:{...n.style,border:selectedSystem===n.id?'2px solid var(--hub-accent)':n.style.border,opacity:focusedLayer&&!membersFor(focusedLayer).includes(n.id)?0.2:selectedSystem&&!selectedNeighbors.has(n.id)?0.28:1}}))
- const canvasNodes=[...areaNodes,...highlightedNodes,...componentNodes]
+ const highlightedNodes=nodes.map(n=>({...n,zIndex:10,style:{...n.style,border:selectedSystem===n.id?'2px solid var(--hub-accent)':n.style.border,opacity:!logicalMode&&focusedLayer&&!membersFor(focusedLayer).includes(n.id)?0.2:selectedSystem&&!selectedNeighbors.has(n.id)?0.28:1}}))
+ const canvasNodes=[...(logicalMode?[]:areaNodes),...highlightedNodes,...componentNodes]
  const connectionCounts=mapMode==='business'?businessCounts:flowCounts
- const edges=[...connectionCounts].map(([key,count])=>{
+ const edges:Edge[]=[...connectionCounts].map(([key,count])=>{
    const [source,target]=key.split('|')
    const related=(selectedSystem&&(source===selectedSystem||target===selectedSystem))||(mapMode==='flows'&&openFlowPair===key)
    const color=mapMode==='business'?'#79738c':'#69707e'
@@ -301,16 +322,27 @@ export default function ArchitectureHome({systems,components,flows,processes,cat
      ...(mapMode==='flows'?{markerEnd:{type:MarkerType.ArrowClosed,width:13,height:13,color}}:{}),
      style:{stroke:related?'var(--hub-accent)':color,strokeWidth:related?2.5:1.4,strokeDasharray:mapMode==='business'?'5 5':undefined,opacity:selectedSystem&&!related?0.18:1}}
  })
+ const logicalEdges:Edge[]=logicalMode?logical.relations.filter(r=>visibleIds.has(r.source_id)&&visibleIds.has(r.target_id)).map(r=>({
+   id:r.id,source:r.source_id,target:r.target_id,type:'smoothstep',
+   label:({data_flow:'Заявленный обмен (устар.)',integrates_with:'Интеграция',depends_on:'Зависит от'} as Record<string,string>)[r.kind]||r.kind,
+   style:{stroke:'#69707e',strokeWidth:1.4}
+ })):[]
  const environments=[...new Set(components.map(c=>String(c.details.environment||'').toLowerCase()).filter(Boolean))].sort()
  return <section className="homeMap" aria-label="Главная карта архитектуры">
   <div className="overviewToolbar">
  <div className="homeMapTools"><input aria-label="Поиск на карте" value={query} onChange={e=>setQuery(e.target.value)} placeholder="Найти систему или ВМ…"/><Disclosure label="Фильтры и слои"><select aria-label="Контур карты" value={environment} onChange={e=>setEnvironment(e.target.value)}><option value="all">Все контуры</option>{environments.map(e=><option key={e} value={e}>{e}</option>)}</select><select aria-label="Фокус на ИС" value={focus} onChange={e=>{setFocus(e.target.value);if(!e.target.value){setSelectedSystem('');onCloseSystem()}}}><option value="">Все системы</option>{systems.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select>
-  <details className="homeMapLayersDisclosure"><summary>Слои карты <span aria-hidden="true">▾</span></summary><div className="homeMapLayers" aria-label="Слои карты">{([['systems','Информационные системы'],['business','Бизнес-процессы']] as const).map(([key,label])=><label key={key}><input type="checkbox" checked={layers[key]} onChange={e=>setLayers(old=>({...old,[key]:e.target.checked}))}/>{label}</label>)}</div></details></Disclosure></div>
+  {!sequence&&<details className="homeMapLayersDisclosure"><summary>Слои карты <span aria-hidden="true">▾</span></summary><div className="homeMapLayers" aria-label="Слои карты">{([['systems','Информационные системы'],['business','Бизнес-процессы']] as const).map(([key,label])=><label key={key}><input type="checkbox" checked={layers[key]} onChange={e=>setLayers(old=>({...old,[key]:e.target.checked}))}/>{label}</label>)}</div></details>}</Disclosure></div>
   <div className="homeMapMode" role="group" aria-label="Тип связей на архитектурной карте">
-    {([['business','Бизнес-связи'],['flows','Потоки данных']] as const).map(([id,label])=><button key={id} type="button" aria-pressed={mapMode===id} className={mapMode===id?'current':''} onClick={()=>setMapMode(id)}>{label}</button>)}
+    {([['business','Бизнес-связи'],['flows','Потоки данных'],['logical','Логические связи']] as const).map(([id,label])=><button key={id} type="button" aria-pressed={mapMode===id} className={mapMode===id?'current':''} disabled={editingLayers||editingSystems} onClick={()=>onModeChange(id)}>{label}</button>)}
    </div>
+  {mapMode==='flows'&&<div className="homeMapMode" role="group" aria-label="Представление потоков данных">
+    {([['map','Карта'],['sequence','Последовательность']] as const).map(([id,label])=><button key={id} type="button" disabled={editingLayers} aria-pressed={flowPresentation===id} className={flowPresentation===id?'current':''} onClick={()=>onModeChange(id==='map'?'flows':'sequence')}>{label}</button>)}
+  </div>}
   </div>
-  <div className="homeLayerToolbar" role="group" aria-label="Бизнес-области">
+  {logicalMode&&<div className="overviewToolbar" role="group" aria-label="Раскладка логических связей">{logical.controls}
+    {canEditLayers&&<button type="button" aria-pressed={editingSystems} onClick={logical.toggleEdit}>{editingSystems?'Завершить редактирование':'Редактировать схему'}</button>}
+  </div>}
+  {!logicalMode&&!sequence&&<div className="homeLayerToolbar" role="group" aria-label="Бизнес-области">
  <label><input type="checkbox" checked={activeOverlays.business} onChange={e=>{
    const checked=e.target.checked
    const target=checked?(selectedOverlayGroup||firstAvailableOverlayGroup):''
@@ -335,8 +367,8 @@ export default function ArchitectureHome({systems,components,flows,processes,cat
    setOpenFlowPair('');setActiveOverlays({business:false});setSelectedOverlayGroup('');setHiddenOverlayGroups([])
    setLayers({systems:true,components:false,flows:false,business:false})
  }}>Сбросить фильтры</button>
- </div>
- {activeOverlays.business&&selectedOverlayGroup&&<span className="homeLayerHint" role="status">Показана бизнес-область: {overlayGroups.find(group=>group.id===selectedOverlayGroup)?.name}.</span>}
+ </div>}
+ {!logicalMode&&!sequence&&activeOverlays.business&&selectedOverlayGroup&&<span className="homeLayerHint" role="status">Показана бизнес-область: {overlayGroups.find(group=>group.id===selectedOverlayGroup)?.name}.</span>}
   {query.trim()&&<div className="homeMapSearchMatches" role="region" aria-label="Результаты поиска по архитектуре">
     <strong>Найденные ИС: {filteredSystems.length}</strong>
     {!filteredSystems.length&&<span>Системы не найдены.</span>}
@@ -348,7 +380,8 @@ export default function ArchitectureHome({systems,components,flows,processes,cat
     </div>)}
     {filteredSystems.length>12&&<small>Показаны первые 12 систем. Уточните запрос.</small>}
   </div>}
-  {layers.systems&&<div className={editingLayers?'homeLayerEditorStage editing':'homeLayerEditorStage'}>
+  {sequence&&<FlowSequence exchanges={exchanges} systems={systems} visible={visibleIds}/>}
+  {!sequence&&layers.systems&&<div className={editingLayers?'homeLayerEditorStage editing':'homeLayerEditorStage'}>
 
    {editingLayers&&<div className="homeLayerTools" role="toolbar" aria-label="Инструменты слоёв">
      <button type="button" aria-label="Выбрать область" title="Выбор области и её свойств" data-tool="select" aria-pressed={layerTool==='select'} onClick={()=>setLayerTool('select')}><MousePointer2 size={19} strokeWidth={1.8}/><span>Выбрать</span></button>
@@ -364,8 +397,9 @@ export default function ArchitectureHome({systems,components,flows,processes,cat
      <div className="homeLayerToolsDraft" aria-live="polite"><ClipboardList size={17}/><span>Черновик: {Object.keys(layerDrafts).length}</span></div>
    </div>}
 
-  <div className="homeMapGraph"><ReactFlow minZoom={0.08} nodes={canvasNodes} edges={edges} nodeTypes={homeNodeTypes} edgeTypes={homeEdgeTypes} nodesDraggable={editingLayers&&canEditLayers&&layerTool==='move'}
+  <div className="homeMapGraph"><ReactFlow minZoom={0.08} nodes={canvasNodes} edges={logicalMode?logicalEdges:edges} nodeTypes={homeNodeTypes} edgeTypes={homeEdgeTypes} nodesDraggable={editingSystems||(editingLayers&&canEditLayers&&layerTool==='move')}
    onNodesChange={(changes:NodeChange[])=>{
+    if(editingSystems){for(const change of changes)if(change.type==='position'&&change.position&&visibleIds.has(change.id))logical.move(change.id,change.position);return}
     if(!editingLayers||!canEditLayers||layerTool!=='move')return
     for(const change of changes){
      if(change.type!=='position'||!change.position||!change.id.startsWith('overlay:'))continue
@@ -374,7 +408,7 @@ export default function ArchitectureHome({systems,components,flows,processes,cat
      const group=overlayGroups.find(item=>item.id===key)
      if(node&&group)updateDraft(key,change.position,{x:node.position.x,y:node.position.y,width:node.width,height:node.height,color:groupColor(group),opacity:(layerDrafts[key]||savedRegions[key])?.opacity??overlayOpacity/100,members:membersFor(group)})
     }
-   }} onNodeDragStop={(_,node)=>{if(layerTool!=='move'||!node.id.startsWith('overlay:'))return;const key=node.id.slice(8);const region=areaNodes.find(item=>item.id===node.id);const group=overlayGroups.find(item=>item.id===key);if(region&&group)updateDraft(key,node.position,{x:region.position.x,y:region.position.y,width:region.width,height:region.height,color:groupColor(group),opacity:(layerDrafts[key]||savedRegions[key])?.opacity??overlayOpacity/100,members:membersFor(group)})}} fitView fitViewOptions={{padding:0.15,minZoom:0.3,maxZoom:1}} nodesConnectable={false} onNodeClick={(_,node)=>{if(node.id.startsWith('component:')){onOpenComponent(node.id.slice('component:'.length));return}if(node.id.startsWith('overlay:')){setSelectedOverlayGroup(node.id.slice(8));return}setSelectedSystem(node.id);onOpenSystem(node.id)}} onPaneClick={()=>{setSelectedSystem('');onCloseSystem()}}><AutoFit layoutKey={inspectorOpen?'inspector-open':'inspector-closed'} ignoreNodePrefixes="overlay:,component:" focusIds={selectedSystemInfo?[selectedSystemInfo.id]:filteredSystems.map(s=>s.id)} suspended={editingLayers}/><Background gap={20}/><Controls showInteractive={false}/><LayerFitController trigger={fitTrigger} systemIds={filteredSystems.map(s=>s.id)}/>
+   }} onNodeDragStop={(_,node)=>{if(layerTool!=='move'||!node.id.startsWith('overlay:'))return;const key=node.id.slice(8);const region=areaNodes.find(item=>item.id===node.id);const group=overlayGroups.find(item=>item.id===key);if(region&&group)updateDraft(key,node.position,{x:region.position.x,y:region.position.y,width:region.width,height:region.height,color:groupColor(group),opacity:(layerDrafts[key]||savedRegions[key])?.opacity??overlayOpacity/100,members:membersFor(group)})}} fitView fitViewOptions={{padding:0.15,minZoom:0.3,maxZoom:1}} nodesConnectable={editingSystems} onConnect={logical.onConnect} deleteKeyCode={null} onNodeClick={(_,node)=>{if(node.id.startsWith('component:')){onOpenComponent(node.id.slice('component:'.length));return}if(node.id.startsWith('overlay:')){setSelectedOverlayGroup(node.id.slice(8));return}setSelectedSystem(node.id);onOpenSystem(node.id)}} onPaneClick={()=>{setSelectedSystem('');onCloseSystem()}}><AutoFit layoutKey={inspectorOpen?'inspector-open':'inspector-closed'} ignoreNodePrefixes="overlay:,component:" focusIds={selectedSystemInfo?[selectedSystemInfo.id]:mapSystems.map(s=>s.id)} suspended={editingLayers||editingSystems}/><Background gap={20}/><Controls showInteractive={false}/><LayerFitController trigger={fitTrigger} systemIds={filteredSystems.map(s=>s.id)}/>
    <LayerRectangleDraw enabled={editingLayers&&layerTool==='draw'&&Boolean(selectedOverlayGroup)} onDraw={drawRegion}/>
    </ReactFlow></div>
 
@@ -420,12 +454,12 @@ export default function ArchitectureHome({systems,components,flows,processes,cat
    </aside>}
 
    </div>}
-  {!layers.systems&&<div className="homeMapEmpty">Включите слой «Информационные системы», чтобы показать карту связей.</div>}
-  {selectedOverlayGroup&&focusedLayer&&<div className="homeLayerMembers" role="status"><strong>{focusedLayer.name}</strong><span>В этой области: {membersFor(focusedLayer).map(id=>systems.find(sys=>sys.id===id)?.name||id).join(', ')}</span><button type="button" onClick={()=>setSelectedOverlayGroup('')}>Снять выделение</button></div>}
+  {!sequence&&!layers.systems&&<div className="homeMapEmpty">Включите слой «Информационные системы», чтобы показать карту связей.</div>}
+  {!sequence&&!logicalMode&&selectedOverlayGroup&&focusedLayer&&<div className="homeLayerMembers" role="status"><strong>{focusedLayer.name}</strong><span>В этой области: {membersFor(focusedLayer).map(id=>systems.find(sys=>sys.id===id)?.name||id).join(', ')}</span><button type="button" onClick={()=>setSelectedOverlayGroup('')}>Снять выделение</button></div>}
 
-  <details className="overviewLegend"><summary>О карте · {systems.length} ИС · {flowCountLabel(flows.length)}</summary>
-    <p>{mapMode==='business'?'Пунктир показывает участие систем в общих бизнес-процессах, а не направление передачи данных.':'Стрелка показывает направление передачи данных. Нажмите на число потоков, чтобы выбрать поток.'}</p>
-  </details>
+  {!sequence&&<details className="overviewLegend"><summary>О карте · {systems.length} ИС · {flowCountLabel(flows.length)}</summary>
+    <p>{logicalMode?'Связи, зарегистрированные между информационными системами.':mapMode==='business'?'Пунктир показывает участие систем в общих бизнес-процессах, а не направление передачи данных.':'Стрелка показывает направление передачи данных. Нажмите на число потоков, чтобы выбрать поток.'}</p>
+  </details>}
   <div className="homeMapDetails">
    
    {(layers.business||mapMode==='business')&&<article><h3>Бизнес-процессы</h3><p>{processes.length} процессов · {links.length} связей с ИС</p><div>{processes.slice(0,12).map(p=><span className="homeMapChip" key={p.id}>{p.name}</span>)}</div></article>}

@@ -1064,3 +1064,13 @@ button:disabled{cursor:not-allowed;opacity:.55}
  .globalHeader .topActions .accountTopAction{display:none}
  .globalHeader .topActions{flex:0 1 auto;min-width:0}
 }
+
+/* Direct dashboard filters: every business area is available in one click. */
+.homeLayerToolbar .homeAreaChip{display:inline-flex;align-items:center;gap:8px;padding:7px 11px;border:1px solid #cbd5e1;border-radius:18px;background:#fff;color:#334155;font-size:13px;cursor:pointer;max-width:100%;white-space:normal;text-align:left}
+.homeLayerToolbar .homeAreaChip[aria-pressed="true"]{background:#eff6ff;border-color:#2563eb;color:#1d4ed8;box-shadow:inset 0 0 0 1px #2563eb}
+.homeAreaChip small{white-space:nowrap;color:inherit;opacity:.75}
+.homeLayerToolbar .homeAreaEdit{margin-left:auto;font-size:12px;padding:7px 10px}
+.homeAreaChip:focus-visible{outline:2px solid #2563eb;outline-offset:3px}
+.homeMapTools>select{flex:0 1 220px;max-width:100%}
+.homeMapTools>.homeMapLayers{padding:6px 9px}
+@media(max-width:650px){.homeLayerToolbar .homeAreaEdit{margin-left:0}.homeMapTools>select{flex:1;min-width:130px}.homeMapTools>.homeMapLayers{width:100%}}

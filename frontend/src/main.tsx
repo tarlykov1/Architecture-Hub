@@ -20,6 +20,7 @@ import CmdbImpact from './CmdbImpact'
 import CmdbRecord from './CmdbRecord'
 import {DiagramNodeLabel,diagramCardStyle} from './DiagramVisual'
 import {SystemLogo,logoFromAttributes,prepareSystemLogo} from './SystemLogo'
+import {SystemSecurityEditor,SystemSecurityMarker,SystemSecuritySummary,readSystemSecurity,pdnLevelLabel,gisClassLabel,type SystemSecurityProfile} from './SystemSecurity'
 import SystemCommercial from './SystemCommercial'
 import SystemTechStack from './SystemTechStack'
 import TechnologyInventory from './TechnologyInventory'
@@ -285,7 +286,7 @@ function App() {
     setComponentEditing(false)
   }
   const [passportEditId,setPassportEditId]=useState('')
-  const [passportDraft,setPassportDraft]=useState<{name:string;description:string;status:string;fields:Record<string,string>;logo:string}>({name:'',description:'',status:'draft',fields:{},logo:''})
+  const [passportDraft,setPassportDraft]=useState<{name:string;description:string;status:string;fields:Record<string,string>;logo:string;security:SystemSecurityProfile}>({name:'',description:'',status:'draft',fields:{},logo:'',security:readSystemSecurity({})})
   const [passportLogoError,setPassportLogoError]=useState('')
   const [passportLogoPreparing,setPassportLogoPreparing]=useState(false)
   const [passportSaving,setPassportSaving]=useState(false)
@@ -301,7 +302,7 @@ function App() {
       if(!(key in fields))fields[key]=''
     }
     fields['Название ИС']=obj.name
-    setPassportDraft({name:obj.name,description:obj.description,status:obj.status,fields,logo:logoFromAttributes(obj.attributes)||''})
+    setPassportDraft({name:obj.name,description:obj.description,status:obj.status,fields,logo:logoFromAttributes(obj.attributes)||'',security:readSystemSecurity(obj.attributes)})
     setPassportLogoError('')
     setPassportEditId(obj.id)
   }
@@ -312,7 +313,7 @@ function App() {
     setPassportSaving(true);setError('')
     try{
       const fields={...passportDraft.fields,'Название ИС':passportDraft.name}
-      const attributes:Record<string,unknown>={...obj.attributes,kis_passport:fields}
+      const attributes:Record<string,unknown>={...obj.attributes,kis_passport:fields,security_profile:passportDraft.security}
       if(passportDraft.logo)attributes.system_logo=passportDraft.logo
       else delete attributes.system_logo
       await request('/api/objects/'+obj.id,{method:'PUT',body:JSON.stringify({
@@ -712,7 +713,15 @@ function App() {
   }
 
 
-  const registrySystems=objects.filter(o=>!workspaceQuery||[o.name,o.kind,o.status,o.description].join(' ').toLowerCase().includes(workspaceQuery.toLowerCase()))
+  const [systemPdFilter,setSystemPdFilter]=useState<'all'|'yes'|'no'|'unknown'>('all')
+  const [systemProtectionFilter,setSystemProtectionFilter]=useState('all')
+  const registrySystems=objects.filter(o=>{
+    const security=readSystemSecurity(o.attributes)
+    return (!workspaceQuery||[o.name,o.kind,o.status,o.description,security.internal_class,
+      security.pdn_level,security.gis_class].join(' ').toLowerCase().includes(workspaceQuery.toLowerCase()))
+      &&(systemPdFilter==='all'||security.personal_data===systemPdFilter)
+      &&(systemProtectionFilter==='all'||security.pdn_level===systemProtectionFilter)
+  })
   const visibleObjects = objects.filter(o=>(!workspaceQuery||[o.name,o.description,o.kind].join(' ').toLowerCase().includes(workspaceQuery.toLowerCase()))&&(workspaceKind==='all'||o.kind===workspaceKind))
   const nodes = useMemo<Node[]>(() => visibleObjects.map((o, i) => ({
     id: o.id,
@@ -1509,7 +1518,7 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
           {kbMessage&&<p role="status">{kbMessage}</p>}
           </>}
         </div>}
-        {panelTab==='overview'&&<><button type="button" onClick={()=>editPassport(detail)}>Редактировать паспорт КИС</button><h3>Назначение</h3><p>{detail.description||'Описание не указано'}</p><h3>Статус</h3><p>{detail.status}</p>
+        {panelTab==='overview'&&<><button type="button" onClick={()=>editPassport(detail)}>Редактировать паспорт КИС</button><SystemSecuritySummary profile={readSystemSecurity(detail.attributes)}/><h3>Назначение</h3><p>{detail.description||'Описание не указано'}</p><h3>Статус</h3><p>{detail.status}</p>
           <div className="statPills"><span>{detailItems.length} компонентов</span><span>{flows.filter(f=>detailItems.some(i=>i.id===f.source_id||i.id===f.target_id)).length} потоков</span></div>
           {layer==='infrastructure'&&viewSystem===detail.id?<div className="currentContext" role="status">Архитектура этой ИС уже открыта</div>:<button className="primary" onClick={()=>{setViewSystem(detail.id);setComponentView('diagram');setLayer('infrastructure');setInspectorOpen(false)}}>{layer==='infrastructure'?'Показать компоненты этой ИС →':'Перейти к архитектуре ИС →'}</button>}</>}
         {panelTab==='components'&&<>{detailItems.map(i=><article className="inspectorItem" key={i.id}><strong>{i.name}</strong><small>{i.kind} · {String(i.details.environment||'—')} · {String(i.details.security_zone||'Зона не указана')}</small></article>)}
@@ -1543,6 +1552,7 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
           <label>Описание<textarea value={passportDraft.description} maxLength={4000} onChange={e=>setPassportDraft({...passportDraft,description:e.target.value})}/></label>
           <div className="systemLogoUpload"><strong>Логотип ИС</strong><div className="systemLogoPreview"><SystemLogo size="large" logo={passportDraft.logo||undefined}/><div><label>Выбрать изображение<input type="file" accept="image/png,image/jpeg,image/webp" aria-label="Загрузить логотип ИС" disabled={passportSaving||passportLogoPreparing} onChange={async event=>{const field=event.currentTarget;const file=field.files?.[0];if(!file)return;setPassportLogoPreparing(true);setPassportLogoError('');try{const logo=await prepareSystemLogo(file);setPassportDraft(previous=>({...previous,logo}))}catch(error){setPassportLogoError(String(error instanceof Error?error.message:error))}finally{field.value='';setPassportLogoPreparing(false)}}}/></label><p className="logoHint">PNG, JPG или WebP до 4 МБ. Логотип автоматически уменьшается для схем и реестра.</p>{passportDraft.logo&&<button type="button" onClick={()=>{setPassportDraft(previous=>({...previous,logo:''}));setPassportLogoError('')}} disabled={passportSaving||passportLogoPreparing}>Удалить логотип</button>}</div></div>{passportLogoPreparing&&<small role="status">Подготавливаю изображение…</small>}{passportLogoError&&<p role="alert">{passportLogoError}</p>}</div>
           <label>Статус<select value={passportDraft.status} onChange={e=>setPassportDraft({...passportDraft,status:e.target.value})}><option value="active">Действует</option><option value="draft">Черновик</option><option value="planned">Планируется</option><option value="retired">Выведена</option></select></label>
+          <SystemSecurityEditor value={passportDraft.security} onChange={security=>setPassportDraft(previous=>({...previous,security}))}/>
           <h3>Поля карточки КИС</h3>
           {Object.entries(passportDraft.fields).filter(([key])=>key!=='Название ИС').map(([key,value])=><label key={key}>{key}<input value={value} onChange={e=>setPassportDraft({...passportDraft,fields:{...passportDraft.fields,[key]:e.target.value}})}/></label>)}
           <button className="primary" disabled={passportSaving||passportLogoPreparing}>{passportSaving?'Сохранение…':'Сохранить паспорт'}</button>

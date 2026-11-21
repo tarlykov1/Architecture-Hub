@@ -143,7 +143,7 @@ test('QA-WORK: versioned Markdown decision document includes linked systems, VM 
   const downloadWait=page.waitForEvent('download')
   await page.getByRole('button',{name:'Скачать техническое решение (.md)'}).click()
   const download=await downloadWait
-  expect(download.suggestedFilename()).toMatch(/^ArchitectureHub_.*\\.md$/)
+  expect(download.suggestedFilename()).toMatch(/^ArchitectureHub_.*\.md$/)
   const file=await download.path()
   expect(file).toBeTruthy()
   const markdown=await readFile(file!,'utf8')

@@ -107,7 +107,7 @@ test('QA-WORK: no silent lost edits and stale-version conflict is shown on mobil
  })
  expect(external.status(),await external.text()).toBe(200)
  await dlg.getByRole('button',{name:'Сохранить паспорт'}).click()
- await expect(dlg.getByRole('alert')).toContainText('409')
+ await expect(dlg.getByRole('alert')).toContainText('При конфликте версий обновите данные')
  await dlg.getByRole('button',{name:'Обновить данные'}).click()
  await expect(dlg.getByRole('textbox',{name:'Владелец бизнес-процесса'})).toHaveValue('Changed by another editor')
  const width=await page.evaluate(()=>document.documentElement.scrollWidth)

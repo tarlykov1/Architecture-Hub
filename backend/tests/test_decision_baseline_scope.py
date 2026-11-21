@@ -180,3 +180,32 @@ def test_unrelated_network_change_does_not_invalidate_decision(monkeypatch):
         response = client.get(url)
         assert response.status_code == 200, response.text
         assert response.json()["base_changed"] is False
+
+
+
+def test_resaving_identical_declared_network_path_keeps_review_baseline(monkeypatch):
+    """A PUT replaces hop row UUIDs, not the meaning of the network path."""
+    admin = "ci-admin-token-123456789012345678901234"
+    monkeypatch.setenv("ARCH_HUB_ACCESS_KEYS", '{"%s":"admin"}' % admin)
+    with TestClient(app, headers={"Authorization": "Bearer " + admin}) as client:
+        suffix, system, _source, _target, flow = _setup_flow(client)
+        asset = _new(client, "/api/network-assets", {
+            "name": "QA-WORK-FW-Baseline-" + suffix, "kind": "firewall"
+        })
+        path = [{
+            "asset_id": asset, "position": 0,
+            "verification": "assumed", "notes": "approved logical route",
+        }]
+        put = client.put("/api/flows/" + flow + "/network-path", json=path)
+        assert put.status_code == 200, put.text
+        decision = _in_review(client, system, suffix)
+        same = client.put("/api/flows/" + flow + "/network-path", json=path)
+        assert same.status_code == 200, same.text
+        result = client.get(decision)
+        assert result.status_code == 200, result.text
+        assert result.json()["base_changed"] is False
+        changed = client.put("/api/flows/" + flow + "/network-path", json=[
+            {**path[0], "notes": "new route assumptions"}
+        ])
+        assert changed.status_code == 200, changed.text
+        _assert_changed(client, decision)

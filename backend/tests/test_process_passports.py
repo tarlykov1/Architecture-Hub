@@ -157,3 +157,31 @@ def test_reordering_preserves_step_ids_and_prevents_stale_editor():
         assert bad.status_code==409,bad.text
         assert [x["id"] for x in c.get(endpoint,headers=ADMIN).json()["steps"]]==ids
         assert c.get("/api/board/history",headers=ADMIN).status_code in (200,404)
+
+
+
+def test_changing_category_requires_detaching_process_hierarchy():
+    with TestClient(app) as c:
+        category,child,parent,is_a,_,_,_,_,_=fixture(c)
+        # The canonical process records remain the only process identities.
+        result=c.put("/api/business/process-passports/"+child["id"],headers=ADMIN,json={
+            "expected_revision":0,"parent_id":parent["id"]
+        })
+        assert result.status_code==200,result.text
+        other_category=create(c,"/api/business/categories",{
+            "name":"QA-WORK-BP-Relocation-"+uuid4().hex[:9]
+        })
+        def move(process):
+            return c.put("/api/business/processes/"+process["id"],headers=ADMIN,json={
+                "category_id":other_category["id"],"name":process["name"],"description":""
+            })
+        # Changing either end would violate the parent/category invariant.
+        assert move(child).status_code==409
+        assert move(parent).status_code==409
+        assert any(p["id"]==child["id"] and p["category_id"]==category["id"]
+                   for p in c.get("/api/business/processes",headers=ADMIN).json())
+        detached=c.put("/api/business/process-passports/"+child["id"],headers=ADMIN,json={
+            "expected_revision":1,"parent_id":None
+        })
+        assert detached.status_code==200,detached.text
+        assert move(child).status_code==200

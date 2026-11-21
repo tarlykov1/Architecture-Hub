@@ -3,6 +3,7 @@ import {architectureIcon,DiagramNodeLabel,diagramCardStyle} from './DiagramVisua
 import {OverviewFlowEdge, type OverviewFlow} from './OverviewFlowEdge'
 import type {OverviewMode} from './workspaceRoutes'
 import {FlowSequence} from './FlowSequence'
+import {interSystemExchanges, overviewExchangeLabel} from './systemExchanges'
 import type {Connection, Edge} from '@xyflow/react'
 import {logoFromAttributes} from './SystemLogo'
 export {architectureIcon} from './DiagramVisual'
@@ -198,12 +199,13 @@ export default function ArchitectureHome({mode,onModeChange,logical,systems,comp
  const filteredSystems=systems.filter(s=>(!query||s.name.toLowerCase().includes(query.toLowerCase())||components.some(c=>c.system_id===s.id&&c.name.toLowerCase().includes(query.toLowerCase())))&&(!focus||focus===s.id)&& (environment==='all'||components.some(c=>c.system_id===s.id&&String(c.details.environment||'').toLowerCase()===environment)))
  const visibleIds=new Set(filteredSystems.map(s=>s.id))
  const knownSystemIds=new Set(systems.map(s=>s.id))
- const exchanges=flows.flatMap(flow=>{
-   const source=systemByComponent.get(flow.source_id),target=systemByComponent.get(flow.target_id)
-   return source&&target&&knownSystemIds.has(source)&&knownSystemIds.has(target)?[{source,target,flow}]:[]
- })
- const visibleExchanges=exchanges.filter(row=>visibleIds.has(row.source)||visibleIds.has(row.target))
- const crossFlows=visibleExchanges.filter(row=>row.source!==row.target)
+ // Between IS, draw only flows crossing a system boundary. A flow
+ // between two VMs of the same IS is visible exclusively on that IS's
+ // component architecture canvas.
+ const exchanges=interSystemExchanges(flows,components,knownSystemIds).map(row=>({
+   ...row,flow:{...row.flow,name:overviewExchangeLabel(row.flow,components)}
+ }))
+ const crossFlows=exchanges.filter(row=>visibleIds.has(row.source)||visibleIds.has(row.target))
  const neighborIds=new Set(crossFlows.flatMap(row=>[row.source,row.target]))
  const mapSystems=mapMode==='flows'?systems.filter(s=>visibleIds.has(s.id)||neighborIds.has(s.id)):filteredSystems
  const groupedFlows=new Map<string,Flow[]>()
@@ -457,7 +459,7 @@ export default function ArchitectureHome({mode,onModeChange,logical,systems,comp
   {!sequence&&!layers.systems&&<div className="homeMapEmpty">Включите слой «Информационные системы», чтобы показать карту связей.</div>}
   {!sequence&&!logicalMode&&selectedOverlayGroup&&focusedLayer&&<div className="homeLayerMembers" role="status"><strong>{focusedLayer.name}</strong><span>В этой области: {membersFor(focusedLayer).map(id=>systems.find(sys=>sys.id===id)?.name||id).join(', ')}</span><button type="button" onClick={()=>setSelectedOverlayGroup('')}>Снять выделение</button></div>}
 
-  {!sequence&&<details className="overviewLegend"><summary>О карте · {systems.length} ИС · {flowCountLabel(flows.length)}</summary>
+  {!sequence&&<details className="overviewLegend"><summary>О карте · {systems.length} ИС · {flowCountLabel(exchanges.length)} между системами</summary>
     <p>{logicalMode?'Связи, зарегистрированные между информационными системами.':mapMode==='business'?'Пунктир показывает участие систем в общих бизнес-процессах, а не направление передачи данных.':'Стрелка показывает направление передачи данных. Нажмите на число потоков, чтобы выбрать поток.'}</p>
   </details>}
   <div className="homeMapDetails">

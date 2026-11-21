@@ -42,7 +42,7 @@ test('QA-WORK: business passport stores hierarchy, canonical references, step re
  await dlg.getByRole('combobox',{name:'Состояние бизнес-процесса'}).selectOption('active')
  await dlg.getByRole('combobox',{name:'Родительский бизнес-процесс'}).selectOption(parent.id)
  await dlg.getByRole('button',{name:'Добавить шаг'}).click()
- const step=dlg.getByRole('listitem').filter({has:dlg.getByRole('textbox',{name:'Название шага БП'})})
+ const step=dlg.locator('.businessStep').last()
  await step.getByRole('textbox',{name:'Название шага БП'}).fill('Receive HR request')
  await step.getByRole('textbox',{name:'Ответственный шага БП'}).fill('HR team')
  await step.getByRole('textbox',{name:'Вход шага БП'}).fill('Approved HR request')

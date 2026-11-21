@@ -114,6 +114,9 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
  const [draggingNode,setDraggingNode]=useState(false)
  const [canvasInteracted,setCanvasInteracted]=useState(false)
  const boardCanvasRef=useRef<HTMLDivElement>(null)
+ // A React Flow click may be lost while its node remounts or AutoFit settles.
+ // Track a short pointer tap independently of the delegated node click.
+ const vmTap=useRef<null|{id:string;x:number;y:number;moved:boolean}>(null)
  const flowGesture=useRef<{sourceId:string;sourceHandle:string;start:{x:number;y:number}}|null>(null)
  const retargetGesture=useRef<{flowId:string;end:FlowEnd}|null>(null)
  const [preferredSourceHandle,setPreferredSourceHandle]=useState('')
@@ -1229,6 +1232,10 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
         <div ref={boardCanvasRef} className="boardCanvas" data-active-graph="infrastructure-editor"
           onPointerDownCapture={event=>{
             setCanvasInteracted(true)
+            if(tool==='move'&&event.button===0){
+              const vm=(event.target as Element).closest<HTMLElement>('.react-flow__node-boardComponent')
+              vmTap.current=vm?.dataset.id?{id:vm.dataset.id,x:event.clientX,y:event.clientY,moved:false}:null
+            }else vmTap.current=null
             if(tool!=='flow'||event.button!==0)return
             // Document capture may already have started this same gesture.
             if(flowGesture.current||retargetGesture.current)return
@@ -1290,14 +1297,22 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
           }}
           onPointerMoveCapture={event=>{
             setCanvasInteracted(true)
+            const tap=vmTap.current
+            if(tap&&Math.hypot(event.clientX-tap.x,event.clientY-tap.y)>5)tap.moved=true
             if(retargetGesture.current)moveReattach(event)
             else if(flowGesture.current)moveFlowPointer(event)
           }}
           onPointerUpCapture={event=>{
+            const tap=vmTap.current;vmTap.current=null
+            if(tool==='move'&&tap&&!tap.moved&&Math.hypot(event.clientX-tap.x,event.clientY-tap.y)<=5){
+              const vm=(event.target as Element).closest<HTMLElement>('.react-flow__node-boardComponent')
+              if(vm?.dataset.id===tap.id)openPassport(tap.id)
+            }
             if(retargetGesture.current)endReattach(event)
             else if(flowGesture.current)endFlowPointer(event)
           }}
           onPointerCancelCapture={event=>{
+            vmTap.current=null
             if(retargetGesture.current)endReattach(event)
             else if(flowGesture.current)endFlowPointer(event)
           }}><ReactFlow nodes={displayedNodes} edges={edges} panOnDrag={tool==='move'} nodeTypes={boardNodeTypes} edgeTypes={{reciprocal:ReciprocalEdge,'obstacle-aware':ObstacleAwareEdge}} onNodesChange={(updates:NodeChange[])=>{

@@ -23,10 +23,10 @@ for (const width of [390, 1440]) {
     await page.getByRole('button',{name:'Последовательность'}).click()
     const diagram=page.getByRole('region',{name:'Диаграмма последовательности'})
     const steps=diagram.getByRole('listitem')
-    await expect(steps).toHaveCount(3)
+    await expect(steps).toHaveCount(2)
     await expect(diagram.locator('.sequenceHead strong')).toHaveCount(2)
     await expect(steps.nth(1).locator('.backwards')).toHaveCount(1)
-    await expect(steps.nth(2).locator('.self')).toHaveCount(1)
+    await expect(diagram).not.toContainText('В. Запись') // Internal VM exchange must remain on the IS architecture, never between IS.
     await expect(page.locator('.homeMapGraph')).toHaveCount(0)
     await expect(diagram.getByRole('link').first()).toHaveAttribute('href','/flows?flow=exchange-A')
     await diagram.getByRole('button',{name:'Настроить шаги'}).click()

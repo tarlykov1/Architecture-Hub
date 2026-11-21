@@ -75,3 +75,9 @@
  .businessStepFieldGrid{grid-template-columns:1fr}
  .businessPassportTop>button:last-child{margin-left:0}
 }
+
+.businessRegistryToolbar{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin:8px 0 12px}
+.businessRegistryToolbar button{padding:7px 12px;border-radius:7px;border:1px solid var(--hub-line,#e0e2ec);font-size:12px;background:#fff;color:var(--hub-ink,#252937)}
+.businessRegistryToolbar button[aria-pressed=true]{background:#eeedfc;border-color:#c8c2e9;color:#5040a7}
+.businessRegistryToolbar button.primary{margin-left:auto;background:#5547bb;color:#fff;border-color:#5547bb}
+.businessGrid .businessProfileHint{display:block;color:var(--hub-muted,#6c7080);font-size:11px;line-height:1.4;margin:4px 0;overflow-wrap:anywhere}

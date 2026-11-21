@@ -42,7 +42,12 @@ function BoardComponentNode({data}:NodeProps){
 function BoardNetworkNode({data}:NodeProps){
  const options=data as {label:React.ReactNode;resizable?:boolean;onResize?:(size:{x:number;y:number;width:number;height:number})=>void;onResizeEnd?:()=>void;onPointerDown?:(event:React.PointerEvent<HTMLDivElement>)=>void;onPointerMove?:(event:React.PointerEvent<HTMLDivElement>)=>void;onPointerUp?:(event:React.PointerEvent<HTMLDivElement>)=>void;onPointerCancel?:(event:React.PointerEvent<HTMLDivElement>)=>void}
  return <>
-  <div className="boardNetworkDragArea" onPointerDown={options.onPointerDown} onPointerMove={options.onPointerMove} onPointerUp={options.onPointerUp} onPointerCancel={options.onPointerCancel}>{options.label}</div>
+  <div className="boardNetworkDragArea" onMouseDown={event=>{
+    // React Flow's pane pans on the compatibility mousedown, separately
+    // from pointerdown. Stop that event so the network's pointer-captured
+    // drag moves the VRF/VLAN rather than translating the entire viewport.
+    event.preventDefault();event.stopPropagation()
+   }} onPointerDown={options.onPointerDown} onPointerMove={options.onPointerMove} onPointerUp={options.onPointerUp} onPointerCancel={options.onPointerCancel}>{options.label}</div>
   <NodeResizer isVisible={Boolean(options.resizable)} minWidth={140} minHeight={90}
    lineStyle={{borderColor:'#2563eb'}} handleStyle={{width:9,height:9,border:'1px solid #fff',borderRadius:2,background:'#2563eb'}}
    onResize={(_,params)=>options.onResize?.({x:params.x,y:params.y,width:params.width,height:params.height})} onResizeEnd={()=>options.onResizeEnd?.()}/>

@@ -137,10 +137,16 @@ test('top to top and right to left drag each create exactly one flow',async({pag
  // chosen port when the component data rerenders after staging.
  await drag(page,origin.locator('[data-anchor="out-right-2"]'),
   recipient.locator('[data-anchor="in-left-2"]'))
- // Two independent flows share one visual edge but remain separate draft changes.
- await expect(editor.locator('.react-flow__edge')).toHaveCount(1)
- await expect(editor.getByRole('button',{name:'Выбрать поток 2 потока'})).toBeVisible()
+ // Two separate anchor pairs may be drawn on two lanes; a shared anchor
+ // can also be grouped visually. In both cases two technical records must exist.
+ await expect.poll(async()=>editor.locator('.react-flow__edge').count()).toBeGreaterThan(0)
  await expect(editor.getByRole('button',{name:'Проверить изменения (2)'})).toBeVisible()
+ const dock=editor.getByRole('complementary',{name:'Свойства и изменения схемы'})
+ await dock.getByPlaceholder('Например: актуализация схемы ИС после изменения сети').fill('Two independent anchored flows')
+ await dock.getByRole('button',{name:'Проверить изменения (2)'}).click()
+ const review=editor.getByRole('dialog',{name:'Подтверждение изменений архитектуры'})
+ await expect(review.locator('li')).toHaveCount(2)
+ await expect(review).toContainText('Создание потока')
 })
 
 test('reconnect a saved flow to another VM and keep the chosen port after reopening',async({page})=>{

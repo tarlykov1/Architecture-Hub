@@ -1,5 +1,5 @@
 import {useEffect, useState} from 'react'
-import {ArrowLeft, FileText, Plus, X} from 'lucide-react'
+import {ArrowLeft, FileText, Plus, X, Undo2, Redo2, MousePointer2, GitBranch, Monitor, Maximize2} from 'lucide-react'
 import {Background, ConnectionMode, Controls, MarkerType, ReactFlow, type Connection} from '@xyflow/react'
 import {DiagramNodeLabel, diagramCardStyle} from './DiagramVisual'
 import {diagramPortNodes,useDiagramMeasurements} from './DiagramPortNode'
@@ -12,10 +12,13 @@ import './technicalDecisions.css'
 
 type Api = <T>(url: string, init?: RequestInit) => Promise<T>
 type Item = {id: string; name: string; system_id: string; kind: string}
-type Link = {id: string; name: string; source_id: string; target_id: string; protocol: string; port: string; source_handle?:string; target_handle?:string}
-type ProposedVM = Item & {x: number; y: number}
+type Link = {id: string; name: string; source_id: string; target_id: string; protocol: string; port: string; source_handle?:string; target_handle?:string; data_description?:string;security?:string;schedule?:string;verification?:'draft'|'assumed'|'verified'}
+type ProposedVM = Item & {x: number; y: number; description?:string; environment?:string}
+type VMForm = {name:string;kind:'vm'|'server'|'host';description:string;environment:string}
+type ProposalSnapshot = {vms:ProposedVM[];flows:Link[]}
+const blankVM = ():VMForm=>({name:'',kind:'vm',description:'',environment:''})
 const decisionEdgeTypes={proposal:ObstacleAwareEdge}
-const emptyFlow:Link={id:'',source_id:'',target_id:'',source_handle:'',target_handle:'',name:'',protocol:'',port:''}
+const emptyFlow:Link={id:'',source_id:'',target_id:'',source_handle:'',target_handle:'',name:'',protocol:'',port:'',data_description:'',security:'',schedule:'',verification:'draft'}
 const states = {draft:'Черновик', in_review:'На согласовании', changes_requested:'На доработке', approved:'Согласовано', published:'Опубликовано'}
 const services = {architect:'Архитектура', engineer:'Инфраструктура', security:'Информационная безопасность', business_owner:'Владелец процесса'}
 type Service = keyof typeof services
@@ -88,12 +91,18 @@ export default function TechnicalDecisions({request, profile, systems, items, fl
 function DecisionInspector({id,request,profile,items,flows,schema,openSchema,close,update}:{id:string;request:Api;profile:AuthProfile|null;items:Item[];flows:Link[];schema:boolean;openSchema:()=>void;close:()=>void;update:(row:Decision)=>void}) {
  const measurements=useDiagramMeasurements()
   const [row,setRow]=useState<Details|null>(null)
-  const [tab,setTab]=useState<'items'|'review'>('items')
+  const [tab,setTab]=useState<'items'|'changes'|'review'>('items')
   const [busy,setBusy]=useState(false)
   const [error,setError]=useState('')
   const [attempt,retry]=useState(0)
   const [tool,setTool]=useState<'vm'|'flow'|null>(null)
   const [name,setName]=useState('')
+  const [newVM,setNewVM]=useState<VMForm>(blankVM)
+  const [selectedVMId,setSelectedVMId]=useState('')
+  const [vmForm,setVmForm]=useState<VMForm>(blankVM)
+  const [menu,setMenu]=useState<null|{kind:'vm'|'flow';id:string;x:number;y:number}>(null)
+  const [undoStack,setUndoStack]=useState<ProposalSnapshot[]>([])
+  const [redoStack,setRedoStack]=useState<ProposalSnapshot[]>([])
   const [draft,setDraft]=useState<Link>(emptyFlow)
   const [viewFlowId,setViewFlowId]=useState('')
   const [drawing,setDrawing]=useState(false)
@@ -113,9 +122,33 @@ function DecisionInspector({id,request,profile,items,flows,schema,openSchema,clo
     setBusy(true);setError('')
     try {
       const next=await request<Details>(path+'/'+id+suffix,{method,body:JSON.stringify(body)})
-      setRow(next);setRoute(next.required_services);update(next);setViewFlowId('');setTool(null);setName('');setComment('');setDiscussion('')
+      setRow(next);setRoute(next.required_services);update(next);setViewFlowId('');setSelectedVMId('');setTool(null);setName('');setComment('');setDiscussion('')
+      if(suffix!=='/comments'){setUndoStack([]);setRedoStack([])}
     }catch(err){setError((err as Error).message)}finally{setBusy(false)}
   }
+  useEffect(()=>{
+    const key=(event:KeyboardEvent)=>{
+      if(!schema||!row||!['draft','changes_requested'].includes(row.status)||(event.ctrlKey===false&&event.metaKey===false))return
+      if(event.target instanceof Element&&event.target.closest('input,textarea,select,[contenteditable="true"]'))return
+      const k=event.key.toLowerCase()
+      const redo=(k==='z'&&event.shiftKey)||k==='y'
+      const undo=k==='z'&&!event.shiftKey
+      if(!redo&&!undo)return
+      const button=document.querySelector<HTMLButtonElement>(redo?'[data-decision-redo]':'[data-decision-undo]')
+      if(button&&!button.disabled){event.preventDefault();button.click()}
+    }
+    document.addEventListener('keydown',key)
+    return()=>document.removeEventListener('keydown',key)
+  },[schema,row?.status,undoStack.length,redoStack.length,busy])
+  useEffect(()=>{
+    if(!menu)return
+    const hide=(event:MouseEvent)=>{
+      if(!(event.target instanceof Element)||!event.target.closest('.decisionContextMenu'))setMenu(null)
+    }
+    const escape=(event:KeyboardEvent)=>{if(event.key==='Escape')setMenu(null)}
+    document.addEventListener('mousedown',hide);document.addEventListener('keydown',escape)
+    return()=>{document.removeEventListener('mousedown',hide);document.removeEventListener('keydown',escape)}
+  },[menu])
   if(!row)return <aside className="decisionSide"><header><h3>Решение</h3><button aria-label="Закрыть решение" onClick={close}><X size={16}/></button></header>{error?<p role="alert">{error} <button onClick={()=>retry(v=>v+1)}>Повторить</button></p>:<p role="status">Загрузка…</p>}</aside>
   const revision={expected_revision:row.revision}
   const author=!!profile?.id && row.author==='user:'+profile.id
@@ -145,6 +178,35 @@ function DecisionInspector({id,request,profile,items,flows,schema,openSchema,clo
   const choices=[...items,...row.proposed_vms]
   const proposedPositions=row.proposed_vms
   const proposedVmIds=new Set(proposedPositions.map(vm=>vm.id))
+  const selectedVM=choices.find(vm=>vm.id===selectedVMId)
+  const selectedProposedVM=row.proposed_vms.find(vm=>vm.id===selectedVMId)
+  const vmFormDirty=!!selectedProposedVM&&(vmForm.name!==selectedProposedVM.name||vmForm.kind!==selectedProposedVM.kind||vmForm.description!==(selectedProposedVM.description||'')||vmForm.environment!==(selectedProposedVM.environment||''))
+  const editingFlow=row.proposed_flows.find(flow=>flow.id===draft.id)
+  const flowFormDirty=tool==='flow'&&(editingFlow?JSON.stringify({...emptyFlow,...editingFlow})!==JSON.stringify({...emptyFlow,...draft}):Boolean(draft.name||draft.source_id||draft.target_id||draft.protocol||draft.port||draft.data_description||draft.security||draft.schedule))
+  const newVMFormDirty=tool==='vm'&&Boolean(name.trim()||newVM.description.trim()||newVM.environment.trim())
+  const hasUnsavedForm=vmFormDirty||flowFormDirty||newVMFormDirty
+  function exitEditor(){
+    if(hasUnsavedForm&&!window.confirm('Есть несохранённые изменения. Закрыть без сохранения?'))return
+    close()
+  }
+  function inspectVM(vmId:string){
+    if(busy)return
+    if(hasUnsavedForm&&!window.confirm('Отбросить несохранённые изменения?'))return
+    const vm=choices.find(x=>x.id===vmId)
+    if(!vm)return
+    setMenu(null);setSelectedVMId(vmId);setViewFlowId('');setTool(null);setTab('items');setError('')
+    setVmForm({name:vm.name,kind:vm.kind==='server'||vm.kind==='host'?vm.kind:'vm',description:(vm as ProposedVM).description||'',environment:(vm as ProposedVM).environment||''})
+  }
+  function deleteProposedVM(vmId:string){
+    if(!editable||busy)return
+    const vm=row.proposed_vms.find(item=>item.id===vmId)
+    if(!vm)return
+    const attached=row.proposed_flows.filter(flow=>flow.source_id===vmId||flow.target_id===vmId)
+    const message=attached.length?'Удалить ВМ «'+vm.name+'» и связанные проектируемые потоки ('+attached.length+')?':'Удалить проектируемую ВМ «'+vm.name+'»?'
+    if(!window.confirm(message))return
+    setSelectedVMId('');setMenu(null)
+    persist(row.proposed_vms.filter(item=>item.id!==vmId),row.proposed_flows.filter(flow=>flow.source_id!==vmId&&flow.target_id!==vmId))
+  }
   let cell=0
   function nextGridPosition(){
     // An external endpoint can join the canvas after a VM already occupies its grid cell.
@@ -160,13 +222,15 @@ function DecisionInspector({id,request,profile,items,flows,schema,openSchema,clo
   const positions=new Map(nodes.map(n=>[n.id,n.position]))
   const proposedIds=new Set(row.proposed_flows.map(f=>f.id))
   function openFlow(flow:Link) {
-    setViewFlowId('');setTool('flow');setDraft({...flow});setTab('items');setError('')
+    if(hasUnsavedForm&&!window.confirm('Отбросить несохранённые изменения?'))return
+    setMenu(null);setSelectedVMId('');setViewFlowId('');setTool('flow');setDraft({...emptyFlow,...flow});setTab('items');setError('')
   }
   const viewedFlow=lines.find(f=>f.id===viewFlowId)
   function inspectFlow(f:Link){
     if(busy)return
     if(editable&&proposedIds.has(f.id)){openFlow(f);return}
-    setTool(null);setViewFlowId(f.id);setTab('items')
+    if(hasUnsavedForm&&!window.confirm('Отбросить несохранённые изменения?'))return
+    setSelectedVMId('');setTool(null);setViewFlowId(f.id);setTab('items')
   }
   const edges=lines.flatMap(f=>{
     const a=positions.get(f.source_id),b=positions.get(f.target_id)
@@ -186,43 +250,60 @@ function DecisionInspector({id,request,profile,items,flows,schema,openSchema,clo
     if(!editable||busy||c.source===c.target)return
     openFlow({...emptyFlow,source_id:c.source,target_id:c.target,source_handle:c.sourceHandle||'',target_handle:(c.targetHandle||'').replace('out-','in-')})
   }
-  function persist(vms:ProposedVM[],links:Link[]) {
-    if(!row||!editable||busy)return
-    void change('',{...revision,title:row.title,description:row.description,required_services:row.required_services,proposed_vms:vms,proposed_flows:links},'PUT')
-  }
-  async function moveProposedVm(vmId:string,position:{x:number;y:number}) {
-    if(!row||!editable||busy)return
-    const vm=row.proposed_vms.find(item=>item.id===vmId)
-    if(!vm)return
-    if(Math.abs(vm.x-position.x)<0.5&&Math.abs(vm.y-position.y)<0.5){
-      setDragPositions({})
-      return
-    }
+  async function writeProposal(vms:ProposedVM[],links:Link[],action:'edit'|'undo'|'redo'='edit') {
+    if(!editable||busy)return
+    const before={vms:row.proposed_vms,flows:row.proposed_flows}
+    if(JSON.stringify(before.vms)===JSON.stringify(vms)&&JSON.stringify(before.flows)===JSON.stringify(links))return
     setBusy(true);setError('')
     try{
-      // Write the proposed VM only. Live infrastructure, flows, and unrelated
-      // proposal items remain untouched. Revision guards concurrent editors.
       const next=await request<Details>(path+'/'+id,{method:'PUT',body:JSON.stringify({
-        ...revision,title:row.title,description:row.description,
-        required_services:row.required_services,
-        proposed_vms:row.proposed_vms.map(item=>item.id===vmId?{...item,x:position.x,y:position.y}:item),
-        proposed_flows:row.proposed_flows,
+        ...revision,title:row.title,description:row.description,required_services:row.required_services,
+        proposed_vms:vms,proposed_flows:links,
       })})
       setRow(next);setRoute(next.required_services);update(next)
+      setTool(null);setViewFlowId('');setSelectedVMId('');setMenu(null);setDragPositions({})
+      if(action==='edit'){setUndoStack(stack=>[...stack.slice(-39),before]);setRedoStack([])}
+      else if(action==='undo'){setUndoStack(stack=>stack.slice(0,-1));setRedoStack(stack=>[...stack.slice(-39),before])}
+      else {setRedoStack(stack=>stack.slice(0,-1));setUndoStack(stack=>[...stack.slice(-39),before])}
     }catch(err){
-      setError('Не удалось сохранить положение ВМ: '+(err as Error).message)
-    }finally{
-      // On 409, revert the optimistic position to the saved server version.
-      setDragPositions({});setBusy(false)
-    }
+      setError('Не удалось сохранить изменения: '+(err as Error).message)
+      setDragPositions({})
+    }finally{setBusy(false)}
+  }
+  function persist(vms:ProposedVM[],links:Link[]) {
+    void writeProposal(vms,links)
+  }
+  function undoProposal(){
+    if(!undoStack.length)return
+    const snapshot=undoStack[undoStack.length-1]
+    void writeProposal(snapshot.vms,snapshot.flows,'undo')
+  }
+  function redoProposal(){
+    if(!redoStack.length)return
+    const snapshot=redoStack[redoStack.length-1]
+    void writeProposal(snapshot.vms,snapshot.flows,'redo')
+  }
+  function saveVMProperties(){
+    if(!selectedProposedVM||!vmForm.name.trim()||!vmFormDirty)return
+    persist(row.proposed_vms.map(vm=>vm.id===selectedProposedVM.id?{
+      ...vm,name:vmForm.name.trim(),kind:vmForm.kind,
+      description:vmForm.description.trim(),environment:vmForm.environment.trim(),
+    }:vm),row.proposed_flows)
+  }
+  async function moveProposedVm(vmId:string,position:{x:number;y:number}) {
+    if(!editable||busy)return
+    const vm=row.proposed_vms.find(item=>item.id===vmId)
+    if(!vm)return
+    if(Math.abs(vm.x-position.x)<0.5&&Math.abs(vm.y-position.y)<0.5){setDragPositions({});return}
+    await writeProposal(row.proposed_vms.map(item=>item.id===vmId?{...item,x:position.x,y:position.y}:item),row.proposed_flows)
   }
   function saveProposal() {
     if(!row)return
     if(tool==='vm'&&name.trim()){
-      const vm={id:crypto.randomUUID(),system_id:row.system_id,kind:'vm',name:name.trim(),...nextGridPosition()}
+      const vm={id:crypto.randomUUID(),system_id:row.system_id,kind:newVM.kind,name:name.trim(),description:newVM.description.trim(),environment:newVM.environment.trim(),...nextGridPosition()}
       persist([...row.proposed_vms,vm],row.proposed_flows)
     }else if(tool==='flow'&&draft.name.trim()&&draft.source_id&&draft.target_id&&!sameEnds&&!outside&&!flowError){
-      const flow={...draft,id:draft.id||crypto.randomUUID(),name:draft.name.trim(),protocol:draft.protocol.trim(),port:draft.port.trim()}
+      const flow={...draft,id:draft.id||crypto.randomUUID(),name:draft.name.trim(),protocol:draft.protocol.trim(),port:draft.port.trim(),data_description:draft.data_description?.trim()||'',security:draft.security?.trim()||'',schedule:draft.schedule?.trim()||'',verification:draft.verification||'draft'}
       persist(row.proposed_vms,draft.id?row.proposed_flows.map(f=>f.id===draft.id?flow:f):[...row.proposed_flows,flow])
     }
   }

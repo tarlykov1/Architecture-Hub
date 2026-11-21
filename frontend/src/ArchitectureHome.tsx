@@ -254,7 +254,7 @@ export default function ArchitectureHome({mode,onModeChange,logical,systems,comp
    const original=basePositions[sys.id]||{x:(index%3)*320,y:Math.floor(index/3)*190}
    return [sys.id,(logicalMode&&logical.positions[sys.id])||{x:original.x/310*410,y:original.y/170*systemRowGap}]
  }))
- const focusPositions=focusedSystemId?focusedSystemPositions(focusedSystemId,relations,mapSystems.map(s=>s.id)):{}
+ const focusPositions:Record<string,{x:number;y:number}>=focusedSystemId?focusedSystemPositions(focusedSystemId,relations,mapSystems.map(s=>s.id)):{}
  const overlayGroups:OverlayGroup[]=[]
  for(const cat of categories){
    const ids=new Set(processes.filter(p=>p.category_id===cat.id).map(p=>p.id))

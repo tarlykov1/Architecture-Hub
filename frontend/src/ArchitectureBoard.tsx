@@ -6,7 +6,7 @@ import ExistingFlowEditor, {type FlowValues} from './ExistingFlowEditor'
 import {flowPortError} from './fieldValidation'
 import FlowAttributeMap from './FlowAttributeMap'
 import {AutoFit} from './WorkspaceUI'
-import {MousePointer2, Monitor, GitBranch, SquareDashed, StickyNote, Maximize2, Save, History, ClipboardCheck} from 'lucide-react'
+import {MousePointer2, Monitor, GitBranch, SquareDashed, StickyNote, Maximize2, Save, History, Undo2, Redo2, ClipboardCheck} from 'lucide-react'
 import {ReactFlow, ReactFlowProvider, Background, Controls, Handle, NodeResizer, useNodesState, useReactFlow, MarkerType, Position, type Node, type NodeChange, type NodeProps} from '@xyflow/react'
 import {compactComponentLayout,flowCountLabel} from './graphLayout'
 import {ReciprocalEdge} from './ReciprocalEdge'
@@ -51,6 +51,11 @@ function BoardNetworkNode({data}:NodeProps){
 const boardNodeTypes={boardComponent:BoardComponentNode,boardNetwork:BoardNetworkNode}
 type Rect = {id:string;name:string;kind:string;x:number;y:number;width:number;height:number}
 type Geometry = {x:number;y:number;width?:number;height?:number;parent_id?:string}
+// Local editing history never rewrites the immutable server audit.
+type BoardSnapshot = {
+ nodes:Node[];rectangles:Rect[];changes:Change[];parents:Record<string,string>;
+ flowAnchors:Record<string,FlowPortPair>;notes:BoardNote[];layoutDirty:boolean
+}
 const makeId=()=>crypto.randomUUID()
 const rectContains=(r:Rect,p:{x:number;y:number})=>p.x>=r.x&&p.x<=r.x+r.width&&p.y>=r.y&&p.y<=r.y+r.height
 // Nested rectangles are presentation groups only; no NIC or L3 membership is implied.
@@ -193,6 +198,65 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
    style:diagramCardStyle({border:'1px dashed #d97706'})
   }))]
  const [nodes,setNodes,onNodesChange]=useNodesState<Node>(restoredNodes)
+ const [undoStack,setUndoStack]=useState<BoardSnapshot[]>([])
+ const [redoStack,setRedoStack]=useState<BoardSnapshot[]>([])
+ const resizeRecorded=useRef<string|null>(null)
+ const dragHistoryRecorded=useRef(false)
+ const snapshotBoard=():BoardSnapshot=>({
+   nodes:nodes.map(node=>({...node,position:{...node.position}})),
+   rectangles:rectangles.map(rect=>({...rect})),
+   changes:changes.map(change=>({...change})),
+   parents:{...parents},
+   flowAnchors:Object.fromEntries(Object.entries(flowAnchors).map(([id,pair])=>[id,{...pair}])),
+   notes:notes.map(note=>({...note})),layoutDirty
+ })
+ const recordUndo=()=>{
+   if(busy||layoutBusy)return
+   const before=snapshotBoard()
+   setUndoStack(previous=>[...previous.slice(-39),before])
+   setRedoStack([])
+ }
+ const restoreBoard=(snapshot:BoardSnapshot)=>{
+   setNodes(snapshot.nodes.map(node=>({...node,position:{...node.position}})))
+   setRectangles(snapshot.rectangles.map(rect=>({...rect})))
+   setChanges(snapshot.changes.map(change=>({...change})))
+   setParents({...snapshot.parents});setFlowAnchors({...snapshot.flowAnchors})
+   setNotes(snapshot.notes.map(note=>({...note})))
+   setLayoutDirty(snapshot.layoutDirty);setPendingGrouping(null)
+   setSelectedDraftFlowId('');setSelectedExistingFlowId('');setSelectedEdgeFlowIds([])
+   setSelectedNoteId('');setInspectedId(null);setInspectedNetworkId(null)
+   setPreview(null);setReviewOpen(snapshot.changes.length>0);setTool('move');setError('')
+   for(const node of snapshot.nodes)onPositionChange?.(node)
+ }
+ const undo=()=>{
+   if(!undoStack.length||busy||layoutBusy||pendingGrouping)return
+   const previous=undoStack[undoStack.length-1],current=snapshotBoard()
+   setUndoStack(stack=>stack.slice(0,-1))
+   setRedoStack(stack=>[...stack.slice(-39),current])
+   restoreBoard(previous);setLayoutMessage('Последнее действие отменено. Для записи нажмите «Сохранить».')
+ }
+ const redo=()=>{
+   if(!redoStack.length||busy||layoutBusy||pendingGrouping)return
+   const next=redoStack[redoStack.length-1],current=snapshotBoard()
+   setRedoStack(stack=>stack.slice(0,-1))
+   setUndoStack(stack=>[...stack.slice(-39),current])
+   restoreBoard(next);setLayoutMessage('Действие повторено. Для записи нажмите «Сохранить».')
+ }
+ useEffect(()=>{
+   const handle=(event:KeyboardEvent)=>{
+     if(!(event.ctrlKey||event.metaKey)||event.altKey)return
+     const element=event.target as HTMLElement|null
+     if(element?.closest('input,textarea,select,[contenteditable="true"],[role="textbox"]'))return
+     const key=event.key.toLowerCase()
+     if(key==='z'&&!event.shiftKey&&undoStack.length&&!busy&&!layoutBusy&&!pendingGrouping){
+       event.preventDefault();undo()
+     }else if(((key==='z'&&event.shiftKey)||key==='y')&&redoStack.length&&!busy&&!layoutBusy&&!pendingGrouping){
+       event.preventDefault();redo()
+     }
+   }
+   window.addEventListener('keydown',handle)
+   return ()=>window.removeEventListener('keydown',handle)
+ },[undoStack,redoStack,busy,layoutBusy,pendingGrouping,nodes,rectangles,changes,parents,flowAnchors,notes,layoutDirty])
  const visualGroupDrag=useRef<{id:string;origin:{x:number;y:number};rects:Rect[];members:Node[]}|null>(null)
  const manualNetworkDrag=useRef<{id:string;startPointer:{x:number;y:number};startPosition:{x:number;y:number};lastPosition:{x:number;y:number};moved:boolean}|null>(null)
  const startVisualGroupDrag=(node:Node)=>{

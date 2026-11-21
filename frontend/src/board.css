@@ -428,3 +428,6 @@
 .boardHistoryScope button{border:1px solid #cbd5e1;border-radius:7px;padding:6px 10px;font-size:12px;color:#475569;background:#fff}
 .boardHistoryScope button[aria-pressed="true"]{border-color:#7351be;color:#5c3ca2;background:#f4f0ff;font-weight:600}
 .boardHistoryScope button:focus-visible{outline:2px solid #7351be;outline-offset:2px}
+
+/* Keep individual exchange names readable without covering nearby VM cards. */
+.boardCanvas .boardSelectableEdgeLabel{max-width:190px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}

@@ -3939,7 +3939,7 @@ def _decision_response(row: TechnicalDecision, db: Session, include_details: boo
     result = {
         "id": str(row.id), "title": row.title, "description": row.description,
         "system_id": str(row.system_id), "status": row.status,
-        "author": row.author, "revision": row.revision,
+        "author": row.author, "author_name": actor_name(row.author), "revision": row.revision,
         "required_services": row.required_services,
         "approvals": list(current_reviews.values()),
         "base_changed": bool(row.base_hash) and

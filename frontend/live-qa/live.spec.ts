@@ -115,6 +115,17 @@ test('test server: overview diagram zoom controls work without blocking overlay'
     const matrix = new DOMMatrixReadOnly(transform)
     return Math.hypot(matrix.a, matrix.b)
   })
+  // Live QA must compare two user zoom levels, not an uninitialized CSS
+  // transform (scale=1) with the later overview AutoFit (e.g. scale=0.24).
+  // Wait for actual graph nodes and two matching transforms across the 300ms
+  // layout settle window before taking a baseline.
+  await expect(viewport.locator('.react-flow__node').first()).toBeVisible()
+  const transform = () => viewport.evaluate(element => getComputedStyle(element).transform)
+  await expect.poll(async () => {
+    const before = await transform()
+    await page.waitForTimeout(400)
+    return before !== 'none' && before === await transform()
+  }, { timeout: 12000, message: 'Wait for the overview viewport to finish initial AutoFit' }).toBe(true)
   const initialScale = await getScale()
   await controls.locator('.react-flow__controls-zoomin').click()
   await expect.poll(getScale, { message: 'Zoom in must increase the actual canvas scale' }).toBeGreaterThan(initialScale + 0.01)

@@ -6,7 +6,7 @@ import ExistingFlowEditor, {type FlowValues} from './ExistingFlowEditor'
 import {flowPortError} from './fieldValidation'
 import FlowAttributeMap from './FlowAttributeMap'
 import {AutoFit} from './WorkspaceUI'
-import {MousePointer2, Monitor, GitBranch, SquareDashed, StickyNote, Maximize2, Save, History, ClipboardCheck} from 'lucide-react'
+import {MousePointer2, Monitor, GitBranch, SquareDashed, StickyNote, Maximize2, Save, History, Undo2, Redo2, ClipboardCheck} from 'lucide-react'
 import {ReactFlow, ReactFlowProvider, Background, Controls, Handle, NodeResizer, useNodesState, useReactFlow, MarkerType, Position, type Node, type NodeChange, type NodeProps} from '@xyflow/react'
 import {compactComponentLayout,flowCountLabel} from './graphLayout'
 import {ReciprocalEdge} from './ReciprocalEdge'
@@ -40,17 +40,22 @@ function BoardComponentNode({data}:NodeProps){
  </>
 }
 function BoardNetworkNode({data}:NodeProps){
- const options=data as {label:React.ReactNode;resizable?:boolean;onResize?:(size:{x:number;y:number;width:number;height:number})=>void;onPointerDown?:(event:React.PointerEvent<HTMLDivElement>)=>void;onPointerMove?:(event:React.PointerEvent<HTMLDivElement>)=>void;onPointerUp?:(event:React.PointerEvent<HTMLDivElement>)=>void;onPointerCancel?:(event:React.PointerEvent<HTMLDivElement>)=>void}
+ const options=data as {label:React.ReactNode;resizable?:boolean;onResize?:(size:{x:number;y:number;width:number;height:number})=>void;onResizeEnd?:()=>void;onPointerDown?:(event:React.PointerEvent<HTMLDivElement>)=>void;onPointerMove?:(event:React.PointerEvent<HTMLDivElement>)=>void;onPointerUp?:(event:React.PointerEvent<HTMLDivElement>)=>void;onPointerCancel?:(event:React.PointerEvent<HTMLDivElement>)=>void}
  return <>
   <div className="boardNetworkDragArea" onPointerDown={options.onPointerDown} onPointerMove={options.onPointerMove} onPointerUp={options.onPointerUp} onPointerCancel={options.onPointerCancel}>{options.label}</div>
   <NodeResizer isVisible={Boolean(options.resizable)} minWidth={140} minHeight={90}
    lineStyle={{borderColor:'#2563eb'}} handleStyle={{width:9,height:9,border:'1px solid #fff',borderRadius:2,background:'#2563eb'}}
-   onResize={(_,params)=>options.onResize?.({x:params.x,y:params.y,width:params.width,height:params.height})}/>
+   onResize={(_,params)=>options.onResize?.({x:params.x,y:params.y,width:params.width,height:params.height})} onResizeEnd={()=>options.onResizeEnd?.()}/>
  </>
 }
 const boardNodeTypes={boardComponent:BoardComponentNode,boardNetwork:BoardNetworkNode}
 type Rect = {id:string;name:string;kind:string;x:number;y:number;width:number;height:number}
 type Geometry = {x:number;y:number;width?:number;height?:number;parent_id?:string}
+// Local editing history never rewrites the immutable server audit.
+type BoardSnapshot = {
+ nodes:Node[];rectangles:Rect[];changes:Change[];parents:Record<string,string>;
+ flowAnchors:Record<string,FlowPortPair>;notes:BoardNote[];layoutDirty:boolean
+}
 const makeId=()=>crypto.randomUUID()
 const rectContains=(r:Rect,p:{x:number;y:number})=>p.x>=r.x&&p.x<=r.x+r.width&&p.y>=r.y&&p.y<=r.y+r.height
 // Nested rectangles are presentation groups only; no NIC or L3 membership is implied.
@@ -193,6 +198,65 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
    style:diagramCardStyle({border:'1px dashed #d97706'})
   }))]
  const [nodes,setNodes,onNodesChange]=useNodesState<Node>(restoredNodes)
+ const [undoStack,setUndoStack]=useState<BoardSnapshot[]>([])
+ const [redoStack,setRedoStack]=useState<BoardSnapshot[]>([])
+ const resizeRecorded=useRef<string|null>(null)
+ const dragHistoryRecorded=useRef(false)
+ const snapshotBoard=():BoardSnapshot=>({
+   nodes:nodes.map(node=>({...node,position:{...node.position}})),
+   rectangles:rectangles.map(rect=>({...rect})),
+   changes:changes.map(change=>({...change})),
+   parents:{...parents},
+   flowAnchors:Object.fromEntries(Object.entries(flowAnchors).map(([id,pair])=>[id,{...pair}])),
+   notes:notes.map(note=>({...note})),layoutDirty
+ })
+ const recordUndo=()=>{
+   if(busy||layoutBusy)return
+   const before=snapshotBoard()
+   setUndoStack(previous=>[...previous.slice(-39),before])
+   setRedoStack([])
+ }
+ const restoreBoard=(snapshot:BoardSnapshot)=>{
+   setNodes(snapshot.nodes.map(node=>({...node,position:{...node.position}})))
+   setRectangles(snapshot.rectangles.map(rect=>({...rect})))
+   setChanges(snapshot.changes.map(change=>({...change})))
+   setParents({...snapshot.parents});setFlowAnchors({...snapshot.flowAnchors})
+   setNotes(snapshot.notes.map(note=>({...note})))
+   setLayoutDirty(snapshot.layoutDirty);setPendingGrouping(null)
+   setSelectedDraftFlowId('');setSelectedExistingFlowId('');setSelectedEdgeFlowIds([])
+   setSelectedNoteId('');setInspectedId(null);setInspectedNetworkId(null)
+   setPreview(null);setReviewOpen(snapshot.changes.length>0);setTool('move');setError('')
+   for(const node of snapshot.nodes)onPositionChange?.(node)
+ }
+ const undo=()=>{
+   if(!undoStack.length||busy||layoutBusy||pendingGrouping||showHistory||preview||deleteBusy)return
+   const previous=undoStack[undoStack.length-1],current=snapshotBoard()
+   setUndoStack(stack=>stack.slice(0,-1))
+   setRedoStack(stack=>[...stack.slice(-39),current])
+   restoreBoard(previous);setLayoutMessage('Последнее действие отменено. Для записи нажмите «Сохранить».')
+ }
+ const redo=()=>{
+   if(!redoStack.length||busy||layoutBusy||pendingGrouping||showHistory||preview||deleteBusy)return
+   const next=redoStack[redoStack.length-1],current=snapshotBoard()
+   setRedoStack(stack=>stack.slice(0,-1))
+   setUndoStack(stack=>[...stack.slice(-39),current])
+   restoreBoard(next);setLayoutMessage('Действие повторено. Для записи нажмите «Сохранить».')
+ }
+ useEffect(()=>{
+   const handle=(event:KeyboardEvent)=>{
+     if(!(event.ctrlKey||event.metaKey)||event.altKey)return
+     const element=event.target as HTMLElement|null
+     if(element?.closest('input,textarea,select,[contenteditable="true"],[role="textbox"]'))return
+     const key=event.key.toLowerCase()
+     if(key==='z'&&!event.shiftKey&&undoStack.length&&!busy&&!layoutBusy&&!pendingGrouping&&!preview&&!showHistory&&!deleteBusy){
+       event.preventDefault();undo()
+     }else if(((key==='z'&&event.shiftKey)||key==='y')&&redoStack.length&&!busy&&!layoutBusy&&!pendingGrouping&&!preview&&!showHistory&&!deleteBusy){
+       event.preventDefault();redo()
+     }
+   }
+   window.addEventListener('keydown',handle)
+   return ()=>window.removeEventListener('keydown',handle)
+ },[undoStack,redoStack,busy,layoutBusy,pendingGrouping,preview,showHistory,deleteBusy,nodes,rectangles,changes,parents,flowAnchors,notes,layoutDirty])
  const visualGroupDrag=useRef<{id:string;origin:{x:number;y:number};rects:Rect[];members:Node[]}|null>(null)
  const manualNetworkDrag=useRef<{id:string;startPointer:{x:number;y:number};startPosition:{x:number;y:number};lastPosition:{x:number;y:number};moved:boolean}|null>(null)
  const startVisualGroupDrag=(node:Node)=>{
@@ -239,7 +303,7 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
      setPendingGrouping({id:node.id,name:label||node.id,from:previous,to:target,snapshot:dragSnapshot.current||undefined})
      setNicForGrouping('');setNewNicName('eth0')
      setInspectedId(null);setInspectedNetworkId(null)
-   }
+   }else dragHistoryRecorded.current=false
    dragSnapshot.current=null
  }
  // Network containers are manipulated through a dedicated pointer-captured
@@ -265,6 +329,7 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
    const position={x:drag.startPosition.x+pointer.x-drag.startPointer.x,y:drag.startPosition.y+pointer.y-drag.startPointer.y}
    drag.lastPosition=position
    if(Math.hypot(position.x-drag.startPosition.x,position.y-drag.startPosition.y)<3&&!drag.moved)return
+   if(!drag.moved){recordUndo();dragHistoryRecorded.current=true}
    drag.moved=true
    setDraggingNode(true)
    setRectangles(previous=>previous.map(rect=>rect.id===id?{...rect,...position}:rect))
@@ -290,8 +355,14 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
    if(!drag||drag.id!==id)return
    event.stopPropagation()
    if(event.currentTarget.hasPointerCapture(event.pointerId))event.currentTarget.releasePointerCapture(event.pointerId)
-   manualNetworkDrag.current=null;visualGroupDrag.current=null
-   if(drag.moved)cancelGrouping()
+   const before=dragSnapshot.current
+   manualNetworkDrag.current=null;visualGroupDrag.current=null;dragSnapshot.current=null
+   if(drag.moved&&before){
+     setRectangles(before.rects);setNodes(before.nodes);setLayoutDirty(before.dirty)
+     for(const node of before.nodes)onPositionChange?.(node)
+     if(dragHistoryRecorded.current)setUndoStack(stack=>stack.slice(0,-1))
+     setRedoStack([]);dragHistoryRecorded.current=false
+   }
    setDraggingNode(false)
  }
  const updateNetworkSize=(id:string,size:{x:number;y:number;width:number;height:number})=>{
@@ -306,6 +377,7 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
      setLayoutMessage('Граница не может исключать связанные объекты. Сначала переместите их или увеличьте контейнер.')
      return
    }
+   if(resizeRecorded.current!==id){recordUndo();resizeRecorded.current=id}
    setRectangles(prev=>prev.map(r=>r.id===id?next:r))
    setLayoutDirty(true)
  }
@@ -348,7 +420,7 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
  const allNetworks=[...networks,...changes.filter(c=>c.action==='create_network').map(c=>({id:c.id!,name:c.name!,kind:c.kind!}))]
  const visibleRects=rectangles.filter(r=>allNetworks.some(n=>n.id===r.id))
  const draftNetworks=new Set(changes.filter(c=>c.action==='create_network').map(c=>c.id))
- const backgroundNodes:Node[]=visibleRects.map(r=>({id:'network:'+r.id,type:'boardNetwork',position:{x:r.x,y:r.y},width:r.width,height:r.height,measured:{width:r.width,height:r.height},draggable:false,selectable:true,connectable:false,data:{onPointerDown:(event:React.PointerEvent<HTMLDivElement>)=>beginManualNetworkDrag(r.id,event),onPointerMove:(event:React.PointerEvent<HTMLDivElement>)=>moveManualNetworkDrag(r.id,event),onPointerUp:(event:React.PointerEvent<HTMLDivElement>)=>finishManualNetworkDrag(r.id,event),onPointerCancel:(event:React.PointerEvent<HTMLDivElement>)=>cancelManualNetworkDrag(r.id,event),resizable:tool==='move',onResize:(size:{x:number;y:number;width:number;height:number})=>updateNetworkSize(r.id,size),label:<div className="boardNetworkLabel"><strong>{r.name} · {r.kind.toUpperCase()}</strong><small>{draftNetworks.has(r.id)?'Черновик · ещё не сохранён':parents['network:'+r.id]?'В группе: '+(allNetworks.find(n=>'network:'+n.id===parents['network:'+r.id])?.name||'сеть'):'Свободная зона'} · {tool==='move'?'Тяните край для изменения размера':''}</small></div>},style:{width:r.width,height:r.height,background:draftNetworks.has(r.id)?'#fff7ed29':'#dbeafe15',border:draftNetworks.has(r.id)?'2px dashed #d97706':'2px dashed #2563eb',borderRadius:9,zIndex:10+(()=>{let depth=0,p=parents['network:'+r.id];while(p&&depth<10){depth++;p=parents[p]}return depth})(),pointerEvents:'none',textAlign:'left',padding:12,fontSize:13,color:'#1e40af'}}))
+ const backgroundNodes:Node[]=visibleRects.map(r=>({id:'network:'+r.id,type:'boardNetwork',position:{x:r.x,y:r.y},width:r.width,height:r.height,measured:{width:r.width,height:r.height},draggable:false,selectable:true,connectable:false,data:{onPointerDown:(event:React.PointerEvent<HTMLDivElement>)=>beginManualNetworkDrag(r.id,event),onPointerMove:(event:React.PointerEvent<HTMLDivElement>)=>moveManualNetworkDrag(r.id,event),onPointerUp:(event:React.PointerEvent<HTMLDivElement>)=>finishManualNetworkDrag(r.id,event),onPointerCancel:(event:React.PointerEvent<HTMLDivElement>)=>cancelManualNetworkDrag(r.id,event),resizable:tool==='move',onResize:(size:{x:number;y:number;width:number;height:number})=>updateNetworkSize(r.id,size),onResizeEnd:()=>{resizeRecorded.current=null},label:<div className="boardNetworkLabel"><strong>{r.name} · {r.kind.toUpperCase()}</strong><small>{draftNetworks.has(r.id)?'Черновик · ещё не сохранён':parents['network:'+r.id]?'В группе: '+(allNetworks.find(n=>'network:'+n.id===parents['network:'+r.id])?.name||'сеть'):'Свободная зона'} · {tool==='move'?'Тяните край для изменения размера':''}</small></div>},style:{width:r.width,height:r.height,background:draftNetworks.has(r.id)?'#fff7ed29':'#dbeafe15',border:draftNetworks.has(r.id)?'2px dashed #d97706':'2px dashed #2563eb',borderRadius:9,zIndex:10+(()=>{let depth=0,p=parents['network:'+r.id];while(p&&depth<10){depth++;p=parents[p]}return depth})(),pointerEvents:'none',textAlign:'left',padding:12,fontSize:13,color:'#1e40af'}}))
  const noteNodes:Node[]=notes.map(note=>({id:'note:'+note.id,type:'default',position:{x:note.x,y:note.y},initialWidth:200,initialHeight:90,measured:{width:200,height:90},draggable:tool==='move',selectable:true,data:{label:<div className="boardStickyNote"><strong>Заметка</strong><p>{note.text}</p></div>},style:{width:200,padding:12,background:'#fff4c2',border:'1px solid #d1aa3d',borderRadius:9,boxShadow:'0 3px 8px #00000019',whiteSpace:'pre-wrap',overflowWrap:'anywhere',zIndex:35}}))
  const graphNodes=[...backgroundNodes,...nodes,...noteNodes]
  // A pair of machines has one readable connection; its technical flows stay separate records.
@@ -476,6 +548,7 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
    const current=portsForFlow(flow)
    const pair={...current,[movingSource?'source_handle':'target_handle']:drop.targetHandle}
    const endpointsChanged=sourceId!==flow.source_id||targetId!==flow.target_id
+   if(endpointsChanged||pair.source_handle!==current.source_handle||pair.target_handle!==current.target_handle)recordUndo()
    if(endpointsChanged){
      const draft=changes.find(c=>c.action==='create_flow'&&c.id===flow.id)
      if(draft){
@@ -484,7 +557,7 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
      }else{
        const original=flows.find(f=>f.id===flow.id)
        if(!original)return
-       stageExistingFlowEdit(original,flowValues(flow),sourceId,targetId)
+       stageExistingFlowEdit(original,flowValues(flow),sourceId,targetId,false)
      }
      setFrom(sourceId);setTo(targetId)
    }else if(pair.source_handle===current.source_handle&&pair.target_handle===current.target_handle)return
@@ -619,7 +692,7 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
  function openPassport(id:string){
    setDockCollapsed(false);
    const vm=allVMs.find(v=>v.id===id);if(!vm)return;setInspectedId(id);setEditingPassport(false);setPassportDraft({name:vm.name,description:vm.description||'',purpose:String(vm.details?.purpose||''),environment:String(vm.details?.environment||'')})}
- const stagePassport=()=>{if(!inspectedVM||!passportDraft.name.trim())return;const details_patch:Record<string,string>={purpose:passportDraft.purpose,environment:passportDraft.environment};const previous_details:Record<string,unknown>={purpose:inspectedVM.details?.purpose??null,environment:inspectedVM.details?.environment??null};addChange({action:'update_vm',id:inspectedVM.id,system_id:systemId,name:passportDraft.name.trim(),description:passportDraft.description,previous_name:inspectedVM.name,previous_description:inspectedVM.description||'',details_patch,previous_details});setEditingPassport(false);setInspectedId(null);setFocusDependencies(false);setReviewOpen(true)}
+ const stagePassport=()=>{if(!inspectedVM||!passportDraft.name.trim())return;recordUndo();const details_patch:Record<string,string>={purpose:passportDraft.purpose,environment:passportDraft.environment};const previous_details:Record<string,unknown>={purpose:inspectedVM.details?.purpose??null,environment:inspectedVM.details?.environment??null};addChange({action:'update_vm',id:inspectedVM.id,system_id:systemId,name:passportDraft.name.trim(),description:passportDraft.description,previous_name:inspectedVM.name,previous_description:inspectedVM.description||'',details_patch,previous_details});setEditingPassport(false);setInspectedId(null);setFocusDependencies(false);setReviewOpen(true)}
 
  const inspectedFlows=effectiveFlows.filter(f=>f.source_id===inspectedId||f.target_id===inspectedId)
  const selectCanvasEdge=(source:string,target:string,ids:string[])=>{
@@ -683,6 +756,7 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
      return next
    })
    setLayoutDirty(true)
+   dragHistoryRecorded.current=false
    setPendingGrouping(null);setNicForGrouping('')
    setLayoutMessage(change.to
      ?'Архитектурная вложенность подтверждена. Сохраните схему. Технические связи изменяются только отдельной согласованной операцией.'
@@ -691,6 +765,7 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
  const cancelGrouping=()=>{
    const snapshot=pendingGrouping?.snapshot
    if(snapshot){
+     if(dragHistoryRecorded.current){setUndoStack(stack=>stack.slice(0,-1));dragHistoryRecorded.current=false}
      setRectangles(snapshot.rects)
      setNodes(snapshot.nodes)
      setLayoutDirty(snapshot.dirty)
@@ -710,6 +785,7 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
  }
  const addVM=(point?:{x:number;y:number})=>{
    if(!name.trim())return setError('Введите имя новой ВМ.')
+   recordUndo()
    const id=makeId()
    // Place successive additions into free grid slots rather than over existing cards.
    const occupied=nodes.filter(existing=>!existing.id.startsWith('network:'))
@@ -734,11 +810,12 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
    }
    setName('');setTool('move');setReviewOpen(true)
  }
- const stageDirectedFlow=(source:string,target:string,anchors?:FlowPortPair)=>{
+ const stageDirectedFlow=(source:string,target:string,anchors?:FlowPortPair,recordHistory=true)=>{
    setSelectedEdgeFlowIds([]);setSelectedExistingFlowId('')
    if(!source||!target||source===target){setError('Выберите два разных компонента для направления потока.');return}
    if(flowPortError(port)){setError(flowPortError(port));return}
    if(!allVMs.some(vm=>vm.id===source)||!allVMs.some(vm=>vm.id===target)){setError('Источник или получатель отсутствует на схеме.');return}
+   if(recordHistory)recordUndo()
    const id=makeId()
    // Store a chosen entry and exit immediately in the local layout draft.
    setFlowAnchors(previous=>({...previous,[id]:anchors||automaticPorts(source,target)}))
@@ -755,7 +832,8 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
    if(!from||!to||from===to)return setError('Выберите разные исходный и целевой компоненты.')
    const source=direction==='reverse'?to:from,target=direction==='reverse'?from:to
    stageDirectedFlow(source,target)
-   if(direction==='both')stageDirectedFlow(target,source)
+   // One bidirectional user action stages two flows but creates one undo step.
+   if(direction==='both')stageDirectedFlow(target,source,undefined,false)
  }
  const flowValues=(flow:Flow):FlowValues=>({
    name:flow.name,protocol:flow.protocol,port:flow.port,security:flow.security,
@@ -778,7 +856,7 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
    const flow=draft||stored!
    setFrom(flow.source_id||'');setTo(flow.target_id||'')
  }
- const stageExistingFlowEdit=(original:Flow,next:FlowValues,sourceId:string,targetId:string)=>{
+ const stageExistingFlowEdit=(original:Flow,next:FlowValues,sourceId:string,targetId:string,recordHistory=true)=>{
    const oldSource=allVMs.find(vm=>vm.id===original.source_id)?.name
    const oldTarget=allVMs.find(vm=>vm.id===original.target_id)?.name
    const newSource=allVMs.find(vm=>vm.id===sourceId)?.name
@@ -790,6 +868,7 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
    const endpointsChanged=sourceId!==original.source_id||targetId!==original.target_id
    const hasChanges=endpointsChanged||Object.keys(before).some(key=>before[key as keyof FlowValues]!==resolvedNext[key as keyof FlowValues])
    const remaining=changes.filter(c=>!(c.action==='update_flow'&&c.id===original.id))
+   if(recordHistory&&(hasChanges||remaining.length!==changes.length))recordUndo()
    setChanges(hasChanges?[...remaining,{
      action:'update_flow',id:original.id,source_id:sourceId,target_id:targetId,
      previous_source_id:original.source_id,previous_target_id:original.target_id,
@@ -810,6 +889,7 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
    }
    const draft=changes.find(c=>c.action==='create_flow'&&c.id===selectedFlow.id)
    if(draft){
+     recordUndo()
      setChanges(previous=>previous.map(c=>c.action==='create_flow'&&c.id===draft.id?{...c,source_id:from,target_id:to}:c))
      setPreview(null);setReviewOpen(true)
    }else{
@@ -826,6 +906,7 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
  const discardExistingFlowEdit=()=>{
    if(!selectedExistingFlow)return
    const id=selectedExistingFlow.id
+   recordUndo()
    if(selectedEffectiveFlow&&(selectedExistingFlow.source_id!==selectedEffectiveFlow.source_id||selectedExistingFlow.target_id!==selectedEffectiveFlow.target_id)){
      setFlowAnchors(previous=>{
        const next={...previous}
@@ -843,6 +924,7 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
  const selectedDraftFlow=changes.find(c=>c.action==='create_flow'&&c.id===selectedDraftFlowId)
  const updateSelectedDraftFlow=(patch:Partial<Change>)=>{
    if(!selectedDraftFlowId)return
+   recordUndo()
    setChanges(previous=>previous.map(c=>c.action==='create_flow'&&c.id===selectedDraftFlowId?{...c,...patch}:c))
    setPreview(null)
  }
@@ -855,6 +937,7 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
      setError('VRF нельзя создавать внутри другой VRF. Разместите её отдельно; VLAN внутри VRF допускается.')
      return
    }
+   recordUndo()
    const id=makeId()
    const rect:Rect={id,name:name.trim(),kind,x,y,width,height}
    setRectangles(prev=>[...prev,rect])
@@ -990,6 +1073,7 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
      persistedFlowAnchors.current=collectFlowAnchors()
      persistedNotes.current=notes.map(note=>({...note}))
      setLayoutDirty(false)
+     setUndoStack([]);setRedoStack([]);resizeRecorded.current=null
      const hasStagedGeometry=changes.some(c=>c.action==='create_vm'||c.action==='create_network')
      setLayoutDirty(hasStagedGeometry)
      setLayoutMessage(hasStagedGeometry
@@ -999,6 +1083,7 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
    finally{setLayoutBusy(false)}
  }
  const discardDraft=()=>{
+   setUndoStack([]);setRedoStack([]);resizeRecorded.current=null
    const stagedVMs=new Set(changes.filter(c=>c.action==='create_vm').map(c=>c.id))
    const stagedNetworks=new Set(changes.filter(c=>c.action==='create_network').map(c=>c.id))
    setNodes(previous=>previous.filter(node=>!stagedVMs.has(node.id)))
@@ -1033,6 +1118,7 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
    setBusy(true);setError('')
    try{
      await request('/api/board/commit',{method:'POST',body:JSON.stringify({changes,reason})})
+     setUndoStack([]);setRedoStack([]);resizeRecorded.current=null
      // Registry changes are committed. Handle geometry/refresh failures separately,
      // never as a failure of an already committed technical transaction.
      const newVMIds=changes.filter(c=>c.action==='create_vm').map(c=>c.id!).filter(Boolean)
@@ -1088,10 +1174,12 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
  const deleteCanvasObject=async(kind:'vm'|'network'|'flow'|'note'|'pane',id:string)=>{
    if(kind==='pane')return
    if(kind==='note'){
+     recordUndo()
      setNotes(previous=>previous.filter(note=>note.id!==id));setSelectedNoteId('')
      setLayoutDirty(true);setContextMenu(null);setLayoutMessage('Заметка удалена. Для записи нажмите «Сохранить».');return
    }
    if(kind==='flow'&&changes.some(change=>change.action==='create_flow'&&change.id===id)){
+     recordUndo()
      setChanges(previous=>previous.filter(change=>change.id!==id));setPreview(null)
      setFlowAnchors(previous=>{const next={...previous};delete next[id];return next})
      setSelectedDraftFlowId('');setSelectedEdgeFlowIds([]);setContextMenu(null);return
@@ -1099,12 +1187,14 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
    if(kind==='vm'&&changes.some(change=>change.action==='create_vm'&&change.id===id)){
      const pending=blockersFor(kind,id)
      if(pending.length){setError('Сначала удалите связи черновика: '+pending.join('; '));return}
+     recordUndo()
      setChanges(previous=>previous.filter(change=>change.id!==id));setPreview(null)
      setNodes(previous=>previous.filter(node=>node.id!==id));setContextMenu(null);return
    }
    if(kind==='network'&&changes.some(change=>change.action==='create_network'&&change.id===id)){
      const pending=blockersFor(kind,id)
      if(pending.length){setError('Сначала удалите привязки и вложенные объекты черновика: '+pending.join('; '));return}
+     recordUndo()
      setChanges(previous=>previous.filter(change=>change.id!==id));setPreview(null)
      setRectangles(previous=>previous.filter(rect=>rect.id!==id));setContextMenu(null);return
    }
@@ -1118,6 +1208,7 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
    setDeleteBusy(true);setError('')
    try{
      await request((kind==='vm'?'/api/infra/':kind==='network'?'/api/networks/':'/api/flows/')+id,{method:'DELETE'})
+     setUndoStack([]);setRedoStack([]);resizeRecorded.current=null
      setContextMenu(null);setSelectedExistingFlowId('');setSelectedDraftFlowId('');setSelectedEdgeFlowIds([])
      setInspectedId(null);setInspectedNetworkId(null)
      if(kind==='vm')setNodes(previous=>previous.filter(node=>node.id!==id))
@@ -1260,7 +1351,7 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
    if(!from||to||from===node.id){setFrom(node.id);setTo('');setSelectedDraftFlowId('');setLayoutMessage('Выберите получателя потока.')}
    else stageDirectedFlow(from,node.id)
  }else if(tool==='move'){openPassport(node.id);setFocusDependencies(false)}
-}} onNodeDragStart={(_,node)=>{setDraggingNode(true);if(!node.id.startsWith('note:'))startVisualGroupDrag(node)}} onNodeDrag={(_,node)=>updateVisualGroupDrag(node)} onNodeDragStop={(_,node)=>{if(!node.id.startsWith('note:')){finishVisualDrop(node);moveNode(node)}else setLayoutDirty(true);setDraggingNode(false)} } onPaneClick={handlePaneClick} minZoom={0.08} fitViewOptions={{padding:0.2,maxZoom:nodes.length<=2?0.75:0.9}}><AutoFit layoutKey={systemId+':'+items.length+':'+flows.length} maxFitZoom={nodes.length<=2?0.75:0.9} focusIds={selectedFlowEndpoints} suspended={drawingConnection||draggingNode||(!selectedFlowEndpoints.length&&(tool!=='move'||canvasInteracted))} settleDelayMs={0}/><Background gap={20}/><Controls showInteractive={false}/></ReactFlow>
+}} onNodeDragStart={(_,node)=>{recordUndo();dragHistoryRecorded.current=true;setDraggingNode(true);if(!node.id.startsWith('note:'))startVisualGroupDrag(node)}} onNodeDrag={(_,node)=>updateVisualGroupDrag(node)} onNodeDragStop={(_,node)=>{if(!node.id.startsWith('note:')){finishVisualDrop(node);moveNode(node)}else{setLayoutDirty(true);dragHistoryRecorded.current=false}setDraggingNode(false)} } onPaneClick={handlePaneClick} minZoom={0.08} fitViewOptions={{padding:0.2,maxZoom:nodes.length<=2?0.75:0.9}}><AutoFit layoutKey={systemId+':'+items.length+':'+flows.length} maxFitZoom={nodes.length<=2?0.75:0.9} focusIds={selectedFlowEndpoints} suspended={drawingConnection||draggingNode||(!selectedFlowEndpoints.length&&(tool!=='move'||canvasInteracted))} settleDelayMs={0}/><Background gap={20}/><Controls showInteractive={false}/></ReactFlow>
      {flowGhost&&<svg className="boardFlowGesturePreview" aria-hidden="true" width="100%" height="100%">
        <defs><marker id="board-flow-ghost-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill="#176bc1"/></marker></defs>
        <line x1={flowGhost.start.x} y1={flowGhost.start.y} x2={flowGhost.end.x} y2={flowGhost.end.y} stroke="#176bc1" strokeWidth="2.5" strokeDasharray="6 3" markerEnd="url(#board-flow-ghost-arrow)"/>
@@ -1285,6 +1376,8 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
           <Icon size={19} strokeWidth={1.8} aria-hidden="true"/><span className="boardToolCaption" aria-hidden="true">{caption}</span>
         </button>)}
      <span className="boardToolsSeparator" aria-hidden="true"/>
+     <button type="button" title="Отменить последнее действие (Ctrl+Z)" aria-label="Отменить действие" disabled={!undoStack.length||busy||layoutBusy||Boolean(pendingGrouping)||Boolean(preview)||showHistory||deleteBusy} onClick={undo}><Undo2 size={19} aria-hidden="true"/><span className="boardToolCaption" aria-hidden="true">Назад</span></button>
+     <button type="button" title="Повторить действие (Ctrl+Shift+Z / Ctrl+Y)" aria-label="Повторить действие" disabled={!redoStack.length||busy||layoutBusy||Boolean(pendingGrouping)||Boolean(preview)||showHistory||deleteBusy} onClick={redo}><Redo2 size={19} aria-hidden="true"/><span className="boardToolCaption" aria-hidden="true">Вперёд</span></button>
      <button type="button" title="Вписать всю схему в экран" aria-label="Показать всё" disabled={!nodes.length} onClick={()=>void fitView({padding:0.25,duration:250,maxZoom:nodes.length<=2?0.75:0.9})}><Maximize2 size={19} aria-hidden="true"/><span className="boardToolCaption" aria-hidden="true">Вписать</span></button>
      <button type="button" title={changes.length?'Сохранить новые ВМ, VRF/VLAN и связи через проверку черновика':layoutDirty?'Сохранить расположение блоков':'Расположение сохранено'} aria-label={changes.length?'Сохранить изменения схемы':'Сохранить расположение'} disabled={(!layoutDirty&&!changes.length)||layoutBusy||busy} onClick={()=>void saveLayout()}><Save size={19} aria-hidden="true"/><span className="boardToolCaption" aria-hidden="true">{changes.length?'Сохранить всё':'Сохранить'}</span>{(layoutDirty||changes.length>0)&&<span className="boardUnsavedDot" aria-hidden="true"/>}</button>
      <button type="button" title="История изменений" aria-label="История изменений" onClick={()=>void openHistory()}><History size={19} aria-hidden="true"/><span className="boardToolCaption" aria-hidden="true">История</span></button>
@@ -1296,7 +1389,7 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
      {(tool!=='move'||inspectedVM||inspectedNetwork||selectedNoteId||reviewOpen)&&<aside className="boardDock" role="complementary" aria-label="Свойства и изменения схемы">
        <button type="button" className="boardDockToggle" title={dockCollapsed?"Развернуть свойства":"Свернуть свойства"} aria-label={dockCollapsed?"Развернуть панель свойств":"Свернуть панель свойств"} aria-expanded={!dockCollapsed} onClick={()=>setDockCollapsed(v=>!v)}>{dockCollapsed?"‹":"›"}</button>
        {tool!=='move'&&<div className="boardPropertiesHeader"><div><h3>{tool==='vm'?'Виртуальная машина':tool==='flow'?'Поток данных':tool==='note'?'Заметка':'Сеть / контейнер'}</h3></div><button type="button" aria-label="Закрыть настройки инструмента" onClick={()=>{setTool('move');setDrawing(null);setError('');setLayoutMessage('');setReviewOpen(false);cancelNetworkDrag()}}>✕</button></div>}
-          {tool==='note'&&<div className="boardToolFields"><label>Текст заметки<textarea aria-label="Текст новой заметки" value={noteText} onChange={e=>setNoteText(e.target.value)} maxLength={2000}/></label><button type="button" disabled={!noteText.trim()} onClick={()=>{const id=makeId();setNotes(previous=>[...previous,{id,x:90+notes.length*25,y:90+notes.length*25,text:noteText.trim()}]);setSelectedNoteId(id);setLayoutDirty(true);setTool('move')}}>Добавить заметку</button></div>}
+          {tool==='note'&&<div className="boardToolFields"><label>Текст заметки<textarea aria-label="Текст новой заметки" value={noteText} onChange={e=>setNoteText(e.target.value)} maxLength={2000}/></label><button type="button" disabled={!noteText.trim()} onClick={()=>{recordUndo();const id=makeId();setNotes(previous=>[...previous,{id,x:90+notes.length*25,y:90+notes.length*25,text:noteText.trim()}]);setSelectedNoteId(id);setLayoutDirty(true);setTool('move')}}>Добавить заметку</button></div>}
           {tool==='vm'&&<div className="boardToolFields"><label>Имя ВМ <input value={name} onChange={e=>setName(e.target.value)} placeholder="Новая ВМ"/></label><button onClick={()=>addVM()}>Разместить на схеме</button></div>}
    {tool==='network'&&<div className="boardToolFields"><label>Название сети * <input ref={networkNameInput} required aria-required="true" aria-invalid={!name.trim()} value={name} onChange={e=>{setName(e.target.value);if(e.target.value.trim())setError('')}} placeholder="Название VRF / VLAN / зоны"/></label>{!name.trim()&&<p className="boardRequiredHint" role="alert">Укажите название</p>}<label>Тип <select value={kind} onChange={e=>setKind(e.target.value as typeof kind)}><option value="zone">Зона</option><option value="vlan">VLAN</option><option value="vrf">VRF</option></select></label><small className="boardToolHelp" title="Нажмите на холст или протяните границу контейнера">{drawing?'Рисование контейнера…':'Нажмите или протяните на схеме'}</small></div>}
    {tool==='flow'&&<section className="boardFlowCatalog" aria-label="Выбор технического потока">
@@ -1349,7 +1442,7 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
      onClose={()=>{setSelectedExistingFlowId('');setSelectedEdgeFlowIds([])}}/>}
    {tool==='flow'&&selectedExistingFlow&&
      <FlowAttributeMap key={'flow-data-map:'+selectedExistingFlow.id} flowId={selectedExistingFlow.id} request={request}/>}
-   {selectedNoteId&&tool==='move'&&notes.some(n=>n.id===selectedNoteId)&&<div className="boardToolFields" aria-label="Редактирование заметки"><h3>Заметка</h3><textarea aria-label="Текст выбранной заметки" maxLength={2000} value={notes.find(n=>n.id===selectedNoteId)?.text||''} onChange={e=>{setNotes(previous=>previous.map(note=>note.id===selectedNoteId?{...note,text:e.target.value}:note));setLayoutDirty(true)}}/><button type="button" onClick={()=>setSelectedNoteId('')}>Закрыть заметку</button></div>}
+   {selectedNoteId&&tool==='move'&&notes.some(n=>n.id===selectedNoteId)&&<div className="boardToolFields" aria-label="Редактирование заметки"><h3>Заметка</h3><textarea aria-label="Текст выбранной заметки" onFocus={recordUndo} maxLength={2000} value={notes.find(n=>n.id===selectedNoteId)?.text||''} onChange={e=>{setNotes(previous=>previous.map(note=>note.id===selectedNoteId?{...note,text:e.target.value}:note));setLayoutDirty(true)}}/><button type="button" onClick={()=>setSelectedNoteId('')}>Закрыть заметку</button></div>}
 
 
        {tool==='move'&&inspectedNetwork&&<section className="boardToolFields" aria-label="Свойства контейнера"><h3>{inspectedNetwork.name} · {inspectedNetwork.kind.toUpperCase()}</h3><small className="boardToolHelp">Вложенных объектов: {descendants('network:'+inspectedNetwork.id,parents).size}</small>{onEditNetwork&&networks.some(n=>n.id===inspectedNetwork.id)&&<button type="button" onClick={()=>onEditNetwork(inspectedNetwork.id)}>Редактировать параметры сети</button>}<button type="button" onClick={()=>setInspectedNetworkId(null)}>Вернуться к схеме</button></section>}

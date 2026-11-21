@@ -308,7 +308,7 @@ function DecisionInspector({id,request,profile,items,flows,schema,openSchema,clo
     }
   }
   return <>
-    {schema&&<div className="decisionDrawing"><header><button aria-label="Вернуться к списку" disabled={busy} onClick={close}><ArrowLeft size={16}/></button><h2>{row.title}</h2><Status value={row.status}/></header>
+    {schema&&<div className="decisionDrawing"><header><button aria-label="Вернуться к списку" disabled={busy} onClick={exitEditor}><ArrowLeft size={16}/></button><h2>{row.title}</h2><Status value={row.status}/></header>
       <div className="decisionCanvas">{nodes.length?<ReactFlow nodes={measurements.apply(nodes)} edges={edges} onNodesChange={changes=>{
         measurements.record(changes)
         if(!editable||busy)return
@@ -322,16 +322,51 @@ function DecisionInspector({id,request,profile,items,flows,schema,openSchema,clo
         })
       }} nodeTypes={diagramPortNodes} edgeTypes={decisionEdgeTypes} connectionMode={ConnectionMode.Loose} nodesDraggable={editable&&!busy} nodesConnectable={editable&&!busy} deleteKeyCode={null}
         onNodeDragStop={(_,node)=>{if(proposedVmIds.has(node.id))void moveProposedVm(node.id,node.position)}}
+        onNodeClick={(_,node)=>inspectVM(node.id)}
+        onNodeContextMenu={(event,node)=>{
+          event.preventDefault()
+          setMenu({kind:'vm',id:node.id,x:Math.min(event.clientX,window.innerWidth-250),y:Math.min(event.clientY,window.innerHeight-210)})
+        }}
+        onEdgeContextMenu={(event,edge)=>{
+          event.preventDefault()
+          setMenu({kind:'flow',id:edge.id,x:Math.min(event.clientX,window.innerWidth-250),y:Math.min(event.clientY,window.innerHeight-210)})
+        }}
         onConnectStart={()=>setDrawing(true)} onConnectEnd={()=>setDrawing(false)} onConnect={connect}
         onEdgeClick={(_,edge)=>{const f=lines.find(f=>f.id===edge.id);if(f)inspectFlow(f)}}
         isValidConnection={c=>c.source!==c.target} fitView><AutoFit layoutKey={id} suspended={drawing}/><Background gap={20}/><Controls showInteractive={false}/></ReactFlow>:<p>В этой системе пока нет компонентов.</p>}
-        {editable&&<div role="toolbar" aria-label="Инструменты решения" className="decisionTools"><button disabled={busy} onClick={()=>{setViewFlowId('');setTool('vm');setTab('items');setName('')}}>＋ ВМ</button><button disabled={busy} onClick={()=>openFlow(emptyFlow)}>＋ Поток</button></div>}
+        {editable&&<div role="toolbar" aria-label="Инструменты решения" className="decisionTools">
+          <button type="button" disabled={busy} title="Выбрать объект" aria-label="Выбрать объект" onClick={()=>{setMenu(null);setTool(null);setSelectedVMId('');setViewFlowId('')}}><MousePointer2 size={16}/> Выбрать</button>
+          <button type="button" disabled={busy} onClick={()=>{
+            if(hasUnsavedForm&&!window.confirm('Отбросить несохранённые изменения?'))return
+            setSelectedVMId('');setViewFlowId('');setTool('vm');setTab('items');setName('');setNewVM(blankVM())
+          }}><Monitor size={15}/> ＋ ВМ</button>
+          <button type="button" disabled={busy} onClick={()=>openFlow(emptyFlow)}><GitBranch size={15}/> ＋ Поток</button>
+          <button type="button" data-decision-undo title="Отменить последнее изменение черновика (Ctrl+Z)" aria-label="Отменить изменение черновика" disabled={busy||!undoStack.length} onClick={undoProposal}><Undo2 size={16}/></button>
+          <button type="button" data-decision-redo title="Повторить изменение черновика (Ctrl+Shift+Z)" aria-label="Повторить изменение черновика" disabled={busy||!redoStack.length} onClick={redoProposal}><Redo2 size={16}/></button>
+          <span className="decisionToolCount" title="Действующая архитектура отображается только для чтения">{row.proposed_vms.length} ВМ · {row.proposed_flows.length} потоков</span>
+        </div>}
+        {menu&&<div className="decisionContextMenu" role="menu" aria-label="Действия с объектом" style={{position:'fixed',left:Math.max(8,menu.x),top:Math.max(8,menu.y),zIndex:250}}>
+          <button type="button" role="menuitem" onClick={()=>{
+            if(menu.kind==='vm')inspectVM(menu.id)
+            else {const f=lines.find(flow=>flow.id===menu.id);if(f)inspectFlow(f)}
+            setMenu(null)
+          }}>{menu.kind==='vm'?'Открыть карточку':'Открыть поток'}</button>
+          {editable&&menu.kind==='vm'&&proposedVmIds.has(menu.id)&&<button type="button" role="menuitem" onClick={()=>deleteProposedVM(menu.id)}>Удалить проектируемую ВМ</button>}
+          {editable&&menu.kind==='flow'&&proposedIds.has(menu.id)&&<button type="button" role="menuitem" onClick={()=>{
+            if(window.confirm('Удалить проектируемый поток?'))persist(row.proposed_vms,row.proposed_flows.filter(flow=>flow.id!==menu.id))
+            setMenu(null)
+          }}>Удалить проектируемый поток</button>}
+          <button type="button" role="menuitem" onClick={()=>setMenu(null)}>Закрыть меню</button>
+        </div>}
       </div>
     </div>}
     <aside className="decisionSide" aria-label="Карточка технического решения">
-      <header><h3>{schema?'Свойства решения':row.title}</h3><button disabled={busy} aria-label="Закрыть решение" onClick={close}><X size={16}/></button></header>
+      <header><h3>{schema?'Свойства решения':row.title}</h3><button disabled={busy} aria-label="Закрыть решение" onClick={exitEditor}><X size={16}/></button></header>
       <small>Версия {row.revision} · Автор: {row.author_name||row.author}</small>
-      <nav aria-label="Сведения о решении">{(['items','review'] as const).map(t=><button key={t} aria-pressed={tab===t} onClick={()=>setTab(t)}>{t==='items'?'Состав':'Согласование'}</button>)}</nav>
+      <nav aria-label="Сведения о решении">{(['items','changes','review'] as const).map(t=><button key={t} aria-pressed={tab===t} onClick={()=>{
+          if(hasUnsavedForm&&!window.confirm('Отбросить несохранённые изменения?'))return
+          setTab(t);setTool(null);setSelectedVMId('');setViewFlowId('')
+        }}>{t==='items'?'Состав':t==='changes'?'Изменения':'Согласование'}</button>)}</nav>
       {row.base_changed&&<p role="status">Исходная архитектура изменилась после отправки на согласование.</p>}
       {tab==='items'?<>
         {row.description&&<p>{row.description}</p>}

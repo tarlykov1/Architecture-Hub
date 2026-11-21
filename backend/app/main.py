@@ -1921,6 +1921,11 @@ def delete_object(object_id: UUID, db: Session = Depends(db_session)):
         raise HTTPException(409, "Remove IS contract, licence and technology records before deleting the system")
     for rel in db.scalars(select(Relation).where((Relation.source_id == object_id) | (Relation.target_id == object_id))).all():
         db.delete(rel)
+    # ProcessSystem and process steps reference the canonical IS identity.
+    from .process_passports import ProcessStep
+    if db.scalar(select(ProcessSystem.id).where(ProcessSystem.system_id == object_id)) or \
+       db.scalar(select(ProcessStep.id).where(ProcessStep.system_id == object_id)):
+        raise HTTPException(409, "System is used by business processes; unlink it first")
     # Diagram positions may contain orphan IDs; UI filters them on load.
     db.delete(obj)
     db.commit()
@@ -2649,6 +2654,9 @@ def delete_flow(flow_id: UUID, request: Request, db: Session = Depends(db_sessio
     from .flow_scenarios import FlowScenarioStep
     if db.scalar(select(FlowScenarioStep.id).where(FlowScenarioStep.flow_id == flow_id)):
         raise HTTPException(409, "Flow is referenced by an exchange scenario; unlink its steps first")
+    from .process_passports import ProcessStep
+    if db.scalar(select(ProcessStep.id).where(ProcessStep.flow_id == flow_id)):
+        raise HTTPException(409, "Flow is referenced by business process steps; unlink it first")
     for use in db.scalars(select(FlowDataUse).where(FlowDataUse.flow_id == flow_id)).all():
         db.delete(use)
     for hop in db.scalars(select(FlowNetworkHop).where(FlowNetworkHop.flow_id == flow_id)).all():
@@ -2676,6 +2684,9 @@ def delete_infra(item_id: UUID, request: Request, db: Session = Depends(db_sessi
         raise HTTPException(status_code=409, detail="Delete network interfaces first")
     if db.scalar(select(SystemTechnology.id).where(SystemTechnology.component_id == item_id)):
         raise HTTPException(status_code=409, detail="Unlink technology inventory before deleting component")
+    from .process_passports import ProcessStep
+    if db.scalar(select(ProcessStep.id).where(ProcessStep.component_id == item_id)):
+        raise HTTPException(409, "Component is referenced by a business-process step; unlink it first")
     audit_direct_edit(db, request, "delete_vm", item.id,
                       {"name":item.name,"kind":item.kind,"system_id":item.system_id},
                       None, "Удалён компонент " + item.name)
@@ -3176,6 +3187,9 @@ app.include_router(incident_router)
 
 from .views import router as views_router
 app.include_router(views_router)
+
+from .process_passports import router as process_passports_router
+app.include_router(process_passports_router)
 
 from .flow_scenarios import router as flow_scenarios_router
 app.include_router(flow_scenarios_router)

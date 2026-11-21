@@ -208,7 +208,7 @@ function DecisionInspector({id,request,profile,items,flows,schema,openSchema,clo
     </div>}
     <aside className="decisionSide" aria-label="Карточка технического решения">
       <header><h3>{schema?'Свойства решения':row.title}</h3><button disabled={busy} aria-label="Закрыть решение" onClick={close}><X size={16}/></button></header>
-      <small>Версия {row.revision}</small>
+      <small>Версия {row.revision} · Автор: {row.author_name||row.author}</small>
       <nav aria-label="Сведения о решении">{(['items','review'] as const).map(t=><button key={t} aria-pressed={tab===t} onClick={()=>setTab(t)}>{t==='items'?'Состав':'Согласование'}</button>)}</nav>
       {row.base_changed&&<p role="status">Исходная архитектура изменилась после отправки на согласование.</p>}
       {tab==='items'?<>

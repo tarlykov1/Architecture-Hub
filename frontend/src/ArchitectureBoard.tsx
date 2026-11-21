@@ -303,7 +303,7 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
      setPendingGrouping({id:node.id,name:label||node.id,from:previous,to:target,snapshot:dragSnapshot.current||undefined})
      setNicForGrouping('');setNewNicName('eth0')
      setInspectedId(null);setInspectedNetworkId(null)
-   }
+   }else dragHistoryRecorded.current=false
    dragSnapshot.current=null
  }
  // Network containers are manipulated through a dedicated pointer-captured
@@ -917,6 +917,7 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
  const selectedDraftFlow=changes.find(c=>c.action==='create_flow'&&c.id===selectedDraftFlowId)
  const updateSelectedDraftFlow=(patch:Partial<Change>)=>{
    if(!selectedDraftFlowId)return
+   recordUndo()
    setChanges(previous=>previous.map(c=>c.action==='create_flow'&&c.id===selectedDraftFlowId?{...c,...patch}:c))
    setPreview(null)
  }
@@ -1167,7 +1168,7 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
    if(kind==='pane')return
    if(kind==='note'){
      recordUndo()
-   setNotes(previous=>previous.filter(note=>note.id!==id));setSelectedNoteId('')
+     setNotes(previous=>previous.filter(note=>note.id!==id));setSelectedNoteId('')
      setLayoutDirty(true);setContextMenu(null);setLayoutMessage('Заметка удалена. Для записи нажмите «Сохранить».');return
    }
    if(kind==='flow'&&changes.some(change=>change.action==='create_flow'&&change.id===id)){
@@ -1342,7 +1343,7 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
    if(!from||to||from===node.id){setFrom(node.id);setTo('');setSelectedDraftFlowId('');setLayoutMessage('Выберите получателя потока.')}
    else stageDirectedFlow(from,node.id)
  }else if(tool==='move'){openPassport(node.id);setFocusDependencies(false)}
-}} onNodeDragStart={(_,node)=>{recordUndo();dragHistoryRecorded.current=true;setDraggingNode(true);if(!node.id.startsWith('note:'))startVisualGroupDrag(node)}} onNodeDrag={(_,node)=>updateVisualGroupDrag(node)} onNodeDragStop={(_,node)=>{if(!node.id.startsWith('note:')){finishVisualDrop(node);moveNode(node)}else setLayoutDirty(true);setDraggingNode(false)} } onPaneClick={handlePaneClick} minZoom={0.08} fitViewOptions={{padding:0.2,maxZoom:nodes.length<=2?0.75:0.9}}><AutoFit layoutKey={systemId+':'+items.length+':'+flows.length} maxFitZoom={nodes.length<=2?0.75:0.9} focusIds={selectedFlowEndpoints} suspended={drawingConnection||draggingNode||(!selectedFlowEndpoints.length&&(tool!=='move'||canvasInteracted))} settleDelayMs={0}/><Background gap={20}/><Controls showInteractive={false}/></ReactFlow>
+}} onNodeDragStart={(_,node)=>{recordUndo();dragHistoryRecorded.current=true;setDraggingNode(true);if(!node.id.startsWith('note:'))startVisualGroupDrag(node)}} onNodeDrag={(_,node)=>updateVisualGroupDrag(node)} onNodeDragStop={(_,node)=>{if(!node.id.startsWith('note:')){finishVisualDrop(node);moveNode(node)}else{setLayoutDirty(true);dragHistoryRecorded.current=false}setDraggingNode(false)} } onPaneClick={handlePaneClick} minZoom={0.08} fitViewOptions={{padding:0.2,maxZoom:nodes.length<=2?0.75:0.9}}><AutoFit layoutKey={systemId+':'+items.length+':'+flows.length} maxFitZoom={nodes.length<=2?0.75:0.9} focusIds={selectedFlowEndpoints} suspended={drawingConnection||draggingNode||(!selectedFlowEndpoints.length&&(tool!=='move'||canvasInteracted))} settleDelayMs={0}/><Background gap={20}/><Controls showInteractive={false}/></ReactFlow>
      {flowGhost&&<svg className="boardFlowGesturePreview" aria-hidden="true" width="100%" height="100%">
        <defs><marker id="board-flow-ghost-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill="#176bc1"/></marker></defs>
        <line x1={flowGhost.start.x} y1={flowGhost.start.y} x2={flowGhost.end.x} y2={flowGhost.end.y} stroke="#176bc1" strokeWidth="2.5" strokeDasharray="6 3" markerEnd="url(#board-flow-ghost-arrow)"/>

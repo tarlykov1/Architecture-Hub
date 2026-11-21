@@ -28,7 +28,7 @@
 | ID | Приоритет | Область | Статус | Критерий завершения |
 |---|---|---|---|---|
 | AH-03 | P1 | Потоки, атрибуты, последовательности, сеть, маршруты | Частично | Единое редактирование потока; сценарии шагов в серверной модели; строгие правила VRF/VLAN и маршрутов |
-| AH-04 | P1 | Бизнес-процессы | **В работе** | [PR #216](https://github.com/tarlykov1/Architecture-Hub/pull/216): канонический паспорт, модель шагов, схема, матрицы и документация; приёмка CI ожидается |
+| AH-04 | P1 | Бизнес-процессы | **Готово – первая рабочая версия опубликована** | [PR #216](https://github.com/tarlykov1/Architecture-Hub/pull/216) · [CI #44956010970](https://github.com/tarlykov1/Architecture-Hub/actions/runs/44956010970) · [Live QA #44956541234](https://github.com/tarlykov1/Architecture-Hub/actions/runs/44956541234); 140 API, 191 Chromium и 10 Live QA passed; BPMN-движок не входит в этап |
 | AH-05 | P1 | Технические решения | Частично | Полноценная проектная модель, дифф, конфликты, комментарии, персональное согласование, отдельный факт внедрения |
 | AH-06 | P2 | Документация, Wiki, анализ влияния и матрицы | Частично | Генерация паспортов и документов из одной модели; происхождение и качество данных |
 | AH-07 | P0 | Полная пользовательская и техническая приёмка | План | API + E2E Chromium + Live QA, desktop/mobile, сохранение/reload, изолированные данные |
@@ -66,12 +66,12 @@
 | AH-03-06 | P1 | Проверки сетевых конфликтов | План | Предупреждения до фиксации |
 | AH-03-07 | P1 | Подтверждённые и предполагаемые маршруты | Частично | Отделять декларацию от реального трафика |
 | AH-03-08 | P1 | Переход «На карте» к конкретному flow ID | Частично | Issue #177: сквозная приёмка |
-| AH-04-01 | P1 | Иерархия процессов и подпроцессов | **В работе** | API/API-тесты parent_id, проверка циклов и единой категории, UI выбора родителя в PR #216 |
-| AH-04-02 | P1 | Владельцы, участники, ответственность | **В работе** | Паспорт с владельцем, участниками, ожидаемым результатом, статусом и ревизией, PR #216 |
-| AH-04-03 | P1 | Простой редактор шагов процесса | **В работе** | Последовательность шагов с постоянными ID, входом/выходом/исполнителем и схемой, PR #216 |
-| AH-04-04 | P1 | Привязка шагов к ИС и компонентам | **В работе** | Канонические UUID существующих ИС/ВМ и запрет удаления используемых объектов, PR #216 |
-| AH-04-05 | P1 | Привязка шагов к потокам/атрибутам | **В работе** | Ссылки на реальные потоки/определения атрибутов без дублирования и значений ПДн, PR #216 |
-| AH-04-06 | P1 | Реестр и схема бизнес-процесса | **В работе** | Унифицированная модель шагов, две проекции и матрицы БП × ИС / БП × потоки, PR #216 |
+| AH-04-01 | P1 | Иерархия процессов и подпроцессов | **Готово** | [PR #216](https://github.com/tarlykov1/Architecture-Hub/pull/216) · [CI #44956010970](https://github.com/tarlykov1/Architecture-Hub/actions/runs/44956010970) · [Live QA #44956541234](https://github.com/tarlykov1/Architecture-Hub/actions/runs/44956541234); parent ID, вложенность, запрет циклов и смены категории при действующих связях |
+| AH-04-02 | P1 | Владельцы, участники, ответственность | **Готово** | [PR #216](https://github.com/tarlykov1/Architecture-Hub/pull/216) · [CI #44956010970](https://github.com/tarlykov1/Architecture-Hub/actions/runs/44956010970) · [Live QA #44956541234](https://github.com/tarlykov1/Architecture-Hub/actions/runs/44956541234); версия паспорта, статусы, участники, результат, проверки конкурентной записи |
+| AH-04-03 | P1 | Простой редактор шагов процесса | **Готово** | [PR #216](https://github.com/tarlykov1/Architecture-Hub/pull/216) · [CI #44956010970](https://github.com/tarlykov1/Architecture-Hub/actions/runs/44956010970) · [Live QA #44956541234](https://github.com/tarlykov1/Architecture-Hub/actions/runs/44956541234); создание, изменение, порядок, удаление и перезагрузка с сохранением ID |
+| AH-04-04 | P1 | Привязка шагов к ИС и компонентам | **Готово** | [PR #216](https://github.com/tarlykov1/Architecture-Hub/pull/216) · [CI #44956010970](https://github.com/tarlykov1/Architecture-Hub/actions/runs/44956010970) · [Live QA #44956541234](https://github.com/tarlykov1/Architecture-Hub/actions/runs/44956541234); строгая проверка ссылок на ИС/ВМ и запрет удаления используемых объектов |
+| AH-04-05 | P1 | Привязка шагов к потокам/атрибутам | **Готово** | [PR #216](https://github.com/tarlykov1/Architecture-Hub/pull/216) · [CI #44956010970](https://github.com/tarlykov1/Architecture-Hub/actions/runs/44956010970) · [Live QA #44956541234](https://github.com/tarlykov1/Architecture-Hub/actions/runs/44956541234); направленные flow ID и атрибуты из общего справочника, без значений ПДн |
+| AH-04-06 | P1 | Реестр и схема бизнес-процесса | **Готово** | [PR #216](https://github.com/tarlykov1/Architecture-Hub/pull/216) · [CI #44956010970](https://github.com/tarlykov1/Architecture-Hub/actions/runs/44956010970) · [Live QA #44956541234](https://github.com/tarlykov1/Architecture-Hub/actions/runs/44956541234); реестр, вертикальная схема, матрицы, Markdown-выгрузка |
 | AH-05-01 | P1 | Общий холст в техрешениях | План | Убрать отдельную упрощённую реализацию |
 | AH-05-02 | P1 | Проектируемые ИС/компоненты/ВМ/сети | Частично | Сейчас есть предлагаемые ВМ и потоки |
 | AH-05-03 | P1 | Изменение и удаление объектов в проекте | План | Не трогать реальные данные до внедрения |
@@ -107,7 +107,7 @@
 | 2026-11-21 | PR #212 опубликован на test.web-tie.ru (frontend и backend) | Слияние, CI, обе выкладки успешны; Live QA упал на браузерном page.goto, результат UX не подтверждён | [Frontend](https://github.com/tarlykov1/Architecture-Hub/actions/runs/44942207296) · [Backend](https://github.com/tarlykov1/Architecture-Hub/actions/runs/44942207284) · [Live QA](https://github.com/tarlykov1/Architecture-Hub/actions/runs/44942260562) |
 | 2026-11-21 | Реализован крупный блок AH-03 – общие сценарии обмена, привязка к БП, ревизии, шаги и контроль ссылок, диагностика Live QA | Код и тесты: **188 Chromium passed**, backend, frontend, миграции проверены; ожидаются merge и Live QA на сервере | [PR #214](https://github.com/tarlykov1/Architecture-Hub/pull/214) · [CI 44949134613](https://github.com/tarlykov1/Architecture-Hub/actions/runs/44949134613) |
 
-| 2026-11-22 | Крупный спринт AH-04: полноценные паспорта БП, иерархия, шаги, связи с ИС/ВМ/потоками/атрибутами, представление и матрицы, Markdown-документация | Код, API-тесты, браузерные тесты и миграция 0020 в [PR #216](https://github.com/tarlykov1/Architecture-Hub/pull/216); результат CI и Live QA ожидается | [Спецификация](BUSINESS_PROCESS_PASSPORTS.md) · [PR #216](https://github.com/tarlykov1/Architecture-Hub/pull/216) |
+| 2026-11-22 | Крупный спринт AH-04: паспорта, иерархия БП, шаги, связи с ИС/ВМ/потоками/атрибутами, схема, матрицы, Markdown | Релиз `fdd0254` на test.web-tie.ru; **140 API, 191 Chromium, 10 Live QA passed** (Live QA успешен при повторном запуске). Миграции Alembic на VPS по-прежнему заблокированы до проверки #215 | [PR #216](https://github.com/tarlykov1/Architecture-Hub/pull/216) · [CI #44956010970](https://github.com/tarlykov1/Architecture-Hub/actions/runs/44956010970) · [Live QA #44956541234](https://github.com/tarlykov1/Architecture-Hub/actions/runs/44956541234) |
 
 ## Правила актуализации
 

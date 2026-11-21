@@ -57,6 +57,8 @@ def classify(path: str) -> str | None:
         return "infrastructure"
     if path.startswith("/api/infra"):
         return "infrastructure"
+    if path.startswith("/api/flow-scenarios"):
+        return "flows"  # Shared sequences obey the same read/write flow grants.
     if path.startswith("/api/data-attributes") or path.startswith("/api/flow-data-uses"):
         return "flows"
     if path.startswith("/api/flows/") and path.endswith("/network-path"):

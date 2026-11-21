@@ -3941,13 +3941,19 @@ def _decision_current_baseline(row: TechnicalDecision, db: Session) -> str:
             "id": str(s.id), "name": s.name, "kind": s.kind,
             "description": s.description, "verification": s.verification,
         }),
-        "network_paths": ordered(hops, lambda hop: {
-            "id": str(hop.id), "flow": str(hop.flow_id),
+        # Hops are replaced in full on PUT, which generates new technical row
+        # UUIDs. Fingerprint the *declared route*, not incidental DB identity:
+        # saving the same route must not invalidate an approved proposal.
+        "network_paths": sorted(({
+            "flow": str(hop.flow_id),
             "asset": str(hop.asset_id) if hop.asset_id else None,
             "segment": str(hop.segment_id) if hop.segment_id else None,
             "position": hop.position, "notes": hop.notes,
             "verification": hop.verification,
-        }),
+        } for hop in hops), key=lambda item: (
+            item["flow"], item["position"], item["asset"] or "",
+            item["segment"] or "",
+        )),
         "network_assets": ordered(assets, lambda asset: {
             "id": str(asset.id), "name": asset.name, "kind": asset.kind,
             "description": asset.description, "address": asset.address,

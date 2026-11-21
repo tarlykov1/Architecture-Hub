@@ -242,12 +242,94 @@ function DecisionInspector({id,request,profile,items,flows,schema,openSchema,clo
         {!schema&&<button onClick={openSchema}>Открыть схему</button>}
         {editable&&!tool&&(row.proposed_vms.length+row.proposed_flows.length>0)&&<button className="primary" disabled={busy||routeChanged} title={routeChanged?'Сохраните изменённый маршрут согласования на вкладке «Согласование»':undefined} onClick={()=>void change('/submit',revision)}>На согласование</button>}
       </>:<>
-        {row.required_services.map(service=>{
-          const approval=row.approvals.find(a=>a.service===service)
-          return <div className="decisionItem" key={service}><span>{services[service]}</span><small>{approval?.verdict==='approved'?'Согласовано':approval?.verdict==='changes_requested'?'На доработку':row.status==='in_review'?'На рассмотрении':'Ожидается'}</small>{approval?.note&&<p>{approval.note}</p>}</div>
-        })}
-        {reviewer&&<><label>Комментарий<textarea value={comment} maxLength={2000} onChange={e=>setComment(e.target.value)}/></label><div className="decisionActions"><button disabled={busy||comment.trim().length<3} onClick={()=>void change('/review',{...revision,verdict:'changes_requested',note:comment})}>На доработку</button><button className="primary" disabled={busy} onClick={()=>void change('/review',{...revision,verdict:'approved',note:comment})}>Согласовать</button></div></>}
-        {editor&&profile?.auth_kind==='named_user'&&row.status==='approved'&&<button className="primary" disabled={busy||row.base_changed} onClick={()=>void change('/publish',revision)}>Опубликовать</button>}
+        <section className="decisionApprovalRoute" aria-label="Маршрут согласования">
+          <h4>Маршрут согласования</h4>
+          <p>Каждая выбранная служба согласует решение отдельно. Отправка не создаёт реальные ВМ и потоки.</p>
+          {editable&&<div className="decisionReviewServices" role="group" aria-label="Обязательные согласующие службы">
+            {(Object.entries(services) as [Service,string][]).map(([service,label])=>
+              <label key={service}><input type="checkbox" checked={route.includes(service)} onChange={event=>setRoute(current=>event.target.checked?[...current,service]:current.filter(key=>key!==service))}/>{label}</label>
+            )}
+          </div>}
+          {editable&&routeChanged&&<div className="decisionActions">
+            <button type="button" disabled={busy||!route.length} onClick={saveRoute}>Сохранить маршрут</button>
+            <button type="button" disabled={busy} onClick={()=>setRoute(row.required_services)}>Отменить изменение</button>
+          </div>}
+          {editable&&!route.length&&<small role="alert">Выберите хотя бы одну согласующую службу.</small>}
+          {row.required_services.length>0&&<p className="decisionReviewProgress" role="status">Согласовано: {approvedCount} из {row.required_services.length}</p>}
+          <div className="decisionReviewStages">
+            {row.required_services.map(service=>{
+              const approval=row.approvals.find(a=>a.service===service)
+              return <div className="decisionReviewStage" key={service}>
+                <strong>{services[service]}</strong>
+                <span>{approval?.verdict==='approved'?'Согласовано':approval?.verdict==='changes_requested'?'Возвращено на доработку':row.status==='in_review'?'Ожидает согласования':'Не отправлено'}</span>
+                {approval&&<small>{approval.actor_name||approval.actor} · {dateFormat.format(new Date(approval.created_at))}</small>}
+                {approval?.note&&<p>{approval.note}</p>}
+              </div>
+            })}
+          </div>
+          {editable&&<div className="decisionActions">
+            <button type="button" className="primary" disabled={busy||!canSubmit}
+              onClick={()=>void change('/submit',revision)}>Отправить на согласование</button>
+            {!row.proposed_vms.length&&!row.proposed_flows.length&&<small>Сначала добавьте в проект ВМ или поток.</small>}
+            {routeChanged&&<small>Сначала сохраните изменённый маршрут.</small>}
+          </div>}
+        </section>
+        {row.status==='in_review'&&!reviewer&&<p className="decisionReviewNotice" role="status">
+          {profile?.auth_kind!=='named_user'
+            ?'Для согласования необходим персональный вход сотрудника с ролью согласующей службы. В режиме «Доступ без пароля» подпись недоступна.'
+            :author?'Автор не может согласовать собственное решение.'
+            :'Решение ожидает согласования назначенных служб. Ваша роль не включена в маршрут.'}
+        </p>}
+        {reviewer&&<section className="decisionReviewerActions" aria-label="Моё согласование">
+          <h4>Решение согласующего – {services[profile!.role as Service]}</h4>
+          <label>Замечания или пояснение к решению
+            <textarea value={comment} maxLength={2000} onChange={e=>setComment(e.target.value)}
+              placeholder="При возврате на доработку обязательно опишите замечания."/>
+          </label>
+          <div className="decisionActions">
+            <button type="button" disabled={busy||comment.trim().length<3}
+              onClick={()=>void change('/review',{...revision,verdict:'changes_requested',note:comment})}>На доработку</button>
+            <button type="button" className="primary" disabled={busy}
+              onClick={()=>void change('/review',{...revision,verdict:'approved',note:comment})}>Согласовать</button>
+          </div>
+        </section>}
+        {row.status==='approved'&&editor&&<div className="decisionActions">
+          {profile?.auth_kind==='named_user'
+            ?<button type="button" className="primary" disabled={busy||row.base_changed}
+              onClick={()=>void change('/publish',revision)}>Опубликовать согласованное решение</button>
+            :<small role="status">Для публикации войдите под персональной учётной записью автора или архитектора.</small>}
+        </div>}
+        <section className="decisionDiscussion" aria-label="Обсуждение решения">
+          <h4>Комментарии и замечания</h4>
+          {(row.comments||[]).length?<ol>{row.comments.map(message=><li key={message.id}>
+            <strong>{message.actor_name||message.actor}</strong>
+            <small>{dateFormat.format(new Date(message.created_at))}
+              {message.anchor_kind==='vm'?' · ВМ: '+(row.proposed_vms.find(vm=>vm.id===message.anchor_id)?.name||'ВМ')
+                :message.anchor_kind==='flow'?' · Поток: '+(row.proposed_flows.find(flow=>flow.id===message.anchor_id)?.name||'Поток'):''}
+            </small><p>{message.body}</p>
+          </li>)}</ol>:<p>Замечаний пока нет.</p>}
+          {canComment&&<form onSubmit={event=>{event.preventDefault();sendComment()}}>
+            <label>К чему относится комментарий
+              <select aria-label="Объект комментария" value={commentTarget} onChange={e=>setCommentTarget(e.target.value)}>
+                <option value="decision:">Решение целиком</option>
+                {row.proposed_vms.map(vm=><option key={vm.id} value={'vm:'+vm.id}>ВМ · {vm.name}</option>)}
+                {row.proposed_flows.map(flow=><option key={flow.id} value={'flow:'+flow.id}>Поток · {flow.name}</option>)}
+              </select>
+            </label>
+            <label>Комментарий<textarea value={discussion} maxLength={2000} onChange={e=>setDiscussion(e.target.value)}
+              placeholder="Опишите замечание или вопрос по техническому решению."/></label>
+            <button type="submit" disabled={busy||!discussion.trim()}>Добавить комментарий</button>
+            {profile?.auth_kind!=='named_user'&&<small>Комментарий без персонального входа не является согласованием.</small>}
+          </form>}
+        </section>
+        {(row.review_history||[]).length>0&&<details className="decisionVoteHistory">
+          <summary>История согласований ({row.review_history.length})</summary>
+          <ol>{row.review_history.map((vote,index)=><li key={index}>
+            <strong>{services[vote.service]} · {vote.verdict==='approved'?'Согласовано':'На доработку'}</strong>
+            <small>Версия {vote.revision} · {vote.actor_name||vote.actor} · {dateFormat.format(new Date(vote.created_at))}</small>
+            {vote.note&&<p>{vote.note}</p>}
+          </li>)}</ol>
+        </details>}
       </>}
       {row.status==='in_review'&&(editor?<button disabled={busy} onClick={()=>{if(window.confirm('Вернуть решение в черновик? Изменённую версию потребуется согласовать заново.'))void change('/withdraw',revision)}}>Отозвать в черновик</button>:<small>Редактирование доступно после возврата в черновик.</small>)}
       {error&&<div role="alert" className="decisionError">{error} <button onClick={()=>{setTool(null);setViewFlowId('');retry(v=>v+1)}}>Обновить</button></div>}

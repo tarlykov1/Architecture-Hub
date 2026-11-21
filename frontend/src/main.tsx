@@ -1227,7 +1227,7 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
         </details></div>}
       </nav>
       <div className="topActions">
-        {openAccess&&(!authProfile||authProfile.auth_kind==='open_access') ? <><span className="accountTopAction">Доступ без пароля</span><button type="button" className="accountTopAction" onClick={()=>{setAuthMode('password');setAuthOpen(true)}}>Войти для согласования</button></>
+        {openAccess&&(!authProfile||authProfile.auth_kind==='open_access') ? <><span className="accountTopAction openAccessHint">Доступ без пароля</span><button type="button" className="accountTopAction approvalSignInButton" aria-label="Войти для согласования" onClick={()=>{setAuthMode('password');setAuthOpen(true)}}><span className="approvalSignInFull">Войти для согласования</span><span className="approvalSignInShort">Согласование</span></button></>
           : tokenReady ? <button type="button" title="Завершить личный сеанс в этой вкладке" onClick={()=>{
             saveAccessToken('')
             if(openAccess){

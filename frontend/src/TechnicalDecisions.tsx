@@ -19,8 +19,10 @@ const emptyFlow:Link={id:'',source_id:'',target_id:'',source_handle:'',target_ha
 const states = {draft:'Черновик', in_review:'На согласовании', changes_requested:'На доработке', approved:'Согласовано', published:'Опубликовано'}
 const services = {architect:'Архитектура', engineer:'Инфраструктура', security:'Информационная безопасность', business_owner:'Владелец процесса'}
 type Service = keyof typeof services
-type Decision = {id:string; title:string; system_id:string; status:keyof typeof states; author:string; updated_at:string; revision:number}
-type Details = Decision & {description:string; required_services:Service[]; approvals:{service:Service; verdict:string; note:string}[]; proposed_vms:ProposedVM[]; proposed_flows:Link[]; base_changed:boolean}
+type Decision = {id:string; title:string; system_id:string; status:keyof typeof states; author:string; author_name?:string; updated_at:string; revision:number}
+type Review = {service:Service; verdict:'approved'|'changes_requested'; note:string; actor:string; actor_name?:string; created_at:string; revision?:number}
+type DecisionComment = {id:string; actor:string; actor_name?:string; body:string; anchor_kind:'decision'|'vm'|'flow';anchor_id:string;created_at:string}
+type Details = Decision & {description:string; required_services:Service[]; approvals:Review[]; review_history:Review[]; comments:DecisionComment[]; proposed_vms:ProposedVM[]; proposed_flows:Link[]; base_changed:boolean}
 const path = '/api/technical-decisions'
 const dateFormat = new Intl.DateTimeFormat('ru-RU',{day:'2-digit',month:'2-digit',year:'numeric'})
 function Status({value}:{value:Decision['status']}) {
@@ -96,17 +98,20 @@ function DecisionInspector({id,request,profile,items,flows,schema,openSchema,clo
   const [viewFlowId,setViewFlowId]=useState('')
   const [drawing,setDrawing]=useState(false)
   const [comment,setComment]=useState('')
+  const [discussion,setDiscussion]=useState('')
+  const [commentTarget,setCommentTarget]=useState('decision:')
+  const [route,setRoute]=useState<Service[]>([])
   useEffect(()=>{
     let current=true
     setBusy(true);setError('')
-    request<Details>(path+'/'+id).then(value=>{if(current)setRow(value)}).catch(err=>{if(current)setError(err.message)}).finally(()=>{if(current)setBusy(false)})
+    request<Details>(path+'/'+id).then(value=>{if(current){setRow(value);setRoute(value.required_services)}}).catch(err=>{if(current)setError(err.message)}).finally(()=>{if(current)setBusy(false)})
     return ()=>{current=false}
   },[id,request,attempt])
   async function change(suffix:string,body:object,method='POST') {
     setBusy(true);setError('')
     try {
       const next=await request<Details>(path+'/'+id+suffix,{method,body:JSON.stringify(body)})
-      setRow(next);update(next);setViewFlowId('');setTool(null);setName('');setComment('')
+      setRow(next);setRoute(next.required_services);update(next);setViewFlowId('');setTool(null);setName('');setComment('');setDiscussion('')
     }catch(err){setError((err as Error).message)}finally{setBusy(false)}
   }
   if(!row)return <aside className="decisionSide"><header><h3>Решение</h3><button aria-label="Закрыть решение" onClick={close}><X size={16}/></button></header>{error?<p role="alert">{error} <button onClick={()=>retry(v=>v+1)}>Повторить</button></p>:<p role="status">Загрузка…</p>}</aside>
@@ -115,6 +120,20 @@ function DecisionInspector({id,request,profile,items,flows,schema,openSchema,clo
   const editor=!!profile && (author||['architect','admin','development'].includes(profile.role))
   const editable=editor && ['draft','changes_requested'].includes(row.status)
   const reviewer=profile?.auth_kind==='named_user'&&!author&&row.status==='in_review'&&row.required_services.includes(profile.role as Service)
+  const routeChanged=[...route].sort().join('|')!==[...row.required_services].sort().join('|')
+  const approvedCount=row.required_services.filter(service=>row.approvals.some(vote=>vote.service===service&&vote.verdict==='approved')).length
+  const canSubmit=editable&&!routeChanged&&row.required_services.length>0&&(row.proposed_vms.length+row.proposed_flows.length>0)
+  const canComment=!!profile&&profile.role!=='viewer'
+  function saveRoute(){
+    if(!row||!editable||!route.length||!routeChanged)return
+    void change('',{...revision,title:row.title,description:row.description,
+      required_services:route,proposed_vms:row.proposed_vms,proposed_flows:row.proposed_flows},'PUT')
+  }
+  function sendComment(){
+    if(!discussion.trim()||!canComment)return
+    const [anchor_kind,anchor_id='']=commentTarget.split(':')
+    void change('/comments',{body:discussion.trim(),anchor_kind,anchor_id})
+  }
   const localItems=items.filter(i=>i.system_id===row.system_id)
   const localIds=new Set(localItems.map(i=>i.id))
   const baseFlows=flows.filter(f=>localIds.has(f.source_id)||localIds.has(f.target_id))
@@ -189,7 +208,7 @@ function DecisionInspector({id,request,profile,items,flows,schema,openSchema,clo
     </div>}
     <aside className="decisionSide" aria-label="Карточка технического решения">
       <header><h3>{schema?'Свойства решения':row.title}</h3><button disabled={busy} aria-label="Закрыть решение" onClick={close}><X size={16}/></button></header>
-      <small>Версия {row.revision}</small>
+      <small>Версия {row.revision} · Автор: {row.author_name||row.author}</small>
       <nav aria-label="Сведения о решении">{(['items','review'] as const).map(t=><button key={t} aria-pressed={tab===t} onClick={()=>setTab(t)}>{t==='items'?'Состав':'Согласование'}</button>)}</nav>
       {row.base_changed&&<p role="status">Исходная архитектура изменилась после отправки на согласование.</p>}
       {tab==='items'?<>
@@ -221,14 +240,98 @@ function DecisionInspector({id,request,profile,items,flows,schema,openSchema,clo
           {!row.proposed_vms.length&&!row.proposed_flows.length&&<p>В черновике пока нет изменений.</p>}
         </>}
         {!schema&&<button onClick={openSchema}>Открыть схему</button>}
-        {editable&&!tool&&(row.proposed_vms.length+row.proposed_flows.length>0)&&<button className="primary" disabled={busy} onClick={()=>void change('/submit',revision)}>На согласование</button>}
+        {editable&&!tool&&(row.proposed_vms.length+row.proposed_flows.length>0)&&<button className="primary" disabled={busy||routeChanged} title={routeChanged?'Сохраните изменённый маршрут согласования на вкладке «Согласование»':undefined} onClick={()=>void change('/submit',revision)}>На согласование</button>}
       </>:<>
-        {row.required_services.map(service=>{
-          const approval=row.approvals.find(a=>a.service===service)
-          return <div className="decisionItem" key={service}><span>{services[service]}</span><small>{approval?.verdict==='approved'?'Согласовано':approval?.verdict==='changes_requested'?'На доработку':row.status==='in_review'?'На рассмотрении':'Ожидается'}</small>{approval?.note&&<p>{approval.note}</p>}</div>
-        })}
-        {reviewer&&<><label>Комментарий<textarea value={comment} maxLength={2000} onChange={e=>setComment(e.target.value)}/></label><div className="decisionActions"><button disabled={busy||comment.trim().length<3} onClick={()=>void change('/review',{...revision,verdict:'changes_requested',note:comment})}>На доработку</button><button className="primary" disabled={busy} onClick={()=>void change('/review',{...revision,verdict:'approved',note:comment})}>Согласовать</button></div></>}
-        {editor&&profile?.auth_kind==='named_user'&&row.status==='approved'&&<button className="primary" disabled={busy||row.base_changed} onClick={()=>void change('/publish',revision)}>Опубликовать</button>}
+        <section className="decisionApprovalRoute" aria-label="Маршрут согласования">
+          <h4>Маршрут согласования</h4>
+          <p>Каждая выбранная служба согласует решение отдельно. Отправка не создаёт реальные ВМ и потоки.</p>
+          {editable&&<div className="decisionReviewServices" role="group" aria-label="Обязательные согласующие службы">
+            {(Object.entries(services) as [Service,string][]).map(([service,label])=>
+              <label key={service}><input type="checkbox" checked={route.includes(service)} onChange={event=>setRoute(current=>event.target.checked?[...current,service]:current.filter(key=>key!==service))}/>{label}</label>
+            )}
+          </div>}
+          {editable&&routeChanged&&<div className="decisionActions">
+            <button type="button" disabled={busy||!route.length} onClick={saveRoute}>Сохранить маршрут</button>
+            <button type="button" disabled={busy} onClick={()=>setRoute(row.required_services)}>Отменить изменение</button>
+          </div>}
+          {editable&&!route.length&&<small role="alert">Выберите хотя бы одну согласующую службу.</small>}
+          {row.required_services.length>0&&<p className="decisionReviewProgress" role="status">Согласовано: {approvedCount} из {row.required_services.length}</p>}
+          <div className="decisionReviewStages">
+            {row.required_services.map(service=>{
+              const approval=row.approvals.find(a=>a.service===service)
+              return <div className="decisionReviewStage" key={service}>
+                <strong>{services[service]}</strong>
+                <span>{approval?.verdict==='approved'?'Согласовано':approval?.verdict==='changes_requested'?'Возвращено на доработку':row.status==='in_review'?'На рассмотрении':'Не отправлено'}</span>
+                {approval&&<small>{approval.actor_name||approval.actor} · {dateFormat.format(new Date(approval.created_at))}</small>}
+                {approval?.note&&<p>{approval.note}</p>}
+              </div>
+            })}
+          </div>
+          {editable&&<div className="decisionActions">
+            <button type="button" className="primary" disabled={busy||!canSubmit}
+              onClick={()=>void change('/submit',revision)}>Отправить на согласование</button>
+            {!row.proposed_vms.length&&!row.proposed_flows.length&&<small>Сначала добавьте в проект ВМ или поток.</small>}
+            {routeChanged&&<small>Сначала сохраните изменённый маршрут.</small>}
+          </div>}
+        </section>
+        {row.status==='in_review'&&!reviewer&&<p className="decisionReviewNotice" role="status">
+          {profile?.auth_kind!=='named_user'
+            ?profile?.auth_kind==='open_access'
+              ?'В режиме «Доступ без пароля» подпись недоступна. Войдите для согласования под персональной учётной записью сотрудника.'
+              :'Для согласования необходим персональный вход сотрудника с ролью службы. Служебный ключ не заменяет персональную подпись.'
+            :author?'Автор не может согласовать собственное решение.'
+            :'Решение ожидает согласования назначенных служб. Ваша роль не включена в маршрут.'}
+        </p>}
+        {reviewer&&<section className="decisionReviewerActions" aria-label="Моё согласование">
+          <h4>Решение согласующего – {services[profile!.role as Service]}</h4>
+          <label>Замечания или пояснение к решению
+            <textarea value={comment} maxLength={2000} onChange={e=>setComment(e.target.value)}
+              placeholder="При возврате на доработку обязательно опишите замечания."/>
+          </label>
+          <div className="decisionActions">
+            <button type="button" disabled={busy||comment.trim().length<3}
+              onClick={()=>void change('/review',{...revision,verdict:'changes_requested',note:comment})}>На доработку</button>
+            <button type="button" className="primary" disabled={busy}
+              onClick={()=>void change('/review',{...revision,verdict:'approved',note:comment})}>Согласовать</button>
+          </div>
+        </section>}
+        {row.status==='approved'&&editor&&<div className="decisionActions">
+          {profile?.auth_kind==='named_user'
+            ?<button type="button" className="primary" disabled={busy||row.base_changed}
+              onClick={()=>void change('/publish',revision)}>Опубликовать согласованное решение</button>
+            :<small role="status">Для публикации войдите под персональной учётной записью автора или архитектора.</small>}
+        </div>}
+        <section className="decisionDiscussion" aria-label="Обсуждение решения">
+          <h4>Комментарии и замечания</h4>
+          {(row.comments||[]).length?<ol>{row.comments.map(message=><li key={message.id}>
+            <strong>{message.actor_name||message.actor}</strong>
+            <small>{dateFormat.format(new Date(message.created_at))}
+              {message.anchor_kind==='vm'?' · ВМ: '+(row.proposed_vms.find(vm=>vm.id===message.anchor_id)?.name||'ВМ')
+                :message.anchor_kind==='flow'?' · Поток: '+(row.proposed_flows.find(flow=>flow.id===message.anchor_id)?.name||'Поток'):''}
+            </small><p>{message.body}</p>
+          </li>)}</ol>:<p>Замечаний пока нет.</p>}
+          {canComment&&<form onSubmit={event=>{event.preventDefault();sendComment()}}>
+            <label>К чему относится комментарий
+              <select aria-label="Объект комментария" value={commentTarget} onChange={e=>setCommentTarget(e.target.value)}>
+                <option value="decision:">Решение целиком</option>
+                {row.proposed_vms.map(vm=><option key={vm.id} value={'vm:'+vm.id}>ВМ · {vm.name}</option>)}
+                {row.proposed_flows.map(flow=><option key={flow.id} value={'flow:'+flow.id}>Поток · {flow.name}</option>)}
+              </select>
+            </label>
+            <label>Комментарий<textarea value={discussion} maxLength={2000} onChange={e=>setDiscussion(e.target.value)}
+              placeholder="Опишите замечание или вопрос по техническому решению."/></label>
+            <button type="submit" disabled={busy||!discussion.trim()}>Добавить комментарий</button>
+            {profile?.auth_kind!=='named_user'&&<small>Комментарий без персонального входа не является согласованием.</small>}
+          </form>}
+        </section>
+        {(row.review_history||[]).length>0&&<details className="decisionVoteHistory">
+          <summary>История согласований ({row.review_history.length})</summary>
+          <ol>{row.review_history.map((vote,index)=><li key={index}>
+            <strong>{services[vote.service]} · {vote.verdict==='approved'?'Согласовано':'На доработку'}</strong>
+            <small>Версия {vote.revision} · {vote.actor_name||vote.actor} · {dateFormat.format(new Date(vote.created_at))}</small>
+            {vote.note&&<p>{vote.note}</p>}
+          </li>)}</ol>
+        </details>}
       </>}
       {row.status==='in_review'&&(editor?<button disabled={busy} onClick={()=>{if(window.confirm('Вернуть решение в черновик? Изменённую версию потребуется согласовать заново.'))void change('/withdraw',revision)}}>Отозвать в черновик</button>:<small>Редактирование доступно после возврата в черновик.</small>)}
       {error&&<div role="alert" className="decisionError">{error} <button onClick={()=>{setTool(null);setViewFlowId('');retry(v=>v+1)}}>Обновить</button></div>}

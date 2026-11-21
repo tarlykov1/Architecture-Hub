@@ -42,7 +42,12 @@ function BoardComponentNode({data}:NodeProps){
 function BoardNetworkNode({data}:NodeProps){
  const options=data as {label:React.ReactNode;resizable?:boolean;onResize?:(size:{x:number;y:number;width:number;height:number})=>void;onResizeEnd?:()=>void;onPointerDown?:(event:React.PointerEvent<HTMLDivElement>)=>void;onPointerMove?:(event:React.PointerEvent<HTMLDivElement>)=>void;onPointerUp?:(event:React.PointerEvent<HTMLDivElement>)=>void;onPointerCancel?:(event:React.PointerEvent<HTMLDivElement>)=>void}
  return <>
-  <div className="boardNetworkDragArea" onPointerDown={options.onPointerDown} onPointerMove={options.onPointerMove} onPointerUp={options.onPointerUp} onPointerCancel={options.onPointerCancel}>{options.label}</div>
+  <div className="boardNetworkDragArea" onMouseDown={event=>{
+    // React Flow's pane pans on the compatibility mousedown, separately
+    // from pointerdown. Stop that event so the network's pointer-captured
+    // drag moves the VRF/VLAN rather than translating the entire viewport.
+    event.preventDefault();event.stopPropagation()
+   }} onPointerDown={options.onPointerDown} onPointerMove={options.onPointerMove} onPointerUp={options.onPointerUp} onPointerCancel={options.onPointerCancel}>{options.label}</div>
   <NodeResizer isVisible={Boolean(options.resizable)} minWidth={140} minHeight={90}
    lineStyle={{borderColor:'#2563eb'}} handleStyle={{width:9,height:9,border:'1px solid #fff',borderRadius:2,background:'#2563eb'}}
    onResize={(_,params)=>options.onResize?.({x:params.x,y:params.y,width:params.width,height:params.height})} onResizeEnd={()=>options.onResizeEnd?.()}/>
@@ -1351,10 +1356,7 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
    if(!from||to||from===node.id){setFrom(node.id);setTo('');setSelectedDraftFlowId('');setLayoutMessage('Выберите получателя потока.')}
    else stageDirectedFlow(from,node.id)
  }else if(tool==='move'){openPassport(node.id);setFocusDependencies(false)}
-}} onNodeDragStart={(_,node)=>{recordUndo();dragHistoryRecorded.current=true;setDraggingNode(true);if(!node.id.startsWith('note:'))startVisualGroupDrag(node)}} onNodeDrag={(_,node)=>updateVisualGroupDrag(node)} onNodeDragStop={(_,node)=>{if(!node.id.startsWith('note:')){finishVisualDrop(node);moveNode(node)}else{setLayoutDirty(true);dragHistoryRecorded.current=false}setDraggingNode(false)} } onPaneClick={handlePaneClick} minZoom={0.08} fitViewOptions={{padding:0.2,maxZoom:nodes.length<=2?0.75:0.9}}>{/* Do not fit default coordinates before saved VRF/VLAN geometry arrives.
-          Hydration flips the stable key exactly once; active drag gestures
-          suspend any pending resize refit. Never key to live rectangle positions. */}
-         <AutoFit layoutKey={systemId+':hydrated:'+layoutReady+':'+items.length+':'+flows.length} maxFitZoom={nodes.length<=2?0.75:0.9} focusIds={selectedFlowEndpoints} suspended={!layoutReady||drawingConnection||draggingNode||(!selectedFlowEndpoints.length&&(tool!=='move'||canvasInteracted))} settleDelayMs={120}/><Background gap={20}/><Controls showInteractive={false}/></ReactFlow>
+}} onNodeDragStart={(_,node)=>{recordUndo();dragHistoryRecorded.current=true;setDraggingNode(true);if(!node.id.startsWith('note:'))startVisualGroupDrag(node)}} onNodeDrag={(_,node)=>updateVisualGroupDrag(node)} onNodeDragStop={(_,node)=>{if(!node.id.startsWith('note:')){finishVisualDrop(node);moveNode(node)}else{setLayoutDirty(true);dragHistoryRecorded.current=false}setDraggingNode(false)} } onPaneClick={handlePaneClick} minZoom={0.08} fitViewOptions={{padding:0.2,maxZoom:nodes.length<=2?0.75:0.9}}><AutoFit layoutKey={systemId+':'+items.length+':'+flows.length} maxFitZoom={nodes.length<=2?0.75:0.9} focusIds={selectedFlowEndpoints} suspended={drawingConnection||draggingNode||(!selectedFlowEndpoints.length&&(tool!=='move'||canvasInteracted))} settleDelayMs={0}/><Background gap={20}/><Controls showInteractive={false}/></ReactFlow>
      {flowGhost&&<svg className="boardFlowGesturePreview" aria-hidden="true" width="100%" height="100%">
        <defs><marker id="board-flow-ghost-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill="#176bc1"/></marker></defs>
        <line x1={flowGhost.start.x} y1={flowGhost.start.y} x2={flowGhost.end.x} y2={flowGhost.end.y} stroke="#176bc1" strokeWidth="2.5" strokeDasharray="6 3" markerEnd="url(#board-flow-ghost-arrow)"/>

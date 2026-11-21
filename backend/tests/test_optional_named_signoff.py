@@ -70,3 +70,22 @@ def test_open_demo_can_use_named_signoff_without_anonymous_approval(monkeypatch)
         assert approved.status_code == 200, approved.text
         assert approved.json()["status"] == "approved"
         assert approved.json()["approvals"][0]["actor_name"] == "QA reviewer"
+
+        architect = client.post("/api/auth/users", json={
+            "username": "qaarchitect" + suffix, "password": password,
+            "role": "architect", "display_name": "QA decision author"
+        }, headers={"Authorization": "Bearer " + KEY})
+        assert architect.status_code == 201, architect.text
+        architect_login = client.post("/api/auth/login", json={
+            "username": "qaarchitect" + suffix, "password": password
+        })
+        assert architect_login.status_code == 200
+        architect_header = {"Authorization": "Bearer " + architect_login.json()["access_token"]}
+        published = client.post(uri + "/publish", headers=architect_header, json={
+            "expected_revision": approved.json()["revision"]
+        })
+        assert published.status_code == 200, published.text
+        assert published.json()["status"] == "published"
+        # Publishing a decision does not create the proposed infrastructure.
+        assert not any(item["name"] == "QA-WORK-Draft-VM"
+                       for item in client.get("/api/infra").json())

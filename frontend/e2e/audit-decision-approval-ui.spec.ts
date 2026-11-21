@@ -37,7 +37,7 @@ test('QA-WORK: review route, submit, anchored comment and honest personal-signat
   await expect(inspector.getByRole('status').filter({hasText:'Согласовано: 0 из 2'})).toBeVisible()
 
   await inspector.getByRole('button',{name:'Отправить на согласование'}).click()
-  await expect(inspector).toContainText('Ожидает согласования')
+  await expect(inspector).toContainText('На рассмотрении')
   await expect(inspector).toContainText('Служебный ключ не заменяет персональную подпись.')
   await expect(inspector.getByRole('button',{name:'Согласовать',exact:true})).toHaveCount(0)
   const stored=(await (await page.request.get(url)).json()) as

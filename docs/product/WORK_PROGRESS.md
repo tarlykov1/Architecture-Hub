@@ -60,7 +60,7 @@
 | AH-02-10 | P1 | Escape, клавиатура, mobile dock | Частично | QA desktop 1440 и mobile 390 |
 | AH-03-01 | P1 | Единый редактор потока | Частично | Создать/редактировать/переподключить/удалить |
 | AH-03-02 | P1 | Быстрое управление атрибутами потока | Частично | Добавление/удаление с записью аудита |
-| AH-03-03 | P1 | Сохраняемые серверные сценарии обмена | **В работе** | [PR #214](https://github.com/tarlykov1/Architecture-Hub/pull/214): серверный реестр, ревизии, шаги, повторные потоки, перемещение и QA | Полный CI, выкладка, Live QA |
+| AH-03-03 | P1 | Сохраняемые серверные сценарии обмена | **Готово (код + CI)** | [PR #214](https://github.com/tarlykov1/Architecture-Hub/pull/214): API, миграция, редактор, связь БП; [CI 44949134613](https://github.com/tarlykov1/Architecture-Hub/actions/runs/44949134613): 188 Chromium passed | Ожидается merge, выкладка и Live QA |
 | AH-03-04 | P1 | Использование сценария в нескольких БП | **Частично** | [PR #214](https://github.com/tarlykov1/Architecture-Hub/pull/214): один технический поток переиспользуется в нескольких сценариях, каждый со своим БП | Многоконтекстные связи одного сценария – отдельно |
 | AH-03-05 | P1 | Корректная VRF/VLAN/IP/NIC-модель | Частично | NetBox-подобные ограничения на API |
 | AH-03-06 | P1 | Проверки сетевых конфликтов | План | Предупреждения до фиксации |
@@ -105,7 +105,7 @@
 | 2026-11-21 | Крупный пакет AH-02/AH-05/AH-06: единый UX проектного редактора, свойства ВМ, контракты потоков, Undo/Redo, контекст, документация, baseline, мобильная приёмка | Код и тесты прошли: **129 API, 186 Chromium**, TypeScript/Docker/PowerShell успешно; PR не слит, тестовый сервер не обновлён | [PR #212](https://github.com/tarlykov1/Architecture-Hub/pull/212) · [CI 44940361721](https://github.com/tarlykov1/Architecture-Hub/actions/runs/44940361721) |
 
 | 2026-11-21 | PR #212 опубликован на test.web-tie.ru (frontend и backend) | Слияние, CI, обе выкладки успешны; Live QA упал на браузерном page.goto, результат UX не подтверждён | [Frontend](https://github.com/tarlykov1/Architecture-Hub/actions/runs/44942207296) · [Backend](https://github.com/tarlykov1/Architecture-Hub/actions/runs/44942207284) · [Live QA](https://github.com/tarlykov1/Architecture-Hub/actions/runs/44942260562) |
-| 2026-11-21 | Начат крупный блок AH-03 – общие сценарии обмена, привязка к БП, ревизии, шаги, защита потоков и диагностика Live QA | Код, миграция, документация и тесты в PR; ожидается приёмка | [PR #214](https://github.com/tarlykov1/Architecture-Hub/pull/214) |
+| 2026-11-21 | Реализован крупный блок AH-03 – общие сценарии обмена, привязка к БП, ревизии, шаги и контроль ссылок, диагностика Live QA | Код и тесты: **188 Chromium passed**, backend, frontend, миграции проверены; ожидаются merge и Live QA на сервере | [PR #214](https://github.com/tarlykov1/Architecture-Hub/pull/214) · [CI 44949134613](https://github.com/tarlykov1/Architecture-Hub/actions/runs/44949134613) |
 
 ## Правила актуализации
 

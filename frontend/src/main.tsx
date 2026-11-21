@@ -10,6 +10,7 @@ import Topology from './Topology'
 import TechnicalDecisions from './TechnicalDecisions'
 import {BusinessProcessPassport,type Passport} from './BusinessProcessPassport'
 import BusinessProcessMatrix from './BusinessProcessMatrix'
+import {orderedBusinessProcesses} from './businessProcessHierarchy'
 import {flowPortError} from './fieldValidation'
 import {dependencyLayout,compactComponentLayout,overviewGridPositions,flowCountLabel} from './graphLayout'
 import {downstreamImpact,impactRoutes} from './dependencyImpact'
@@ -1304,8 +1305,8 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
         systems={objects.filter(o=>o.kind==='system')} flows={flows}
         links={businessLinks} onOpen={id=>setBusinessPassportId(id)}
       />:<>
-      <div className="businessGrid">{categories.filter(cat=>!workspaceQuery||cat.name.toLowerCase().includes(workspaceQuery.toLowerCase())||processes.some(p=>p.category_id===cat.id&&[p.name,p.description].join(' ').toLowerCase().includes(workspaceQuery.toLowerCase()))).map(cat=><article className="businessCategory" key={cat.id}><h3>{cat.name}</h3>{processes.filter(p=>p.category_id===cat.id&&(!workspaceQuery||[p.name,p.description,cat.name].join(' ').toLowerCase().includes(workspaceQuery.toLowerCase()))).map(p=><div className="businessProcess" key={p.id}><strong>{p.name}</strong>{businessPassports.find(profile=>profile.process_id===p.id)&&<small className="businessProfileHint">
-      {businessPassports.find(profile=>profile.process_id===p.id)?.parent_id?'↳ Подпроцесс · ':''}
+      <div className="businessGrid">{categories.filter(cat=>!workspaceQuery||cat.name.toLowerCase().includes(workspaceQuery.toLowerCase())||processes.some(p=>p.category_id===cat.id&&[p.name,p.description].join(' ').toLowerCase().includes(workspaceQuery.toLowerCase()))).map(cat=><article className="businessCategory" key={cat.id}><h3>{cat.name}</h3>{orderedBusinessProcesses(processes.filter(p=>p.category_id===cat.id&&(!workspaceQuery||[p.name,p.description,cat.name].join(' ').toLowerCase().includes(workspaceQuery.toLowerCase()))),businessPassports).map(({process:p,depth})=><div className="businessProcess" key={p.id} style={{marginLeft:Math.min(depth,6)*14}}><strong>{p.name}</strong>{businessPassports.find(profile=>profile.process_id===p.id)&&<small className="businessProfileHint">
+      {businessPassports.find(profile=>profile.process_id===p.id)?.parent_id?'↳ '+(processes.find(parent=>parent.id===businessPassports.find(profile=>profile.process_id===p.id)?.parent_id)?.name||'Подпроцесс')+' · ':''}
       {businessPassports.find(profile=>profile.process_id===p.id)?.steps.length||0} шагов
       {businessPassports.find(profile=>profile.process_id===p.id)?.owner?' · '+businessPassports.find(profile=>profile.process_id===p.id)?.owner:''}
     </small>}{canWrite('business')&&<button type="button" onClick={()=>openBusinessEditor(p)}>Редактировать БП</button>}<button className="businessPassportOpen" type="button" onClick={()=>setBusinessPassportId(p.id)}>Паспорт и шаги</button><p>{p.description}</p><div className="processSystems">{businessLinks.filter(l=>l.process_id===p.id).map(l=><button key={l.id} onClick={()=>{setSelected(l.system_id);setLayer('systems')}}>{objects.find(o=>o.id===l.system_id)?.name||'Система'}</button>)}</div></div>)}</article>)}</div>

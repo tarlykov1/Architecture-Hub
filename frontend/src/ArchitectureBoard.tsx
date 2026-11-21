@@ -127,6 +127,7 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
  const [busy,setBusy]=useState(false)
  const [history,setHistory]=useState<Array<{id:string;timestamp:string;reason:string;changes:Preview['changes']}>>([])
  const [showHistory,setShowHistory]=useState(false)
+ const [showAllHistory,setShowAllHistory]=useState(false)
  const [name,setName]=useState('')
  const [kind,setKind]=useState<'zone'|'vlan'|'vrf'>('zone')
  const [from,setFrom]=useState('')
@@ -625,6 +626,8 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
  const edges=Array.from(flowGroups.entries()).map(([pair,list])=>{
    const first=list[0]
    const protocolLabel=[first.protocol,first.port].filter(Boolean).join(':')
+  const fullCaption=list.length>1?flowCountLabel(list.length):(first.name.trim()||protocolLabel||'Поток')
+  const caption=fullCaption.length>34?fullCaption.slice(0,33)+'…':fullCaption
    const anchor=portsForFlow(first)
    const selectedForReattach=tool==='flow'&&selectedFlow&&list.some(flow=>flow.id===selectedFlow.id)
    return {id:'flow-pair:'+pair,source:first.source_id,target:first.target_id,
@@ -632,10 +635,10 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
      type:'obstacle-aware',animated:false,
      style:{stroke:list.some(f=>changes.some(c=>c.id===f.id&&(c.action==='create_flow'||c.action==='update_flow')))?'#176bc1':'#369279',strokeWidth:activeEdgeFlowIds.some(id=>list.some(f=>f.id===id))?3.2:inspectedId&&(first.source_id===inspectedId||first.target_id===inspectedId)?3:1.8,opacity:focusDependencies&&inspectedId&&first.source_id!==inspectedId&&first.target_id!==inspectedId?0.16:1},
      markerEnd:{type:MarkerType.ArrowClosed,width:13,height:13,color:list.some(f=>changes.some(c=>c.id===f.id&&(c.action==='create_flow'||c.action==='update_flow')))?'#176bc1':'#369279'},
-     label:list.length>1?flowCountLabel(list.length):protocolLabel||'Поток',
+     label:caption,
      labelStyle:{fontSize:11,fontWeight:600},labelBgStyle:{fill:'#ffffff',fillOpacity:0.95},labelBgPadding:[7,4] as [number,number],
      data:{reciprocal:effectiveFlows.some(f=>f.source_id===first.target_id&&f.target_id===first.source_id),
-       flowIds:list.map(f=>f.id),caption:list.length>1?flowCountLabel(list.length):protocolLabel||'Поток',
+       flowIds:list.map(f=>f.id),caption,fullCaption,
        onSelect:()=>selectCanvasEdge(first.source_id,first.target_id,list.map(f=>f.id)),
        onContextMenu:(event:React.MouseEvent)=>openContextMenu(event,'flow',list.length===1?first.id:'',list.map(f=>f.id)),
        ...(selectedForReattach?{endpointEditor:{
@@ -1005,9 +1008,13 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
    setLayoutDirty(false)
    setLayoutMessage('Черновик изменений отменён. Несохранённые ВМ и сети удалены со схемы.')
  }
- const openHistory=async()=>{
+ const openHistory=async(allSystems=showAllHistory)=>{
    setError('')
-   try{setHistory(await request<Array<{id:string;timestamp:string;reason:string;changes:Preview['changes']}>>('/api/board/audit?limit=30'));setShowHistory(true)}catch(e){setError(String(e))}
+   try{
+     const query='/api/board/audit?limit=30'+(allSystems?'':'&system_id='+encodeURIComponent(systemId))
+     setHistory(await request<Array<{id:string;timestamp:string;reason:string;changes:Preview['changes']}>>(query))
+     setShowHistory(true)
+   }catch(e){setError(String(e))}
  }
  const submitPreview=async()=>{
    if(demoMode)return
@@ -1408,7 +1415,7 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
        </div>
      </div>
    </div>}
-   {showHistory&&<div className="boardConfirm" role="dialog" aria-modal="true" aria-label="Журнал изменений архитектуры"><div className="boardConfirmInner"><h3>Журнал изменений схемы</h3><p>Последние подтверждённые пакеты операций.</p><ol>{history.map(entry=><li key={entry.id}><strong>{entry.timestamp}</strong> – {entry.reason} · {entry.changes.length} операций<details><summary>Посмотреть состав</summary><pre>{JSON.stringify(entry.changes,null,2)}</pre></details></li>)}</ol>{!history.length&&<p>Записей пока нет.</p>}<button type="button" onClick={()=>{setShowHistory(false);setTool('move');setReviewOpen(changes.length>0)}}>Вернуться к редактированию</button></div></div>}
+   {showHistory&&<div className="boardConfirm" role="dialog" aria-modal="true" aria-label="Журнал изменений архитектуры"><div className="boardConfirmInner"><h3>Журнал изменений схемы</h3><div className="boardHistoryScope" role="group" aria-label="Область истории"><button type="button" aria-pressed={!showAllHistory} onClick={()=>{setShowAllHistory(false);void openHistory(false)}}>Текущая ИС</button><button type="button" aria-pressed={showAllHistory} onClick={()=>{setShowAllHistory(true);void openHistory(true)}}>Весь журнал</button></div><ol>{history.map(entry=><li key={entry.id}><strong>{new Date(entry.timestamp).toLocaleString('ru-RU')}</strong> – {entry.reason} · {entry.changes.length} операций<details><summary>Посмотреть состав</summary><pre>{JSON.stringify(entry.changes,null,2)}</pre></details></li>)}</ol>{!history.length&&<p>{showAllHistory?'Записей пока нет.':'По этой ИС изменений пока нет.'}</p>}<button type="button" onClick={()=>{setShowHistory(false);setTool('move');setReviewOpen(changes.length>0)}}>Вернуться к редактированию</button></div></div>}
    {preview&&<div className="boardConfirm" role="dialog" aria-modal="true" aria-label="Подтверждение изменений архитектуры"><div className="boardConfirmInner"><h3>Подтверждение изменений</h3><p>Причина: {reason}. Будет сохранено {preview.count} операций. Для существующих интерфейсов сверяется прежняя сеть.</p><ol>{preview.changes.map((change,i)=>{
       const original=changes.find(item=>item.id===change.id)
       const objectName=original?.name||allVMs.find(vm=>vm.id===change.id)?.name||flows.find(flow=>flow.id===change.id)?.name||networks.find(net=>net.id===change.id)?.name||'Объект '+change.id.slice(0,8)

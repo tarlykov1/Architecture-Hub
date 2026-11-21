@@ -750,6 +750,7 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
      return next
    })
    setLayoutDirty(true)
+   dragHistoryRecorded.current=false
    setPendingGrouping(null);setNicForGrouping('')
    setLayoutMessage(change.to
      ?'Архитектурная вложенность подтверждена. Сохраните схему. Технические связи изменяются только отдельной согласованной операцией.'
@@ -758,6 +759,7 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
  const cancelGrouping=()=>{
    const snapshot=pendingGrouping?.snapshot
    if(snapshot){
+     if(dragHistoryRecorded.current){setUndoStack(stack=>stack.slice(0,-1));dragHistoryRecorded.current=false}
      setRectangles(snapshot.rects)
      setNodes(snapshot.nodes)
      setLayoutDirty(snapshot.dirty)
@@ -1063,6 +1065,7 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
      persistedFlowAnchors.current=collectFlowAnchors()
      persistedNotes.current=notes.map(note=>({...note}))
      setLayoutDirty(false)
+     setUndoStack([]);setRedoStack([]);resizeRecorded.current=null
      const hasStagedGeometry=changes.some(c=>c.action==='create_vm'||c.action==='create_network')
      setLayoutDirty(hasStagedGeometry)
      setLayoutMessage(hasStagedGeometry
@@ -1072,6 +1075,7 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
    finally{setLayoutBusy(false)}
  }
  const discardDraft=()=>{
+   setUndoStack([]);setRedoStack([]);resizeRecorded.current=null
    const stagedVMs=new Set(changes.filter(c=>c.action==='create_vm').map(c=>c.id))
    const stagedNetworks=new Set(changes.filter(c=>c.action==='create_network').map(c=>c.id))
    setNodes(previous=>previous.filter(node=>!stagedVMs.has(node.id)))
@@ -1106,6 +1110,7 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
    setBusy(true);setError('')
    try{
      await request('/api/board/commit',{method:'POST',body:JSON.stringify({changes,reason})})
+     setUndoStack([]);setRedoStack([]);resizeRecorded.current=null
      // Registry changes are committed. Handle geometry/refresh failures separately,
      // never as a failure of an already committed technical transaction.
      const newVMIds=changes.filter(c=>c.action==='create_vm').map(c=>c.id!).filter(Boolean)
@@ -1161,10 +1166,12 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
  const deleteCanvasObject=async(kind:'vm'|'network'|'flow'|'note'|'pane',id:string)=>{
    if(kind==='pane')return
    if(kind==='note'){
-     setNotes(previous=>previous.filter(note=>note.id!==id));setSelectedNoteId('')
+     recordUndo()
+   setNotes(previous=>previous.filter(note=>note.id!==id));setSelectedNoteId('')
      setLayoutDirty(true);setContextMenu(null);setLayoutMessage('Заметка удалена. Для записи нажмите «Сохранить».');return
    }
    if(kind==='flow'&&changes.some(change=>change.action==='create_flow'&&change.id===id)){
+     recordUndo()
      setChanges(previous=>previous.filter(change=>change.id!==id));setPreview(null)
      setFlowAnchors(previous=>{const next={...previous};delete next[id];return next})
      setSelectedDraftFlowId('');setSelectedEdgeFlowIds([]);setContextMenu(null);return
@@ -1172,12 +1179,14 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
    if(kind==='vm'&&changes.some(change=>change.action==='create_vm'&&change.id===id)){
      const pending=blockersFor(kind,id)
      if(pending.length){setError('Сначала удалите связи черновика: '+pending.join('; '));return}
+     recordUndo()
      setChanges(previous=>previous.filter(change=>change.id!==id));setPreview(null)
      setNodes(previous=>previous.filter(node=>node.id!==id));setContextMenu(null);return
    }
    if(kind==='network'&&changes.some(change=>change.action==='create_network'&&change.id===id)){
      const pending=blockersFor(kind,id)
      if(pending.length){setError('Сначала удалите привязки и вложенные объекты черновика: '+pending.join('; '));return}
+     recordUndo()
      setChanges(previous=>previous.filter(change=>change.id!==id));setPreview(null)
      setRectangles(previous=>previous.filter(rect=>rect.id!==id));setContextMenu(null);return
    }
@@ -1333,7 +1342,7 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
    if(!from||to||from===node.id){setFrom(node.id);setTo('');setSelectedDraftFlowId('');setLayoutMessage('Выберите получателя потока.')}
    else stageDirectedFlow(from,node.id)
  }else if(tool==='move'){openPassport(node.id);setFocusDependencies(false)}
-}} onNodeDragStart={(_,node)=>{setDraggingNode(true);if(!node.id.startsWith('note:'))startVisualGroupDrag(node)}} onNodeDrag={(_,node)=>updateVisualGroupDrag(node)} onNodeDragStop={(_,node)=>{if(!node.id.startsWith('note:')){finishVisualDrop(node);moveNode(node)}else setLayoutDirty(true);setDraggingNode(false)} } onPaneClick={handlePaneClick} minZoom={0.08} fitViewOptions={{padding:0.2,maxZoom:nodes.length<=2?0.75:0.9}}><AutoFit layoutKey={systemId+':'+items.length+':'+flows.length} maxFitZoom={nodes.length<=2?0.75:0.9} focusIds={selectedFlowEndpoints} suspended={drawingConnection||draggingNode||(!selectedFlowEndpoints.length&&(tool!=='move'||canvasInteracted))} settleDelayMs={0}/><Background gap={20}/><Controls showInteractive={false}/></ReactFlow>
+}} onNodeDragStart={(_,node)=>{recordUndo();dragHistoryRecorded.current=true;setDraggingNode(true);if(!node.id.startsWith('note:'))startVisualGroupDrag(node)}} onNodeDrag={(_,node)=>updateVisualGroupDrag(node)} onNodeDragStop={(_,node)=>{if(!node.id.startsWith('note:')){finishVisualDrop(node);moveNode(node)}else setLayoutDirty(true);setDraggingNode(false)} } onPaneClick={handlePaneClick} minZoom={0.08} fitViewOptions={{padding:0.2,maxZoom:nodes.length<=2?0.75:0.9}}><AutoFit layoutKey={systemId+':'+items.length+':'+flows.length} maxFitZoom={nodes.length<=2?0.75:0.9} focusIds={selectedFlowEndpoints} suspended={drawingConnection||draggingNode||(!selectedFlowEndpoints.length&&(tool!=='move'||canvasInteracted))} settleDelayMs={0}/><Background gap={20}/><Controls showInteractive={false}/></ReactFlow>
      {flowGhost&&<svg className="boardFlowGesturePreview" aria-hidden="true" width="100%" height="100%">
        <defs><marker id="board-flow-ghost-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill="#176bc1"/></marker></defs>
        <line x1={flowGhost.start.x} y1={flowGhost.start.y} x2={flowGhost.end.x} y2={flowGhost.end.y} stroke="#176bc1" strokeWidth="2.5" strokeDasharray="6 3" markerEnd="url(#board-flow-ghost-arrow)"/>
@@ -1358,6 +1367,8 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
           <Icon size={19} strokeWidth={1.8} aria-hidden="true"/><span className="boardToolCaption" aria-hidden="true">{caption}</span>
         </button>)}
      <span className="boardToolsSeparator" aria-hidden="true"/>
+     <button type="button" title="Отменить последнее действие (Ctrl+Z)" aria-label="Отменить действие" disabled={!undoStack.length||busy||layoutBusy||Boolean(pendingGrouping)} onClick={undo}><Undo2 size={19} aria-hidden="true"/><span className="boardToolCaption" aria-hidden="true">Назад</span></button>
+     <button type="button" title="Повторить действие (Ctrl+Shift+Z / Ctrl+Y)" aria-label="Повторить действие" disabled={!redoStack.length||busy||layoutBusy||Boolean(pendingGrouping)} onClick={redo}><Redo2 size={19} aria-hidden="true"/><span className="boardToolCaption" aria-hidden="true">Вперёд</span></button>
      <button type="button" title="Вписать всю схему в экран" aria-label="Показать всё" disabled={!nodes.length} onClick={()=>void fitView({padding:0.25,duration:250,maxZoom:nodes.length<=2?0.75:0.9})}><Maximize2 size={19} aria-hidden="true"/><span className="boardToolCaption" aria-hidden="true">Вписать</span></button>
      <button type="button" title={changes.length?'Сохранить новые ВМ, VRF/VLAN и связи через проверку черновика':layoutDirty?'Сохранить расположение блоков':'Расположение сохранено'} aria-label={changes.length?'Сохранить изменения схемы':'Сохранить расположение'} disabled={(!layoutDirty&&!changes.length)||layoutBusy||busy} onClick={()=>void saveLayout()}><Save size={19} aria-hidden="true"/><span className="boardToolCaption" aria-hidden="true">{changes.length?'Сохранить всё':'Сохранить'}</span>{(layoutDirty||changes.length>0)&&<span className="boardUnsavedDot" aria-hidden="true"/>}</button>
      <button type="button" title="История изменений" aria-label="История изменений" onClick={()=>void openHistory()}><History size={19} aria-hidden="true"/><span className="boardToolCaption" aria-hidden="true">История</span></button>
@@ -1369,7 +1380,7 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
      {(tool!=='move'||inspectedVM||inspectedNetwork||selectedNoteId||reviewOpen)&&<aside className="boardDock" role="complementary" aria-label="Свойства и изменения схемы">
        <button type="button" className="boardDockToggle" title={dockCollapsed?"Развернуть свойства":"Свернуть свойства"} aria-label={dockCollapsed?"Развернуть панель свойств":"Свернуть панель свойств"} aria-expanded={!dockCollapsed} onClick={()=>setDockCollapsed(v=>!v)}>{dockCollapsed?"‹":"›"}</button>
        {tool!=='move'&&<div className="boardPropertiesHeader"><div><h3>{tool==='vm'?'Виртуальная машина':tool==='flow'?'Поток данных':tool==='note'?'Заметка':'Сеть / контейнер'}</h3></div><button type="button" aria-label="Закрыть настройки инструмента" onClick={()=>{setTool('move');setDrawing(null);setError('');setLayoutMessage('');setReviewOpen(false);cancelNetworkDrag()}}>✕</button></div>}
-          {tool==='note'&&<div className="boardToolFields"><label>Текст заметки<textarea aria-label="Текст новой заметки" value={noteText} onChange={e=>setNoteText(e.target.value)} maxLength={2000}/></label><button type="button" disabled={!noteText.trim()} onClick={()=>{const id=makeId();setNotes(previous=>[...previous,{id,x:90+notes.length*25,y:90+notes.length*25,text:noteText.trim()}]);setSelectedNoteId(id);setLayoutDirty(true);setTool('move')}}>Добавить заметку</button></div>}
+          {tool==='note'&&<div className="boardToolFields"><label>Текст заметки<textarea aria-label="Текст новой заметки" value={noteText} onChange={e=>setNoteText(e.target.value)} maxLength={2000}/></label><button type="button" disabled={!noteText.trim()} onClick={()=>{recordUndo();const id=makeId();setNotes(previous=>[...previous,{id,x:90+notes.length*25,y:90+notes.length*25,text:noteText.trim()}]);setSelectedNoteId(id);setLayoutDirty(true);setTool('move')}}>Добавить заметку</button></div>}
           {tool==='vm'&&<div className="boardToolFields"><label>Имя ВМ <input value={name} onChange={e=>setName(e.target.value)} placeholder="Новая ВМ"/></label><button onClick={()=>addVM()}>Разместить на схеме</button></div>}
    {tool==='network'&&<div className="boardToolFields"><label>Название сети * <input ref={networkNameInput} required aria-required="true" aria-invalid={!name.trim()} value={name} onChange={e=>{setName(e.target.value);if(e.target.value.trim())setError('')}} placeholder="Название VRF / VLAN / зоны"/></label>{!name.trim()&&<p className="boardRequiredHint" role="alert">Укажите название</p>}<label>Тип <select value={kind} onChange={e=>setKind(e.target.value as typeof kind)}><option value="zone">Зона</option><option value="vlan">VLAN</option><option value="vrf">VRF</option></select></label><small className="boardToolHelp" title="Нажмите на холст или протяните границу контейнера">{drawing?'Рисование контейнера…':'Нажмите или протяните на схеме'}</small></div>}
    {tool==='flow'&&<section className="boardFlowCatalog" aria-label="Выбор технического потока">
@@ -1422,7 +1433,7 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
      onClose={()=>{setSelectedExistingFlowId('');setSelectedEdgeFlowIds([])}}/>}
    {tool==='flow'&&selectedExistingFlow&&
      <FlowAttributeMap key={'flow-data-map:'+selectedExistingFlow.id} flowId={selectedExistingFlow.id} request={request}/>}
-   {selectedNoteId&&tool==='move'&&notes.some(n=>n.id===selectedNoteId)&&<div className="boardToolFields" aria-label="Редактирование заметки"><h3>Заметка</h3><textarea aria-label="Текст выбранной заметки" maxLength={2000} value={notes.find(n=>n.id===selectedNoteId)?.text||''} onChange={e=>{setNotes(previous=>previous.map(note=>note.id===selectedNoteId?{...note,text:e.target.value}:note));setLayoutDirty(true)}}/><button type="button" onClick={()=>setSelectedNoteId('')}>Закрыть заметку</button></div>}
+   {selectedNoteId&&tool==='move'&&notes.some(n=>n.id===selectedNoteId)&&<div className="boardToolFields" aria-label="Редактирование заметки"><h3>Заметка</h3><textarea aria-label="Текст выбранной заметки" onFocus={recordUndo} maxLength={2000} value={notes.find(n=>n.id===selectedNoteId)?.text||''} onChange={e=>{setNotes(previous=>previous.map(note=>note.id===selectedNoteId?{...note,text:e.target.value}:note));setLayoutDirty(true)}}/><button type="button" onClick={()=>setSelectedNoteId('')}>Закрыть заметку</button></div>}
 
 
        {tool==='move'&&inspectedNetwork&&<section className="boardToolFields" aria-label="Свойства контейнера"><h3>{inspectedNetwork.name} · {inspectedNetwork.kind.toUpperCase()}</h3><small className="boardToolHelp">Вложенных объектов: {descendants('network:'+inspectedNetwork.id,parents).size}</small>{onEditNetwork&&networks.some(n=>n.id===inspectedNetwork.id)&&<button type="button" onClick={()=>onEditNetwork(inspectedNetwork.id)}>Редактировать параметры сети</button>}<button type="button" onClick={()=>setInspectedNetworkId(null)}>Вернуться к схеме</button></section>}

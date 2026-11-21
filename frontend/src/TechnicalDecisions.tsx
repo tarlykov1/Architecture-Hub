@@ -120,6 +120,20 @@ function DecisionInspector({id,request,profile,items,flows,schema,openSchema,clo
   const editor=!!profile && (author||['architect','admin','development'].includes(profile.role))
   const editable=editor && ['draft','changes_requested'].includes(row.status)
   const reviewer=profile?.auth_kind==='named_user'&&!author&&row.status==='in_review'&&row.required_services.includes(profile.role as Service)
+  const routeChanged=[...route].sort().join('|')!==[...row.required_services].sort().join('|')
+  const approvedCount=row.required_services.filter(service=>row.approvals.some(vote=>vote.service===service&&vote.verdict==='approved')).length
+  const canSubmit=editable&&!routeChanged&&row.required_services.length>0&&(row.proposed_vms.length+row.proposed_flows.length>0)
+  const canComment=!!profile&&profile.role!=='viewer'
+  function saveRoute(){
+    if(!row||!editable||!route.length||!routeChanged)return
+    void change('',{...revision,title:row.title,description:row.description,
+      required_services:route,proposed_vms:row.proposed_vms,proposed_flows:row.proposed_flows},'PUT')
+  }
+  function sendComment(){
+    if(!discussion.trim()||!canComment)return
+    const [anchor_kind,anchor_id='']=commentTarget.split(':')
+    void change('/comments',{body:discussion.trim(),anchor_kind,anchor_id})
+  }
   const localItems=items.filter(i=>i.system_id===row.system_id)
   const localIds=new Set(localItems.map(i=>i.id))
   const baseFlows=flows.filter(f=>localIds.has(f.source_id)||localIds.has(f.target_id))
@@ -226,7 +240,7 @@ function DecisionInspector({id,request,profile,items,flows,schema,openSchema,clo
           {!row.proposed_vms.length&&!row.proposed_flows.length&&<p>В черновике пока нет изменений.</p>}
         </>}
         {!schema&&<button onClick={openSchema}>Открыть схему</button>}
-        {editable&&!tool&&(row.proposed_vms.length+row.proposed_flows.length>0)&&<button className="primary" disabled={busy} onClick={()=>void change('/submit',revision)}>На согласование</button>}
+        {editable&&!tool&&(row.proposed_vms.length+row.proposed_flows.length>0)&&<button className="primary" disabled={busy||routeChanged} title={routeChanged?'Сохраните изменённый маршрут согласования на вкладке «Согласование»':undefined} onClick={()=>void change('/submit',revision)}>На согласование</button>}
       </>:<>
         {row.required_services.map(service=>{
           const approval=row.approvals.find(a=>a.service===service)

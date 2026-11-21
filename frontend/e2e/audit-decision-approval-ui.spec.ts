@@ -38,7 +38,7 @@ test('QA-WORK: review route, submit, anchored comment and honest personal-signat
 
   await inspector.getByRole('button',{name:'Отправить на согласование'}).click()
   await expect(inspector).toContainText('Ожидает согласования')
-  await expect(inspector).toContainText('В режиме «Доступ без пароля» подпись недоступна.')
+  await expect(inspector).toContainText('Служебный ключ не заменяет персональную подпись.')
   await expect(inspector.getByRole('button',{name:'Согласовать',exact:true})).toHaveCount(0)
   const stored=(await (await page.request.get(url)).json()) as
     {status:string;required_services:string[]}

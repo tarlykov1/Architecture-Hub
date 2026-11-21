@@ -75,3 +75,21 @@ def test_audit_history_is_scoped_per_system_and_cross_system_flow_is_shared():
         ])
         assert len(audit_entry(client, linked_id, first)["changes"]) == 2
         assert audit_entry(client, linked_id, second) is None
+
+
+def test_layout_changes_follow_owning_is_instead_of_global_network():
+    with TestClient(app) as client:
+        first = create(client, "/api/objects", {"name": "QA-WORK-Layout-A-" + str(uuid4()), "kind": "system"})
+        second = create(client, "/api/objects", {"name": "QA-WORK-Layout-B-" + str(uuid4()), "kind": "system"})
+        vm = create(client, "/api/infra", {"system_id": first, "name": "QA-WORK-LAYOUT-VM", "kind": "vm"})
+        layout = client.put("/api/board/layout/" + first, headers=ADMIN, json={
+            "positions": {vm: {"x": 140, "y": 220}},
+            "notes": [{"id": str(uuid4()), "x": 30, "y": 30, "text": "QA-WORK note"}],
+        })
+        assert layout.status_code == 200, layout.text
+        history = client.get("/api/board/audit", headers=ADMIN, params={"system_id": first}).json()
+        records = [entry for entry in history if entry["reason"].startswith("Сохранено оформление схемы")]
+        assert records
+        assert all(change.get("system_ids") == [first] for change in records[0]["changes"])
+        other_history = client.get("/api/board/audit", headers=ADMIN, params={"system_id": second}).json()
+        assert all(entry["id"] != records[0]["id"] for entry in other_history)

@@ -1,6 +1,13 @@
 name: Live QA – test.web-tie.ru
 on:
   workflow_dispatch:
+  # Test-only QA changes should verify themselves on the deployed site.
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/live-qa.yml'
+      - 'frontend/live-qa/**'
+      - 'frontend/playwright.live.config.ts'
   workflow_run:
     workflows: ['Deploy Architecture Hub frontend (test)']
     types: [completed]
@@ -28,6 +35,36 @@ jobs:
       - name: Install frontend dependencies
         working-directory: frontend
         run: npm ci --no-audit --no-fund
+      - name: Diagnose static JS/CSS delivery before launching Chromium
+        # Diagnostics must not suppress browser traces when delivery fails.
+        continue-on-error: true
+        shell: bash
+        env:
+          TARGET_URL: ${{ vars.E2E_BASE_URL || secrets.E2E_BASE_URL || 'https://test.web-tie.ru' }}
+        run: |
+          set -euo pipefail
+          html="$(mktemp)"
+          curl --fail --silent --show-error --compressed --connect-timeout 10 --max-time 25 --retry 2 \
+            "${TARGET_URL%/}/" -o "$html"
+          mapfile -t assets < <(grep -oE '/assets/[^"]+\.(js|css)' "$html" | sort -u)
+          if [ "${#assets[@]}" -lt 2 ]; then
+            echo "::error::Expected frontend JS and CSS assets in the published HTML"
+            exit 1
+          fi
+          for asset in "${assets[@]}"; do
+            output="$(mktemp)"
+            echo "Checking static asset ${asset}"
+            curl --fail --silent --show-error --compressed \
+              --connect-timeout 10 --max-time 35 --retry 1 \
+              -w 'HTTP %{http_code}; received %{size_download} bytes in %{time_total}s\n' \
+              "${TARGET_URL%/}${asset}" -o "$output"
+            count="$(wc -c < "$output")"
+            if [ "$count" -lt 1024 ]; then
+              echo "::error::Asset ${asset} is unexpectedly short: ${count} bytes"
+              exit 1
+            fi
+          done
+          echo "Static asset preflight complete"
       - name: Test deployed website
         id: live_test
         working-directory: frontend

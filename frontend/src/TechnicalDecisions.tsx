@@ -8,6 +8,7 @@ import {flowPortError} from './fieldValidation'
 import {ObstacleAwareEdge} from './ObstacleAwareEdge'
 import {AutoFit} from './WorkspaceUI'
 import type {AuthProfile} from './UserManagement'
+import {buildTechnicalDecisionMarkdown} from './technicalDecisionDocument'
 import './technicalDecisions.css'
 
 type Api = <T>(url: string, init?: RequestInit) => Promise<T>
@@ -83,12 +84,12 @@ export default function TechnicalDecisions({request, profile, systems, items, fl
       <label>Информационная система<select aria-label="Информационная система" required value={system} onChange={e=>setSystem(e.target.value)}><option value="">Выберите систему</option>{systems.filter(s=>s.kind==='system').map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select></label>
       <button className="primary" disabled={saving||!title.trim()||!system}>Создать черновик</button>
     </form>}
-    {selection&&!creating&&<DecisionInspector key={selection} id={selection} request={request} profile={profile} items={items} flows={flows} schema={schema} openSchema={()=>setSchema(true)} close={close} update={update}/>}
+    {selection&&!creating&&<DecisionInspector key={selection} id={selection} request={request} profile={profile} items={items} flows={flows} systemName={systems.find(s=>s.id===rows.find(x=>x.id===selection)?.system_id)?.name||''} schema={schema} openSchema={()=>setSchema(true)} close={close} update={update}/>}
     {error&&<div className="decisionError" role="alert">{error} <button onClick={()=>retry(v=>v+1)}>Обновить список</button></div>}
   </section>
 }
 
-function DecisionInspector({id,request,profile,items,flows,schema,openSchema,close,update}:{id:string;request:Api;profile:AuthProfile|null;items:Item[];flows:Link[];schema:boolean;openSchema:()=>void;close:()=>void;update:(row:Decision)=>void}) {
+function DecisionInspector({id,request,profile,items,flows,systemName,schema,openSchema,close,update}:{id:string;request:Api;profile:AuthProfile|null;items:Item[];flows:Link[];systemName:string;schema:boolean;openSchema:()=>void;close:()=>void;update:(row:Decision)=>void}) {
  const measurements=useDiagramMeasurements()
   const [row,setRow]=useState<Details|null>(null)
   const [tab,setTab]=useState<'items'|'changes'|'review'>('items')
@@ -169,6 +170,18 @@ function DecisionInspector({id,request,profile,items,flows,schema,openSchema,clo
     if(!discussion.trim()||!canComment)return
     const [anchor_kind,anchor_id='']=commentTarget.split(':')
     void change('/comments',{body:discussion.trim(),anchor_kind,anchor_id})
+  }
+  function downloadDocument(){
+    const markdown=buildTechnicalDecisionMarkdown(loaded,systemName,items)
+    const blob=new Blob([markdown],{type:'text/markdown;charset=utf-8'})
+    const uri=URL.createObjectURL(blob)
+    const element=document.createElement('a')
+    element.href=uri
+    element.download='ArchitectureHub_'+loaded.title.replace(/[^\p{L}\p{N}_-]+/gu,'_').slice(0,65)+'_v'+loaded.revision+'.md'
+    document.body.appendChild(element)
+    element.click()
+    element.remove()
+    window.setTimeout(()=>URL.revokeObjectURL(uri),1000)
   }
   const localItems=items.filter(i=>i.system_id===loaded.system_id)
   const localIds=new Set(localItems.map(i=>i.id))
@@ -442,7 +455,7 @@ function DecisionInspector({id,request,profile,items,flows,schema,openSchema,clo
         {!schema&&<button onClick={openSchema}>Открыть схему</button>}
         {editable&&!tool&&!vmFormDirty&&(row.proposed_vms.length+row.proposed_flows.length>0)&&<button className="primary" disabled={busy||routeChanged} title={routeChanged?'Сохраните изменённый маршрут согласования на вкладке «Согласование»':undefined} onClick={()=>void change('/submit',revision)}>На согласование</button>}
       </>:tab==='changes'?<section className="decisionChanges" aria-label="Изменения технического решения">
-        <h4>Предлагаемые изменения</h4>
+        <div className="decisionActions"><h4>Предлагаемые изменения</h4><button type="button" onClick={downloadDocument}>Скачать техническое решение (.md)</button></div>
         <p>Действующая архитектура остаётся без изменений. Новые объекты появятся в реестре только после отдельного подтверждённого внедрения.</p>
         <div className="decisionChangeCounts"><strong>+ {row.proposed_vms.length} ВМ</strong><strong>+ {row.proposed_flows.length} потоков</strong></div>
         {row.proposed_vms.map(vm=><div className="decisionItem" key={vm.id}>

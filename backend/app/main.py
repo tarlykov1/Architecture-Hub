@@ -3916,6 +3916,16 @@ def _decision_validate_draft(row: TechnicalDecision, payload: TechnicalDecisionD
 
 
 def _decision_response(row: TechnicalDecision, db: Session, include_details: bool = False):
+    def actor_name(actor: str) -> str:
+        if actor.startswith("user:"):
+            try:
+                reviewer = db.get(AuthUser, UUID(actor.removeprefix("user:")))
+            except (ValueError, TypeError):
+                reviewer = None
+            if reviewer is not None:
+                return reviewer.display_name or reviewer.username
+        return actor
+
     # Current votes determine the decision status. Historical votes belong to
     # earlier proposal revisions and must remain visible, but never count as
     # approval of the latest revised architecture.
@@ -3923,8 +3933,8 @@ def _decision_response(row: TechnicalDecision, db: Session, include_details: boo
         TechnicalDecisionReview.decision_id == row.id
     ).order_by(TechnicalDecisionReview.created_at, TechnicalDecisionReview.id)).all()
     current_reviews = {item.service: {
-        "service": item.service, "actor": item.actor, "verdict": item.verdict,
-        "note": item.note, "created_at": item.created_at.isoformat(),
+        "service": item.service, "actor": item.actor, "actor_name": actor_name(item.actor),
+        "verdict": item.verdict, "note": item.note, "created_at": item.created_at.isoformat(),
     } for item in review_rows if item.revision == row.revision}
     result = {
         "id": str(row.id), "title": row.title, "description": row.description,
@@ -3945,12 +3955,14 @@ def _decision_response(row: TechnicalDecision, db: Session, include_details: boo
         result["proposed_vms"] = row.proposed_vms
         result["proposed_flows"] = row.proposed_flows
         result["review_history"] = [{
-            "revision": item.revision, "service": item.service, "actor": item.actor,
+            "revision": item.revision, "service": item.service,
+            "actor": item.actor, "actor_name": actor_name(item.actor),
             "verdict": item.verdict, "note": item.note,
             "created_at": item.created_at.isoformat(),
         } for item in review_rows]
         result["comments"] = [{
-            "id": str(item.id), "actor": item.actor, "body": item.body,
+            "id": str(item.id), "actor": item.actor,
+            "actor_name": actor_name(item.actor), "body": item.body,
             "anchor_kind": item.anchor_kind, "anchor_id": item.anchor_id,
             "created_at": item.created_at.isoformat(),
         } for item in comments]

@@ -810,12 +810,12 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
    }
    setName('');setTool('move');setReviewOpen(true)
  }
- const stageDirectedFlow=(source:string,target:string,anchors?:FlowPortPair)=>{
+ const stageDirectedFlow=(source:string,target:string,anchors?:FlowPortPair,recordHistory=true)=>{
    setSelectedEdgeFlowIds([]);setSelectedExistingFlowId('')
    if(!source||!target||source===target){setError('Выберите два разных компонента для направления потока.');return}
    if(flowPortError(port)){setError(flowPortError(port));return}
    if(!allVMs.some(vm=>vm.id===source)||!allVMs.some(vm=>vm.id===target)){setError('Источник или получатель отсутствует на схеме.');return}
-   recordUndo()
+   if(recordHistory)recordUndo()
    const id=makeId()
    // Store a chosen entry and exit immediately in the local layout draft.
    setFlowAnchors(previous=>({...previous,[id]:anchors||automaticPorts(source,target)}))
@@ -832,7 +832,8 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
    if(!from||!to||from===to)return setError('Выберите разные исходный и целевой компоненты.')
    const source=direction==='reverse'?to:from,target=direction==='reverse'?from:to
    stageDirectedFlow(source,target)
-   if(direction==='both')stageDirectedFlow(target,source)
+   // One bidirectional user action stages two flows but creates one undo step.
+   if(direction==='both')stageDirectedFlow(target,source,undefined,false)
  }
  const flowValues=(flow:Flow):FlowValues=>({
    name:flow.name,protocol:flow.protocol,port:flow.port,security:flow.security,

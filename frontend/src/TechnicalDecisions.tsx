@@ -12,7 +12,7 @@ import './technicalDecisions.css'
 
 type Api = <T>(url: string, init?: RequestInit) => Promise<T>
 type Item = {id: string; name: string; system_id: string; kind: string}
-type Link = {id: string; name: string; source_id: string; target_id: string; protocol: string; port: string; source_handle?:string; target_handle?:string; data_description?:string;security?:string;schedule?:string;verification?:'draft'|'assumed'|'verified'}
+type Link = {id: string; name: string; source_id: string; target_id: string; protocol: string; port: string; source_handle?:string; target_handle?:string; data_description?:string;security?:string;schedule?:string;verification?:string}
 type ProposedVM = Item & {x: number; y: number; description?:string; environment?:string}
 type VMForm = {name:string;kind:'vm'|'server'|'host';description:string;environment:string}
 type ProposalSnapshot = {vms:ProposedVM[];flows:Link[]}
@@ -150,6 +150,7 @@ function DecisionInspector({id,request,profile,items,flows,schema,openSchema,clo
     return()=>{document.removeEventListener('mousedown',hide);document.removeEventListener('keydown',escape)}
   },[menu])
   if(!row)return <aside className="decisionSide"><header><h3>Решение</h3><button aria-label="Закрыть решение" onClick={close}><X size={16}/></button></header>{error?<p role="alert">{error} <button onClick={()=>retry(v=>v+1)}>Повторить</button></p>:<p role="status">Загрузка…</p>}</aside>
+  const loaded=row
   const revision={expected_revision:row.revision}
   const author=!!profile?.id && row.author==='user:'+profile.id
   const editor=!!profile && (author||['architect','admin','development'].includes(profile.role))
@@ -169,19 +170,19 @@ function DecisionInspector({id,request,profile,items,flows,schema,openSchema,clo
     const [anchor_kind,anchor_id='']=commentTarget.split(':')
     void change('/comments',{body:discussion.trim(),anchor_kind,anchor_id})
   }
-  const localItems=items.filter(i=>i.system_id===row.system_id)
+  const localItems=items.filter(i=>i.system_id===loaded.system_id)
   const localIds=new Set(localItems.map(i=>i.id))
   const baseFlows=flows.filter(f=>localIds.has(f.source_id)||localIds.has(f.target_id))
-  const lines=[...baseFlows,...row.proposed_flows]
+  const lines=[...baseFlows,...loaded.proposed_flows]
   const linkedIds=new Set(lines.flatMap(f=>[f.source_id,f.target_id]))
   const baseline=items.filter(i=>localIds.has(i.id)||linkedIds.has(i.id))
-  const choices=[...items,...row.proposed_vms]
-  const proposedPositions=row.proposed_vms
+  const choices=[...items,...loaded.proposed_vms]
+  const proposedPositions=loaded.proposed_vms
   const proposedVmIds=new Set(proposedPositions.map(vm=>vm.id))
   const selectedVM=choices.find(vm=>vm.id===selectedVMId)
-  const selectedProposedVM=row.proposed_vms.find(vm=>vm.id===selectedVMId)
+  const selectedProposedVM=loaded.proposed_vms.find(vm=>vm.id===selectedVMId)
   const vmFormDirty=!!selectedProposedVM&&(vmForm.name!==selectedProposedVM.name||vmForm.kind!==selectedProposedVM.kind||vmForm.description!==(selectedProposedVM.description||'')||vmForm.environment!==(selectedProposedVM.environment||''))
-  const editingFlow=row.proposed_flows.find(flow=>flow.id===draft.id)
+  const editingFlow=loaded.proposed_flows.find(flow=>flow.id===draft.id)
   const flowFormDirty=tool==='flow'&&(editingFlow?JSON.stringify({...emptyFlow,...editingFlow})!==JSON.stringify({...emptyFlow,...draft}):Boolean(draft.name||draft.source_id||draft.target_id||draft.protocol||draft.port||draft.data_description||draft.security||draft.schedule))
   const newVMFormDirty=tool==='vm'&&Boolean(name.trim()||newVM.description.trim()||newVM.environment.trim())
   const hasUnsavedForm=vmFormDirty||flowFormDirty||newVMFormDirty
@@ -199,13 +200,13 @@ function DecisionInspector({id,request,profile,items,flows,schema,openSchema,clo
   }
   function deleteProposedVM(vmId:string){
     if(!editable||busy)return
-    const vm=row.proposed_vms.find(item=>item.id===vmId)
+    const vm=loaded.proposed_vms.find(item=>item.id===vmId)
     if(!vm)return
-    const attached=row.proposed_flows.filter(flow=>flow.source_id===vmId||flow.target_id===vmId)
+    const attached=loaded.proposed_flows.filter(flow=>flow.source_id===vmId||flow.target_id===vmId)
     const message=attached.length?'Удалить ВМ «'+vm.name+'» и связанные проектируемые потоки ('+attached.length+')?':'Удалить проектируемую ВМ «'+vm.name+'»?'
     if(!window.confirm(message))return
     setSelectedVMId('');setMenu(null)
-    persist(row.proposed_vms.filter(item=>item.id!==vmId),row.proposed_flows.filter(flow=>flow.source_id!==vmId&&flow.target_id!==vmId))
+    persist(loaded.proposed_vms.filter(item=>item.id!==vmId),loaded.proposed_flows.filter(flow=>flow.source_id!==vmId&&flow.target_id!==vmId))
   }
   let cell=0
   function nextGridPosition(){
@@ -218,9 +219,9 @@ function DecisionInspector({id,request,profile,items,flows,schema,openSchema,clo
     return point
   }
   const nodes=[...baseline.map(i=>({type:'diagramPort',id:i.id,position:nextGridPosition(),draggable:false,data:{label:<DiagramNodeLabel name={i.name} kind={i.kind}/>},style:diagramCardStyle()})),
-    ...row.proposed_vms.map(vm=>({type:'diagramPort',id:vm.id,position:dragPositions[vm.id]||{x:vm.x,y:vm.y},draggable:editable&&!busy,data:{label:<DiagramNodeLabel name={vm.name} kind={vm.kind} subtitle="Новая ВМ"/>},style:diagramCardStyle({border:'1px dashed #a46c26'})}))]
+    ...loaded.proposed_vms.map(vm=>({type:'diagramPort',id:vm.id,position:dragPositions[vm.id]||{x:vm.x,y:vm.y},draggable:editable&&!busy,data:{label:<DiagramNodeLabel name={vm.name} kind={vm.kind} subtitle="Новая ВМ"/>},style:diagramCardStyle({border:'1px dashed #a46c26'})}))]
   const positions=new Map(nodes.map(n=>[n.id,n.position]))
-  const proposedIds=new Set(row.proposed_flows.map(f=>f.id))
+  const proposedIds=new Set(loaded.proposed_flows.map(f=>f.id))
   function openFlow(flow:Link) {
     if(hasUnsavedForm&&!window.confirm('Отбросить несохранённые изменения?'))return
     setMenu(null);setSelectedVMId('');setViewFlowId('');setTool('flow');setDraft({...emptyFlow,...flow});setTab('items');setError('')
@@ -245,19 +246,19 @@ function DecisionInspector({id,request,profile,items,flows,schema,openSchema,clo
   })
   const flowError=flowPortError(draft.port)
   const sameEnds=!!draft.source_id&&draft.source_id===draft.target_id
-  const outside=!!draft.source_id&&!!draft.target_id&&!choices.some(i=>i.system_id===row.system_id&&(i.id===draft.source_id||i.id===draft.target_id))
+  const outside=!!draft.source_id&&!!draft.target_id&&!choices.some(i=>i.system_id===loaded.system_id&&(i.id===draft.source_id||i.id===draft.target_id))
   function connect(c:Connection){
     if(!editable||busy||c.source===c.target)return
     openFlow({...emptyFlow,source_id:c.source,target_id:c.target,source_handle:c.sourceHandle||'',target_handle:(c.targetHandle||'').replace('out-','in-')})
   }
   async function writeProposal(vms:ProposedVM[],links:Link[],action:'edit'|'undo'|'redo'='edit') {
     if(!editable||busy)return
-    const before={vms:row.proposed_vms,flows:row.proposed_flows}
+    const before={vms:loaded.proposed_vms,flows:loaded.proposed_flows}
     if(JSON.stringify(before.vms)===JSON.stringify(vms)&&JSON.stringify(before.flows)===JSON.stringify(links))return
     setBusy(true);setError('')
     try{
       const next=await request<Details>(path+'/'+id,{method:'PUT',body:JSON.stringify({
-        ...revision,title:row.title,description:row.description,required_services:row.required_services,
+        ...revision,title:loaded.title,description:loaded.description,required_services:loaded.required_services,
         proposed_vms:vms,proposed_flows:links,
       })})
       setRow(next);setRoute(next.required_services);update(next)
@@ -285,26 +286,26 @@ function DecisionInspector({id,request,profile,items,flows,schema,openSchema,clo
   }
   function saveVMProperties(){
     if(!selectedProposedVM||!vmForm.name.trim()||!vmFormDirty)return
-    persist(row.proposed_vms.map(vm=>vm.id===selectedProposedVM.id?{
+    persist(loaded.proposed_vms.map(vm=>vm.id===selectedProposedVM.id?{
       ...vm,name:vmForm.name.trim(),kind:vmForm.kind,
       description:vmForm.description.trim(),environment:vmForm.environment.trim(),
-    }:vm),row.proposed_flows)
+    }:vm),loaded.proposed_flows)
   }
   async function moveProposedVm(vmId:string,position:{x:number;y:number}) {
     if(!editable||busy)return
-    const vm=row.proposed_vms.find(item=>item.id===vmId)
+    const vm=loaded.proposed_vms.find(item=>item.id===vmId)
     if(!vm)return
     if(Math.abs(vm.x-position.x)<0.5&&Math.abs(vm.y-position.y)<0.5){setDragPositions({});return}
-    await writeProposal(row.proposed_vms.map(item=>item.id===vmId?{...item,x:position.x,y:position.y}:item),row.proposed_flows)
+    await writeProposal(loaded.proposed_vms.map(item=>item.id===vmId?{...item,x:position.x,y:position.y}:item),loaded.proposed_flows)
   }
   function saveProposal() {
     if(!row)return
     if(tool==='vm'&&name.trim()){
-      const vm={id:crypto.randomUUID(),system_id:row.system_id,kind:newVM.kind,name:name.trim(),description:newVM.description.trim(),environment:newVM.environment.trim(),...nextGridPosition()}
-      persist([...row.proposed_vms,vm],row.proposed_flows)
+      const vm={id:crypto.randomUUID(),system_id:loaded.system_id,kind:newVM.kind,name:name.trim(),description:newVM.description.trim(),environment:newVM.environment.trim(),...nextGridPosition()}
+      persist([...loaded.proposed_vms,vm],loaded.proposed_flows)
     }else if(tool==='flow'&&draft.name.trim()&&draft.source_id&&draft.target_id&&!sameEnds&&!outside&&!flowError){
       const flow={...draft,id:draft.id||crypto.randomUUID(),name:draft.name.trim(),protocol:draft.protocol.trim(),port:draft.port.trim(),data_description:draft.data_description?.trim()||'',security:draft.security?.trim()||'',schedule:draft.schedule?.trim()||'',verification:draft.verification||'draft'}
-      persist(row.proposed_vms,draft.id?row.proposed_flows.map(f=>f.id===draft.id?flow:f):[...row.proposed_flows,flow])
+      persist(loaded.proposed_vms,draft.id?loaded.proposed_flows.map(f=>f.id===draft.id?flow:f):[...loaded.proposed_flows,flow])
     }
   }
   return <>

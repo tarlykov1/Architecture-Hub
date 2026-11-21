@@ -24,8 +24,13 @@ async function open(page:Page,name:string){
  await page.addInitScript(()=>sessionStorage.setItem('architecture-hub:access-token:session','browser-ci-development-token'))
  await page.goto('/')
  const nav=page.getByRole('navigation',{name:'Разделы архитектуры'})
- await nav.getByText('Ещё',{exact:false}).first().click()
- await nav.getByRole('button',{name:'Бизнес-процессы',exact:true}).click()
+ if(page.viewportSize()!.width<=720){
+   await nav.locator('details.mobileSectionMenu > summary').click()
+   await nav.locator('.mobileSectionOptions').getByRole('button',{name:'Бизнес-процессы',exact:true}).click()
+ }else{
+   await nav.locator('details.secondaryNavigation > summary').click()
+   await nav.locator('.secondaryNavigation .layerActionMenu').getByRole('button',{name:'Бизнес-процессы',exact:true}).click()
+ }
  const card=page.locator('.businessProcess').filter({hasText:name})
  await expect(card).toBeVisible()
  await card.getByRole('button',{name:'Паспорт и шаги'}).click()
@@ -132,8 +137,13 @@ test('QA-WORK: business-process matrices and versioned Markdown export use canon
  await page.addInitScript(()=>sessionStorage.setItem('architecture-hub:access-token:session','browser-ci-development-token'))
  await page.goto('/')
  const nav=page.getByRole('navigation',{name:'Разделы архитектуры'})
- await nav.getByText('Ещё',{exact:false}).first().click()
- await nav.getByRole('button',{name:'Бизнес-процессы',exact:true}).click()
+ if(page.viewportSize()!.width<=720){
+   await nav.locator('details.mobileSectionMenu > summary').click()
+   await nav.locator('.mobileSectionOptions').getByRole('button',{name:'Бизнес-процессы',exact:true}).click()
+ }else{
+   await nav.locator('details.secondaryNavigation > summary').click()
+   await nav.locator('.secondaryNavigation .layerActionMenu').getByRole('button',{name:'Бизнес-процессы',exact:true}).click()
+ }
  await page.getByRole('group',{name:'Представление бизнес-архитектуры'}).getByRole('button',{name:'Матрица зависимостей'}).click()
  const matrix=page.getByRole('region',{name:'Таблица зависимостей БП'})
  await expect(matrix).toBeVisible()

@@ -99,7 +99,7 @@ export function BusinessProcessPassport({processId,processes,systems,components,
   const uri=URL.createObjectURL(blob)
   const link=document.createElement('a')
   link.href=uri
-  link.download='ArchitectureHub_BP_'+record.name.replace(/[^\\p{L}\\p{N}_-]+/gu,'_').slice(0,62)+'_v'+record.revision+'.md'
+  link.download='ArchitectureHub_BP_'+record.name.replace(/[^\p{L}\p{N}_-]+/gu,'_').slice(0,62)+'_v'+record.revision+'.md'
   document.body.appendChild(link);link.click();link.remove()
   window.setTimeout(()=>URL.revokeObjectURL(uri),1000)
  }

@@ -40,12 +40,12 @@ function BoardComponentNode({data}:NodeProps){
  </>
 }
 function BoardNetworkNode({data}:NodeProps){
- const options=data as {label:React.ReactNode;resizable?:boolean;onResize?:(size:{x:number;y:number;width:number;height:number})=>void;onPointerDown?:(event:React.PointerEvent<HTMLDivElement>)=>void;onPointerMove?:(event:React.PointerEvent<HTMLDivElement>)=>void;onPointerUp?:(event:React.PointerEvent<HTMLDivElement>)=>void;onPointerCancel?:(event:React.PointerEvent<HTMLDivElement>)=>void}
+ const options=data as {label:React.ReactNode;resizable?:boolean;onResize?:(size:{x:number;y:number;width:number;height:number})=>void;onResizeEnd?:()=>void;onPointerDown?:(event:React.PointerEvent<HTMLDivElement>)=>void;onPointerMove?:(event:React.PointerEvent<HTMLDivElement>)=>void;onPointerUp?:(event:React.PointerEvent<HTMLDivElement>)=>void;onPointerCancel?:(event:React.PointerEvent<HTMLDivElement>)=>void}
  return <>
   <div className="boardNetworkDragArea" onPointerDown={options.onPointerDown} onPointerMove={options.onPointerMove} onPointerUp={options.onPointerUp} onPointerCancel={options.onPointerCancel}>{options.label}</div>
   <NodeResizer isVisible={Boolean(options.resizable)} minWidth={140} minHeight={90}
    lineStyle={{borderColor:'#2563eb'}} handleStyle={{width:9,height:9,border:'1px solid #fff',borderRadius:2,background:'#2563eb'}}
-   onResize={(_,params)=>options.onResize?.({x:params.x,y:params.y,width:params.width,height:params.height})}/>
+   onResize={(_,params)=>options.onResize?.({x:params.x,y:params.y,width:params.width,height:params.height})} onResizeEnd={()=>options.onResizeEnd?.()}/>
  </>
 }
 const boardNodeTypes={boardComponent:BoardComponentNode,boardNetwork:BoardNetworkNode}
@@ -329,6 +329,7 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
    const position={x:drag.startPosition.x+pointer.x-drag.startPointer.x,y:drag.startPosition.y+pointer.y-drag.startPointer.y}
    drag.lastPosition=position
    if(Math.hypot(position.x-drag.startPosition.x,position.y-drag.startPosition.y)<3&&!drag.moved)return
+   if(!drag.moved){recordUndo();dragHistoryRecorded.current=true}
    drag.moved=true
    setDraggingNode(true)
    setRectangles(previous=>previous.map(rect=>rect.id===id?{...rect,...position}:rect))
@@ -370,6 +371,7 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
      setLayoutMessage('Граница не может исключать связанные объекты. Сначала переместите их или увеличьте контейнер.')
      return
    }
+   if(resizeRecorded.current!==id){recordUndo();resizeRecorded.current=id}
    setRectangles(prev=>prev.map(r=>r.id===id?next:r))
    setLayoutDirty(true)
  }
@@ -412,7 +414,7 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
  const allNetworks=[...networks,...changes.filter(c=>c.action==='create_network').map(c=>({id:c.id!,name:c.name!,kind:c.kind!}))]
  const visibleRects=rectangles.filter(r=>allNetworks.some(n=>n.id===r.id))
  const draftNetworks=new Set(changes.filter(c=>c.action==='create_network').map(c=>c.id))
- const backgroundNodes:Node[]=visibleRects.map(r=>({id:'network:'+r.id,type:'boardNetwork',position:{x:r.x,y:r.y},width:r.width,height:r.height,measured:{width:r.width,height:r.height},draggable:false,selectable:true,connectable:false,data:{onPointerDown:(event:React.PointerEvent<HTMLDivElement>)=>beginManualNetworkDrag(r.id,event),onPointerMove:(event:React.PointerEvent<HTMLDivElement>)=>moveManualNetworkDrag(r.id,event),onPointerUp:(event:React.PointerEvent<HTMLDivElement>)=>finishManualNetworkDrag(r.id,event),onPointerCancel:(event:React.PointerEvent<HTMLDivElement>)=>cancelManualNetworkDrag(r.id,event),resizable:tool==='move',onResize:(size:{x:number;y:number;width:number;height:number})=>updateNetworkSize(r.id,size),label:<div className="boardNetworkLabel"><strong>{r.name} · {r.kind.toUpperCase()}</strong><small>{draftNetworks.has(r.id)?'Черновик · ещё не сохранён':parents['network:'+r.id]?'В группе: '+(allNetworks.find(n=>'network:'+n.id===parents['network:'+r.id])?.name||'сеть'):'Свободная зона'} · {tool==='move'?'Тяните край для изменения размера':''}</small></div>},style:{width:r.width,height:r.height,background:draftNetworks.has(r.id)?'#fff7ed29':'#dbeafe15',border:draftNetworks.has(r.id)?'2px dashed #d97706':'2px dashed #2563eb',borderRadius:9,zIndex:10+(()=>{let depth=0,p=parents['network:'+r.id];while(p&&depth<10){depth++;p=parents[p]}return depth})(),pointerEvents:'none',textAlign:'left',padding:12,fontSize:13,color:'#1e40af'}}))
+ const backgroundNodes:Node[]=visibleRects.map(r=>({id:'network:'+r.id,type:'boardNetwork',position:{x:r.x,y:r.y},width:r.width,height:r.height,measured:{width:r.width,height:r.height},draggable:false,selectable:true,connectable:false,data:{onPointerDown:(event:React.PointerEvent<HTMLDivElement>)=>beginManualNetworkDrag(r.id,event),onPointerMove:(event:React.PointerEvent<HTMLDivElement>)=>moveManualNetworkDrag(r.id,event),onPointerUp:(event:React.PointerEvent<HTMLDivElement>)=>finishManualNetworkDrag(r.id,event),onPointerCancel:(event:React.PointerEvent<HTMLDivElement>)=>cancelManualNetworkDrag(r.id,event),resizable:tool==='move',onResize:(size:{x:number;y:number;width:number;height:number})=>updateNetworkSize(r.id,size),onResizeEnd:()=>{resizeRecorded.current=null},label:<div className="boardNetworkLabel"><strong>{r.name} · {r.kind.toUpperCase()}</strong><small>{draftNetworks.has(r.id)?'Черновик · ещё не сохранён':parents['network:'+r.id]?'В группе: '+(allNetworks.find(n=>'network:'+n.id===parents['network:'+r.id])?.name||'сеть'):'Свободная зона'} · {tool==='move'?'Тяните край для изменения размера':''}</small></div>},style:{width:r.width,height:r.height,background:draftNetworks.has(r.id)?'#fff7ed29':'#dbeafe15',border:draftNetworks.has(r.id)?'2px dashed #d97706':'2px dashed #2563eb',borderRadius:9,zIndex:10+(()=>{let depth=0,p=parents['network:'+r.id];while(p&&depth<10){depth++;p=parents[p]}return depth})(),pointerEvents:'none',textAlign:'left',padding:12,fontSize:13,color:'#1e40af'}}))
  const noteNodes:Node[]=notes.map(note=>({id:'note:'+note.id,type:'default',position:{x:note.x,y:note.y},initialWidth:200,initialHeight:90,measured:{width:200,height:90},draggable:tool==='move',selectable:true,data:{label:<div className="boardStickyNote"><strong>Заметка</strong><p>{note.text}</p></div>},style:{width:200,padding:12,background:'#fff4c2',border:'1px solid #d1aa3d',borderRadius:9,boxShadow:'0 3px 8px #00000019',whiteSpace:'pre-wrap',overflowWrap:'anywhere',zIndex:35}}))
  const graphNodes=[...backgroundNodes,...nodes,...noteNodes]
  // A pair of machines has one readable connection; its technical flows stay separate records.
@@ -540,6 +542,7 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
    const current=portsForFlow(flow)
    const pair={...current,[movingSource?'source_handle':'target_handle']:drop.targetHandle}
    const endpointsChanged=sourceId!==flow.source_id||targetId!==flow.target_id
+   if(endpointsChanged||pair.source_handle!==current.source_handle||pair.target_handle!==current.target_handle)recordUndo()
    if(endpointsChanged){
      const draft=changes.find(c=>c.action==='create_flow'&&c.id===flow.id)
      if(draft){
@@ -548,7 +551,7 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
      }else{
        const original=flows.find(f=>f.id===flow.id)
        if(!original)return
-       stageExistingFlowEdit(original,flowValues(flow),sourceId,targetId)
+       stageExistingFlowEdit(original,flowValues(flow),sourceId,targetId,false)
      }
      setFrom(sourceId);setTo(targetId)
    }else if(pair.source_handle===current.source_handle&&pair.target_handle===current.target_handle)return
@@ -683,7 +686,7 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
  function openPassport(id:string){
    setDockCollapsed(false);
    const vm=allVMs.find(v=>v.id===id);if(!vm)return;setInspectedId(id);setEditingPassport(false);setPassportDraft({name:vm.name,description:vm.description||'',purpose:String(vm.details?.purpose||''),environment:String(vm.details?.environment||'')})}
- const stagePassport=()=>{if(!inspectedVM||!passportDraft.name.trim())return;const details_patch:Record<string,string>={purpose:passportDraft.purpose,environment:passportDraft.environment};const previous_details:Record<string,unknown>={purpose:inspectedVM.details?.purpose??null,environment:inspectedVM.details?.environment??null};addChange({action:'update_vm',id:inspectedVM.id,system_id:systemId,name:passportDraft.name.trim(),description:passportDraft.description,previous_name:inspectedVM.name,previous_description:inspectedVM.description||'',details_patch,previous_details});setEditingPassport(false);setInspectedId(null);setFocusDependencies(false);setReviewOpen(true)}
+ const stagePassport=()=>{if(!inspectedVM||!passportDraft.name.trim())return;recordUndo();const details_patch:Record<string,string>={purpose:passportDraft.purpose,environment:passportDraft.environment};const previous_details:Record<string,unknown>={purpose:inspectedVM.details?.purpose??null,environment:inspectedVM.details?.environment??null};addChange({action:'update_vm',id:inspectedVM.id,system_id:systemId,name:passportDraft.name.trim(),description:passportDraft.description,previous_name:inspectedVM.name,previous_description:inspectedVM.description||'',details_patch,previous_details});setEditingPassport(false);setInspectedId(null);setFocusDependencies(false);setReviewOpen(true)}
 
  const inspectedFlows=effectiveFlows.filter(f=>f.source_id===inspectedId||f.target_id===inspectedId)
  const selectCanvasEdge=(source:string,target:string,ids:string[])=>{
@@ -774,6 +777,7 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
  }
  const addVM=(point?:{x:number;y:number})=>{
    if(!name.trim())return setError('Введите имя новой ВМ.')
+   recordUndo()
    const id=makeId()
    // Place successive additions into free grid slots rather than over existing cards.
    const occupied=nodes.filter(existing=>!existing.id.startsWith('network:'))
@@ -803,6 +807,7 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
    if(!source||!target||source===target){setError('Выберите два разных компонента для направления потока.');return}
    if(flowPortError(port)){setError(flowPortError(port));return}
    if(!allVMs.some(vm=>vm.id===source)||!allVMs.some(vm=>vm.id===target)){setError('Источник или получатель отсутствует на схеме.');return}
+   recordUndo()
    const id=makeId()
    // Store a chosen entry and exit immediately in the local layout draft.
    setFlowAnchors(previous=>({...previous,[id]:anchors||automaticPorts(source,target)}))
@@ -842,7 +847,7 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
    const flow=draft||stored!
    setFrom(flow.source_id||'');setTo(flow.target_id||'')
  }
- const stageExistingFlowEdit=(original:Flow,next:FlowValues,sourceId:string,targetId:string)=>{
+ const stageExistingFlowEdit=(original:Flow,next:FlowValues,sourceId:string,targetId:string,recordHistory=true)=>{
    const oldSource=allVMs.find(vm=>vm.id===original.source_id)?.name
    const oldTarget=allVMs.find(vm=>vm.id===original.target_id)?.name
    const newSource=allVMs.find(vm=>vm.id===sourceId)?.name
@@ -854,6 +859,7 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
    const endpointsChanged=sourceId!==original.source_id||targetId!==original.target_id
    const hasChanges=endpointsChanged||Object.keys(before).some(key=>before[key as keyof FlowValues]!==resolvedNext[key as keyof FlowValues])
    const remaining=changes.filter(c=>!(c.action==='update_flow'&&c.id===original.id))
+   if(recordHistory&&(hasChanges||remaining.length!==changes.length))recordUndo()
    setChanges(hasChanges?[...remaining,{
      action:'update_flow',id:original.id,source_id:sourceId,target_id:targetId,
      previous_source_id:original.source_id,previous_target_id:original.target_id,
@@ -874,6 +880,7 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
    }
    const draft=changes.find(c=>c.action==='create_flow'&&c.id===selectedFlow.id)
    if(draft){
+     recordUndo()
      setChanges(previous=>previous.map(c=>c.action==='create_flow'&&c.id===draft.id?{...c,source_id:from,target_id:to}:c))
      setPreview(null);setReviewOpen(true)
    }else{
@@ -890,6 +897,7 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
  const discardExistingFlowEdit=()=>{
    if(!selectedExistingFlow)return
    const id=selectedExistingFlow.id
+   recordUndo()
    if(selectedEffectiveFlow&&(selectedExistingFlow.source_id!==selectedEffectiveFlow.source_id||selectedExistingFlow.target_id!==selectedEffectiveFlow.target_id)){
      setFlowAnchors(previous=>{
        const next={...previous}
@@ -919,6 +927,7 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
      setError('VRF нельзя создавать внутри другой VRF. Разместите её отдельно; VLAN внутри VRF допускается.')
      return
    }
+   recordUndo()
    const id=makeId()
    const rect:Rect={id,name:name.trim(),kind,x,y,width,height}
    setRectangles(prev=>[...prev,rect])

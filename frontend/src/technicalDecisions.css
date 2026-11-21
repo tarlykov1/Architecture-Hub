@@ -47,7 +47,21 @@
 .decisionDrawing > header { justify-content: flex-start; border-bottom: 1px solid #dedee7 }
 .decisionCanvas { position: relative; min-height: 350px; flex: 1; background: #f8f8fb }
 .decisionCanvas > p { padding: 66px 18px }
-.decisionTools { position: absolute; top: 12px; left: 12px; display: flex; gap: 4px }
+.decisionTools { position: absolute; top: 12px; left: 12px; display: flex; flex-direction: column; align-items: stretch; gap: 4px; width: min(132px, 32%); max-height: calc(100% - 24px); overflow-y: auto; padding: 5px; border: 1px solid #dddde9; border-radius: 10px; background: rgba(255,255,255,.96); box-shadow: 0 3px 18px rgba(31,39,65,.10) }
+.decisionTools button { justify-content: flex-start; white-space: nowrap; border: 1px solid transparent; background: transparent; font-size: 12px; font-weight: 540; }
+.decisionTools button:not(:disabled):hover { background: #eeedfc }
+.decisionTools button:disabled { opacity: .4 }
+.decisionToolCount { color: #6a6a7b; font-size: 10px; text-align: center; border-top: 1px solid #ededf4; padding-top: 4px }
+.decisionContextMenu { display: grid; gap: 3px; min-width: 205px; max-width: 260px; padding: 7px; border: 1px solid #dadbe9; border-radius: 9px; background: #fff; box-shadow: 0 8px 32px rgba(23,30,58,.2) }
+.decisionContextMenu button { justify-content: flex-start; background: transparent; text-align: left; border: 0; font-size: 12px }
+.decisionContextMenu button:hover { background: #f1f0fb }
+.decisionVmDetails, .decisionChanges { display: grid; gap: 9px; min-width: 0 }
+.decisionVmDetails form { display: grid; gap: 9px }
+.decisionVmDetails textarea, .decisionSide textarea { resize: vertical; min-height: 70px }
+.decisionChangeCounts { display: flex; gap: 6px; flex-wrap: wrap }
+.decisionChangeCounts strong { padding: 5px 8px; background: #eeedfc; color: #48418e; border-radius: 6px; font-size: 12px }
+.decisionItem button { text-align: left; border: 0; background: transparent; color: #4b43a8; padding: 0; font-size: inherit; font-weight: 600 }
+.decisionItem button[aria-label^="Удалить"] { color: #8a4545; font-size: 11px; font-weight: 500 }
 .decisionError { padding: 10px; color: #943526; background: #fff1ef; flex-basis: 100%; align-self: start }
 @media(max-width:720px) {
   .decisionWorkspace { display: block }
@@ -55,6 +69,9 @@
   .decisionCanvas { min-height: 0 }
   .decisionSide { border-left: 0; border-top: 1px solid #dedee7 }
   .decisionDrawing > header { flex-wrap: wrap; padding: 8px }
+  .decisionTools { top: 6px; left: 6px; max-height: calc(100% - 12px); width: 92px }
+  .decisionTools button { font-size: 11px; padding: 5px 6px }
+  .decisionChangeCounts { gap: 4px }
 }
 .decisionFilterTabs { display: flex; gap: 3px; flex-wrap: wrap }
 .decisionFilterTabs button { border: 0; font-size: 12px; color: #515360 }

@@ -163,7 +163,10 @@ export function FlowSequence({exchanges,systems,visible,request,processes=[],can
     try{
       await request('/api/flow-scenarios/'+current.id,{method:'DELETE'})
       setScenarios(old=>old.filter(row=>row.id!==current.id))
-      changeSelection('')
+      // Deletion is already confirmed; never show an additional unsaved-form
+      // prompt or leave the browser pointing to a removed server scenario.
+      setSelected('');setDraft(null);setEditing(false);setCreating(false)
+      try{localStorage.removeItem(selectedKey)}catch{}
       setNotice('Сценарий удалён. Технические потоки сохранены.')
     }catch(e){setError('Не удалось удалить сценарий: '+String(e))}
     finally{setBusy(false)}

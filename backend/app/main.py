@@ -3663,6 +3663,8 @@ class ProposedDecisionFlow(BaseModel):
     id: UUID
     source_id: UUID
     target_id: UUID
+    source_handle: str = Field(default="", pattern=r"^(|out-(top|right|bottom|left)-[12])$")
+    target_handle: str = Field(default="", pattern=r"^(|in-(top|right|bottom|left)-[12])$")
     name: str = Field(min_length=1, max_length=250)
     protocol: str = Field(default="", max_length=80)
     port: str = Field(default="", max_length=80)
@@ -3712,6 +3714,19 @@ def _decision_editor(row: TechnicalDecision, request: Request):
     role = getattr(request.state, "role", None)
     if actor != row.author and role not in ("architect", "admin"):
         raise HTTPException(403, "Only the author or architecture team can change this proposal")
+
+
+def _lock_decision_version(row: TechnicalDecision, expected_revision: int, db: Session):
+    if row.revision != expected_revision:
+        raise HTTPException(409, "Decision changed in another session")
+    # Serialize writers including parallel reviews, which share a proposal revision.
+    result = db.execute(update(TechnicalDecision).where(
+        TechnicalDecision.id == row.id,
+        TechnicalDecision.status == row.status,
+        TechnicalDecision.revision == expected_revision,
+    ).values(updated_at=datetime.now(timezone.utc)))
+    if result.rowcount != 1:
+        raise HTTPException(409, "Decision changed in another session")
 
 
 def _decision_named_reviewer(request: Request):
@@ -3855,8 +3870,7 @@ def edit_technical_decision(decision_id: UUID, payload: TechnicalDecisionDraftIn
     _decision_editor(row, request)
     if row.status not in ("draft", "changes_requested"):
         raise HTTPException(409, "Decision is in review or is already approved")
-    if payload.expected_revision != row.revision:
-        raise HTTPException(409, "Decision changed in another session")
+    _lock_decision_version(row, payload.expected_revision, db)
     _decision_validate_draft(row, payload, db)
     old = {"title": row.title, "vms": len(row.proposed_vms), "flows": len(row.proposed_flows)}
     row.title = payload.title.strip()
@@ -3882,8 +3896,7 @@ def submit_technical_decision(decision_id: UUID, payload: TechnicalDecisionTrans
     _decision_editor(row, request)
     if row.status not in ("draft", "changes_requested"):
         raise HTTPException(409, "Only a draft or reworked decision can be submitted")
-    if row.revision != payload.expected_revision:
-        raise HTTPException(409, "Decision changed in another session")
+    _lock_decision_version(row, payload.expected_revision, db)
     if not row.proposed_vms and not row.proposed_flows:
         raise HTTPException(422, "Add at least one proposed VM or flow")
     row.base_hash = _decision_current_baseline(row, db)
@@ -3893,6 +3906,24 @@ def submit_technical_decision(decision_id: UUID, payload: TechnicalDecisionTrans
     audit_direct_edit(db, request, "submit_technical_decision", row.id,
                       {"status": "draft"}, {"status": "in_review", "revision": row.revision},
                       "Направлено на согласование: " + row.title)
+    db.commit()
+    return _decision_response(row, db, True)
+
+
+@app.post("/api/technical-decisions/{decision_id}/withdraw")
+def withdraw_technical_decision(decision_id: UUID, payload: TechnicalDecisionTransition,
+                                request: Request, db: Session = Depends(db_session)):
+    row = _decision_item(decision_id, db)
+    _decision_editor(row, request)
+    if row.status != "in_review":
+        raise HTTPException(409, "Only a decision in review can be withdrawn")
+    _lock_decision_version(row, payload.expected_revision, db)
+    row.status = "draft"
+    row.base_hash = ""
+    row.revision += 1
+    audit_direct_edit(db, request, "withdraw_technical_decision", row.id,
+                      {"status": "in_review"}, {"status": "draft", "revision": row.revision},
+                      "Техническое решение отозвано с согласования: " + row.title)
     db.commit()
     return _decision_response(row, db, True)
 
@@ -3943,8 +3974,7 @@ def review_technical_decision(decision_id: UUID, payload: TechnicalDecisionRevie
         raise HTTPException(403, "Author cannot approve their own solution")
     if row.status != "in_review":
         raise HTTPException(409, "Decision is not open for review")
-    if row.revision != payload.expected_revision:
-        raise HTTPException(409, "Decision changed in another session")
+    _lock_decision_version(row, payload.expected_revision, db)
     if payload.verdict == "changes_requested" and len(payload.note.strip()) < 3:
         raise HTTPException(422, "Give a reason for the required changes")
     existing = db.scalars(select(TechnicalDecisionReview).where(

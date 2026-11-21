@@ -430,7 +430,7 @@ function DecisionInspector({id,request,profile,items,flows,schema,openSchema,clo
         </form>:<>
           {row.proposed_vms.map(vm=><div className="decisionItem" key={vm.id}>
             <button type="button" onClick={()=>{openSchema();inspectVM(vm.id)}}>{vm.name}</button><small>Новая ВМ</small>
-            {editable&&<button type="button" disabled={busy} aria-label={'Удалить ВМ '+vm.name} onClick={()=>deleteProposedVM(vm.id)}}>Удалить ВМ</button>}
+            {editable&&<button type="button" disabled={busy} aria-label={'Удалить ВМ '+vm.name} onClick={()=>deleteProposedVM(vm.id)}>Удалить ВМ</button>}
           </div>)}
           {row.proposed_flows.map(f=><div className="decisionItem" key={f.id}>
             <button onClick={()=>{openSchema();inspectFlow(f)}}>{f.name}</button><small>Новый поток</small>

@@ -320,26 +320,26 @@ export default function ArchitectureHome({mode,onModeChange,logical,systems,comp
      data:{label:<span title={c.name}>{architectureIcon(c.kind)} {c.name}</span>},style:{width:136,fontSize:11,padding:'7px',borderRadius:6,border:'1px solid #cbd5e1',background:'#fff',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' as const},selectable:true,draggable:false,zIndex:20}]:[]
  }):[]
 
- const nodes=mapSystems.map((s,i)=>({id:s.id,draggable:editingSystems,initialWidth:245,initialHeight:86,handles:systemHandles,sourcePosition:Position.Right,targetPosition:Position.Left,position:positions[s.id]||{x:(i%4)*320,y:Math.floor(i/4)*190},data:{label:<DiagramNodeLabel name={s.name} kind={s.kind} logo={logoFromAttributes(s.attributes)} subtitle={components.filter(c=>c.system_id===s.id).length+' компонентов · '+links.filter(l=>l.system_id===s.id).length+' бизнес-связей'}/>},style:diagramCardStyle()}))
- const selectedSystemInfo=mapSystems.find(s=>s.id===selectedSystem)
- const selectedNeighbors=new Set<string>([selectedSystem])
- for(const f of crossFlows)if(f.source===selectedSystem||f.target===selectedSystem){selectedNeighbors.add(f.source);selectedNeighbors.add(f.target)}
- const selectedComponents=components.filter(c=>c.system_id===selectedSystem)
- const selectedFlowCount=crossFlows.filter(f=>f.source===selectedSystem||f.target===selectedSystem).length
+ const nodes=mapSystems.map((s,i)=>({id:s.id,draggable:editingSystems,initialWidth:245,initialHeight:86,handles:systemHandles,sourcePosition:Position.Right,targetPosition:Position.Left,position:focusPositions[s.id]||positions[s.id]||{x:(i%4)*320,y:Math.floor(i/4)*190},data:{label:<DiagramNodeLabel name={s.name} kind={s.kind} logo={logoFromAttributes(s.attributes)} subtitle={mapMode==='flows'?undefined:components.filter(c=>c.system_id===s.id).length+' компонентов · '+links.filter(l=>l.system_id===s.id).length+' бизнес-связей'}/>},style:diagramCardStyle()}))
+ const selectedSystemInfo=mapSystems.find(s=>s.id===focusedSystemId)
+ const selectedNeighbors=new Set<string>([focusedSystemId])
+ for(const f of crossFlows)if(f.source===focusedSystemId||f.target===focusedSystemId){selectedNeighbors.add(f.source);selectedNeighbors.add(f.target)}
+ const selectedComponents=components.filter(c=>c.system_id===focusedSystemId)
+ const selectedFlowCount=crossFlows.filter(f=>f.source===focusedSystemId||f.target===focusedSystemId).length
  const focusedLayer=overlayGroups.find(group=>group.id===selectedOverlayGroup)
- const highlightedNodes=nodes.map(n=>({...n,zIndex:10,style:{...n.style,border:selectedSystem===n.id?'2px solid var(--hub-accent)':n.style.border,opacity:!logicalMode&&focusedLayer&&!membersFor(focusedLayer).includes(n.id)?0.2:selectedSystem&&!selectedNeighbors.has(n.id)?0.28:1}}))
+ const highlightedNodes=nodes.map(n=>({...n,zIndex:10,style:{...n.style,border:focusedSystemId===n.id?'2px solid var(--hub-accent)':n.style.border,opacity:!logicalMode&&focusedLayer&&!membersFor(focusedLayer).includes(n.id)?0.2:focusedSystemId&&!selectedNeighbors.has(n.id)?0.28:1}}))
  const canvasNodes=[...(logicalMode?[]:areaNodes),...highlightedNodes,...componentNodes]
  const connectionCounts=mapMode==='business'?businessCounts:flowCounts
  const edges:Edge[]=[...connectionCounts].map(([key,count])=>{
    const [source,target]=key.split('|')
-   const related=(selectedSystem&&(source===selectedSystem||target===selectedSystem))||(mapMode==='flows'&&openFlowPair===key)
+   const related=(focusedSystemId&&(source===focusedSystemId||target===focusedSystemId))||(mapMode==='flows'&&openFlowPair===key)
    const color=mapMode==='business'?'#79738c':'#69707e'
    return {id:mapMode+':'+key,source,target,type:mapMode==='flows'?'overviewFlow':'smoothstep',label:mapMode==='business'?count+' БП':undefined,
      data:{flows:groupedFlows.get(key)||[],open:openFlowPair===key,toggle:()=>setOpenFlowPair(old=>old===key?'':key),close:()=>setOpenFlowPair('')},
      ...(mapMode==='flows'?{markerEnd:{type:MarkerType.ArrowClosed,width:13,height:13,color}}:{}),
-     style:{stroke:related?'var(--hub-accent)':color,strokeWidth:related?2.5:1.4,strokeDasharray:mapMode==='business'?'5 5':undefined,opacity:selectedSystem&&!related?0.18:1}}
+     style:{stroke:related?'var(--hub-accent)':color,strokeWidth:related?2.5:1.4,strokeDasharray:mapMode==='business'?'5 5':undefined,opacity:focusedSystemId&&!related?0.18:1}}
  })
- const logicalEdges:Edge[]=logicalMode?logical.relations.filter(r=>visibleIds.has(r.source_id)&&visibleIds.has(r.target_id)).map(r=>({
+ const logicalEdges:Edge[]=logicalMode?logical.relations.filter(r=>focusedSystemId?(r.source_id===focusedSystemId||r.target_id===focusedSystemId):visibleIds.has(r.source_id)&&visibleIds.has(r.target_id)).map(r=>({
    id:r.id,source:r.source_id,target:r.target_id,type:'smoothstep',
    label:({data_flow:'Заявленный обмен (устар.)',integrates_with:'Интеграция',depends_on:'Зависит от'} as Record<string,string>)[r.kind]||r.kind,
    style:{stroke:'#69707e',strokeWidth:1.4}

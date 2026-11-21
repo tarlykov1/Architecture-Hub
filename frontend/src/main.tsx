@@ -1227,7 +1227,7 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
         </details></div>}
       </nav>
       <div className="topActions">
-        {openAccess&&authProfile?.auth_kind!=='named_user' ? <><span className="accountTopAction">Доступ без пароля</span><button type="button" className="accountTopAction" onClick={()=>{setAuthMode('password');setAuthOpen(true)}}>Войти для согласования</button></>
+        {openAccess&&(!authProfile||authProfile.auth_kind==='open_access') ? <><span className="accountTopAction">Доступ без пароля</span><button type="button" className="accountTopAction" onClick={()=>{setAuthMode('password');setAuthOpen(true)}}>Войти для согласования</button></>
           : tokenReady ? <button type="button" title="Завершить личный сеанс в этой вкладке" onClick={()=>{
             saveAccessToken('')
             if(openAccess){
@@ -1237,7 +1237,7 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
               return
             }
             setTokenReady(false);setObjects([]);setRelations([]);setDiagrams([]);setInfra([]);setFlows([]);setSegments([]);setNics([]);setCategories([]);setProcesses([]);setBusinessLinks([]);setSelected('');setSelectedFlow('');setError('');setNotice('Демонстрационный режим – только вымышленные данные.');setAuthProfile(null);setUserManagerOpen(false);setChangePasswordOpen(false);void refresh()
-          }}>{openAccess?'Выйти из согласования':'Выйти'}</button>
+          }}>{openAccess?'Выйти из авторизованного режима':'Выйти'}</button>
           : <button type="button" onClick={()=>setAuthOpen(true)}>Войти для редактирования</button>}
         {tokenReady&&authProfile?.role==='admin'&&authProfile.auth_kind!=='open_access'&&<button type="button" className="accountTopAction" onClick={()=>setUserManagerOpen(true)}>Пользователи</button>}
         {tokenReady&&authProfile?.auth_kind==='named_user'&&<button type="button" className="accountTopAction" onClick={()=>setChangePasswordOpen(true)}>Сменить пароль</button>}

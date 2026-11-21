@@ -3381,6 +3381,11 @@ def save_board_layout(system_id: UUID, payload: BoardLayoutInput,
         for key in sorted({note["id"] for note in previous_notes} | {note["id"] for note in notes})
         if {note["id"]: note for note in previous_notes}.get(key) != {note["id"]: note for note in notes}.get(key)
     ]
+    # Layout belongs to the selected IS even when only a VRF or a note moved.
+    # Include scope for immutable audit records and avoid guessing from global
+    # network IDs (the same VRF may appear in multiple system diagrams).
+    for change in layout_changes:
+        change["system_ids"] = [str(system_id)]
     db.add(BoardAudit(reason="Сохранено оформление схемы, точки подключения и заметки",
                       actor=board_actor(request), changes=layout_changes))
     db.commit()

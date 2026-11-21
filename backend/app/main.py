@@ -3633,10 +3633,84 @@ def commit_board_batch(payload: BoardBatch, request: Request, db: Session = Depe
         raise
 
 @app.get("/api/board/audit")
-def list_board_audit(limit: int = 50, db: Session = Depends(db_session)):
-    rows = db.scalars(select(BoardAudit).order_by(BoardAudit.timestamp.desc()).limit(max(1, min(limit, 200)))).all()
-    return [{"id": str(row.id), "timestamp": row.timestamp.isoformat(),
-             "reason": row.reason, "actor": row.actor, "changes": row.changes} for row in rows]
+def list_board_audit(limit: int = 50, system_id: UUID | None = None, db: Session = Depends(db_session)):
+    """Show only changes affecting the selected IS, not unrelated global audit batches.
+
+    Without system_id the existing full project audit endpoint remains unchanged.
+    A cross-system flow is visible in both systems' journals. Global network-only
+    changes remain in the full journal unless a network was attached to this IS
+    as part of the same committed batch.
+    """
+    count = max(1, min(limit, 200))
+    ordered = select(BoardAudit).order_by(BoardAudit.timestamp.desc())
+    if system_id is None:
+        rows = db.scalars(ordered.limit(count)).all()
+        return [{"id": str(row.id), "timestamp": row.timestamp.isoformat(),
+                 "reason": row.reason, "actor": row.actor, "changes": row.changes} for row in rows]
+
+    target = str(system_id)
+    component_ids = {str(item_id) for item_id in db.scalars(
+        select(InfrastructureItem.id).where(InfrastructureItem.system_id == system_id)).all()}
+
+    def relevant(change: dict[str, Any]) -> bool:
+        before = change.get("before") if isinstance(change.get("before"), dict) else {}
+        after = change.get("after") if isinstance(change.get("after"), dict) else {}
+        if target in (change.get("system_ids") or []):
+            return True
+        if change.get("system_id") == target or after.get("system_id") == target:
+            return True
+        action = change.get("action")
+        if action in {"create_vm", "update_vm"}:
+            return change.get("id") in component_ids
+        if action in {"create_flow", "update_flow"}:
+            endpoints = [change.get("source_id"), change.get("target_id"),
+                         before.get("source_id"), before.get("target_id"),
+                         after.get("source_id"), after.get("target_id")]
+            for pair in (change.get("endpoints") or {}).values():
+                if isinstance(pair, list):
+                    endpoints.extend(pair)
+            if any(endpoint in component_ids for endpoint in endpoints):
+                return True
+            # Older updates did not always record their endpoints.
+            try:
+                flow = db.get(DataFlow, UUID(change["id"]))
+            except (ValueError, KeyError, TypeError):
+                flow = None
+            return bool(flow and (str(flow.source_id) in component_ids or str(flow.target_id) in component_ids))
+        if action in {"create_interface", "move_interface"}:
+            item_id = change.get("item_id") or after.get("item_id")
+            if item_id in component_ids:
+                return True
+            try:
+                interface = db.get(NetworkInterface, UUID(change["id"]))
+            except (ValueError, KeyError, TypeError):
+                interface = None
+            return bool(interface and str(interface.item_id) in component_ids)
+        return False
+
+    result = []
+    # Apply the limit *after* filtering, otherwise recent updates in other IS
+    # can hide the selected IS's older history completely.
+    for row in db.scalars(ordered):
+        changes = row.changes if isinstance(row.changes, list) else []
+        scoped = [change for change in changes if isinstance(change, dict) and relevant(change)]
+        if not scoped:
+            continue
+        related_network_ids = set()
+        for change in scoped:
+            if change.get("action") == "create_interface":
+                after = change.get("after")
+                if isinstance(after, dict) and after.get("network_id"):
+                    related_network_ids.add(after["network_id"])
+        scoped_ids = {id(change) for change in scoped}
+        scoped = [change for change in changes if id(change) in scoped_ids or (
+            isinstance(change, dict) and change.get("action") == "create_network"
+            and change.get("id") in related_network_ids)]
+        result.append({"id": str(row.id), "timestamp": row.timestamp.isoformat(),
+                       "reason": row.reason, "actor": row.actor, "changes": scoped})
+        if len(result) >= count:
+            break
+    return result
 
 
 # Stage-one monitoring registry and optional CI-to-dashboard links.

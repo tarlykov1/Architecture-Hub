@@ -157,3 +157,21 @@ test('QA-WORK: versioned Markdown decision document includes linked systems, VM 
   expect(((await (await request.get(api+'/flows')).json()) as {id:string}[]).some(flow=>flow.id===decision.proposed_flows[0].id)).toBe(false)
   expect(((await (await request.get(api+'/infra')).json()) as {id:string}[]).some(item=>item.id===liveId)).toBe(true)
 })
+
+
+test('QA-WORK: technical decision editor stays usable on a 390px viewport',async({page,request})=>{
+  await page.setViewportSize({width:390,height:844})
+  const {title,vm}=await build(request,'Mobile')
+  await open(page,title)
+  const drawing=page.locator('.decisionCanvas')
+  const toolbar=page.getByRole('toolbar',{name:'Инструменты решения'})
+  await expect(drawing).toBeVisible()
+  await expect(toolbar).toBeVisible()
+  await expect(toolbar.getByRole('button',{name:'＋ ВМ'})).toBeVisible()
+  await page.getByRole('button',{name:'Изменения',exact:true}).click()
+  await expect(page.getByRole('region',{name:'Изменения технического решения'})).toContainText(vm.name)
+  const width=await page.evaluate(()=>document.documentElement.scrollWidth)
+  expect(width).toBeLessThanOrEqual(392)
+  await page.getByRole('button',{name:'Состав',exact:true}).click()
+  await expect(page.locator(`.decisionCanvas .react-flow__node[data-id="${vm.id}"]`)).toBeVisible()
+})

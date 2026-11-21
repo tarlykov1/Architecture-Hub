@@ -137,7 +137,9 @@ test('top to top and right to left drag each create exactly one flow',async({pag
  // chosen port when the component data rerenders after staging.
  await drag(page,origin.locator('[data-anchor="out-right-2"]'),
   recipient.locator('[data-anchor="in-left-2"]'))
- await expect(editor.locator('.react-flow__edge')).toHaveCount(2)
+ // Two independent flows share one visual edge but remain separate draft changes.
+ await expect(editor.locator('.react-flow__edge')).toHaveCount(1)
+ await expect(editor.getByRole('button',{name:'Выбрать поток 2 потока'})).toBeVisible()
  await expect(editor.getByRole('button',{name:'Проверить изменения (2)'})).toBeVisible()
 })
 

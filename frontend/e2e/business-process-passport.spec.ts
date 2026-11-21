@@ -1,3 +1,4 @@
+import {readFile} from 'node:fs/promises'
 import {expect,test,type APIRequestContext,type Page} from '@playwright/test'
 
 const api='http://127.0.0.1:8001/api'
@@ -111,4 +112,49 @@ test('QA-WORK: no silent lost edits and stale-version conflict is shown on mobil
  await expect(dlg.getByRole('textbox',{name:'Владелец бизнес-процесса'})).toHaveValue('Changed by another editor')
  const width=await page.evaluate(()=>document.documentElement.scrollWidth)
  expect(width).toBeLessThanOrEqual(392)
+})
+
+
+test('QA-WORK: business-process matrices and versioned Markdown export use canonical architecture',async({page,request})=>{
+ const {main,system,vm,flow,attribute}=await setup(request)
+ const url=api+'/business/process-passports/'+main.id
+ const saved=await request.put(url,{data:{
+   expected_revision:0,owner:'Architecture owner',status:'active',
+   steps:[{
+     name:'Transfer identifiers',
+     description:'Only identifier definitions, not personal data',
+     system_id:system.id,component_id:vm.id,flow_id:flow.id,
+     attribute_ids:[attribute.id],responsible:'Integration team',
+     input:'Approved reference',output:'Provisioning request'
+   }]
+ }})
+ expect(saved.status(),await saved.text()).toBe(200)
+ await page.addInitScript(()=>sessionStorage.setItem('architecture-hub:access-token:session','browser-ci-development-token'))
+ await page.goto('/')
+ const nav=page.getByRole('navigation',{name:'Разделы архитектуры'})
+ await nav.getByText('Ещё',{exact:false}).first().click()
+ await nav.getByRole('button',{name:'Бизнес-процессы',exact:true}).click()
+ await page.getByRole('group',{name:'Представление бизнес-архитектуры'}).getByRole('button',{name:'Матрица зависимостей'}).click()
+ const matrix=page.getByRole('region',{name:'Таблица зависимостей БП'})
+ await expect(matrix).toBeVisible()
+ await expect(matrix.getByRole('button',{name:'Открыть БП '+main.name+' для объекта '+system.name})).toBeVisible()
+ await page.getByRole('group',{name:'Тип матрицы БП'}).getByRole('button',{name:'БП × Потоки'}).click()
+ await expect(matrix.getByRole('button',{name:'Открыть БП '+main.name+' для объекта '+flow.name})).toBeVisible()
+ await matrix.getByRole('button',{name:'Открыть БП '+main.name+' для объекта '+flow.name}).click()
+ const dlg=page.getByRole('dialog',{name:'Паспорт бизнес-процесса'})
+ await expect(dlg.getByRole('textbox',{name:'Владелец бизнес-процесса'})).toHaveValue('Architecture owner')
+ const wait=page.waitForEvent('download')
+ await dlg.getByRole('button',{name:'Скачать описание БП (.md)'}).click()
+ const download=await wait
+ expect(download.suggestedFilename()).toMatch(/^ArchitectureHub_BP_.*\.md$/)
+ const path=await download.path()
+ expect(path).toBeTruthy()
+ const markdown=await readFile(path!,'utf8')
+ expect(markdown).toContain('# '+main.name)
+ expect(markdown).toContain('Architecture owner')
+ expect(markdown).toContain('Transfer identifiers')
+ expect(markdown).toContain(flow.name)
+ expect(markdown).toContain(attribute.name)
+ expect(markdown).toContain('Версия паспорта: 1')
+ expect(markdown).toContain('не подтверждает фактическое прохождение трафика')
 })

@@ -3776,6 +3776,9 @@ class ProposedDecisionVM(BaseModel):
     kind: Literal["vm", "server", "host"] = "vm"
     x: float = Field(ge=-100000, le=100000, allow_inf_nan=False)
     y: float = Field(ge=-100000, le=100000, allow_inf_nan=False)
+    # Optional until explicitly defined; old proposals round-trip unchanged.
+    description: str | None = Field(default=None, max_length=4000)
+    environment: str | None = Field(default=None, max_length=120)
 
 
 class ProposedDecisionFlow(BaseModel):
@@ -3787,6 +3790,12 @@ class ProposedDecisionFlow(BaseModel):
     name: str = Field(min_length=1, max_length=250)
     protocol: str = Field(default="", max_length=80)
     port: str = Field(default="", max_length=80)
+    # Keep design-time contracts distinct from live flows. Nothing here is
+    # registered as an operational data flow before explicit implementation.
+    data_description: str | None = Field(default=None, max_length=4000)
+    security: str | None = Field(default=None, max_length=80)
+    schedule: str | None = Field(default=None, max_length=160)
+    verification: Literal["draft", "assumed", "verified"] | None = None
 
 
 class TechnicalDecisionCreate(BaseModel):
@@ -4013,8 +4022,8 @@ def edit_technical_decision(decision_id: UUID, payload: TechnicalDecisionDraftIn
     old = {"title": row.title, "vms": len(row.proposed_vms), "flows": len(row.proposed_flows)}
     row.title = payload.title.strip()
     row.description = payload.description.strip()
-    row.proposed_vms = [item.model_dump(mode="json") for item in payload.proposed_vms]
-    row.proposed_flows = [item.model_dump(mode="json") for item in payload.proposed_flows]
+    row.proposed_vms = [item.model_dump(mode="json", exclude_none=True) for item in payload.proposed_vms]
+    row.proposed_flows = [item.model_dump(mode="json", exclude_none=True) for item in payload.proposed_flows]
     row.required_services = payload.required_services
     row.status = "draft"
     row.base_hash = ""

@@ -2644,6 +2644,11 @@ def delete_flow(flow_id: UUID, request: Request, db: Session = Depends(db_sessio
     flow = db.get(DataFlow, flow_id)
     if flow is None:
         raise HTTPException(status_code=404, detail="Flow not found")
+    # A scenario step is a reference to this canonical technical flow. Never
+    # silently erase or leave a broken architecture sequence on flow deletion.
+    from .flow_scenarios import FlowScenarioStep
+    if db.scalar(select(FlowScenarioStep.id).where(FlowScenarioStep.flow_id == flow_id)):
+        raise HTTPException(409, "Flow is referenced by an exchange scenario; unlink its steps first")
     for use in db.scalars(select(FlowDataUse).where(FlowDataUse.flow_id == flow_id)).all():
         db.delete(use)
     for hop in db.scalars(select(FlowNetworkHop).where(FlowNetworkHop.flow_id == flow_id)).all():
@@ -3171,6 +3176,9 @@ app.include_router(incident_router)
 
 from .views import router as views_router
 app.include_router(views_router)
+
+from .flow_scenarios import router as flow_scenarios_router
+app.include_router(flow_scenarios_router)
 
 
 # Board edits are applied as a single reviewed transaction. For existing interface

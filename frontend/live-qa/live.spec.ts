@@ -1,4 +1,32 @@
-import { test, expect } from '@playwright/test'
+import { test, expect, type Page, type APIRequestContext } from '@playwright/test'
+
+// Differentiate browser egress failure from application errors. The static
+// curl preflight succeeds even when Chromium cannot load a document.
+async function navigateToTestSite(page:Page,request:APIRequestContext){
+  const failures:string[]=[]
+  page.on('requestfailed',failed=>{
+    if(failures.length>=8)return
+    let path='unknown'
+    try{path=new URL(failed.url()).pathname}catch{}
+    failures.push(path+': '+(failed.failure()?.errorText||'request failed'))
+  })
+  try{
+    const response=await page.goto('/',{waitUntil:'domcontentloaded',timeout:32000})
+    if(!response)throw new Error('No HTTP document response from Chromium')
+    if(response.status()>=400)throw new Error('Chromium received HTTP '+response.status())
+  }catch(error){
+    let probe='HTTP probe failed'
+    try{
+      const check=await request.get('/build-info.json',{timeout:8000,headers:{'Cache-Control':'no-cache'}})
+      probe='Node HTTP probe: '+check.status()
+    }catch(e){probe='Node HTTP probe error: '+(e instanceof Error?e.message:String(e))}
+    throw new Error(
+      'Browser could not navigate to test server; '+probe+
+      '; Chromium request failures: '+(failures.join('; ')||'none observed')+
+      '; original error: '+(error instanceof Error?error.message:String(error))
+    )
+  }
+}
 
 // Authenticate live tests in session storage before the app's first script runs.
 // The token is read from GitHub Actions secrets and must never be logged or committed.
@@ -10,10 +38,10 @@ test.beforeEach(async ({ page }) => {
   }, token)
 })
 
-test('test server: navigation, viewport and deployed build revision', async ({ page }, testInfo) => {
+test('test server: navigation, viewport and deployed build revision', async ({ page, request }, testInfo) => {
   const errors: string[] = []
   page.on('pageerror', error => errors.push(error.message))
-  await page.goto('/', { waitUntil: 'domcontentloaded' })
+  await navigateToTestSite(page,request)
   await expect(page.getByLabel('Версия сборки')).toBeVisible()
   // Test servers can use authenticated or open-access mode and need not contain any demo seed.
   await expect(page.getByRole('navigation', { name: 'Разделы архитектуры' })).toBeVisible()
@@ -64,8 +92,8 @@ async function switchSection(page: import('@playwright/test').Page, section: str
   }
 }
 
-test('test server: system passport and navigation remain clickable', async ({ page }, testInfo) => {
-  await page.goto('/')
+test('test server: system passport and navigation remain clickable', async ({ page, request }, testInfo) => {
+  await navigateToTestSite(page,request)
   await switchSection(page, 'Системы')
   const registry = page.getByRole('region', { name: 'Реестр информационных систем' })
   await expect(registry).toBeVisible()
@@ -86,8 +114,8 @@ test('test server: system passport and navigation remain clickable', async ({ pa
   await expect(page.getByLabel('Версия сборки')).toBeVisible()
 })
 
-test('test server: component registry exposes a passport action', async ({ page }, testInfo) => {
-  await page.goto('/')
+test('test server: component registry exposes a passport action', async ({ page, request }, testInfo) => {
+  await navigateToTestSite(page,request)
   await switchSection(page, 'Компоненты')
   await page.getByRole('group', { name: 'Представление компонентов' })
     .getByRole('button', { name: 'Реестр', exact: true }).click()
@@ -103,8 +131,8 @@ test('test server: component registry exposes a passport action', async ({ page 
   await page.screenshot({ path: testInfo.outputPath('component-passport.png'), fullPage: true })
 })
 
-test('test server: overview diagram zoom controls work without blocking overlay', async ({ page }, testInfo) => {
-  await page.goto('/')
+test('test server: overview diagram zoom controls work without blocking overlay', async ({ page, request }, testInfo) => {
+  await navigateToTestSite(page,request)
   await expect(page.locator('.react-flow__viewport').first()).toBeVisible()
   const controls = page.locator('.react-flow__controls').first()
   await expect(controls).toBeVisible()

@@ -100,7 +100,7 @@ type LogicalMap = {
  move: (id:string, point:{x:number;y:number})=>void
  onConnect: (connection:Connection)=>void
 }
-export default function ArchitectureHome({mode,onModeChange,logical,systems,components,flows,processes,categories,links,onOpenSystem,onCloseSystem,inspectorOpen,onOpenComponents,onOpenComponent,onOpenFlows,focusSystemId='',request,canEditLayers=false}:{mode:OverviewMode;onModeChange:(mode:OverviewMode)=>void;logical:LogicalMap;systems:System[];components:Component[];flows:Flow[];processes:Process[];categories:Category[];links:Link[];networks:Network[];interfaces:Interface[];onOpenSystem:(id:string)=>void;onCloseSystem:()=>void;inspectorOpen:boolean;onOpenComponents:(id:string)=>void;onOpenComponent:(id:string)=>void;onOpenFlows:()=>void;onOpenNetworks:()=>void;focusSystemId?:string;request?:<T>(url:string,init?:RequestInit)=>Promise<T>;canEditLayers?:boolean}){
+export default function ArchitectureHome({mode,onModeChange,logical,systems,components,flows,processes,categories,links,onOpenSystem,onCloseSystem,inspectorOpen,onOpenComponents,onOpenComponent,onOpenFlows,focusSystemId='',request,canEditLayers=false,canEditFlows=false}:{mode:OverviewMode;onModeChange:(mode:OverviewMode)=>void;logical:LogicalMap;systems:System[];components:Component[];flows:Flow[];processes:Process[];categories:Category[];links:Link[];networks:Network[];interfaces:Interface[];onOpenSystem:(id:string)=>void;onCloseSystem:()=>void;inspectorOpen:boolean;onOpenComponents:(id:string)=>void;onOpenComponent:(id:string)=>void;onOpenFlows:()=>void;onOpenNetworks:()=>void;focusSystemId?:string;request?:<T>(url:string,init?:RequestInit)=>Promise<T>;canEditLayers?:boolean;canEditFlows?:boolean}){
  const [layers,setLayers]=useState({systems:true,components:false,flows:false,business:false})
  const sequence=mode==='sequence'
  const mapMode=sequence?'flows':mode
@@ -380,7 +380,7 @@ export default function ArchitectureHome({mode,onModeChange,logical,systems,comp
     </div>)}
     {filteredSystems.length>12&&<small>Показаны первые 12 систем. Уточните запрос.</small>}
   </div>}
-  {sequence&&<FlowSequence exchanges={exchanges} systems={systems} visible={visibleIds}/>}
+  {sequence&&<FlowSequence exchanges={exchanges} systems={systems} visible={visibleIds} processes={processes} request={request} canEdit={canEditFlows}/>}
   {!sequence&&layers.systems&&<div className={editingLayers?'homeLayerEditorStage editing':'homeLayerEditorStage'}>
 
    {editingLayers&&<div className="homeLayerTools" role="toolbar" aria-label="Инструменты слоёв">

@@ -15,7 +15,7 @@
 | ID | Приоритет | Работа | Статус | Проверка / доказательство | Следующий шаг |
 |---|---|---|---|---|---|
 | AH-00-01 | P0 | Проверить актуальный `main`, PR и состав первой очереди | **Готово (проверка)** | `main` `fed2ce1` на 21.11.2026; PR [#210](https://github.com/tarlykov1/Architecture-Hub/pull/210) слит | Проверять свежесть `main` перед каждым PR |
-| AH-00-02 | P0 | Проверить актуальный CI и Live QA | **Готово (проверка)** | [CI 44932611233](https://github.com/tarlykov1/Architecture-Hub/actions/runs/44932611233) – success; [Live QA 44933126131](https://github.com/tarlykov1/Architecture-Hub/actions/runs/44933126131) – success; [#209](https://github.com/tarlykov1/Architecture-Hub/issues/209) закрыт | Принимать каждый следующий PR по новому CI |
+| AH-00-02 | P0 | Проверить актуальный CI и Live QA | **Блок – Live QA** | Релиз dddf0d9 опубликован успешно, но [Live QA 44942260562](https://github.com/tarlykov1/Architecture-Hub/actions/runs/44942260562): 8 ошибок page.goto до загрузки DOM; curl и ассеты успешны | PR #214: диагностика прокси Chromium, повторить Live QA |
 | AH-00-03 | P0 | Версии UI/API, схема миграций, ошибки несовместимости | План | [AH-PLAT-001](DELIVERY_ROADMAP.md) | Проверка отображаемых хешей, совместимости |
 | AH-00-04 | P0 | Защита целостности изменений и перепроверка исходной модели техрешений | **Готово (код + CI)** | [PR #212](https://github.com/tarlykov1/Architecture-Hub/pull/212), [CI 44940361721](https://github.com/tarlykov1/Architecture-Hub/actions/runs/44940361721): 129 API, 186 Chromium passed | Ожидает решения о слиянии и Live QA |
 | AH-00-05 | P0 | Backup, restore, dry-run миграций | План | [AH-PLAT-003](DELIVERY_ROADMAP.md) | Проверить на изолированной БД |
@@ -60,8 +60,8 @@
 | AH-02-10 | P1 | Escape, клавиатура, mobile dock | Частично | QA desktop 1440 и mobile 390 |
 | AH-03-01 | P1 | Единый редактор потока | Частично | Создать/редактировать/переподключить/удалить |
 | AH-03-02 | P1 | Быстрое управление атрибутами потока | Частично | Добавление/удаление с записью аудита |
-| AH-03-03 | P1 | Сохраняемые серверные сценарии обмена | План | Сейчас порядок шагов в localStorage |
-| AH-03-04 | P1 | Использование сценария в нескольких БП | План | Не копировать технические потоки |
+| AH-03-03 | P1 | Сохраняемые серверные сценарии обмена | **Готово (код + CI)** | [PR #214](https://github.com/tarlykov1/Architecture-Hub/pull/214): API, миграция, редактор, связь БП; [CI 44949134613](https://github.com/tarlykov1/Architecture-Hub/actions/runs/44949134613): 188 Chromium passed | Ожидается merge, выкладка и Live QA |
+| AH-03-04 | P1 | Использование сценария в нескольких БП | **Частично** | [PR #214](https://github.com/tarlykov1/Architecture-Hub/pull/214): один технический поток переиспользуется в нескольких сценариях, каждый со своим БП | Многоконтекстные связи одного сценария – отдельно |
 | AH-03-05 | P1 | Корректная VRF/VLAN/IP/NIC-модель | Частично | NetBox-подобные ограничения на API |
 | AH-03-06 | P1 | Проверки сетевых конфликтов | План | Предупреждения до фиксации |
 | AH-03-07 | P1 | Подтверждённые и предполагаемые маршруты | Частично | Отделять декларацию от реального трафика |
@@ -89,7 +89,7 @@
 | AH-06-06 | P2 | Объяснимый анализ влияния | Частично | Граф без вывода непроверенных фактов |
 | AH-06-07 | P2 | История архитектурных решений ADR | План | Решение, причина, последствия, ревизия |
 | AH-07-01 | P0 | Сквозные API и Playwright-тесты | План | QA-WORK, полный CRUD и links |
-| AH-07-02 | P0 | Браузерная desktop/mobile приёмка | План | Отдельный Live QA на релиз |
+| AH-07-02 | P0 | Браузерная desktop/mobile приёмка | **Блок – Live QA** | [#44942260562](https://github.com/tarlykov1/Architecture-Hub/actions/runs/44942260562): все 8 тестов навигации завершились на page.goto; недостоверно как проверка UX | Отдельно восстановить Chromium доступ к стенду |
 | AH-07-03 | P0 | Приёмка миграций/backup/restore | План | Отдельная тестовая копия базы |
 | AH-07-04 | P0 | Выпуск по явному разрешению | План | Не merge/deploy автоматически |
 
@@ -103,6 +103,9 @@
 | 2026-11-21 | AH-02-01a: перемещение и удаление проектируемых ВМ, сохранение координат после reload | Готово в PR; API/сборка/181 Playwright Chromium пройдены, `main` и сервер не менялись | [PR #212](https://github.com/tarlykov1/Architecture-Hub/pull/212) · [CI 44938197317](https://github.com/tarlykov1/Architecture-Hub/actions/runs/44938197317) |
 
 | 2026-11-21 | Крупный пакет AH-02/AH-05/AH-06: единый UX проектного редактора, свойства ВМ, контракты потоков, Undo/Redo, контекст, документация, baseline, мобильная приёмка | Код и тесты прошли: **129 API, 186 Chromium**, TypeScript/Docker/PowerShell успешно; PR не слит, тестовый сервер не обновлён | [PR #212](https://github.com/tarlykov1/Architecture-Hub/pull/212) · [CI 44940361721](https://github.com/tarlykov1/Architecture-Hub/actions/runs/44940361721) |
+
+| 2026-11-21 | PR #212 опубликован на test.web-tie.ru (frontend и backend) | Слияние, CI, обе выкладки успешны; Live QA упал на браузерном page.goto, результат UX не подтверждён | [Frontend](https://github.com/tarlykov1/Architecture-Hub/actions/runs/44942207296) · [Backend](https://github.com/tarlykov1/Architecture-Hub/actions/runs/44942207284) · [Live QA](https://github.com/tarlykov1/Architecture-Hub/actions/runs/44942260562) |
+| 2026-11-21 | Реализован крупный блок AH-03 – общие сценарии обмена, привязка к БП, ревизии, шаги и контроль ссылок, диагностика Live QA | Код и тесты: **188 Chromium passed**, backend, frontend, миграции проверены; ожидаются merge и Live QA на сервере | [PR #214](https://github.com/tarlykov1/Architecture-Hub/pull/214) · [CI 44949134613](https://github.com/tarlykov1/Architecture-Hub/actions/runs/44949134613) |
 
 ## Правила актуализации
 

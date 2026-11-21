@@ -1,3 +1,4 @@
+import {readFile} from 'node:fs/promises'
 import {test,expect, type Page, type APIRequestContext} from '@playwright/test'
 
 const api='http://127.0.0.1:8001/api'
@@ -126,4 +127,33 @@ test('QA-WORK: context menu deletes only proposed VM and unsaved form cannot sil
   const data=await (await request.get(url)).json() as Decision
   expect(data.proposed_flows).toHaveLength(0)
   expect((await (await request.get(api+'/infra')).json() as {id:string}[]).some(vm=>vm.id===liveId)).toBe(true)
+})
+
+test('QA-WORK: versioned Markdown decision document includes linked systems, VM and data contract',async({page,request})=>{
+  const {title,url,vm,liveId}=await build(request,'Document',true)
+  const decision=await (await request.get(url)).json() as Decision
+  const updated=await request.put(url,{data:{
+    title,expected_revision:decision.revision,
+    proposed_vms:[{...vm,environment:'prod',description:'Managed web service'}],
+    proposed_flows:[{...decision.proposed_flows[0],security:'TLS',data_description:'Reference identifiers',schedule:'daily'}],
+  }})
+  expect(updated.status(),await updated.text()).toBe(200)
+  await open(page,title)
+  await page.getByRole('button',{name:'Изменения',exact:true}).click()
+  const downloadWait=page.waitForEvent('download')
+  await page.getByRole('button',{name:'Скачать техническое решение (.md)'}).click()
+  const download=await downloadWait
+  expect(download.suggestedFilename()).toMatch(/^ArchitectureHub_.*\\.md$/)
+  const file=await download.path()
+  expect(file).toBeTruthy()
+  const markdown=await readFile(file!,'utf8')
+  expect(markdown).toContain('# '+title)
+  expect(markdown).toContain('Managed web service')
+  expect(markdown).toContain('Reference identifiers')
+  expect(markdown).toContain('TLS')
+  expect(markdown).toContain(vm.name)
+  expect(markdown).toContain('QA-WORK-ExistingDraft')
+  expect(markdown).toContain('Не подтверждает фактическое внедрение')
+  expect(((await (await request.get(api+'/flows')).json()) as {id:string}[]).some(flow=>flow.id===decision.proposed_flows[0].id)).toBe(false)
+  expect(((await (await request.get(api+'/infra')).json()) as {id:string}[]).some(item=>item.id===liveId)).toBe(true)
 })

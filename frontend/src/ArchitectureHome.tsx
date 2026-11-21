@@ -4,6 +4,7 @@ import {OverviewFlowEdge, type OverviewFlow} from './OverviewFlowEdge'
 import type {OverviewMode} from './workspaceRoutes'
 import {FlowSequence} from './FlowSequence'
 import {interSystemExchanges, overviewExchangeLabel} from './systemExchanges'
+import {focusedSystemIds,focusedSystemPositions} from './overviewFocus'
 import type {Connection, Edge} from '@xyflow/react'
 import {logoFromAttributes} from './SystemLogo'
 export {architectureIcon} from './DiagramVisual'
@@ -195,19 +196,41 @@ export default function ArchitectureHome({mode,onModeChange,logical,systems,comp
    previousInspectorOpen.current=inspectorOpen
  },[inspectorOpen])
  const [environment,setEnvironment]=useState('all')
- const systemByComponent=useMemo(()=>new Map(components.map(c=>[c.id,c.system_id])),[components])
- const filteredSystems=systems.filter(s=>(!query||s.name.toLowerCase().includes(query.toLowerCase())||components.some(c=>c.system_id===s.id&&c.name.toLowerCase().includes(query.toLowerCase())))&&(!focus||focus===s.id)&& (environment==='all'||components.some(c=>c.system_id===s.id&&String(c.details.environment||'').toLowerCase()===environment)))
- const visibleIds=new Set(filteredSystems.map(s=>s.id))
+ const baseFilteredSystems=systems.filter(s=>(!query||s.name.toLowerCase().includes(query.toLowerCase())||components.some(c=>c.system_id===s.id&&c.name.toLowerCase().includes(query.toLowerCase())))&&(environment==='all'||components.some(c=>c.system_id===s.id&&String(c.details.environment||'').toLowerCase()===environment)))
  const knownSystemIds=new Set(systems.map(s=>s.id))
- // Between IS, draw only flows crossing a system boundary. A flow
- // between two VMs of the same IS is visible exclusively on that IS's
- // component architecture canvas.
+ // A selected system anchors the one-hop view; other connected systems remain visible.
+ const focusedSystemId=knownSystemIds.has(focus||selectedSystem)?focus||selectedSystem:''
+ const baseIds=new Set(baseFilteredSystems.map(s=>s.id))
  const exchanges=interSystemExchanges(flows,components,knownSystemIds).map(row=>({
    ...row,flow:{...row.flow,name:overviewExchangeLabel(row.flow,components)}
  }))
- const crossFlows=exchanges.filter(row=>visibleIds.has(row.source)||visibleIds.has(row.target))
+ const processesById=new Map<string,Set<string>>()
+ for(const link of links)if(knownSystemIds.has(link.system_id)){
+   const members=processesById.get(link.process_id)||new Set<string>()
+   members.add(link.system_id);processesById.set(link.process_id,members)
+ }
+ const allBusinessCounts=new Map<string,number>()
+ for(const members of processesById.values()){
+   const ids=[...members].sort()
+   for(let i=0;i<ids.length;i++)for(let j=i+1;j<ids.length;j++){
+     const key=ids[i]+'|'+ids[j]
+     allBusinessCounts.set(key,(allBusinessCounts.get(key)||0)+1)
+   }
+ }
+ const relations=mapMode==='flows'
+   ?exchanges.map(row=>({source:row.source,target:row.target}))
+   :mapMode==='business'
+     ?[...allBusinessCounts.keys()].map(key=>{const [source,target]=key.split('|');return {source,target}})
+     :logical.relations.map(row=>({source:row.source_id,target:row.target_id}))
+ const focusedIds=focusedSystemId?focusedSystemIds(focusedSystemId,relations):new Set<string>()
+ const visibleIds=focusedSystemId?focusedIds:baseIds
+ const filteredSystems=focusedSystemId?systems.filter(s=>focusedIds.has(s.id)):baseFilteredSystems
+ const crossFlows=exchanges.filter(row=>focusedSystemId
+   ?row.source===focusedSystemId||row.target===focusedSystemId
+   :baseIds.has(row.source)||baseIds.has(row.target))
  const neighborIds=new Set(crossFlows.flatMap(row=>[row.source,row.target]))
- const mapSystems=mapMode==='flows'?systems.filter(s=>visibleIds.has(s.id)||neighborIds.has(s.id)):filteredSystems
+ const mapSystems=focusedSystemId?filteredSystems:mapMode==='flows'
+   ?systems.filter(s=>visibleIds.has(s.id)||neighborIds.has(s.id)):filteredSystems
  const groupedFlows=new Map<string,Flow[]>()
  for(const {source,target,flow} of crossFlows){
    const key=source+'|'+target
@@ -216,20 +239,11 @@ export default function ArchitectureHome({mode,onModeChange,logical,systems,comp
    else groupedFlows.set(key,[flow])
  }
  const flowCounts=new Map(Array.from(groupedFlows,([key,group])=>[key,group.length]))
- // Systems participating in the same business process are associated, not
- // necessarily connected by a technical data flow. Keep those semantics separate.
- const processSystems=new Map<string,Set<string>>()
- for(const link of links)if(visibleIds.has(link.system_id)){
-   const members=processSystems.get(link.process_id)||new Set<string>()
-   members.add(link.system_id);processSystems.set(link.process_id,members)
- }
- const businessCounts=new Map<string,number>()
- for(const members of processSystems.values()){
-   const ids=[...members].sort()
-   for(let i=0;i<ids.length;i++)for(let j=i+1;j<ids.length;j++){
-     const key=ids[i]+'|'+ids[j];businessCounts.set(key,(businessCounts.get(key)||0)+1)
-   }
- }
+ const businessCounts=new Map([...allBusinessCounts].filter(([key])=>{
+   const [source,target]=key.split('|')
+   return focusedSystemId?(source===focusedSystemId||target===focusedSystemId):
+     visibleIds.has(source)&&visibleIds.has(target)
+ }))
  // A three-column overview avoids microscopic nodes in long dependency chains.
  // The coordinate space is defined by the full architecture, never by
  // active overlays or search filters. Node coordinates cannot jump on layer changes.
@@ -240,6 +254,7 @@ export default function ArchitectureHome({mode,onModeChange,logical,systems,comp
    const original=basePositions[sys.id]||{x:(index%3)*320,y:Math.floor(index/3)*190}
    return [sys.id,(logicalMode&&logical.positions[sys.id])||{x:original.x/310*410,y:original.y/170*systemRowGap}]
  }))
+ const focusPositions=focusedSystemId?focusedSystemPositions(focusedSystemId,relations,mapSystems.map(s=>s.id)):{}
  const overlayGroups:OverlayGroup[]=[]
  for(const cat of categories){
    const ids=new Set(processes.filter(p=>p.category_id===cat.id).map(p=>p.id))

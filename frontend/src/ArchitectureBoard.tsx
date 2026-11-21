@@ -229,14 +229,14 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
    for(const node of snapshot.nodes)onPositionChange?.(node)
  }
  const undo=()=>{
-   if(!undoStack.length||busy||layoutBusy||pendingGrouping)return
+   if(!undoStack.length||busy||layoutBusy||pendingGrouping||showHistory||preview||deleteBusy)return
    const previous=undoStack[undoStack.length-1],current=snapshotBoard()
    setUndoStack(stack=>stack.slice(0,-1))
    setRedoStack(stack=>[...stack.slice(-39),current])
    restoreBoard(previous);setLayoutMessage('Последнее действие отменено. Для записи нажмите «Сохранить».')
  }
  const redo=()=>{
-   if(!redoStack.length||busy||layoutBusy||pendingGrouping)return
+   if(!redoStack.length||busy||layoutBusy||pendingGrouping||showHistory||preview||deleteBusy)return
    const next=redoStack[redoStack.length-1],current=snapshotBoard()
    setRedoStack(stack=>stack.slice(0,-1))
    setUndoStack(stack=>[...stack.slice(-39),current])
@@ -248,15 +248,15 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
      const element=event.target as HTMLElement|null
      if(element?.closest('input,textarea,select,[contenteditable="true"],[role="textbox"]'))return
      const key=event.key.toLowerCase()
-     if(key==='z'&&!event.shiftKey&&undoStack.length&&!busy&&!layoutBusy&&!pendingGrouping){
+     if(key==='z'&&!event.shiftKey&&undoStack.length&&!busy&&!layoutBusy&&!pendingGrouping&&!preview&&!showHistory&&!deleteBusy){
        event.preventDefault();undo()
-     }else if(((key==='z'&&event.shiftKey)||key==='y')&&redoStack.length&&!busy&&!layoutBusy&&!pendingGrouping){
+     }else if(((key==='z'&&event.shiftKey)||key==='y')&&redoStack.length&&!busy&&!layoutBusy&&!pendingGrouping&&!preview&&!showHistory&&!deleteBusy){
        event.preventDefault();redo()
      }
    }
    window.addEventListener('keydown',handle)
    return ()=>window.removeEventListener('keydown',handle)
- },[undoStack,redoStack,busy,layoutBusy,pendingGrouping,nodes,rectangles,changes,parents,flowAnchors,notes,layoutDirty])
+ },[undoStack,redoStack,busy,layoutBusy,pendingGrouping,preview,showHistory,deleteBusy,nodes,rectangles,changes,parents,flowAnchors,notes,layoutDirty])
  const visualGroupDrag=useRef<{id:string;origin:{x:number;y:number};rects:Rect[];members:Node[]}|null>(null)
  const manualNetworkDrag=useRef<{id:string;startPointer:{x:number;y:number};startPosition:{x:number;y:number};lastPosition:{x:number;y:number};moved:boolean}|null>(null)
  const startVisualGroupDrag=(node:Node)=>{
@@ -355,8 +355,14 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
    if(!drag||drag.id!==id)return
    event.stopPropagation()
    if(event.currentTarget.hasPointerCapture(event.pointerId))event.currentTarget.releasePointerCapture(event.pointerId)
-   manualNetworkDrag.current=null;visualGroupDrag.current=null
-   if(drag.moved)cancelGrouping()
+   const before=dragSnapshot.current
+   manualNetworkDrag.current=null;visualGroupDrag.current=null;dragSnapshot.current=null
+   if(drag.moved&&before){
+     setRectangles(before.rects);setNodes(before.nodes);setLayoutDirty(before.dirty)
+     for(const node of before.nodes)onPositionChange?.(node)
+     if(dragHistoryRecorded.current)setUndoStack(stack=>stack.slice(0,-1))
+     setRedoStack([]);dragHistoryRecorded.current=false
+   }
    setDraggingNode(false)
  }
  const updateNetworkSize=(id:string,size:{x:number;y:number;width:number;height:number})=>{
@@ -1201,6 +1207,7 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
    setDeleteBusy(true);setError('')
    try{
      await request((kind==='vm'?'/api/infra/':kind==='network'?'/api/networks/':'/api/flows/')+id,{method:'DELETE'})
+     setUndoStack([]);setRedoStack([]);resizeRecorded.current=null
      setContextMenu(null);setSelectedExistingFlowId('');setSelectedDraftFlowId('');setSelectedEdgeFlowIds([])
      setInspectedId(null);setInspectedNetworkId(null)
      if(kind==='vm')setNodes(previous=>previous.filter(node=>node.id!==id))
@@ -1368,8 +1375,8 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
           <Icon size={19} strokeWidth={1.8} aria-hidden="true"/><span className="boardToolCaption" aria-hidden="true">{caption}</span>
         </button>)}
      <span className="boardToolsSeparator" aria-hidden="true"/>
-     <button type="button" title="Отменить последнее действие (Ctrl+Z)" aria-label="Отменить действие" disabled={!undoStack.length||busy||layoutBusy||Boolean(pendingGrouping)} onClick={undo}><Undo2 size={19} aria-hidden="true"/><span className="boardToolCaption" aria-hidden="true">Назад</span></button>
-     <button type="button" title="Повторить действие (Ctrl+Shift+Z / Ctrl+Y)" aria-label="Повторить действие" disabled={!redoStack.length||busy||layoutBusy||Boolean(pendingGrouping)} onClick={redo}><Redo2 size={19} aria-hidden="true"/><span className="boardToolCaption" aria-hidden="true">Вперёд</span></button>
+     <button type="button" title="Отменить последнее действие (Ctrl+Z)" aria-label="Отменить действие" disabled={!undoStack.length||busy||layoutBusy||Boolean(pendingGrouping)||Boolean(preview)||showHistory||deleteBusy} onClick={undo}><Undo2 size={19} aria-hidden="true"/><span className="boardToolCaption" aria-hidden="true">Назад</span></button>
+     <button type="button" title="Повторить действие (Ctrl+Shift+Z / Ctrl+Y)" aria-label="Повторить действие" disabled={!redoStack.length||busy||layoutBusy||Boolean(pendingGrouping)||Boolean(preview)||showHistory||deleteBusy} onClick={redo}><Redo2 size={19} aria-hidden="true"/><span className="boardToolCaption" aria-hidden="true">Вперёд</span></button>
      <button type="button" title="Вписать всю схему в экран" aria-label="Показать всё" disabled={!nodes.length} onClick={()=>void fitView({padding:0.25,duration:250,maxZoom:nodes.length<=2?0.75:0.9})}><Maximize2 size={19} aria-hidden="true"/><span className="boardToolCaption" aria-hidden="true">Вписать</span></button>
      <button type="button" title={changes.length?'Сохранить новые ВМ, VRF/VLAN и связи через проверку черновика':layoutDirty?'Сохранить расположение блоков':'Расположение сохранено'} aria-label={changes.length?'Сохранить изменения схемы':'Сохранить расположение'} disabled={(!layoutDirty&&!changes.length)||layoutBusy||busy} onClick={()=>void saveLayout()}><Save size={19} aria-hidden="true"/><span className="boardToolCaption" aria-hidden="true">{changes.length?'Сохранить всё':'Сохранить'}</span>{(layoutDirty||changes.length>0)&&<span className="boardUnsavedDot" aria-hidden="true"/>}</button>
      <button type="button" title="История изменений" aria-label="История изменений" onClick={()=>void openHistory()}><History size={19} aria-hidden="true"/><span className="boardToolCaption" aria-hidden="true">История</span></button>

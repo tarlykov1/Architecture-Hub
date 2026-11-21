@@ -26,12 +26,15 @@ type BoardNote = {id:string;x:number;y:number;text:string}
 // and incoming data flows. Target handles are invisible but stay measurable.
 function BoardComponentNode({data}:NodeProps){
  const drawing=Boolean(data.flowMode)
- const props=data as {label:React.ReactNode;flowMode?:boolean;onDirectClick?:()=>void;
+ const props=data as {label:React.ReactNode;flowMode?:boolean;onDirectClick?:()=>void;onInspectClick?:()=>void;
   onStartFlow?:(handle:string,event:React.PointerEvent<HTMLDivElement>)=>void;
   onMoveFlow?:(event:React.PointerEvent<HTMLDivElement>)=>void;
   onFinishFlow?:(event:React.PointerEvent<HTMLDivElement>)=>void}
  return <>
-  <div className="boardComponentClickArea" onClick={event=>{if(drawing){event.stopPropagation();props.onDirectClick?.()}}}>{props.label}</div>
+  <div className="boardComponentClickArea" onClick={event=>{
+    if(drawing){event.stopPropagation();props.onDirectClick?.();return}
+    if(props.onInspectClick){event.stopPropagation();props.onInspectClick()}
+   }}>{props.label}</div>
   <FlowPortHandles visible={drawing} sourcePointerDown={props.onStartFlow}
     sourcePointerMove={props.onMoveFlow} sourcePointerUp={props.onFinishFlow}/>
  </>
@@ -603,6 +606,7 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
    draggable:!n.id.startsWith('network:')&&tool==='move',
    data:n.id.startsWith('network:')?n.data:{...n.data,flowMode:tool==='flow',
      onDirectClick:()=>selectFlowComponent(n.id),
+     onInspectClick:tool==='move'?()=>openPassport(n.id):undefined,
      onStartFlow:(handle:string,event:React.PointerEvent<HTMLDivElement>)=>beginFlowPointer(n.id,handle,event),
      onMoveFlow:moveFlowPointer,onFinishFlow:endFlowPointer},
    style:{...n.style,
@@ -612,7 +616,7 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
    }}))
  const inspectedVM=allVMs.find(v=>v.id===inspectedId)
  const inspectedNetwork=allNetworks.find(n=>n.id===inspectedNetworkId)
- const openPassport=(id:string)=>{
+ function openPassport(id:string){
    setDockCollapsed(false);
    const vm=allVMs.find(v=>v.id===id);if(!vm)return;setInspectedId(id);setEditingPassport(false);setPassportDraft({name:vm.name,description:vm.description||'',purpose:String(vm.details?.purpose||''),environment:String(vm.details?.environment||'')})}
  const stagePassport=()=>{if(!inspectedVM||!passportDraft.name.trim())return;const details_patch:Record<string,string>={purpose:passportDraft.purpose,environment:passportDraft.environment};const previous_details:Record<string,unknown>={purpose:inspectedVM.details?.purpose??null,environment:inspectedVM.details?.environment??null};addChange({action:'update_vm',id:inspectedVM.id,system_id:systemId,name:passportDraft.name.trim(),description:passportDraft.description,previous_name:inspectedVM.name,previous_description:inspectedVM.description||'',details_patch,previous_details});setEditingPassport(false);setInspectedId(null);setFocusDependencies(false);setReviewOpen(true)}

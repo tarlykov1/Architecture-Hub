@@ -3124,6 +3124,14 @@ def update_process(process_id: UUID, payload: ProcessInput, db: Session = Depend
         raise HTTPException(404, "Business process not found")
     if not db.get(BusinessCategory, payload.category_id):
         raise HTTPException(422, "Category not found")
+    if process.category_id != payload.category_id:
+        from .process_passports import ProcessPassport
+        profile = db.get(ProcessPassport, process_id)
+        has_parent = bool(profile and profile.parent_id)
+        has_children = db.scalar(select(ProcessPassport.process_id).where(
+            ProcessPassport.parent_id == process_id)) is not None
+        if has_parent or has_children:
+            raise HTTPException(409, "Unlink process hierarchy before changing its category")
     process.category_id = payload.category_id
     process.name = payload.name
     process.description = payload.description

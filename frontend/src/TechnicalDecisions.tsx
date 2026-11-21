@@ -1,5 +1,5 @@
 import {useEffect, useState} from 'react'
-import {ArrowLeft, FileText, Plus, X} from 'lucide-react'
+import {ArrowLeft, FileText, Plus, X, Undo2, Redo2, MousePointer2, GitBranch, Monitor, Maximize2} from 'lucide-react'
 import {Background, ConnectionMode, Controls, MarkerType, ReactFlow, type Connection} from '@xyflow/react'
 import {DiagramNodeLabel, diagramCardStyle} from './DiagramVisual'
 import {diagramPortNodes,useDiagramMeasurements} from './DiagramPortNode'
@@ -8,14 +8,18 @@ import {flowPortError} from './fieldValidation'
 import {ObstacleAwareEdge} from './ObstacleAwareEdge'
 import {AutoFit} from './WorkspaceUI'
 import type {AuthProfile} from './UserManagement'
+import {buildTechnicalDecisionMarkdown} from './technicalDecisionDocument'
 import './technicalDecisions.css'
 
 type Api = <T>(url: string, init?: RequestInit) => Promise<T>
 type Item = {id: string; name: string; system_id: string; kind: string}
-type Link = {id: string; name: string; source_id: string; target_id: string; protocol: string; port: string; source_handle?:string; target_handle?:string}
-type ProposedVM = Item & {x: number; y: number}
+type Link = {id: string; name: string; source_id: string; target_id: string; protocol: string; port: string; source_handle?:string; target_handle?:string; data_description?:string;security?:string;schedule?:string;verification?:string}
+type ProposedVM = Item & {x: number; y: number; description?:string; environment?:string}
+type VMForm = {name:string;kind:'vm'|'server'|'host';description:string;environment:string}
+type ProposalSnapshot = {vms:ProposedVM[];flows:Link[]}
+const blankVM = ():VMForm=>({name:'',kind:'vm',description:'',environment:''})
 const decisionEdgeTypes={proposal:ObstacleAwareEdge}
-const emptyFlow:Link={id:'',source_id:'',target_id:'',source_handle:'',target_handle:'',name:'',protocol:'',port:''}
+const emptyFlow:Link={id:'',source_id:'',target_id:'',source_handle:'',target_handle:'',name:'',protocol:'',port:'',data_description:'',security:'',schedule:'',verification:'draft'}
 const states = {draft:'Черновик', in_review:'На согласовании', changes_requested:'На доработке', approved:'Согласовано', published:'Опубликовано'}
 const services = {architect:'Архитектура', engineer:'Инфраструктура', security:'Информационная безопасность', business_owner:'Владелец процесса'}
 type Service = keyof typeof services
@@ -80,23 +84,31 @@ export default function TechnicalDecisions({request, profile, systems, items, fl
       <label>Информационная система<select aria-label="Информационная система" required value={system} onChange={e=>setSystem(e.target.value)}><option value="">Выберите систему</option>{systems.filter(s=>s.kind==='system').map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select></label>
       <button className="primary" disabled={saving||!title.trim()||!system}>Создать черновик</button>
     </form>}
-    {selection&&!creating&&<DecisionInspector key={selection} id={selection} request={request} profile={profile} items={items} flows={flows} schema={schema} openSchema={()=>setSchema(true)} close={close} update={update}/>}
+    {selection&&!creating&&<DecisionInspector key={selection} id={selection} request={request} profile={profile} items={items} flows={flows} systemName={systems.find(s=>s.id===rows.find(x=>x.id===selection)?.system_id)?.name||''} schema={schema} openSchema={()=>setSchema(true)} close={close} update={update}/>}
     {error&&<div className="decisionError" role="alert">{error} <button onClick={()=>retry(v=>v+1)}>Обновить список</button></div>}
   </section>
 }
 
-function DecisionInspector({id,request,profile,items,flows,schema,openSchema,close,update}:{id:string;request:Api;profile:AuthProfile|null;items:Item[];flows:Link[];schema:boolean;openSchema:()=>void;close:()=>void;update:(row:Decision)=>void}) {
+function DecisionInspector({id,request,profile,items,flows,systemName,schema,openSchema,close,update}:{id:string;request:Api;profile:AuthProfile|null;items:Item[];flows:Link[];systemName:string;schema:boolean;openSchema:()=>void;close:()=>void;update:(row:Decision)=>void}) {
  const measurements=useDiagramMeasurements()
   const [row,setRow]=useState<Details|null>(null)
-  const [tab,setTab]=useState<'items'|'review'>('items')
+  const [tab,setTab]=useState<'items'|'changes'|'review'>('items')
   const [busy,setBusy]=useState(false)
   const [error,setError]=useState('')
   const [attempt,retry]=useState(0)
   const [tool,setTool]=useState<'vm'|'flow'|null>(null)
   const [name,setName]=useState('')
+  const [newVM,setNewVM]=useState<VMForm>(blankVM)
+  const [selectedVMId,setSelectedVMId]=useState('')
+  const [vmForm,setVmForm]=useState<VMForm>(blankVM)
+  const [menu,setMenu]=useState<null|{kind:'vm'|'flow';id:string;x:number;y:number}>(null)
+  const [undoStack,setUndoStack]=useState<ProposalSnapshot[]>([])
+  const [redoStack,setRedoStack]=useState<ProposalSnapshot[]>([])
   const [draft,setDraft]=useState<Link>(emptyFlow)
   const [viewFlowId,setViewFlowId]=useState('')
   const [drawing,setDrawing]=useState(false)
+  // React Flow needs a controlled position during drag; only committed on mouseup.
+  const [dragPositions,setDragPositions]=useState<Record<string,{x:number;y:number}>>({})
   const [comment,setComment]=useState('')
   const [discussion,setDiscussion]=useState('')
   const [commentTarget,setCommentTarget]=useState('decision:')
@@ -111,10 +123,35 @@ function DecisionInspector({id,request,profile,items,flows,schema,openSchema,clo
     setBusy(true);setError('')
     try {
       const next=await request<Details>(path+'/'+id+suffix,{method,body:JSON.stringify(body)})
-      setRow(next);setRoute(next.required_services);update(next);setViewFlowId('');setTool(null);setName('');setComment('');setDiscussion('')
+      setRow(next);setRoute(next.required_services);update(next);setViewFlowId('');setSelectedVMId('');setTool(null);setName('');setComment('');setDiscussion('')
+      if(suffix!=='/comments'){setUndoStack([]);setRedoStack([])}
     }catch(err){setError((err as Error).message)}finally{setBusy(false)}
   }
+  useEffect(()=>{
+    const key=(event:KeyboardEvent)=>{
+      if(!schema||!row||!['draft','changes_requested'].includes(row.status)||(event.ctrlKey===false&&event.metaKey===false))return
+      if(event.target instanceof Element&&event.target.closest('input,textarea,select,[contenteditable="true"]'))return
+      const k=event.key.toLowerCase()
+      const redo=(k==='z'&&event.shiftKey)||k==='y'
+      const undo=k==='z'&&!event.shiftKey
+      if(!redo&&!undo)return
+      const button=document.querySelector<HTMLButtonElement>(redo?'[data-decision-redo]':'[data-decision-undo]')
+      if(button&&!button.disabled){event.preventDefault();button.click()}
+    }
+    document.addEventListener('keydown',key)
+    return()=>document.removeEventListener('keydown',key)
+  },[schema,row?.status,undoStack.length,redoStack.length,busy])
+  useEffect(()=>{
+    if(!menu)return
+    const hide=(event:MouseEvent)=>{
+      if(!(event.target instanceof Element)||!event.target.closest('.decisionContextMenu'))setMenu(null)
+    }
+    const escape=(event:KeyboardEvent)=>{if(event.key==='Escape')setMenu(null)}
+    document.addEventListener('mousedown',hide);document.addEventListener('keydown',escape)
+    return()=>{document.removeEventListener('mousedown',hide);document.removeEventListener('keydown',escape)}
+  },[menu])
   if(!row)return <aside className="decisionSide"><header><h3>Решение</h3><button aria-label="Закрыть решение" onClick={close}><X size={16}/></button></header>{error?<p role="alert">{error} <button onClick={()=>retry(v=>v+1)}>Повторить</button></p>:<p role="status">Загрузка…</p>}</aside>
+  const loaded=row
   const revision={expected_revision:row.revision}
   const author=!!profile?.id && row.author==='user:'+profile.id
   const editor=!!profile && (author||['architect','admin','development'].includes(profile.role))
@@ -134,14 +171,56 @@ function DecisionInspector({id,request,profile,items,flows,schema,openSchema,clo
     const [anchor_kind,anchor_id='']=commentTarget.split(':')
     void change('/comments',{body:discussion.trim(),anchor_kind,anchor_id})
   }
-  const localItems=items.filter(i=>i.system_id===row.system_id)
+  function downloadDocument(){
+    const markdown=buildTechnicalDecisionMarkdown(loaded,systemName,items)
+    const blob=new Blob([markdown],{type:'text/markdown;charset=utf-8'})
+    const uri=URL.createObjectURL(blob)
+    const element=document.createElement('a')
+    element.href=uri
+    element.download='ArchitectureHub_'+loaded.title.replace(/[^\p{L}\p{N}_-]+/gu,'_').slice(0,65)+'_v'+loaded.revision+'.md'
+    document.body.appendChild(element)
+    element.click()
+    element.remove()
+    window.setTimeout(()=>URL.revokeObjectURL(uri),1000)
+  }
+  const localItems=items.filter(i=>i.system_id===loaded.system_id)
   const localIds=new Set(localItems.map(i=>i.id))
   const baseFlows=flows.filter(f=>localIds.has(f.source_id)||localIds.has(f.target_id))
-  const lines=[...baseFlows,...row.proposed_flows]
+  const lines=[...baseFlows,...loaded.proposed_flows]
   const linkedIds=new Set(lines.flatMap(f=>[f.source_id,f.target_id]))
   const baseline=items.filter(i=>localIds.has(i.id)||linkedIds.has(i.id))
-  const choices=[...items,...row.proposed_vms]
-  const proposedPositions=row.proposed_vms
+  const choices=[...items,...loaded.proposed_vms]
+  const proposedPositions=loaded.proposed_vms
+  const proposedVmIds=new Set(proposedPositions.map(vm=>vm.id))
+  const selectedVM=choices.find(vm=>vm.id===selectedVMId)
+  const selectedProposedVM=loaded.proposed_vms.find(vm=>vm.id===selectedVMId)
+  const vmFormDirty=!!selectedProposedVM&&(vmForm.name!==selectedProposedVM.name||vmForm.kind!==selectedProposedVM.kind||vmForm.description!==(selectedProposedVM.description||'')||vmForm.environment!==(selectedProposedVM.environment||''))
+  const editingFlow=loaded.proposed_flows.find(flow=>flow.id===draft.id)
+  const flowFormDirty=tool==='flow'&&(editingFlow?JSON.stringify({...emptyFlow,...editingFlow})!==JSON.stringify({...emptyFlow,...draft}):Boolean(draft.name||draft.source_id||draft.target_id||draft.protocol||draft.port||draft.data_description||draft.security||draft.schedule))
+  const newVMFormDirty=tool==='vm'&&Boolean(name.trim()||newVM.description.trim()||newVM.environment.trim())
+  const hasUnsavedForm=vmFormDirty||flowFormDirty||newVMFormDirty
+  function exitEditor(){
+    if(hasUnsavedForm&&!window.confirm('Есть несохранённые изменения. Закрыть без сохранения?'))return
+    close()
+  }
+  function inspectVM(vmId:string){
+    if(busy)return
+    if(hasUnsavedForm&&!window.confirm('Отбросить несохранённые изменения?'))return
+    const vm=choices.find(x=>x.id===vmId)
+    if(!vm)return
+    setMenu(null);setSelectedVMId(vmId);setViewFlowId('');setTool(null);setTab('items');setError('')
+    setVmForm({name:vm.name,kind:vm.kind==='server'||vm.kind==='host'?vm.kind:'vm',description:(vm as ProposedVM).description||'',environment:(vm as ProposedVM).environment||''})
+  }
+  function deleteProposedVM(vmId:string){
+    if(!editable||busy)return
+    const vm=loaded.proposed_vms.find(item=>item.id===vmId)
+    if(!vm)return
+    const attached=loaded.proposed_flows.filter(flow=>flow.source_id===vmId||flow.target_id===vmId)
+    const message=attached.length?'Удалить ВМ «'+vm.name+'» и связанные проектируемые потоки ('+attached.length+')?':'Удалить проектируемую ВМ «'+vm.name+'»?'
+    if(!window.confirm(message))return
+    setSelectedVMId('');setMenu(null)
+    persist(loaded.proposed_vms.filter(item=>item.id!==vmId),loaded.proposed_flows.filter(flow=>flow.source_id!==vmId&&flow.target_id!==vmId))
+  }
   let cell=0
   function nextGridPosition(){
     // An external endpoint can join the canvas after a VM already occupies its grid cell.
@@ -152,18 +231,20 @@ function DecisionInspector({id,request,profile,items,flows,schema,openSchema,clo
     }while(proposedPositions.some(vm=>Math.abs(vm.x-point.x)<260&&Math.abs(vm.y-point.y)<110))
     return point
   }
-  const nodes=[...baseline.map(i=>({type:'diagramPort',id:i.id,position:nextGridPosition(),data:{label:<DiagramNodeLabel name={i.name} kind={i.kind}/>},style:diagramCardStyle()})),
-    ...row.proposed_vms.map(vm=>({type:'diagramPort',id:vm.id,position:{x:vm.x,y:vm.y},data:{label:<DiagramNodeLabel name={vm.name} kind={vm.kind} subtitle="Новая ВМ"/>},style:diagramCardStyle({border:'1px dashed #a46c26'})}))]
+  const nodes=[...baseline.map(i=>({type:'diagramPort',id:i.id,position:nextGridPosition(),draggable:false,data:{label:<DiagramNodeLabel name={i.name} kind={i.kind}/>},style:diagramCardStyle()})),
+    ...loaded.proposed_vms.map(vm=>({type:'diagramPort',id:vm.id,position:dragPositions[vm.id]||{x:vm.x,y:vm.y},draggable:editable&&!busy,data:{label:<DiagramNodeLabel name={vm.name} kind={vm.kind} subtitle="Новая ВМ"/>},style:diagramCardStyle({border:'1px dashed #a46c26'})}))]
   const positions=new Map(nodes.map(n=>[n.id,n.position]))
-  const proposedIds=new Set(row.proposed_flows.map(f=>f.id))
+  const proposedIds=new Set(loaded.proposed_flows.map(f=>f.id))
   function openFlow(flow:Link) {
-    setViewFlowId('');setTool('flow');setDraft({...flow});setTab('items');setError('')
+    if(hasUnsavedForm&&!window.confirm('Отбросить несохранённые изменения?'))return
+    setMenu(null);setSelectedVMId('');setViewFlowId('');setTool('flow');setDraft({...emptyFlow,...flow});setTab('items');setError('')
   }
   const viewedFlow=lines.find(f=>f.id===viewFlowId)
   function inspectFlow(f:Link){
     if(busy)return
     if(editable&&proposedIds.has(f.id)){openFlow(f);return}
-    setTool(null);setViewFlowId(f.id);setTab('items')
+    if(hasUnsavedForm&&!window.confirm('Отбросить несохранённые изменения?'))return
+    setSelectedVMId('');setTool(null);setViewFlowId(f.id);setTab('items')
   }
   const edges=lines.flatMap(f=>{
     const a=positions.get(f.source_id),b=positions.get(f.target_id)
@@ -178,61 +259,193 @@ function DecisionInspector({id,request,profile,items,flows,schema,openSchema,clo
   })
   const flowError=flowPortError(draft.port)
   const sameEnds=!!draft.source_id&&draft.source_id===draft.target_id
-  const outside=!!draft.source_id&&!!draft.target_id&&!choices.some(i=>i.system_id===row.system_id&&(i.id===draft.source_id||i.id===draft.target_id))
+  const outside=!!draft.source_id&&!!draft.target_id&&!choices.some(i=>i.system_id===loaded.system_id&&(i.id===draft.source_id||i.id===draft.target_id))
   function connect(c:Connection){
     if(!editable||busy||c.source===c.target)return
     openFlow({...emptyFlow,source_id:c.source,target_id:c.target,source_handle:c.sourceHandle||'',target_handle:(c.targetHandle||'').replace('out-','in-')})
   }
+  async function writeProposal(vms:ProposedVM[],links:Link[],action:'edit'|'undo'|'redo'='edit') {
+    if(!editable||busy)return
+    const before={vms:loaded.proposed_vms,flows:loaded.proposed_flows}
+    if(JSON.stringify(before.vms)===JSON.stringify(vms)&&JSON.stringify(before.flows)===JSON.stringify(links))return
+    setBusy(true);setError('')
+    try{
+      const next=await request<Details>(path+'/'+id,{method:'PUT',body:JSON.stringify({
+        ...revision,title:loaded.title,description:loaded.description,required_services:loaded.required_services,
+        proposed_vms:vms,proposed_flows:links,
+      })})
+      setRow(next);setRoute(next.required_services);update(next)
+      setTool(null);setViewFlowId('');setSelectedVMId('');setMenu(null);setDragPositions({})
+      if(action==='edit'){setUndoStack(stack=>[...stack.slice(-39),before]);setRedoStack([])}
+      else if(action==='undo'){setUndoStack(stack=>stack.slice(0,-1));setRedoStack(stack=>[...stack.slice(-39),before])}
+      else {setRedoStack(stack=>stack.slice(0,-1));setUndoStack(stack=>[...stack.slice(-39),before])}
+    }catch(err){
+      setError('Не удалось сохранить изменения: '+(err as Error).message)
+      setDragPositions({})
+    }finally{setBusy(false)}
+  }
   function persist(vms:ProposedVM[],links:Link[]) {
-    if(!row||!editable||busy)return
-    void change('',{...revision,title:row.title,description:row.description,required_services:row.required_services,proposed_vms:vms,proposed_flows:links},'PUT')
+    void writeProposal(vms,links)
+  }
+  function undoProposal(){
+    if(!undoStack.length)return
+    const snapshot=undoStack[undoStack.length-1]
+    void writeProposal(snapshot.vms,snapshot.flows,'undo')
+  }
+  function redoProposal(){
+    if(!redoStack.length)return
+    const snapshot=redoStack[redoStack.length-1]
+    void writeProposal(snapshot.vms,snapshot.flows,'redo')
+  }
+  function saveVMProperties(){
+    if(!selectedProposedVM||!vmForm.name.trim()||!vmFormDirty)return
+    persist(loaded.proposed_vms.map(vm=>vm.id===selectedProposedVM.id?{
+      ...vm,name:vmForm.name.trim(),kind:vmForm.kind,
+      description:vmForm.description.trim(),environment:vmForm.environment.trim(),
+    }:vm),loaded.proposed_flows)
+  }
+  async function moveProposedVm(vmId:string,position:{x:number;y:number}) {
+    if(!editable||busy)return
+    const vm=loaded.proposed_vms.find(item=>item.id===vmId)
+    if(!vm)return
+    if(Math.abs(vm.x-position.x)<0.5&&Math.abs(vm.y-position.y)<0.5){setDragPositions({});return}
+    await writeProposal(loaded.proposed_vms.map(item=>item.id===vmId?{...item,x:position.x,y:position.y}:item),loaded.proposed_flows)
   }
   function saveProposal() {
     if(!row)return
     if(tool==='vm'&&name.trim()){
-      const vm={id:crypto.randomUUID(),system_id:row.system_id,kind:'vm',name:name.trim(),...nextGridPosition()}
-      persist([...row.proposed_vms,vm],row.proposed_flows)
+      const vm={id:crypto.randomUUID(),system_id:loaded.system_id,kind:newVM.kind,name:name.trim(),description:newVM.description.trim(),environment:newVM.environment.trim(),...nextGridPosition()}
+      persist([...loaded.proposed_vms,vm],loaded.proposed_flows)
     }else if(tool==='flow'&&draft.name.trim()&&draft.source_id&&draft.target_id&&!sameEnds&&!outside&&!flowError){
-      const flow={...draft,id:draft.id||crypto.randomUUID(),name:draft.name.trim(),protocol:draft.protocol.trim(),port:draft.port.trim()}
-      persist(row.proposed_vms,draft.id?row.proposed_flows.map(f=>f.id===draft.id?flow:f):[...row.proposed_flows,flow])
+      const flow={...draft,id:draft.id||crypto.randomUUID(),name:draft.name.trim(),protocol:draft.protocol.trim(),port:draft.port.trim(),data_description:draft.data_description?.trim()||'',security:draft.security?.trim()||'',schedule:draft.schedule?.trim()||'',verification:draft.verification||'draft'}
+      persist(loaded.proposed_vms,draft.id?loaded.proposed_flows.map(f=>f.id===draft.id?flow:f):[...loaded.proposed_flows,flow])
     }
   }
   return <>
-    {schema&&<div className="decisionDrawing"><header><button aria-label="Вернуться к списку" disabled={busy} onClick={close}><ArrowLeft size={16}/></button><h2>{row.title}</h2><Status value={row.status}/></header>
-      <div className="decisionCanvas">{nodes.length?<ReactFlow nodes={measurements.apply(nodes)} edges={edges} onNodesChange={measurements.record} nodeTypes={diagramPortNodes} edgeTypes={decisionEdgeTypes} connectionMode={ConnectionMode.Loose} nodesDraggable={false} nodesConnectable={editable&&!busy} deleteKeyCode={null}
+    {schema&&<div className="decisionDrawing"><header><button aria-label="Вернуться к списку" disabled={busy} onClick={exitEditor}><ArrowLeft size={16}/></button><h2>{row.title}</h2><Status value={row.status}/></header>
+      <div className="decisionCanvas">{nodes.length?<ReactFlow nodes={measurements.apply(nodes)} edges={edges} onNodesChange={changes=>{
+        measurements.record(changes)
+        if(!editable||busy)return
+        const positionChanges=changes.filter(change=>change.type==='position'&&change.position&&proposedVmIds.has(change.id))
+        if(positionChanges.length)setDragPositions(previous=>{
+          const next={...previous}
+          for(const change of positionChanges)if(change.type==='position'&&change.position){
+            next[change.id]={x:change.position.x,y:change.position.y}
+          }
+          return next
+        })
+      }} nodeTypes={diagramPortNodes} edgeTypes={decisionEdgeTypes} connectionMode={ConnectionMode.Loose} nodesDraggable={editable&&!busy} nodesConnectable={editable&&!busy} deleteKeyCode={null}
+        onNodeDragStop={(_,node)=>{if(proposedVmIds.has(node.id))void moveProposedVm(node.id,node.position)}}
+        onNodeClick={(_,node)=>inspectVM(node.id)}
+        onNodeContextMenu={(event,node)=>{
+          event.preventDefault()
+          setMenu({kind:'vm',id:node.id,x:Math.min(event.clientX,window.innerWidth-250),y:Math.min(event.clientY,window.innerHeight-210)})
+        }}
+        onEdgeContextMenu={(event,edge)=>{
+          event.preventDefault()
+          setMenu({kind:'flow',id:edge.id,x:Math.min(event.clientX,window.innerWidth-250),y:Math.min(event.clientY,window.innerHeight-210)})
+        }}
         onConnectStart={()=>setDrawing(true)} onConnectEnd={()=>setDrawing(false)} onConnect={connect}
         onEdgeClick={(_,edge)=>{const f=lines.find(f=>f.id===edge.id);if(f)inspectFlow(f)}}
         isValidConnection={c=>c.source!==c.target} fitView><AutoFit layoutKey={id} suspended={drawing}/><Background gap={20}/><Controls showInteractive={false}/></ReactFlow>:<p>В этой системе пока нет компонентов.</p>}
-        {editable&&<div role="toolbar" aria-label="Инструменты решения" className="decisionTools"><button disabled={busy} onClick={()=>{setViewFlowId('');setTool('vm');setTab('items');setName('')}}>＋ ВМ</button><button disabled={busy} onClick={()=>openFlow(emptyFlow)}>＋ Поток</button></div>}
+        {editable&&<div role="toolbar" aria-label="Инструменты решения" className="decisionTools">
+          <button type="button" disabled={busy} title="Выбрать объект" aria-label="Выбрать объект" onClick={()=>{setMenu(null);setTool(null);setSelectedVMId('');setViewFlowId('')}}><MousePointer2 size={16}/> Выбрать</button>
+          <button type="button" disabled={busy} onClick={()=>{
+            if(hasUnsavedForm&&!window.confirm('Отбросить несохранённые изменения?'))return
+            setSelectedVMId('');setViewFlowId('');setTool('vm');setTab('items');setName('');setNewVM(blankVM())
+          }}><Monitor size={15}/> ＋ ВМ</button>
+          <button type="button" disabled={busy} onClick={()=>openFlow(emptyFlow)}><GitBranch size={15}/> ＋ Поток</button>
+          <button type="button" data-decision-undo title="Отменить последнее изменение черновика (Ctrl+Z)" aria-label="Отменить изменение черновика" disabled={busy||!undoStack.length} onClick={undoProposal}><Undo2 size={16}/></button>
+          <button type="button" data-decision-redo title="Повторить изменение черновика (Ctrl+Shift+Z)" aria-label="Повторить изменение черновика" disabled={busy||!redoStack.length} onClick={redoProposal}><Redo2 size={16}/></button>
+          <span className="decisionToolCount" title="Действующая архитектура отображается только для чтения">{row.proposed_vms.length} ВМ · {row.proposed_flows.length} потоков</span>
+        </div>}
+        {menu&&<div className="decisionContextMenu" role="menu" aria-label="Действия с объектом" style={{position:'fixed',left:Math.max(8,menu.x),top:Math.max(8,menu.y),zIndex:250}}>
+          <button type="button" role="menuitem" onClick={()=>{
+            if(menu.kind==='vm')inspectVM(menu.id)
+            else {const f=lines.find(flow=>flow.id===menu.id);if(f)inspectFlow(f)}
+            setMenu(null)
+          }}>{menu.kind==='vm'?'Открыть карточку':'Открыть поток'}</button>
+          {editable&&menu.kind==='vm'&&proposedVmIds.has(menu.id)&&<button type="button" role="menuitem" onClick={()=>deleteProposedVM(menu.id)}>Удалить проектируемую ВМ</button>}
+          {editable&&menu.kind==='flow'&&proposedIds.has(menu.id)&&<button type="button" role="menuitem" onClick={()=>{
+            if(window.confirm('Удалить проектируемый поток?'))persist(row.proposed_vms,row.proposed_flows.filter(flow=>flow.id!==menu.id))
+            setMenu(null)
+          }}>Удалить проектируемый поток</button>}
+          <button type="button" role="menuitem" onClick={()=>setMenu(null)}>Закрыть меню</button>
+        </div>}
       </div>
     </div>}
     <aside className="decisionSide" aria-label="Карточка технического решения">
-      <header><h3>{schema?'Свойства решения':row.title}</h3><button disabled={busy} aria-label="Закрыть решение" onClick={close}><X size={16}/></button></header>
+      <header><h3>{schema?'Свойства решения':row.title}</h3><button disabled={busy} aria-label="Закрыть решение" onClick={exitEditor}><X size={16}/></button></header>
       <small>Версия {row.revision} · Автор: {row.author_name||row.author}</small>
-      <nav aria-label="Сведения о решении">{(['items','review'] as const).map(t=><button key={t} aria-pressed={tab===t} onClick={()=>setTab(t)}>{t==='items'?'Состав':'Согласование'}</button>)}</nav>
+      <nav aria-label="Сведения о решении">{(['items','changes','review'] as const).map(t=><button key={t} aria-pressed={tab===t} onClick={()=>{
+          if(hasUnsavedForm&&!window.confirm('Отбросить несохранённые изменения?'))return
+          setTab(t);setTool(null);setSelectedVMId('');setViewFlowId('')
+        }}>{t==='items'?'Состав':t==='changes'?'Изменения':'Согласование'}</button>)}</nav>
       {row.base_changed&&<p role="status">Исходная архитектура изменилась после отправки на согласование.</p>}
       {tab==='items'?<>
         {row.description&&<p>{row.description}</p>}
-        {schema&&viewedFlow?<section className="decisionFlowDetails">
+        {schema&&selectedVM?<section className="decisionVmDetails" aria-label="Паспорт выбранной ВМ">
+          <h4>{selectedProposedVM?'Проектируемая ВМ':'Действующая ВМ'}</h4>
+          {selectedProposedVM&&editable?<form onSubmit={event=>{event.preventDefault();saveVMProperties()}}>
+            <label>Имя проектируемой ВМ<input aria-label="Имя проектируемой ВМ" required maxLength={250} value={vmForm.name} onChange={event=>setVmForm({...vmForm,name:event.target.value})}/></label>
+            <label>Тип<select aria-label="Тип проектируемой ВМ" value={vmForm.kind} onChange={event=>setVmForm({...vmForm,kind:event.target.value as VMForm['kind']})}>
+              <option value="vm">ВМ</option><option value="server">Сервер</option><option value="host">Хост</option>
+            </select></label>
+            <label>Среда<input aria-label="Среда проектируемой ВМ" maxLength={120} value={vmForm.environment} onChange={event=>setVmForm({...vmForm,environment:event.target.value})} placeholder="prod / test / dev"/></label>
+            <label>Описание<textarea aria-label="Описание проектируемой ВМ" maxLength={4000} value={vmForm.description} onChange={event=>setVmForm({...vmForm,description:event.target.value})}/></label>
+            <small>Позиция: {Math.round(selectedProposedVM.x)}, {Math.round(selectedProposedVM.y)}. Перемещайте ВМ на схеме.</small>
+            <div className="decisionActions">
+              <button className="primary" disabled={busy||!vmFormDirty||!vmForm.name.trim()}>Сохранить свойства ВМ</button>
+              <button type="button" disabled={busy} onClick={()=>deleteProposedVM(selectedProposedVM.id)}>Удалить ВМ</button>
+            </div>
+          </form>:<>
+            <strong>{selectedVM.name}</strong>
+            <small>Из действующего реестра. Здесь объект можно только просмотреть.</small>
+            {selectedProposedVM&&<small>Позиция: {Math.round(selectedProposedVM.x)}, {Math.round(selectedProposedVM.y)}</small>}
+          </>}
+          <button type="button" onClick={()=>setSelectedVMId('')}>К составу решения</button>
+        </section>:schema&&viewedFlow?<section className="decisionFlowDetails">
           <strong>{viewedFlow.name}</strong>
           <small>{proposedIds.has(viewedFlow.id)?'Проектируемый поток':'Поток из реестра'}</small>
           <p>{choices.find(c=>c.id===viewedFlow.source_id)?.name} → {choices.find(c=>c.id===viewedFlow.target_id)?.name}</p>
           <small>{[viewedFlow.protocol,viewedFlow.port].filter(Boolean).join(' ')||'Протокол и порт не указаны'}</small>
+          {viewedFlow.data_description&&<p>{viewedFlow.data_description}</p>}
+          {viewedFlow.security&&<small>Защита: {viewedFlow.security}</small>}
+          {viewedFlow.schedule&&<small>Периодичность: {viewedFlow.schedule}</small>}
           <button onClick={()=>setViewFlowId('')}>К составу решения</button>
         </section>:schema&&tool&&editable?<form key={tool} onSubmit={e=>{e.preventDefault();saveProposal()}}>
           <label>{tool==='vm'?'Название ВМ':'Название потока'}<input autoFocus required maxLength={250} value={tool==='vm'?name:draft.name} onChange={e=>tool==='vm'?setName(e.target.value):setDraft({...draft,name:e.target.value})}/></label>
+          {tool==='vm'&&<>
+            <label>Тип<select aria-label="Тип новой ВМ" value={newVM.kind} onChange={e=>setNewVM({...newVM,kind:e.target.value as VMForm['kind']})}>
+              <option value="vm">ВМ</option><option value="server">Сервер</option><option value="host">Хост</option>
+            </select></label>
+            <label>Среда<input maxLength={120} value={newVM.environment} onChange={e=>setNewVM({...newVM,environment:e.target.value})}/></label>
+            <label>Описание<textarea maxLength={4000} value={newVM.description} onChange={e=>setNewVM({...newVM,description:e.target.value})}/></label>
+          </>}
           {tool==='flow'&&<>
             {!draft.source_id&&!draft.target_id&&<small>Выберите компоненты в списках или протяните стрелку между точками на схеме.</small>}
             {(['source','target'] as const).map(end=><label key={end}>{end==='source'?'Источник':'Получатель'}<select aria-label={end==='source'?'Источник':'Получатель'} required value={draft[`${end}_id`]} onChange={e=>setDraft({...draft,[end+'_id']:e.target.value,[end+'_handle']:''})}><option value="">Выберите компонент</option>{choices.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></label>)}
             <button type="button" disabled={!draft.source_id||!draft.target_id} onClick={()=>setDraft({...draft,source_id:draft.target_id,target_id:draft.source_id,source_handle:draft.target_handle?.replace('in-','out-'),target_handle:draft.source_handle?.replace('out-','in-')})}>Поменять направление</button>
             <div className="decisionFlowFields"><label>Протокол<input maxLength={80} value={draft.protocol} onChange={e=>setDraft({...draft,protocol:e.target.value})}/></label><label>Порт<input maxLength={80} inputMode="numeric" value={draft.port} onChange={e=>setDraft({...draft,port:e.target.value})}/></label></div>
+            <label>Состав передаваемых данных<textarea aria-label="Данные проектируемого потока" maxLength={4000} value={draft.data_description||''} onChange={e=>setDraft({...draft,data_description:e.target.value})}/></label>
+            <label>Защита<input aria-label="Защита проектируемого потока" maxLength={80} value={draft.security||''} onChange={e=>setDraft({...draft,security:e.target.value})} placeholder="Не указана"/></label>
+            <label>Периодичность<input aria-label="Периодичность проектируемого потока" maxLength={160} value={draft.schedule||''} onChange={e=>setDraft({...draft,schedule:e.target.value})}/></label>
+            <label>Достоверность<select aria-label="Достоверность проектируемого потока" value={draft.verification||'draft'} onChange={e=>setDraft({...draft,verification:e.target.value as Link['verification']})}>
+              <option value="draft">Черновик</option><option value="assumed">Предполагается</option><option value="verified">Подтверждено</option>
+            </select></label>
             {(sameEnds||outside||flowError)&&<small role="alert">{sameEnds?'Выберите два разных компонента.':outside?'Один из компонентов должен принадлежать системе решения.':flowError}</small>}
           </>}
           <div className="decisionActions"><button className="primary" disabled={busy||(tool==='vm'?!name.trim():!draft.name.trim()||!draft.source_id||!draft.target_id||sameEnds||outside||!!flowError)}>{tool==='flow'&&draft.id?'Сохранить поток':'Добавить в черновик'}</button>
-          <button type="button" disabled={busy} onClick={()=>setTool(null)}>Отмена</button>
+          <button type="button" disabled={busy} onClick={()=>{
+            if(hasUnsavedForm&&!window.confirm('Отбросить несохранённые изменения?'))return
+            setTool(null)
+          }}>Отмена</button>
           {tool==='flow'&&draft.id&&<button type="button" disabled={busy} onClick={()=>{if(window.confirm('Удалить поток из этого черновика?'))persist(row.proposed_vms,row.proposed_flows.filter(f=>f.id!==draft.id))}}>Удалить поток</button>}</div>
         </form>:<>
-          {row.proposed_vms.map(vm=><div className="decisionItem" key={vm.id}><span>{vm.name}</span><small>Новая ВМ</small></div>)}
+          {row.proposed_vms.map(vm=><div className="decisionItem" key={vm.id}>
+            <button type="button" onClick={()=>{openSchema();inspectVM(vm.id)}}>{vm.name}</button><small>Новая ВМ</small>
+            {editable&&<button type="button" disabled={busy} aria-label={'Удалить ВМ '+vm.name} onClick={()=>deleteProposedVM(vm.id)}>Удалить ВМ</button>}
+          </div>)}
           {row.proposed_flows.map(f=><div className="decisionItem" key={f.id}>
             <button onClick={()=>{openSchema();inspectFlow(f)}}>{f.name}</button><small>Новый поток</small>
             <small className="decisionFlowSummary">{choices.find(i=>i.id===f.source_id)?.name||'Компонент'} → {choices.find(i=>i.id===f.target_id)?.name||'Компонент'}{[f.protocol,f.port].some(Boolean)&&' · '+[f.protocol,f.port].filter(Boolean).join(' ')}</small>
@@ -240,8 +453,25 @@ function DecisionInspector({id,request,profile,items,flows,schema,openSchema,clo
           {!row.proposed_vms.length&&!row.proposed_flows.length&&<p>В черновике пока нет изменений.</p>}
         </>}
         {!schema&&<button onClick={openSchema}>Открыть схему</button>}
-        {editable&&!tool&&(row.proposed_vms.length+row.proposed_flows.length>0)&&<button className="primary" disabled={busy||routeChanged} title={routeChanged?'Сохраните изменённый маршрут согласования на вкладке «Согласование»':undefined} onClick={()=>void change('/submit',revision)}>На согласование</button>}
-      </>:<>
+        {editable&&!tool&&!vmFormDirty&&(row.proposed_vms.length+row.proposed_flows.length>0)&&<button className="primary" disabled={busy||routeChanged} title={routeChanged?'Сохраните изменённый маршрут согласования на вкладке «Согласование»':undefined} onClick={()=>void change('/submit',revision)}>На согласование</button>}
+      </>:tab==='changes'?<section className="decisionChanges" aria-label="Изменения технического решения">
+        <div className="decisionActions"><h4>Предлагаемые изменения</h4><button type="button" onClick={downloadDocument}>Скачать техническое решение (.md)</button></div>
+        <p>Действующая архитектура остаётся без изменений. Новые объекты появятся в реестре только после отдельного подтверждённого внедрения.</p>
+        <div className="decisionChangeCounts"><strong>+ {row.proposed_vms.length} ВМ</strong><strong>+ {row.proposed_flows.length} потоков</strong></div>
+        {row.proposed_vms.map(vm=><div className="decisionItem" key={vm.id}>
+          <span>+ {vm.name}</span><small>{vm.kind} · {vm.environment||'Среда не указана'}</small>
+        </div>)}
+        {row.proposed_flows.map(flow=><div className="decisionItem" key={flow.id}>
+          <span>+ {flow.name}</span><small className="decisionFlowSummary">
+            {choices.find(x=>x.id===flow.source_id)?.name||'Неизвестный источник'} → {choices.find(x=>x.id===flow.target_id)?.name||'Неизвестный получатель'}
+            {' · '}{flow.protocol||'Протокол не указан'}{flow.port?':'+flow.port:''}
+          </small>
+          <small>{flow.data_description||'Состав данных не описан'} · {flow.security||'Защита не указана'}</small>
+        </div>)}
+        {!row.proposed_vms.length&&!row.proposed_flows.length&&<small>Изменений пока нет.</small>}
+        {row.base_changed&&<p role="alert">Исходная архитектура изменилась. Перед публикацией потребуется пересогласование новой версии.</p>}
+        <small>Изменение/удаление действующих объектов появится после расширения типов технических решений. Сейчас поддерживается добавление проектируемых ВМ и потоков.</small>
+      </section>:<>
         <section className="decisionApprovalRoute" aria-label="Маршрут согласования">
           <h4>Маршрут согласования</h4>
           <p>Каждая выбранная служба согласует решение отдельно. Отправка не создаёт реальные ВМ и потоки.</p>

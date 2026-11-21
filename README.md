@@ -5,6 +5,8 @@
 - [Целевой продукт и правила моделирования](docs/product/ARCHITECTURE_VISION.md)
 - [Метамодель, типы сущностей и допустимые связи](docs/product/METAMODEL_V1.md)
 - [Этапы разработки и критерии выпуска](docs/product/DELIVERY_ROADMAP.md)
+- [Таблица выполнения плана и результаты QA](docs/product/WORK_PROGRESS.md)
+- [Рабочий процесс технических решений и критерии приёмки](docs/product/TECHNICAL_DECISIONS_WORKFLOW.md)
 - [Сквозные QA-сценарии](docs/product/ACCEPTANCE_SCENARIOS.md)
 - [Многослойная карта и редактор областей](docs/architecture-layer-overlays.md)
 

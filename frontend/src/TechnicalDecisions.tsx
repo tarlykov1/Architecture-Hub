@@ -20,7 +20,9 @@ const states = {draft:'Черновик', in_review:'На согласовани
 const services = {architect:'Архитектура', engineer:'Инфраструктура', security:'Информационная безопасность', business_owner:'Владелец процесса'}
 type Service = keyof typeof services
 type Decision = {id:string; title:string; system_id:string; status:keyof typeof states; author:string; updated_at:string; revision:number}
-type Details = Decision & {description:string; required_services:Service[]; approvals:{service:Service; verdict:string; note:string}[]; proposed_vms:ProposedVM[]; proposed_flows:Link[]; base_changed:boolean}
+type Review = {service:Service; verdict:'approved'|'changes_requested'; note:string; actor:string; actor_name?:string; created_at:string; revision?:number}
+type DecisionComment = {id:string; actor:string; actor_name?:string; body:string; anchor_kind:'decision'|'vm'|'flow';anchor_id:string;created_at:string}
+type Details = Decision & {description:string; required_services:Service[]; approvals:Review[]; review_history:Review[]; comments:DecisionComment[]; proposed_vms:ProposedVM[]; proposed_flows:Link[]; base_changed:boolean}
 const path = '/api/technical-decisions'
 const dateFormat = new Intl.DateTimeFormat('ru-RU',{day:'2-digit',month:'2-digit',year:'numeric'})
 function Status({value}:{value:Decision['status']}) {
@@ -96,17 +98,20 @@ function DecisionInspector({id,request,profile,items,flows,schema,openSchema,clo
   const [viewFlowId,setViewFlowId]=useState('')
   const [drawing,setDrawing]=useState(false)
   const [comment,setComment]=useState('')
+  const [discussion,setDiscussion]=useState('')
+  const [commentTarget,setCommentTarget]=useState('decision:')
+  const [route,setRoute]=useState<Service[]>([])
   useEffect(()=>{
     let current=true
     setBusy(true);setError('')
-    request<Details>(path+'/'+id).then(value=>{if(current)setRow(value)}).catch(err=>{if(current)setError(err.message)}).finally(()=>{if(current)setBusy(false)})
+    request<Details>(path+'/'+id).then(value=>{if(current){setRow(value);setRoute(value.required_services)}}).catch(err=>{if(current)setError(err.message)}).finally(()=>{if(current)setBusy(false)})
     return ()=>{current=false}
   },[id,request,attempt])
   async function change(suffix:string,body:object,method='POST') {
     setBusy(true);setError('')
     try {
       const next=await request<Details>(path+'/'+id+suffix,{method,body:JSON.stringify(body)})
-      setRow(next);update(next);setViewFlowId('');setTool(null);setName('');setComment('')
+      setRow(next);setRoute(next.required_services);update(next);setViewFlowId('');setTool(null);setName('');setComment('');setDiscussion('')
     }catch(err){setError((err as Error).message)}finally{setBusy(false)}
   }
   if(!row)return <aside className="decisionSide"><header><h3>Решение</h3><button aria-label="Закрыть решение" onClick={close}><X size={16}/></button></header>{error?<p role="alert">{error} <button onClick={()=>retry(v=>v+1)}>Повторить</button></p>:<p role="status">Загрузка…</p>}</aside>

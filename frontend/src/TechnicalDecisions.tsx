@@ -397,7 +397,7 @@ function DecisionInspector({id,request,profile,items,flows,schema,openSchema,clo
           <small>{[viewedFlow.protocol,viewedFlow.port].filter(Boolean).join(' ')||'Протокол и порт не указаны'}</small>
           {viewedFlow.data_description&&<p>{viewedFlow.data_description}</p>}
           {viewedFlow.security&&<small>Защита: {viewedFlow.security}</small>}
-          {viewedFlow.schedule&&<small>Периодичность: {viewedFlow.schedule}</small>
+          {viewedFlow.schedule&&<small>Периодичность: {viewedFlow.schedule}</small>}
           <button onClick={()=>setViewFlowId('')}>К составу решения</button>
         </section>:schema&&tool&&editable?<form key={tool} onSubmit={e=>{e.preventDefault();saveProposal()}}>
           <label>{tool==='vm'?'Название ВМ':'Название потока'}<input autoFocus required maxLength={250} value={tool==='vm'?name:draft.name} onChange={e=>tool==='vm'?setName(e.target.value):setDraft({...draft,name:e.target.value})}/></label>

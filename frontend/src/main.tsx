@@ -1239,7 +1239,7 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
             setTokenReady(false);setObjects([]);setRelations([]);setDiagrams([]);setInfra([]);setFlows([]);setSegments([]);setNics([]);setCategories([]);setProcesses([]);setBusinessLinks([]);setSelected('');setSelectedFlow('');setError('');setNotice('Демонстрационный режим – только вымышленные данные.');setAuthProfile(null);setUserManagerOpen(false);setChangePasswordOpen(false);void refresh()
           }}>{openAccess?'Выйти из согласования':'Выйти'}</button>
           : <button type="button" onClick={()=>setAuthOpen(true)}>Войти для редактирования</button>}
-        {!openAccess&&tokenReady&&authProfile?.role==='admin'&&<button type="button" className="accountTopAction" onClick={()=>setUserManagerOpen(true)}>Пользователи</button>}
+        {tokenReady&&authProfile?.role==='admin'&&authProfile.auth_kind!=='open_access'&&<button type="button" className="accountTopAction" onClick={()=>setUserManagerOpen(true)}>Пользователи</button>}
         {tokenReady&&authProfile?.auth_kind==='named_user'&&<button type="button" className="accountTopAction" onClick={()=>setChangePasswordOpen(true)}>Сменить пароль</button>}
         {tokenReady&&authProfile?.username&&<span title={'Роль: '+roleLabel(authProfile.role)} className="accountTopAction">{authProfile.display_name||authProfile.username} · {roleLabel(authProfile.role)}</span>}
       </div>

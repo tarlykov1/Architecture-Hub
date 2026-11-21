@@ -45,11 +45,20 @@ test('test server: deployed revision is available without authentication', async
 async function switchSection(page: import('@playwright/test').Page, section: string) {
   const nav = page.getByRole('navigation', { name: 'Разделы архитектуры' })
   const mobile = nav.locator('details.mobileSectionMenu > summary')
+  const desktop = nav.getByRole('button', { name: section, exact: true })
+  // CSS can switch to mobile navigation after React's initial hydration.
+  // A one-shot isVisible() raced that transition and incorrectly selected
+  // the hidden desktop buttons on Chromium/iPhone.
+  await expect.poll(
+    async () => await mobile.isVisible() || await desktop.isVisible(),
+    { message: 'A navigation control must be visible before changing sections' },
+  ).toBe(true)
   if (await mobile.isVisible()) {
     await mobile.click()
-    await nav.locator('.mobileSectionOptions').getByRole('button', { name: section, exact: true }).click()
+    const choice=nav.locator('.mobileSectionOptions').getByRole('button', { name: section, exact: true })
+    await expect(choice).toBeVisible()
+    await choice.click()
   } else {
-    const desktop = nav.getByRole('button', { name: section, exact: true })
     await expect(desktop, 'The '+section+' navigation must be accessible on the current viewport').toBeVisible()
     await desktop.click()
   }

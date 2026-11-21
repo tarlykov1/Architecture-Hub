@@ -8,6 +8,9 @@ import '@xyflow/react/dist/style.css'
 import './style.css'
 import Topology from './Topology'
 import TechnicalDecisions from './TechnicalDecisions'
+import {BusinessProcessPassport,type Passport} from './BusinessProcessPassport'
+import BusinessProcessMatrix from './BusinessProcessMatrix'
+import {orderedBusinessProcesses} from './businessProcessHierarchy'
 import {flowPortError} from './fieldValidation'
 import {dependencyLayout,compactComponentLayout,overviewGridPositions,flowCountLabel} from './graphLayout'
 import {downstreamImpact,impactRoutes} from './dependencyImpact'
@@ -159,6 +162,9 @@ function App() {
   const [processes,setProcesses] = useState<BusinessProcess[]>([])
   const [businessLinks,setBusinessLinks] = useState<BusinessLink[]>([])
   const [businessEditorOpen,setBusinessEditorOpen] = useState(false)
+  const [businessPassportId,setBusinessPassportId] = useState('')
+  const [businessPassports,setBusinessPassports] = useState<Passport[]>([])
+  const [businessView,setBusinessView] = useState<'registry'|'matrix'>('registry')
   const [businessEditId,setBusinessEditId] = useState('')
   const [businessCategoryId,setBusinessCategoryId] = useState('')
   const [businessNewCategory,setBusinessNewCategory] = useState('')
@@ -965,6 +971,14 @@ function App() {
     if (d) { setDiagramId(id); setPositions(d.positions || {}); setDirty(false) }
   }
 
+  useEffect(()=>{
+    if(layer!=='business'||!tokenReady)return
+    let alive=true
+    request<Passport[]>('/api/business/process-passports')
+      .then(data=>{if(alive)setBusinessPassports(Array.isArray(data)?data:[])})
+      .catch(()=>{if(alive)setBusinessPassports([])})
+    return()=>{alive=false}
+  },[layer,tokenReady,processes])
   useEffect(()=>{setDiagramEditMode(false);setViewsMenuOpen(false)},[layer])
   useEffect(()=>{setViewsMenuOpen(false)},[viewSystem])
 
@@ -1280,10 +1294,24 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
       const uri=id?'/api/network-interfaces/'+id:'/api/network-interfaces'
       await request(uri,{method:id?'PUT':'POST',body:JSON.stringify(value)})
       setNics(await request<Nic[]>('/api/network-interfaces'))
-    }} saveSegment={async (value,id)=>{await request(id?'/api/networks/'+id:'/api/networks',{method:id?'PUT':'POST',body:JSON.stringify(value)});setSegments(await request<Segment[]>('/api/networks'))}} saveFlow={async (value,id)=>{ await request(id?'/api/flows/'+id:'/api/flows',{method:id?'PUT':'POST',body:JSON.stringify(value)}); setFlows(await request<Flow[]>('/api/flows')) }}/> : layer==='business' ? <section className="infraPanel"><h2>Бизнес-архитектура</h2><p className="hint">Категория → процесс → поддерживающие системы. Достоверность связей проверяется отдельно.</p>
-      {canWrite('systems')&&<button type="button" className="primary" onClick={()=>openBusinessEditor()}>+ Создать бизнес-процесс</button>}
-      <div className="businessGrid">{categories.filter(cat=>!workspaceQuery||cat.name.toLowerCase().includes(workspaceQuery.toLowerCase())||processes.some(p=>p.category_id===cat.id&&[p.name,p.description].join(' ').toLowerCase().includes(workspaceQuery.toLowerCase()))).map(cat=><article className="businessCategory" key={cat.id}><h3>{cat.name}</h3>{processes.filter(p=>p.category_id===cat.id&&(!workspaceQuery||[p.name,p.description,cat.name].join(' ').toLowerCase().includes(workspaceQuery.toLowerCase()))).map(p=><div className="businessProcess" key={p.id}><strong>{p.name}</strong>{canWrite('systems')&&<button type="button" onClick={()=>openBusinessEditor(p)}>Редактировать БП</button>}<p>{p.description}</p><div className="processSystems">{businessLinks.filter(l=>l.process_id===p.id).map(l=><button key={l.id} onClick={()=>{setSelected(l.system_id);setLayer('systems')}}>{objects.find(o=>o.id===l.system_id)?.name||'Система'}</button>)}</div></div>)}</article>)}</div>
-      {!categories.length?<p>Бизнес-процессы пока не добавлены.</p>:!categories.some(cat=>!workspaceQuery||cat.name.toLowerCase().includes(workspaceQuery.toLowerCase())||processes.some(p=>p.category_id===cat.id&&[p.name,p.description].join(' ').toLowerCase().includes(workspaceQuery.toLowerCase())))&&<p role="status">Нет бизнес-процессов по фильтру «{workspaceQuery}». <button type="button" onClick={()=>setWorkspaceQuery('')}>Сбросить поиск</button></p>}</section> : layer==='systems' ? <section className="systemsWorkspace" aria-label="Реестр информационных систем">
+    }} saveSegment={async (value,id)=>{await request(id?'/api/networks/'+id:'/api/networks',{method:id?'PUT':'POST',body:JSON.stringify(value)});setSegments(await request<Segment[]>('/api/networks'))}} saveFlow={async (value,id)=>{ await request(id?'/api/flows/'+id:'/api/flows',{method:id?'PUT':'POST',body:JSON.stringify(value)}); setFlows(await request<Flow[]>('/api/flows')) }}/> : layer==='business' ? <section className="infraPanel"><h2>Бизнес-архитектура</h2>
+      <div className="businessRegistryToolbar" role="group" aria-label="Представление бизнес-архитектуры">
+        <button type="button" aria-pressed={businessView==='registry'} onClick={()=>setBusinessView('registry')}>Реестр процессов</button>
+        <button type="button" aria-pressed={businessView==='matrix'} onClick={()=>setBusinessView('matrix')}>Матрица зависимостей</button>
+        {canWrite('business')&&<button type="button" className="primary" onClick={()=>openBusinessEditor()}>+ Создать бизнес-процесс</button>}
+      </div>
+      {businessView==='matrix'?<BusinessProcessMatrix
+        processes={processes} passports={businessPassports}
+        systems={objects.filter(o=>o.kind==='system')} flows={flows}
+        links={businessLinks} onOpen={id=>setBusinessPassportId(id)}
+      />:<>
+      <div className="businessGrid">{categories.filter(cat=>!workspaceQuery||cat.name.toLowerCase().includes(workspaceQuery.toLowerCase())||processes.some(p=>p.category_id===cat.id&&[p.name,p.description].join(' ').toLowerCase().includes(workspaceQuery.toLowerCase()))).map(cat=><article className="businessCategory" key={cat.id}><h3>{cat.name}</h3>{orderedBusinessProcesses(processes.filter(p=>p.category_id===cat.id&&(!workspaceQuery||[p.name,p.description,cat.name].join(' ').toLowerCase().includes(workspaceQuery.toLowerCase()))),businessPassports).map(({process:p,depth})=><div className="businessProcess" key={p.id} style={{marginLeft:Math.min(depth,6)*14}}><strong>{p.name}</strong>{businessPassports.find(profile=>profile.process_id===p.id)&&<small className="businessProfileHint">
+      {businessPassports.find(profile=>profile.process_id===p.id)?.parent_id?'↳ '+(processes.find(parent=>parent.id===businessPassports.find(profile=>profile.process_id===p.id)?.parent_id)?.name||'Подпроцесс')+' · ':''}
+      {businessPassports.find(profile=>profile.process_id===p.id)?.steps.length||0} шагов
+      {businessPassports.find(profile=>profile.process_id===p.id)?.owner?' · '+businessPassports.find(profile=>profile.process_id===p.id)?.owner:''}
+    </small>}{canWrite('business')&&<button type="button" onClick={()=>openBusinessEditor(p)}>Редактировать БП</button>}<button className="businessPassportOpen" type="button" onClick={()=>setBusinessPassportId(p.id)}>Паспорт и шаги</button><p>{p.description}</p><div className="processSystems">{businessLinks.filter(l=>l.process_id===p.id).map(l=><button key={l.id} onClick={()=>{setSelected(l.system_id);setLayer('systems')}}>{objects.find(o=>o.id===l.system_id)?.name||'Система'}</button>)}</div></div>)}</article>)}</div>
+      {!categories.length?<p>Бизнес-процессы пока не добавлены.</p>:!categories.some(cat=>!workspaceQuery||cat.name.toLowerCase().includes(workspaceQuery.toLowerCase())||processes.some(p=>p.category_id===cat.id&&[p.name,p.description].join(' ').toLowerCase().includes(workspaceQuery.toLowerCase())))&&<p role="status">Нет бизнес-процессов по фильтру «{workspaceQuery}». <button type="button" onClick={()=>setWorkspaceQuery('')}>Сбросить поиск</button></p>}
+      </>}</section> : layer==='systems' ? <section className="systemsWorkspace" aria-label="Реестр информационных систем">
         <div className="systemsWorkspaceHead"><div><h2>Информационные системы</h2></div><div className="systemsWorkspaceActions"><button type="button" onClick={()=>{setHomeEntry('business');setLayer("home")}}>Общая карта</button><button type="button" onClick={()=>setSystemsShowTechnologyInventory(v=>!v)} aria-pressed={systemsShowTechnologyInventory}>{systemsShowTechnologyInventory?'Вернуться к реестру ИС':'Реестр технологий'}</button>{canWrite('systems')&&<button type="button" className="primary" onClick={()=>{setPassportEditId('');setCreateObjectOpen(true)}}>+ Создать ИС</button>}</div></div>
         {systemsShowTechnologyInventory ? <TechnologyInventory request={request} onOpenSystem={id=>{setSystemsShowTechnologyInventory(false);setSelected(id);setInspectorOpen(true);setPanelTab('technologies')}}/> : <div className="systemsTableWrap">
         <div className="systemSecurityFilterBar" role="group" aria-label="Фильтры защиты информации">
@@ -1576,6 +1604,15 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
         </div>
       </div>
     })()}
+    {businessPassportId&&<BusinessProcessPassport key={businessPassportId} processId={businessPassportId}
+      processes={processes} systems={objects} components={infra} flows={flows}
+      request={request} canEdit={canWrite('business')}
+      onClose={()=>setBusinessPassportId('')}
+      onSaved={saved=>setBusinessPassports(previous=>{
+        const next=previous.filter(p=>p.process_id!==saved.process_id)
+        next.push(saved)
+        return next
+      })}/>}
     {businessEditorOpen&&<div className="editorBackdrop" onClick={()=>!businessSaving&&setBusinessEditorOpen(false)}><div className="editorDialog architectureDrawer" role="dialog" aria-modal="true" aria-label="Редактор бизнес-процесса" onClick={e=>e.stopPropagation()}><div className="dialogHead"><h2>{businessEditId?'Редактировать бизнес-процесс':'Новый бизнес-процесс'}</h2><button type="button" disabled={businessSaving} onClick={()=>setBusinessEditorOpen(false)}>Закрыть ×</button></div><form className="detailForm" onSubmit={saveBusinessProcess}><label>Категория<select aria-label="Категория бизнес-процесса" value={businessCategoryId} onChange={e=>setBusinessCategoryId(e.target.value)}><option value="">Выберите категорию</option>{categories.map(cat=><option key={cat.id} value={cat.id}>{cat.name}</option>)}</select></label><label>Новая категория (если отсутствует в списке)<input aria-label="Новая категория бизнес-процесса" value={businessNewCategory} onChange={e=>setBusinessNewCategory(e.target.value)} placeholder="Создать новую категорию"/></label><label>Название<input required value={businessName} onChange={e=>setBusinessName(e.target.value)}/></label><label>Описание<textarea value={businessDescription} onChange={e=>setBusinessDescription(e.target.value)}/></label><label>Связать с ИС (необязательно)<select value={businessSystemId} onChange={e=>setBusinessSystemId(e.target.value)}><option value="">Без новой связи</option>{objects.filter(o=>o.kind==='system').map(o=><option key={o.id} value={o.id}>{o.name}</option>)}</select></label>{businessError&&<p role="alert">{businessError}</p>}<button className="primary" disabled={businessSaving||(!businessCategoryId&&!businessNewCategory.trim())}>{businessSaving?'Сохранение…':'Сохранить бизнес-процесс'}</button></form></div></div>}
     {createObjectOpen&&<div className="editorBackdrop" onClick={()=>setCreateObjectOpen(false)}>
       <div className="editorDialog" role="dialog" aria-modal="true" aria-label="Создать объект архитектуры" onClick={event=>event.stopPropagation()}>

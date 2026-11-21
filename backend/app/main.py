@@ -3863,31 +3863,108 @@ def _decision_named_reviewer(request: Request):
 
 
 def _decision_current_baseline(row: TechnicalDecision, db: Session) -> str:
-    """Stable fingerprint of selected IS, its registered components and one-hop flows."""
+    """Fingerprint the registered architecture that may affect this decision.
+
+    Scope: selected IS, its components, one-hop technical flows, interfaces,
+    referenced network segments/routes and flow data contracts. Geometry and
+    unrelated enterprise records do not affect the decision baseline.
+    """
     sys = db.get(ArchitectureObject, row.system_id)
     if sys is None:
         raise HTTPException(409, "Selected information system was removed")
     local = db.scalars(select(InfrastructureItem).where(
         InfrastructureItem.system_id == row.system_id)).all()
-    ids = {item.id for item in local}
+    local_ids = {item.id for item in local}
     connected_flows = db.scalars(select(DataFlow).where(
-        (DataFlow.source_id.in_(ids)) | (DataFlow.target_id.in_(ids)))).all() if ids else []
-    remote_ids = {identifier for flow in connected_flows
-                  for identifier in (flow.source_id, flow.target_id)}
-    all_connected = db.scalars(select(InfrastructureItem).where(
-        InfrastructureItem.id.in_(remote_ids))).all() if remote_ids else []
+        (DataFlow.source_id.in_(local_ids)) | (DataFlow.target_id.in_(local_ids))
+    )).all() if local_ids else []
+    flow_ids = {flow.id for flow in connected_flows}
+    component_ids = local_ids | {
+        endpoint for flow in connected_flows for endpoint in (flow.source_id, flow.target_id)
+    }
+    components = db.scalars(select(InfrastructureItem).where(
+        InfrastructureItem.id.in_(component_ids)
+    )).all() if component_ids else []
+    interfaces = db.scalars(select(NetworkInterface).where(
+        NetworkInterface.item_id.in_(component_ids)
+    )).all() if component_ids else []
+    uses = db.scalars(select(FlowDataUse).where(
+        FlowDataUse.flow_id.in_(flow_ids)
+    )).all() if flow_ids else []
+    attribute_ids = {use.attribute_id for use in uses}
+    attributes = db.scalars(select(DataAttribute).where(
+        DataAttribute.id.in_(attribute_ids)
+    )).all() if attribute_ids else []
+    hops = db.scalars(select(FlowNetworkHop).where(
+        FlowNetworkHop.flow_id.in_(flow_ids)
+    )).all() if flow_ids else []
+    segment_ids = {
+        value for nic in interfaces
+        for value in (nic.zone_id, nic.vlan_id, nic.vrf_id) if value is not None
+    } | {hop.segment_id for hop in hops if hop.segment_id is not None}
+    segments = db.scalars(select(NetworkSegment).where(
+        NetworkSegment.id.in_(segment_ids)
+    )).all() if segment_ids else []
+    asset_ids = {hop.asset_id for hop in hops if hop.asset_id is not None}
+    assets = db.scalars(select(NetworkAsset).where(
+        NetworkAsset.id.in_(asset_ids)
+    )).all() if asset_ids else []
+
+    # Sort every collection by stable ID: order of database query results must
+    # not invalidate reviews. Record definitions only, never personal values.
+    def ordered(rows, make):
+        return sorted((make(item) for item in rows), key=lambda item: item["id"])
+
     body = {
-        "system": [str(sys.id), sys.name, sys.kind, sys.status],
-        "components": sorted([{
-            "id": str(c.id), "system": str(c.system_id), "name": c.name,
-            "kind": c.kind, "description": c.description,
-        } for c in all_connected + [c for c in local if c.id not in remote_ids]],
-            key=lambda item: item["id"]),
-        "flows": sorted([{
-            "id": str(flow.id), "source": str(flow.source_id),
-            "target": str(flow.target_id), "name": flow.name,
-            "protocol": flow.protocol, "port": flow.port,
-        } for flow in connected_flows], key=lambda item: item["id"]),
+        "system": [str(sys.id), sys.name, sys.kind, sys.status, sys.description],
+        "components": ordered(components, lambda c: {
+            "id": str(c.id), "system": str(c.system_id),
+            "parent": str(c.parent_id) if c.parent_id else None,
+            "name": c.name, "kind": c.kind, "description": c.description,
+            "details": c.details,
+        }),
+        "flows": ordered(connected_flows, lambda f: {
+            "id": str(f.id), "source": str(f.source_id),
+            "target": str(f.target_id), "name": f.name,
+            "protocol": f.protocol, "port": f.port,
+            "data_description": f.data_description, "security": f.security,
+            "schedule": f.schedule, "verification": f.verification,
+        }),
+        "interfaces": ordered(interfaces, lambda nic: {
+            "id": str(nic.id), "item": str(nic.item_id), "name": nic.name,
+            "ip": nic.ip_address,
+            "zone": str(nic.zone_id) if nic.zone_id else None,
+            "vlan": str(nic.vlan_id) if nic.vlan_id else None,
+            "vrf": str(nic.vrf_id) if nic.vrf_id else None,
+        }),
+        "network_segments": ordered(segments, lambda s: {
+            "id": str(s.id), "name": s.name, "kind": s.kind,
+            "description": s.description, "verification": s.verification,
+        }),
+        "network_paths": ordered(hops, lambda hop: {
+            "id": str(hop.id), "flow": str(hop.flow_id),
+            "asset": str(hop.asset_id) if hop.asset_id else None,
+            "segment": str(hop.segment_id) if hop.segment_id else None,
+            "position": hop.position, "notes": hop.notes,
+            "verification": hop.verification,
+        }),
+        "network_assets": ordered(assets, lambda asset: {
+            "id": str(asset.id), "name": asset.name, "kind": asset.kind,
+            "description": asset.description, "address": asset.address,
+            "verification": asset.verification,
+        }),
+        "flow_data_uses": ordered(uses, lambda use: {
+            "id": str(use.id), "flow": str(use.flow_id),
+            "attribute": str(use.attribute_id),
+            "process": str(use.process_id) if use.process_id else None,
+            "consumer": str(use.consumer_system_id) if use.consumer_system_id else None,
+            "purpose": use.purpose, "verification": use.verification,
+        }),
+        "data_attributes": ordered(attributes, lambda attr: {
+            "id": str(attr.id), "code": attr.code, "name": attr.name,
+            "description": attr.description, "type": attr.data_type,
+            "sensitivity": attr.sensitivity,
+        }),
     }
     return hashlib.sha256(json.dumps(body, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
 

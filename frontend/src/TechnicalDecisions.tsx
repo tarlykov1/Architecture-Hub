@@ -261,7 +261,7 @@ function DecisionInspector({id,request,profile,items,flows,schema,openSchema,clo
               const approval=row.approvals.find(a=>a.service===service)
               return <div className="decisionReviewStage" key={service}>
                 <strong>{services[service]}</strong>
-                <span>{approval?.verdict==='approved'?'Согласовано':approval?.verdict==='changes_requested'?'Возвращено на доработку':row.status==='in_review'?'Ожидает согласования':'Не отправлено'}</span>
+                <span>{approval?.verdict==='approved'?'Согласовано':approval?.verdict==='changes_requested'?'Возвращено на доработку':row.status==='in_review'?'На рассмотрении':'Не отправлено'}</span>
                 {approval&&<small>{approval.actor_name||approval.actor} · {dateFormat.format(new Date(approval.created_at))}</small>}
                 {approval?.note&&<p>{approval.note}</p>}
               </div>

@@ -455,4 +455,9 @@ def test_reviewed_flow_reconnect_preserves_id_and_rejects_stale_endpoints():
         assert {**flow, "source_id": replacement} in client.get("/api/flows", headers=ADMIN).json()
         assert client.post("/api/board/commit", headers=ADMIN, json=batch).status_code == 409
         audit = client.get("/api/board/audit", headers=ADMIN).json()
-        assert any(row["id"] == committed.json()["audit_id"] and row["changes"] == [change] for row in audit)
+        assert any(
+            row["id"] == committed.json()["audit_id"]
+            and [{key: value for key, value in item.items() if key != "system_ids"} for item in row["changes"]] == [change]
+            and len(row["changes"][0].get("system_ids", [])) == 3
+            for row in audit
+        )

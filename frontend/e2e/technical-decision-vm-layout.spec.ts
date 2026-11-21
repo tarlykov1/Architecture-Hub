@@ -28,8 +28,8 @@ test('QA-WORK: moving a proposed VM saves its coordinates without modifying live
   }})
   expect(saved.status(),await saved.text()).toBe(200)
 
-  const liveBefore=await (await request.get(api+'/infra')).json() as {id:string}[]
-  const flowBefore=await (await request.get(api+'/flows')).json() as {id:string}[]
+  // Playwright workers share the isolated API server: compare only entities
+  // relevant to this proposal, never global lists that another test may grow.
   await page.addInitScript(()=>sessionStorage.setItem('architecture-hub:access-token:session','browser-ci-development-token'))
   await page.goto('/decisions')
   await page.getByRole('button',{name:title,exact:true}).click()
@@ -62,8 +62,11 @@ test('QA-WORK: moving a proposed VM saves its coordinates without modifying live
   expect(data.proposed_flows[0]).toMatchObject({
     id:proposedFlow.id,source_id:liveId,target_id:vmId
   })
-  expect((await (await request.get(api+'/infra')).json() as {id:string}[]).map(x=>x.id)).toEqual(liveBefore.map(x=>x.id))
-  expect((await (await request.get(api+'/flows')).json() as {id:string}[]).map(x=>x.id)).toEqual(flowBefore.map(x=>x.id))
+  const liveRows=await (await request.get(api+'/infra')).json() as {id:string}[]
+  const liveFlows=await (await request.get(api+'/flows')).json() as {id:string}[]
+  expect(liveRows.some(x=>x.id===liveId)).toBe(true)
+  expect(liveRows.some(x=>x.id===vmId)).toBe(false)
+  expect(liveFlows.some(x=>x.id===proposedFlow.id)).toBe(false)
 
   await page.reload()
   await page.getByRole('button',{name:title,exact:true}).click()
@@ -97,7 +100,7 @@ test('QA-WORK: removing a proposed VM removes only dependent proposal flows',asy
     title,expected_revision:decision.revision,proposed_vms:[vmA,vmB],proposed_flows:[attached,remaining]
   }})
   expect(change.status(),await change.text()).toBe(200)
-  const liveBefore=await (await request.get(api+'/infra')).json() as {id:string}[]
+  // The unrelated infrastructure registry can change concurrently in other tests.
 
   await page.addInitScript(()=>sessionStorage.setItem('architecture-hub:access-token:session','browser-ci-development-token'))
   await page.goto('/decisions')
@@ -117,5 +120,7 @@ test('QA-WORK: removing a proposed VM removes only dependent proposal flows',asy
   }
   expect(row.proposed_vms.map(vm=>vm.id)).toEqual([vmB.id])
   expect(row.proposed_flows.map(flow=>flow.id)).toEqual([remaining.id])
-  expect((await (await request.get(api+'/infra')).json() as {id:string}[]).map(vm=>vm.id)).toEqual(liveBefore.map(vm=>vm.id))
+  const liveRows=await (await request.get(api+'/infra')).json() as {id:string}[]
+  expect(liveRows.some(vm=>vm.id===liveId)).toBe(true)
+  expect(liveRows.some(vm=>vm.id===vmA.id||vm.id===vmB.id)).toBe(false)
 })

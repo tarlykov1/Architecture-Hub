@@ -80,6 +80,7 @@ test('QA-WORK: shared scenario stores repeatable flow steps, BP, order and note 
 })
 
 test('QA-WORK: removing a saved scenario never deletes its underlying technical flows',async({page,request})=>{
+  await page.setViewportSize({width:390,height:844})
   const {suffix,forward,backward}=await setup(request)
   const diagram=await openSequence(page,'QA-WORK-Scenario-'+suffix)
   await diagram.getByRole('button',{name:'Сохранить как сценарий'}).click()
@@ -98,4 +99,5 @@ test('QA-WORK: removing a saved scenario never deletes its underlying technical 
   const live=(await (await request.get(api+'/flows')).json()) as {id:string}[]
   expect(live.some(x=>x.id===forward.id)).toBe(true)
   expect(live.some(x=>x.id===backward.id)).toBe(true)
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(392)
 })

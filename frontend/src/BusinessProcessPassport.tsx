@@ -1,5 +1,6 @@
 import {useEffect,useState} from 'react'
-import {ArrowDown,ArrowUp,ChevronRight,Plus,Save,Trash2,X} from 'lucide-react'
+import {ArrowDown,ArrowUp,ChevronRight,Download,Plus,Save,Trash2,X} from 'lucide-react'
+import {buildBusinessProcessMarkdown} from './businessProcessDocument'
 import './businessProcessPassport.css'
 
 type Api=<T>(url:string,init?:RequestInit)=>Promise<T>
@@ -90,6 +91,17 @@ export function BusinessProcessPassport({processId,processes,systems,components,
   setDraft(row=>row?{...row,steps:row.steps.filter(s=>s.id!==stepId)
     .map((s,i)=>({...s,position:i}))}:row)
   if(activeStep===stepId)setActiveStep('')
+ }
+ function downloadDocument(){
+  if(!record)return
+  const markdown=buildBusinessProcessMarkdown(record,processes,systems,components,flows,attributes)
+  const blob=new Blob([markdown],{type:'text/markdown;charset=utf-8'})
+  const uri=URL.createObjectURL(blob)
+  const link=document.createElement('a')
+  link.href=uri
+  link.download='ArchitectureHub_BP_'+record.name.replace(/[^\\p{L}\\p{N}_-]+/gu,'_').slice(0,62)+'_v'+record.revision+'.md'
+  document.body.appendChild(link);link.click();link.remove()
+  window.setTimeout(()=>URL.revokeObjectURL(uri),1000)
  }
  async function save(){
   if(!draft||!record||!canEdit||busy)return
@@ -215,6 +227,7 @@ export function BusinessProcessPassport({processId,processes,systems,components,
       </div>
       {error&&<p role="alert" className="businessPassportError">{error}</p>}
       {message&&<p role="status" className="businessPassportSuccess">{message}</p>}
+      <button type="button" title="Экспорт последней сохранённой версии паспорта" onClick={downloadDocument}><Download size={15}/> Скачать описание БП (.md)</button>
       {canEdit?<div className="businessPassportSaveActions">
        <button type="button" className="primary" disabled={!dirty||busy} onClick={()=>void save()}><Save size={16}/>{busy?'Сохранение…':'Сохранить паспорт'}</button>
        <button type="button" disabled={!dirty||busy} onClick={()=>{setDraft({...record,steps:record.steps.map(s=>({...s,attribute_ids:[...s.attribute_ids]}))});setError('')}}>Отменить изменения</button>

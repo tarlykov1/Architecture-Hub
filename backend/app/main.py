@@ -3619,11 +3619,51 @@ def preview_board_batch(payload: BoardBatch, request: Request, db: Session = Dep
     finally:
         db.rollback()
 
+def tag_board_audit_scope(changes: list[dict[str, Any]], db: Session) -> None:
+    """Persist IS ownership at commit time, so later VM/flow deletion cannot erase history."""
+    for change in changes:
+        kind = change.get("action")
+        systems: set[str] = set()
+
+        def include_component(identifier: Any) -> None:
+            if not identifier:
+                return
+            try:
+                component = db.get(InfrastructureItem, UUID(str(identifier)))
+            except (ValueError, TypeError):
+                component = None
+            if component:
+                systems.add(str(component.system_id))
+
+        if kind in {"create_vm", "update_vm"}:
+            include_component(change.get("id"))
+        elif kind in {"create_flow", "update_flow"}:
+            before = change.get("before") if isinstance(change.get("before"), dict) else {}
+            after = change.get("after") if isinstance(change.get("after"), dict) else {}
+            for field in ("source_id", "target_id"):
+                include_component(change.get(field))
+                include_component(before.get(field))
+                include_component(after.get(field))
+        elif kind in {"create_interface", "move_interface"}:
+            after = change.get("after") if isinstance(change.get("after"), dict) else {}
+            include_component(change.get("item_id") or after.get("item_id"))
+            if not systems:
+                try:
+                    interface = db.get(NetworkInterface, UUID(str(change.get("id"))))
+                except (ValueError, TypeError):
+                    interface = None
+                if interface:
+                    include_component(interface.item_id)
+        if systems:
+            change["system_ids"] = sorted(systems)
+
+
 @app.post("/api/board/commit")
 def commit_board_batch(payload: BoardBatch, request: Request, db: Session = Depends(db_session)):
     authorize_board(payload, request)
     try:
         changes = apply_board_changes(payload, db)
+        tag_board_audit_scope(changes, db)
         audit = BoardAudit(reason=payload.reason.strip(), actor=board_actor(request), changes=changes)
         db.add(audit)
         db.commit()

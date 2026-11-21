@@ -97,6 +97,8 @@ function DecisionInspector({id,request,profile,items,flows,schema,openSchema,clo
   const [draft,setDraft]=useState<Link>(emptyFlow)
   const [viewFlowId,setViewFlowId]=useState('')
   const [drawing,setDrawing]=useState(false)
+  // React Flow needs a controlled position during drag; only committed on mouseup.
+  const [dragPositions,setDragPositions]=useState<Record<string,{x:number;y:number}>>({})
   const [comment,setComment]=useState('')
   const [discussion,setDiscussion]=useState('')
   const [commentTarget,setCommentTarget]=useState('decision:')
@@ -142,6 +144,7 @@ function DecisionInspector({id,request,profile,items,flows,schema,openSchema,clo
   const baseline=items.filter(i=>localIds.has(i.id)||linkedIds.has(i.id))
   const choices=[...items,...row.proposed_vms]
   const proposedPositions=row.proposed_vms
+  const proposedVmIds=new Set(proposedPositions.map(vm=>vm.id))
   let cell=0
   function nextGridPosition(){
     // An external endpoint can join the canvas after a VM already occupies its grid cell.
@@ -152,8 +155,8 @@ function DecisionInspector({id,request,profile,items,flows,schema,openSchema,clo
     }while(proposedPositions.some(vm=>Math.abs(vm.x-point.x)<260&&Math.abs(vm.y-point.y)<110))
     return point
   }
-  const nodes=[...baseline.map(i=>({type:'diagramPort',id:i.id,position:nextGridPosition(),data:{label:<DiagramNodeLabel name={i.name} kind={i.kind}/>},style:diagramCardStyle()})),
-    ...row.proposed_vms.map(vm=>({type:'diagramPort',id:vm.id,position:{x:vm.x,y:vm.y},data:{label:<DiagramNodeLabel name={vm.name} kind={vm.kind} subtitle="Новая ВМ"/>},style:diagramCardStyle({border:'1px dashed #a46c26'})}))]
+  const nodes=[...baseline.map(i=>({type:'diagramPort',id:i.id,position:nextGridPosition(),draggable:false,data:{label:<DiagramNodeLabel name={i.name} kind={i.kind}/>},style:diagramCardStyle()})),
+    ...row.proposed_vms.map(vm=>({type:'diagramPort',id:vm.id,position:dragPositions[vm.id]||{x:vm.x,y:vm.y},draggable:editable&&!busy,data:{label:<DiagramNodeLabel name={vm.name} kind={vm.kind} subtitle="Новая ВМ"/>},style:diagramCardStyle({border:'1px dashed #a46c26'})}))]
   const positions=new Map(nodes.map(n=>[n.id,n.position]))
   const proposedIds=new Set(row.proposed_flows.map(f=>f.id))
   function openFlow(flow:Link) {
@@ -187,6 +190,32 @@ function DecisionInspector({id,request,profile,items,flows,schema,openSchema,clo
     if(!row||!editable||busy)return
     void change('',{...revision,title:row.title,description:row.description,required_services:row.required_services,proposed_vms:vms,proposed_flows:links},'PUT')
   }
+  async function moveProposedVm(vmId:string,position:{x:number;y:number}) {
+    if(!row||!editable||busy)return
+    const vm=row.proposed_vms.find(item=>item.id===vmId)
+    if(!vm)return
+    if(Math.abs(vm.x-position.x)<0.5&&Math.abs(vm.y-position.y)<0.5){
+      setDragPositions({})
+      return
+    }
+    setBusy(true);setError('')
+    try{
+      // Write the proposed VM only. Live infrastructure, flows, and unrelated
+      // proposal items remain untouched. Revision guards concurrent editors.
+      const next=await request<Details>(path+'/'+id,{method:'PUT',body:JSON.stringify({
+        ...revision,title:row.title,description:row.description,
+        required_services:row.required_services,
+        proposed_vms:row.proposed_vms.map(item=>item.id===vmId?{...item,x:position.x,y:position.y}:item),
+        proposed_flows:row.proposed_flows,
+      })})
+      setRow(next);setRoute(next.required_services);update(next)
+    }catch(err){
+      setError('Не удалось сохранить положение ВМ: '+(err as Error).message)
+    }finally{
+      // On 409, revert the optimistic position to the saved server version.
+      setDragPositions({});setBusy(false)
+    }
+  }
   function saveProposal() {
     if(!row)return
     if(tool==='vm'&&name.trim()){
@@ -199,7 +228,19 @@ function DecisionInspector({id,request,profile,items,flows,schema,openSchema,clo
   }
   return <>
     {schema&&<div className="decisionDrawing"><header><button aria-label="Вернуться к списку" disabled={busy} onClick={close}><ArrowLeft size={16}/></button><h2>{row.title}</h2><Status value={row.status}/></header>
-      <div className="decisionCanvas">{nodes.length?<ReactFlow nodes={measurements.apply(nodes)} edges={edges} onNodesChange={measurements.record} nodeTypes={diagramPortNodes} edgeTypes={decisionEdgeTypes} connectionMode={ConnectionMode.Loose} nodesDraggable={false} nodesConnectable={editable&&!busy} deleteKeyCode={null}
+      <div className="decisionCanvas">{nodes.length?<ReactFlow nodes={measurements.apply(nodes)} edges={edges} onNodesChange={changes=>{
+        measurements.record(changes)
+        if(!editable||busy)return
+        const positionChanges=changes.filter(change=>change.type==='position'&&change.position&&proposedVmIds.has(change.id))
+        if(positionChanges.length)setDragPositions(previous=>{
+          const next={...previous}
+          for(const change of positionChanges)if(change.type==='position'&&change.position){
+            next[change.id]={x:change.position.x,y:change.position.y}
+          }
+          return next
+        })
+      }} nodeTypes={diagramPortNodes} edgeTypes={decisionEdgeTypes} connectionMode={ConnectionMode.Loose} nodesDraggable={editable&&!busy} nodesConnectable={editable&&!busy} deleteKeyCode={null}
+        onNodeDragStop={(_,node)=>{if(proposedVmIds.has(node.id))void moveProposedVm(node.id,node.position)}}
         onConnectStart={()=>setDrawing(true)} onConnectEnd={()=>setDrawing(false)} onConnect={connect}
         onEdgeClick={(_,edge)=>{const f=lines.find(f=>f.id===edge.id);if(f)inspectFlow(f)}}
         isValidConnection={c=>c.source!==c.target} fitView><AutoFit layoutKey={id} suspended={drawing}/><Background gap={20}/><Controls showInteractive={false}/></ReactFlow>:<p>В этой системе пока нет компонентов.</p>}
@@ -232,7 +273,18 @@ function DecisionInspector({id,request,profile,items,flows,schema,openSchema,clo
           <button type="button" disabled={busy} onClick={()=>setTool(null)}>Отмена</button>
           {tool==='flow'&&draft.id&&<button type="button" disabled={busy} onClick={()=>{if(window.confirm('Удалить поток из этого черновика?'))persist(row.proposed_vms,row.proposed_flows.filter(f=>f.id!==draft.id))}}>Удалить поток</button>}</div>
         </form>:<>
-          {row.proposed_vms.map(vm=><div className="decisionItem" key={vm.id}><span>{vm.name}</span><small>Новая ВМ</small></div>)}
+          {row.proposed_vms.map(vm=><div className="decisionItem" key={vm.id}>
+            <span>{vm.name}</span><small>Новая ВМ</small>
+            {editable&&<button type="button" disabled={busy} aria-label={'Удалить ВМ '+vm.name} onClick={()=>{
+              const attached=row.proposed_flows.filter(flow=>flow.source_id===vm.id||flow.target_id===vm.id)
+              const question=attached.length
+                ?'Удалить ВМ «'+vm.name+'» и связанные проектируемые потоки ('+attached.length+')?'
+                :'Удалить проектируемую ВМ «'+vm.name+'»?'
+              if(window.confirm(question))persist(
+                row.proposed_vms.filter(item=>item.id!==vm.id),
+                row.proposed_flows.filter(flow=>flow.source_id!==vm.id&&flow.target_id!==vm.id))
+            }}>Удалить ВМ</button>}
+          </div>)}
           {row.proposed_flows.map(f=><div className="decisionItem" key={f.id}>
             <button onClick={()=>{openSchema();inspectFlow(f)}}>{f.name}</button><small>Новый поток</small>
             <small className="decisionFlowSummary">{choices.find(i=>i.id===f.source_id)?.name||'Компонент'} → {choices.find(i=>i.id===f.target_id)?.name||'Компонент'}{[f.protocol,f.port].some(Boolean)&&' · '+[f.protocol,f.port].filter(Boolean).join(' ')}</small>

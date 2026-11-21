@@ -370,36 +370,67 @@ function DecisionInspector({id,request,profile,items,flows,schema,openSchema,clo
       {row.base_changed&&<p role="status">Исходная архитектура изменилась после отправки на согласование.</p>}
       {tab==='items'?<>
         {row.description&&<p>{row.description}</p>}
-        {schema&&viewedFlow?<section className="decisionFlowDetails">
+        {schema&&selectedVM?<section className="decisionVmDetails" aria-label="Паспорт выбранной ВМ">
+          <h4>{selectedProposedVM?'Проектируемая ВМ':'Действующая ВМ'}</h4>
+          {selectedProposedVM&&editable?<form onSubmit={event=>{event.preventDefault();saveVMProperties()}}>
+            <label>Имя проектируемой ВМ<input aria-label="Имя проектируемой ВМ" required maxLength={250} value={vmForm.name} onChange={event=>setVmForm({...vmForm,name:event.target.value})}/></label>
+            <label>Тип<select aria-label="Тип проектируемой ВМ" value={vmForm.kind} onChange={event=>setVmForm({...vmForm,kind:event.target.value as VMForm['kind']})}>
+              <option value="vm">ВМ</option><option value="server">Сервер</option><option value="host">Хост</option>
+            </select></label>
+            <label>Среда<input aria-label="Среда проектируемой ВМ" maxLength={120} value={vmForm.environment} onChange={event=>setVmForm({...vmForm,environment:event.target.value})} placeholder="prod / test / dev"/></label>
+            <label>Описание<textarea aria-label="Описание проектируемой ВМ" maxLength={4000} value={vmForm.description} onChange={event=>setVmForm({...vmForm,description:event.target.value})}/></label>
+            <small>Позиция: {Math.round(selectedProposedVM.x)}, {Math.round(selectedProposedVM.y)}. Перемещайте ВМ на схеме.</small>
+            <div className="decisionActions">
+              <button className="primary" disabled={busy||!vmFormDirty||!vmForm.name.trim()}>Сохранить свойства ВМ</button>
+              <button type="button" disabled={busy} onClick={()=>deleteProposedVM(selectedProposedVM.id)}>Удалить ВМ</button>
+            </div>
+          </form>:<>
+            <strong>{selectedVM.name}</strong>
+            <small>Из действующего реестра. Здесь объект можно только просмотреть.</small>
+            {selectedProposedVM&&<small>Позиция: {Math.round(selectedProposedVM.x)}, {Math.round(selectedProposedVM.y)}</small>}
+          </>}
+          <button type="button" onClick={()=>setSelectedVMId('')}>К составу решения</button>
+        </section>:schema&&viewedFlow?<section className="decisionFlowDetails">
           <strong>{viewedFlow.name}</strong>
           <small>{proposedIds.has(viewedFlow.id)?'Проектируемый поток':'Поток из реестра'}</small>
           <p>{choices.find(c=>c.id===viewedFlow.source_id)?.name} → {choices.find(c=>c.id===viewedFlow.target_id)?.name}</p>
           <small>{[viewedFlow.protocol,viewedFlow.port].filter(Boolean).join(' ')||'Протокол и порт не указаны'}</small>
+          {viewedFlow.data_description&&<p>{viewedFlow.data_description}</p>}
+          {viewedFlow.security&&<small>Защита: {viewedFlow.security}</small>}
+          {viewedFlow.schedule&&<small>Периодичность: {viewedFlow.schedule}</small>
           <button onClick={()=>setViewFlowId('')}>К составу решения</button>
         </section>:schema&&tool&&editable?<form key={tool} onSubmit={e=>{e.preventDefault();saveProposal()}}>
           <label>{tool==='vm'?'Название ВМ':'Название потока'}<input autoFocus required maxLength={250} value={tool==='vm'?name:draft.name} onChange={e=>tool==='vm'?setName(e.target.value):setDraft({...draft,name:e.target.value})}/></label>
+          {tool==='vm'&&<>
+            <label>Тип<select aria-label="Тип новой ВМ" value={newVM.kind} onChange={e=>setNewVM({...newVM,kind:e.target.value as VMForm['kind']})}>
+              <option value="vm">ВМ</option><option value="server">Сервер</option><option value="host">Хост</option>
+            </select></label>
+            <label>Среда<input maxLength={120} value={newVM.environment} onChange={e=>setNewVM({...newVM,environment:e.target.value})}/></label>
+            <label>Описание<textarea maxLength={4000} value={newVM.description} onChange={e=>setNewVM({...newVM,description:e.target.value})}/></label>
+          </>}
           {tool==='flow'&&<>
             {!draft.source_id&&!draft.target_id&&<small>Выберите компоненты в списках или протяните стрелку между точками на схеме.</small>}
             {(['source','target'] as const).map(end=><label key={end}>{end==='source'?'Источник':'Получатель'}<select aria-label={end==='source'?'Источник':'Получатель'} required value={draft[`${end}_id`]} onChange={e=>setDraft({...draft,[end+'_id']:e.target.value,[end+'_handle']:''})}><option value="">Выберите компонент</option>{choices.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></label>)}
             <button type="button" disabled={!draft.source_id||!draft.target_id} onClick={()=>setDraft({...draft,source_id:draft.target_id,target_id:draft.source_id,source_handle:draft.target_handle?.replace('in-','out-'),target_handle:draft.source_handle?.replace('out-','in-')})}>Поменять направление</button>
             <div className="decisionFlowFields"><label>Протокол<input maxLength={80} value={draft.protocol} onChange={e=>setDraft({...draft,protocol:e.target.value})}/></label><label>Порт<input maxLength={80} inputMode="numeric" value={draft.port} onChange={e=>setDraft({...draft,port:e.target.value})}/></label></div>
+            <label>Состав передаваемых данных<textarea aria-label="Данные проектируемого потока" maxLength={4000} value={draft.data_description||''} onChange={e=>setDraft({...draft,data_description:e.target.value})}/></label>
+            <label>Защита<input aria-label="Защита проектируемого потока" maxLength={80} value={draft.security||''} onChange={e=>setDraft({...draft,security:e.target.value})} placeholder="Не указана"/></label>
+            <label>Периодичность<input aria-label="Периодичность проектируемого потока" maxLength={160} value={draft.schedule||''} onChange={e=>setDraft({...draft,schedule:e.target.value})}/></label>
+            <label>Достоверность<select aria-label="Достоверность проектируемого потока" value={draft.verification||'draft'} onChange={e=>setDraft({...draft,verification:e.target.value as Link['verification']})}>
+              <option value="draft">Черновик</option><option value="assumed">Предполагается</option><option value="verified">Подтверждено</option>
+            </select></label>
             {(sameEnds||outside||flowError)&&<small role="alert">{sameEnds?'Выберите два разных компонента.':outside?'Один из компонентов должен принадлежать системе решения.':flowError}</small>}
           </>}
           <div className="decisionActions"><button className="primary" disabled={busy||(tool==='vm'?!name.trim():!draft.name.trim()||!draft.source_id||!draft.target_id||sameEnds||outside||!!flowError)}>{tool==='flow'&&draft.id?'Сохранить поток':'Добавить в черновик'}</button>
-          <button type="button" disabled={busy} onClick={()=>setTool(null)}>Отмена</button>
+          <button type="button" disabled={busy} onClick={()=>{
+            if(hasUnsavedForm&&!window.confirm('Отбросить несохранённые изменения?'))return
+            setTool(null)
+          }}>Отмена</button>
           {tool==='flow'&&draft.id&&<button type="button" disabled={busy} onClick={()=>{if(window.confirm('Удалить поток из этого черновика?'))persist(row.proposed_vms,row.proposed_flows.filter(f=>f.id!==draft.id))}}>Удалить поток</button>}</div>
         </form>:<>
           {row.proposed_vms.map(vm=><div className="decisionItem" key={vm.id}>
-            <span>{vm.name}</span><small>Новая ВМ</small>
-            {editable&&<button type="button" disabled={busy} aria-label={'Удалить ВМ '+vm.name} onClick={()=>{
-              const attached=row.proposed_flows.filter(flow=>flow.source_id===vm.id||flow.target_id===vm.id)
-              const question=attached.length
-                ?'Удалить ВМ «'+vm.name+'» и связанные проектируемые потоки ('+attached.length+')?'
-                :'Удалить проектируемую ВМ «'+vm.name+'»?'
-              if(window.confirm(question))persist(
-                row.proposed_vms.filter(item=>item.id!==vm.id),
-                row.proposed_flows.filter(flow=>flow.source_id!==vm.id&&flow.target_id!==vm.id))
-            }}>Удалить ВМ</button>}
+            <button type="button" onClick={()=>{openSchema();inspectVM(vm.id)}}>{vm.name}</button><small>Новая ВМ</small>
+            {editable&&<button type="button" disabled={busy} aria-label={'Удалить ВМ '+vm.name} onClick={()=>deleteProposedVM(vm.id)}}>Удалить ВМ</button>}
           </div>)}
           {row.proposed_flows.map(f=><div className="decisionItem" key={f.id}>
             <button onClick={()=>{openSchema();inspectFlow(f)}}>{f.name}</button><small>Новый поток</small>
@@ -408,8 +439,25 @@ function DecisionInspector({id,request,profile,items,flows,schema,openSchema,clo
           {!row.proposed_vms.length&&!row.proposed_flows.length&&<p>В черновике пока нет изменений.</p>}
         </>}
         {!schema&&<button onClick={openSchema}>Открыть схему</button>}
-        {editable&&!tool&&(row.proposed_vms.length+row.proposed_flows.length>0)&&<button className="primary" disabled={busy||routeChanged} title={routeChanged?'Сохраните изменённый маршрут согласования на вкладке «Согласование»':undefined} onClick={()=>void change('/submit',revision)}>На согласование</button>}
-      </>:<>
+        {editable&&!tool&&!vmFormDirty&&(row.proposed_vms.length+row.proposed_flows.length>0)&&<button className="primary" disabled={busy||routeChanged} title={routeChanged?'Сохраните изменённый маршрут согласования на вкладке «Согласование»':undefined} onClick={()=>void change('/submit',revision)}>На согласование</button>}
+      </>:tab==='changes'?<section className="decisionChanges" aria-label="Изменения технического решения">
+        <h4>Предлагаемые изменения</h4>
+        <p>Действующая архитектура остаётся без изменений. Новые объекты появятся в реестре только после отдельного подтверждённого внедрения.</p>
+        <div className="decisionChangeCounts"><strong>+ {row.proposed_vms.length} ВМ</strong><strong>+ {row.proposed_flows.length} потоков</strong></div>
+        {row.proposed_vms.map(vm=><div className="decisionItem" key={vm.id}>
+          <span>+ {vm.name}</span><small>{vm.kind} · {vm.environment||'Среда не указана'}</small>
+        </div>)}
+        {row.proposed_flows.map(flow=><div className="decisionItem" key={flow.id}>
+          <span>+ {flow.name}</span><small className="decisionFlowSummary">
+            {choices.find(x=>x.id===flow.source_id)?.name||'Неизвестный источник'} → {choices.find(x=>x.id===flow.target_id)?.name||'Неизвестный получатель'}
+            {' · '}{flow.protocol||'Протокол не указан'}{flow.port?':'+flow.port:''}
+          </small>
+          <small>{flow.data_description||'Состав данных не описан'} · {flow.security||'Защита не указана'}</small>
+        </div>)}
+        {!row.proposed_vms.length&&!row.proposed_flows.length&&<small>Изменений пока нет.</small>}
+        {row.base_changed&&<p role="alert">Исходная архитектура изменилась. Перед публикацией потребуется пересогласование новой версии.</p>}
+        <small>Изменение/удаление действующих объектов появится после расширения типов технических решений. Сейчас поддерживается добавление проектируемых ВМ и потоков.</small>
+      </section>:<>
         <section className="decisionApprovalRoute" aria-label="Маршрут согласования">
           <h4>Маршрут согласования</h4>
           <p>Каждая выбранная служба согласует решение отдельно. Отправка не создаёт реальные ВМ и потоки.</p>

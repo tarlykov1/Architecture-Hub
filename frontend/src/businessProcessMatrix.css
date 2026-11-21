@@ -1,0 +1,22 @@
+.businessMatrix{display:grid;gap:8px;margin-top:10px;min-width:0}
+.businessMatrixToolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.businessMatrixToolbar [role=group]{display:flex;align-items:center;gap:4px}
+.businessMatrixToolbar button{border:1px solid var(--hub-line,#dddde8);background:white;border-radius:7px;padding:7px 10px;color:var(--hub-ink,#232433);font-size:12px}
+.businessMatrixToolbar button[aria-pressed=true]{background:#eeedfc;border-color:#bab4de;color:#4d428f}
+.businessMatrixToolbar input{padding:7px 10px;border:1px solid var(--hub-line,#dddde8);border-radius:7px;min-width:180px;max-width:100%;font-size:12px}
+.businessMatrixToolbar>span{font-size:12px;color:var(--hub-muted,#65697a)}
+.businessMatrixScroll{min-width:0;max-width:100%;max-height:min(72vh,650px);overflow:auto;border:1px solid var(--hub-line,#dddde8);border-radius:9px}
+.businessMatrixScroll table{border-collapse:separate;border-spacing:0;font-size:12px;min-width:100%;width:max-content}
+.businessMatrixScroll td,.businessMatrixScroll th{border-right:1px solid #ebeaf1;border-bottom:1px solid #ebeaf1;padding:8px 10px;vertical-align:middle;text-align:center;min-width:88px;max-width:200px;overflow-wrap:anywhere}
+.businessMatrixScroll thead th{position:sticky;top:0;z-index:2;background:#f6f6fa;font-weight:600;color:var(--hub-ink,#252638)}
+.businessMatrixScroll tr>:first-child{position:sticky;left:0;z-index:1;text-align:left;min-width:180px;max-width:250px;background:#fff}
+.businessMatrixScroll thead tr>:first-child{z-index:3;background:#f6f6fa}
+.businessMatrixScroll th[scope=row] button{border:0;background:transparent;color:#5040a7;font-size:12px;text-align:left;font-weight:600;padding:0}
+.businessMatrixScroll th[scope=row] button:hover{text-decoration:underline}
+.businessMatrixScroll td.linked{background:#f0f6f4}
+.businessMatrixScroll td.linked button{background:transparent;border:0;color:#28755c;font-size:18px;min-width:34px;min-height:26px;cursor:pointer}
+.businessMatrixScroll td>span[aria-label]{color:#bec2ce}
+.businessMatrixGap{font-size:11px;color:#a27332}
+.businessMatrixScroll>p{padding:20px 10px;margin:0;color:var(--hub-muted,#65697a)}
+.businessMatrixNote{font-size:11px;color:var(--hub-muted,#65697a);line-height:1.5;max-width:850px}
+@media(max-width:720px){.businessMatrixToolbar input{flex:1;min-width:140px}.businessMatrixScroll{max-height:65vh}}

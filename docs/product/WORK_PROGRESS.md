@@ -61,7 +61,7 @@
 | AH-03-01 | P1 | Единый редактор потока | Частично | Создать/редактировать/переподключить/удалить |
 | AH-03-02 | P1 | Быстрое управление атрибутами потока | Частично | Добавление/удаление с записью аудита |
 | AH-03-03 | P1 | Сохраняемые серверные сценарии обмена | **Готово и опубликовано** | [PR #214](https://github.com/tarlykov1/Architecture-Hub/pull/214) слит; [CI 44950097114](https://github.com/tarlykov1/Architecture-Hub/actions/runs/44950097114), [Live QA 44950646586](https://github.com/tarlykov1/Architecture-Hub/actions/runs/44950646586): success |
-| AH-03-03b | P1 | Конкурентное редактирование: безопасное обновление сценария после 409 | **В работе** | [PR #221](https://github.com/tarlykov1/Architecture-Hub/pull/221): кнопка серверного обновления, подтверждение потери несохранённых правок, Playwright двух редакторов | Полный CI и Live QA |
+| AH-03-03b | P1 | Конкурентное редактирование: безопасное обновление сценария после 409 | **Готово (код + CI)** | [PR #221](https://github.com/tarlykov1/Architecture-Hub/pull/221): серверное обновление, защита черновика, Playwright конкурентной записи; [CI 45006043720](https://github.com/tarlykov1/Architecture-Hub/actions/runs/45006043720): **196 Chromium passed** | Дождаться новой выкладки и Live QA |
 | AH-03-04 | P1 | Использование сценария в нескольких БП | **Частично** | [PR #214](https://github.com/tarlykov1/Architecture-Hub/pull/214): один технический поток переиспользуется в нескольких сценариях, каждый со своим БП | Многоконтекстные связи одного сценария – отдельно |
 | AH-03-05 | P1 | Корректная VRF/VLAN/IP/NIC-модель | Частично | NetBox-подобные ограничения на API |
 | AH-03-06 | P1 | Проверки сетевых конфликтов | План | Предупреждения до фиксации |
@@ -114,7 +114,7 @@
 
 | 2026-11-22 | AH-05: проектирование изменений/удаления действующих объектов, before/after diff, защита зависимостей | [PR #219](https://github.com/tarlykov1/Architecture-Hub/pull/219) слит, релиз `461cc264`: CI и frontend/backend deploy success, **Live QA не прошёл** по сетевому page.goto (содержимое приложения не проверено) | [Методика](DECISION_EXISTING_CHANGES.md) · [CI](https://github.com/tarlykov1/Architecture-Hub/actions/runs/45000991011) · [Live QA](https://github.com/tarlykov1/Architecture-Hub/actions/runs/45001604279) |
 
-| 2026-11-22 | Крупный пакет P0: безопасный Alembic dry-run на копии, защита preflight, восстановление сценария при конфликтах, детерминированный E2E, диагностика/повтор сетевой навигации Live QA | Код/тесты/документация в отдельном PR; **не считать завершённым до полного CI и Live QA** | [PR #221](https://github.com/tarlykov1/Architecture-Hub/pull/221) · [Инструкция](../database-migrations.md) |
+| 2026-11-22 | Крупный пакет P0: безопасный Alembic dry-run на копии, защита preflight, восстановление сценария при конфликтах, детерминированный E2E, диагностика/повтор сетевой навигации Live QA | Код прошёл первоначальный полный CI: **153 backend и 196 Chromium**, сборка/Compose/PowerShell успешны. Предстоит выпуск и Live QA; реальные SQLite VPS и миграции не изменялись | [PR #221](https://github.com/tarlykov1/Architecture-Hub/pull/221) · [CI 45006043720](https://github.com/tarlykov1/Architecture-Hub/actions/runs/45006043720) · [Инструкция](../database-migrations.md) |
 
 ## Правила актуализации
 

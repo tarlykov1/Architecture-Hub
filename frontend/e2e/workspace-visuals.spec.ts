@@ -7,10 +7,15 @@ for (const width of [390, 1440]) {
     await page.addInitScript(() => sessionStorage.setItem('architecture-hub:access-token:session','browser-ci-development-token'))
     const items = publicDemoResponse('/api/infra') as {id:string}[]
     const sample = publicDemoResponse('/api/flows') as {id:string; target_id:string}[]
+    const systems = publicDemoResponse('/api/objects') as {id:string}[]
+    const areas = ['A','B'].map(id=>({id,name:'QA-WORK-Area '+id}))
     await page.route('**/api/**', route => {
       const path = new URL(route.request().url()).pathname
       if (path === '/api/auth/mode') return route.fulfill({json:{open_access:false}})
       if (path === '/api/auth/me') return route.fulfill({json:{role:'admin',auth_kind:'development'}})
+      if (path === '/api/business/categories') return route.fulfill({json:areas})
+      if (path === '/api/business/processes') return route.fulfill({json:areas.map(area=>({id:area.id,name:area.name+' BP',category_id:area.id}))})
+      if (path === '/api/business/system-links') return route.fulfill({json:areas.map(area=>({process_id:area.id,system_id:systems[0].id}))})
       if (path === '/api/flows') return route.fulfill({json:[{...sample[0],target_id:items[2].id}]})
       return route.fulfill({json:publicDemoResponse(path)})
     })
@@ -18,6 +23,22 @@ for (const width of [390, 1440]) {
     await expect(page.locator('.globalHeader')).toHaveCSS('background-color', 'rgb(255, 255, 255)')
     await page.getByRole('button', {name: 'Потоки данных', exact: true}).click()
     const counter = page.locator('.overviewEdgeControl button').first()
+    const member=page.locator('.react-flow__node[data-id="'+systems[0].id+'"]')
+    const other=page.locator('.react-flow__node[data-id="'+systems[1].id+'"]')
+    const area=(id:string)=>page.getByRole('button',{name:'QA-WORK-Area '+id,exact:true})
+    await area('A').click()
+    await expect(member).not.toHaveCSS('box-shadow','none')
+    await expect(member).not.toHaveCSS('background-color','rgb(255, 255, 255)')
+    await expect(other).toHaveCSS('opacity','0.35')
+    await expect(counter).toHaveCSS('opacity','0.35')
+    await area('B').click()
+    await expect(member.locator('.systemAreaLabel')).toHaveCount(2)
+    await page.getByLabel('Только участники').check()
+    await expect(other).toHaveCount(0)
+    await expect(member).not.toHaveCSS('box-shadow','none')
+    await page.getByRole('button',{name:'Сбросить фильтры'}).click()
+    await expect(other).toHaveCSS('opacity','1')
+    await expect(member).toHaveCSS('background-color','rgb(255, 255, 255)')
     await counter.click()
     await expect(page.locator('.overviewFlowList a').first()).toHaveAttribute('href', /\/flows\?flow=/)
     await page.keyboard.press('Escape')

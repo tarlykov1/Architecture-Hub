@@ -227,3 +227,7 @@ body {
 @media(max-width:880px){
   .shell .boardEditorStage:not(.boardDockCollapsed)>.boardDock {width:min(var(--hub-panel-width),calc(100% - var(--board-tools-width)))}
 }
+
+.overviewEdgeControl[data-muted] > button:not(:hover):not(:focus-visible) {
+  opacity:.35;
+}

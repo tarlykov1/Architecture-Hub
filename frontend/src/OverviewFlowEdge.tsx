@@ -4,7 +4,7 @@ import {flowCountLabel} from './graphLayout'
 import {workspaceRouteUrl} from './workspaceRoutes'
 
 export type OverviewFlow = {id: string; name: string; data_description: string; schedule?: string}
-type FlowEdge = Edge<{label?:string; processes?: {id:string;name:string}[]; hideControl?:boolean; selected?:boolean; openProcess?:(id:string)=>void; flows: OverviewFlow[]; open: boolean; toggle: () => void; close: () => void}>
+type FlowEdge = Edge<{label?:string; processes?: {id:string;name:string}[]; hideControl?:boolean; muted?:boolean; selected?:boolean; openProcess?:(id:string)=>void; flows: OverviewFlow[]; open: boolean; toggle: () => void; close: () => void}>
 
 export function OverviewFlowEdge(props: EdgeProps<FlowEdge>) {
   const [path, x, y] = getSmoothStepPath(props)
@@ -32,7 +32,7 @@ export function OverviewFlowEdge(props: EdgeProps<FlowEdge>) {
   return <>
     <BaseEdge path={path} markerEnd={props.markerEnd} style={props.style}/>
     {data && !data.hideControl && <EdgeLabelRenderer>
-      <div ref={menu} className="overviewEdgeControl nodrag nopan" style={{transform: `translate(-50%, -50%) translate(${x}px, ${y}px)`}}>
+      <div ref={menu} className="overviewEdgeControl nodrag nopan" data-muted={data.muted&&!data.open||undefined} style={{transform: `translate(-50%, -50%) translate(${x}px, ${y}px)`}}>
         <button ref={trigger} type="button" aria-label={data.label} aria-expanded={data.open} aria-pressed={data.processes?data.selected:undefined} onClick={event=>{event.stopPropagation();data.toggle()}}>{data.processes?data.processes.length+' БП':flowCountLabel(data.flows.length)}</button>
         {data.open && <div className="overviewFlowList nowheel" aria-label={data.processes?'Общие бизнес-процессы':'Потоки между системами'}>
           {data.processes?.map(process=><button key={process.id} type="button" onClick={()=>data.openProcess?.(process.id)}>{process.name}</button>)}

@@ -162,3 +162,31 @@ test('QA-WORK: technical decision Markdown exports staged existing changes and l
   expect(markdown).toContain('Не подтверждает фактическое внедрение')
   expect((await (await request.get(api+'/flows')).json() as {id:string}[]).some(x=>x.id===flow.id)).toBe(true)
 })
+
+
+test('QA-WORK: unsaved existing-object changes survive dismissed tab navigation and rejected save',async({page,request})=>{
+  const {title,flow,url}=await setup(request)
+  const {inspector,planner}=await open(page,title)
+  await planner.getByRole('combobox',{name:'Тип изменяемого объекта'}).selectOption('flow')
+  await planner.getByRole('combobox',{name:'Действующий объект для изменения'}).selectOption(flow.id)
+  const port=planner.getByRole('textbox',{name:'Новое значение: Порт'})
+  await port.fill('999999')
+  page.once('dialog',dialog=>{
+    expect(dialog.message()).toContain('несохранённые изменения')
+    void dialog.dismiss()
+  })
+  await inspector.getByRole('button',{name:'Согласование',exact:true}).click()
+  await expect(planner).toBeVisible()
+  await expect(port).toHaveValue('999999')
+  await planner.getByRole('button',{name:'Сохранить в черновик'}).click()
+  await expect(inspector.getByRole('alert').last()).toContainText('Invalid')
+  await expect(port).toHaveValue('999999')
+  expect(((await (await request.get(url)).json()) as Decision).existing_changes).toHaveLength(0)
+
+  await port.fill('8443')
+  await planner.getByRole('button',{name:'Сохранить в черновик'}).click()
+  await expect.poll(async()=>((await (await request.get(url)).json()) as Decision).existing_changes.length).toBe(1)
+  await expect(planner).toContainText('8443')
+  await inspector.getByRole('button',{name:'Согласование',exact:true}).click()
+  await expect(inspector.getByRole('region',{name:'Маршрут согласования'})).toBeVisible()
+})

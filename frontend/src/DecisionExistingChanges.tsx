@@ -8,6 +8,7 @@ export type ExistingChange={
   fields:Record<string,string>
   before:Record<string,string>
   after:Record<string,string>|null
+  impacts?:string[]
 }
 export type ExistingInput=Pick<ExistingChange,'id'|'kind'|'action'|'fields'>
 
@@ -150,6 +151,10 @@ export function DecisionExistingChanges({
             <th scope="row">{diff.label}</th><td>{fieldName(diff.key,diff.before)}</td>
             <td aria-label={'После: '+diff.label}>{change.action==='remove'?'Удалить':fieldName(diff.key,diff.after)}</td>
           </tr>)}</tbody></table>
+          {!!change.impacts?.length&&<div className="decisionExistingImpacts" role="note">
+            <strong>Зависимости, требующие проверки</strong>
+            {change.impacts.map(x=><span key={x}>{x}</span>)}
+          </div>}
           <div className="decisionExistingActions">
             {onFocus&&<button type="button" onClick={()=>onFocus(change.kind,change.id)}>На схеме</button>}
             {editable&&<button type="button" disabled={busy} onClick={()=>{

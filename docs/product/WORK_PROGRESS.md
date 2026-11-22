@@ -116,6 +116,9 @@
 
 | 2026-11-22 | Крупный пакет P0: безопасный Alembic dry-run на копии, защита preflight, восстановление сценария при конфликтах, детерминированный E2E, диагностика/повтор сетевой навигации Live QA | Код прошёл первоначальный полный CI: **153 backend и 196 Chromium**, сборка/Compose/PowerShell успешны. Предстоит выпуск и Live QA; реальные SQLite VPS и миграции не изменялись | [PR #221](https://github.com/tarlykov1/Architecture-Hub/pull/221) · [CI 45006043720](https://github.com/tarlykov1/Architecture-Hub/actions/runs/45006043720) · [Инструкция](../database-migrations.md) |
 
+| 2026-11-22 | Выпуск #221, версия `0f6534cc` | CI, обе выкладки и Live QA после выкладки прошли. Проверка копии реальной БД остаётся открытой в #215 | [CI](https://github.com/tarlykov1/Architecture-Hub/actions/runs/45007442237) · [Frontend](https://github.com/tarlykov1/Architecture-Hub/actions/runs/45007900292) · [Backend](https://github.com/tarlykov1/Architecture-Hub/actions/runs/45007900763) · [Live QA](https://github.com/tarlykov1/Architecture-Hub/actions/runs/45007948080) |
+| 2026-11-22 | AH-06-02. Экспорт согласования ТР | Добавлены автор и дата изменения, голоса с версиями и объектные замечания с идентификаторами. Регрессия проверяет скачанный документ | frontend/e2e/decision-existing-changes.spec.ts |
+
 ## Правила актуализации
 
 1. Каждое закрытие задачи: обновить статус, вставить ссылку на PR и подтверждение проверок; не ставить «Готово» до успешной приёмки.

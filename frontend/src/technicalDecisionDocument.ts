@@ -1,6 +1,15 @@
 /** Snapshot of an Architecture Hub decision for offline review.
  * A generated document is not itself a registered infrastructure change.
  */
+type DocumentReview = {
+  service: string
+  verdict: string
+  actor_name?: string
+  actor?: string
+  note?: string
+  revision?: number
+  created_at?: string
+}
 export type DecisionDocument={
   id:string
   title:string
@@ -9,7 +18,11 @@ export type DecisionDocument={
   status:string
   base_changed:boolean
   required_services:string[]
-  approvals?:Array<{service:string;verdict:string;actor_name?:string;actor?:string;note?:string}>
+  approvals?: DocumentReview[]
+  review_history?: DocumentReview[]
+  author?: string
+  author_name?: string
+  updated_at?: string
   proposed_vms:Array<{id:string;name:string;kind:string;x:number;y:number;description?:string;environment?:string}>
   existing_changes?:Array<{
     id:string;kind:'vm'|'flow';action:'update'|'remove'
@@ -19,7 +32,7 @@ export type DecisionDocument={
     id:string;name:string;source_id:string;target_id:string;protocol?:string;port?:string
     data_description?:string;security?:string;schedule?:string;verification?:string
   }>
-  comments?:Array<{actor_name?:string;actor?:string;anchor_kind?:string;body:string}>
+  comments?:Array<{actor_name?:string;actor?:string;anchor_kind?:string;anchor_id?:string;created_at?:string;body:string}>
 }
 const serviceNames:Record<string,string>={architect:'Архитектура',engineer:'Инфраструктура',security:'Информационная безопасность',business_owner:'Владелец бизнес-процесса'}
 const statuses:Record<string,string>={draft:'Черновик',in_review:'На согласовании',changes_requested:'На доработке',approved:'Согласовано',published:'Опубликовано'}
@@ -34,6 +47,8 @@ export function buildTechnicalDecisionMarkdown(decision:DecisionDocument,systemN
     '- Идентификатор: `'+decision.id+'`',
     '- Система: '+value(systemName),
     '- Версия: '+decision.revision,
+    '- Автор: '+value(decision.author_name||decision.author),
+    '- Последнее изменение: '+value(decision.updated_at),
     '- Статус: '+(statuses[decision.status]||decision.status),
     '- Проверка исходной архитектуры: '+(decision.base_changed?'Обнаружены изменения, требуется повторная проверка':'Расхождения не обнаружены на момент формирования'),
     '',
@@ -81,14 +96,40 @@ export function buildTechnicalDecisionMarkdown(decision:DecisionDocument,systemN
   for(const service of decision.required_services){
     const review=decision.approvals?.find(item=>item.service===service)
     rows.push('| '+cell(serviceNames[service]||service)+' | '+
-      cell(review?.verdict==='approved'?'Согласовано':review?.verdict==='changes_requested'?'На доработку':'Ожидается')+
+      cell(review?.verdict==='approved'?'Согласовано':review?.verdict==='changes_requested'?'На доработку':decision.status==='in_review'?'На рассмотрении':'Не отправлено')+
       ' | '+cell(value(review?.actor_name||review?.actor))+' | '+cell(value(review?.note))+' |')
   }
-  rows.push('','## Замечания','','')
-  if(!decision.comments?.length)rows.push('Замечаний нет.')
-  else for(const comment of decision.comments)rows.push(
-    '- **'+value(comment.actor_name||comment.actor)+'**'+(comment.anchor_kind&&comment.anchor_kind!=='decision'?' ('+comment.anchor_kind+')':'')+': '+comment.body.replace(/[\r\n]+/g,' ')
-  )
+  if (decision.review_history?.length) {
+    rows.push('', '## История согласований', '',
+      '| Версия | Служба | Решение | Сотрудник | Дата | Замечание |',
+      '| --- | --- | --- | --- | --- | --- |')
+    for (const vote of decision.review_history) {
+      const verdict = vote.verdict === 'approved' ? 'Согласовано' :
+        vote.verdict === 'changes_requested' ? 'На доработку' : vote.verdict
+      const fields = [String(vote.revision ?? '—'), serviceNames[vote.service] || vote.service,
+        verdict, value(vote.actor_name || vote.actor), value(vote.created_at), vote.note || '—']
+      rows.push('| ' + fields.map(cell).join(' | ') + ' |')
+    }
+  }
+  rows.push('', '## Замечания', '')
+  if (!decision.comments?.length) rows.push('Замечаний нет.')
+  else {
+    const anchors = new Map<string, string>()
+    for (const vm of decision.proposed_vms) anchors.set('vm:'+vm.id, vm.name)
+    for (const flow of decision.proposed_flows) anchors.set('flow:'+flow.id, flow.name)
+    for (const change of decision.existing_changes || []) anchors.set(change.kind+':'+change.id, change.before.name)
+    rows.push('| Объект | Автор | Дата | Замечание |', '| --- | --- | --- | --- |')
+    for (const comment of decision.comments) {
+      let target = 'Техническое решение'
+      if (comment.anchor_kind === 'vm' || comment.anchor_kind === 'flow') {
+        const kind = comment.anchor_kind === 'vm' ? 'ВМ' : 'Поток'
+        const name = anchors.get(comment.anchor_kind+':'+comment.anchor_id)
+        target = [kind, name, comment.anchor_id].filter(Boolean).join(' · ')
+      }
+      const fields = [target, value(comment.actor_name || comment.actor), value(comment.created_at), comment.body]
+      rows.push('| ' + fields.map(cell).join(' | ') + ' |')
+    }
+  }
   rows.push('','---','', '*Автоматическая выгрузка из Architecture Hub, версия '+decision.revision+'. Не подтверждает фактическое внедрение инфраструктурных изменений.*','')
   return rows.join('\n')
 }

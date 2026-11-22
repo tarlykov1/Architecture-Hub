@@ -24,12 +24,16 @@ const emptyFlow:Link={id:'',source_id:'',target_id:'',source_handle:'',target_ha
 const states = {draft:'Черновик', in_review:'На согласовании', changes_requested:'На доработке', approved:'Согласовано', published:'Опубликовано'}
 const services = {architect:'Архитектура', engineer:'Инфраструктура', security:'Информационная безопасность', business_owner:'Владелец процесса'}
 type Service = keyof typeof services
-type Decision = {id:string; title:string; system_id:string; status:keyof typeof states; author:string; author_name?:string; updated_at:string; revision:number}
+type Decision = {id:string; title:string; system_id:string; status:keyof typeof states; author:string; author_name?:string; updated_at:string; revision:number; required_services:Service[]; approvals:Review[]}
 type Review = {service:Service; verdict:'approved'|'changes_requested'; note:string; actor:string; actor_name?:string; created_at:string; revision?:number}
 type DecisionComment = {id:string; actor:string; actor_name?:string; body:string; anchor_kind:'decision'|'vm'|'flow';anchor_id:string;created_at:string}
-type Details = Decision & {description:string; required_services:Service[]; approvals:Review[]; review_history:Review[]; comments:DecisionComment[]; proposed_vms:ProposedVM[]; proposed_flows:Link[]; existing_changes:ExistingChange[]; base_changed:boolean}
+type Details = Decision & {description:string; review_history:Review[]; comments:DecisionComment[]; proposed_vms:ProposedVM[]; proposed_flows:Link[]; existing_changes:ExistingChange[]; base_changed:boolean}
 const path = '/api/technical-decisions'
 const dateFormat = new Intl.DateTimeFormat('ru-RU',{day:'2-digit',month:'2-digit',year:'numeric'})
+function pendingServices(row:Decision) {
+  if (row.status !== 'in_review') return []
+  return row.required_services.filter(service => !row.approvals.some(vote => vote.service === service && vote.verdict === 'approved'))
+}
 function Status({value}:{value:Decision['status']}) {
   return <span className={'decisionStatus '+value}>{states[value]}</span>
 }
@@ -37,6 +41,7 @@ function Status({value}:{value:Decision['status']}) {
 export default function TechnicalDecisions({request, profile, systems, items, flows}:{request:Api; profile:AuthProfile|null; systems:{id:string; name:string; kind:string}[]; items:Item[]; flows:Link[]}) {
   const [rows,setRows] = useState<Decision[]>([])
   const [selection,select] = useState('')
+  const [openReview,setOpenReview] = useState(false)
   const [filter,setFilter] = useState('')
   const [query,setQuery] = useState('')
   const [error,setError] = useState('')
@@ -59,25 +64,32 @@ export default function TechnicalDecisions({request, profile, systems, items, fl
     setSaving(true);setError('')
     try {
       const row=await request<Details>(path,{method:'POST',body:JSON.stringify({title:title.trim(),system_id:system})})
-      update(row);select(row.id);setCreating(false);setTitle('');setFilter('');setQuery('');setSchema(true)
+      update(row);select(row.id);setOpenReview(false);setCreating(false);setTitle('');setFilter('');setQuery('');setSchema(true)
     }catch(err){setError((err as Error).message)}finally{setSaving(false)}
   }
-  const visible=rows.filter(row=>(!filter||row.status===filter)&&row.title.toLowerCase().includes(query.trim().toLowerCase()))
+  const myService = profile?.auth_kind === 'named_user' && profile.role in services ? profile.role as Service : null
+  const myQueue = myService ? rows.filter(row =>
+    row.author !== 'user:'+profile?.id && pendingServices(row).includes(myService)
+  ) : []
+  const showQueue = filter === 'mine' && !!myService
+  const filtered = showQueue ? myQueue : rows.filter(row => !filter || filter === 'mine' || row.status === filter)
+  const visible = filtered.filter(row => row.title.toLowerCase().includes(query.trim().toLowerCase()))
   const close=()=>{select('');setSchema(false)}
   return <section className="decisionWorkspace" aria-label="Технические решения">
     {!schema&&<div className="decisionRegister">
       <header><h2>Технические решения</h2>{canCreate&&<button className="primary" onClick={()=>{close();setCreating(true)}}><Plus size={15}/>Создать решение</button>}</header>
       <div className="decisionFilters">
         <div className="decisionFilterTabs" role="group" aria-label="Статус решения">
+          {myService && <button type="button" aria-pressed={showQueue} onClick={()=>setFilter('mine')}>Моё согласование · {myQueue.length}</button>}
           {[['','Все'],...Object.entries(states)].map(([key,label])=><button type="button" key={key} aria-pressed={filter===key} onClick={()=>setFilter(key)}>{label}</button>)}
         </div>
         <input type="search" aria-label="Поиск решений" placeholder="Найти решение" value={query} onChange={e=>setQuery(e.target.value)}/>
       </div>
       {loading?<p role="status">Загрузка…</p>:<div className="decisionTable"><table><thead><tr><th>Название</th><th>Статус</th><th>Система</th><th>Обновлено</th></tr></thead>
         <tbody>{visible.map(row=><tr key={row.id} className={selection===row.id?'current':''}>
-          <td><button onClick={()=>{setCreating(false);select(row.id)}}><FileText size={15}/>{row.title}</button></td>
-          <td><Status value={row.status}/></td><td>{systems.find(s=>s.id===row.system_id)?.name||'—'}</td><td>{dateFormat.format(new Date(row.updated_at))}</td>
-        </tr>)}</tbody></table>{!visible.length&&!error&&<p>{rows.length?'Решения по этому запросу не найдены.':'Технических решений пока нет.'}</p>}</div>}
+          <td><button onClick={()=>{setCreating(false);setOpenReview(showQueue);select(row.id)}}><FileText size={15}/>{row.title}</button></td>
+          <td><Status value={row.status}/>{row.status==='in_review'&&<small className="decisionPendingServices">Ожидается ответ: {pendingServices(row).map(service=>services[service]).join(', ')||'—'}</small>}</td><td>{systems.find(s=>s.id===row.system_id)?.name||'—'}</td><td>{dateFormat.format(new Date(row.updated_at))}</td>
+        </tr>)}</tbody></table>{!visible.length&&!error&&<p>{showQueue&&!query.trim()?'Нет решений, ожидающих ответа вашей службы.':rows.length?'Решения по этому запросу не найдены.':'Технических решений пока нет.'}</p>}</div>}
     </div>}
     {creating&&<form className="decisionSide" onSubmit={e=>{e.preventDefault();void create()}}>
       <header><h3>Новое решение</h3><button type="button" aria-label="Закрыть создание" disabled={saving} onClick={()=>setCreating(false)}><X size={16}/></button></header>
@@ -85,15 +97,15 @@ export default function TechnicalDecisions({request, profile, systems, items, fl
       <label>Информационная система<select aria-label="Информационная система" required value={system} onChange={e=>setSystem(e.target.value)}><option value="">Выберите систему</option>{systems.filter(s=>s.kind==='system').map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select></label>
       <button className="primary" disabled={saving||!title.trim()||!system}>Создать черновик</button>
     </form>}
-    {selection&&!creating&&<DecisionInspector key={selection} id={selection} request={request} profile={profile} items={items} flows={flows} systemName={systems.find(s=>s.id===rows.find(x=>x.id===selection)?.system_id)?.name||''} schema={schema} openSchema={()=>setSchema(true)} close={close} update={update}/>}
+    {selection&&!creating&&<DecisionInspector key={selection+':'+openReview} initialReview={openReview} id={selection} request={request} profile={profile} items={items} flows={flows} systemName={systems.find(s=>s.id===rows.find(x=>x.id===selection)?.system_id)?.name||''} schema={schema} openSchema={()=>setSchema(true)} close={close} update={update}/>}
     {error&&<div className="decisionError" role="alert">{error} <button onClick={()=>retry(v=>v+1)}>Обновить список</button></div>}
   </section>
 }
 
-function DecisionInspector({id,request,profile,items,flows,systemName,schema,openSchema,close,update}:{id:string;request:Api;profile:AuthProfile|null;items:Item[];flows:Link[];systemName:string;schema:boolean;openSchema:()=>void;close:()=>void;update:(row:Decision)=>void}) {
+function DecisionInspector({id,initialReview,request,profile,items,flows,systemName,schema,openSchema,close,update}:{id:string;initialReview:boolean;request:Api;profile:AuthProfile|null;items:Item[];flows:Link[];systemName:string;schema:boolean;openSchema:()=>void;close:()=>void;update:(row:Decision)=>void}) {
  const measurements=useDiagramMeasurements()
   const [row,setRow]=useState<Details|null>(null)
-  const [tab,setTab]=useState<'items'|'changes'|'review'>('items')
+  const [tab,setTab]=useState<'items'|'changes'|'review'>(initialReview?'review':'items')
   const [busy,setBusy]=useState(false)
   const [error,setError]=useState('')
   const [attempt,retry]=useState(0)
@@ -407,7 +419,7 @@ function DecisionInspector({id,request,profile,items,flows,systemName,schema,ope
           if(hasUnsavedForm&&!window.confirm('Отбросить несохранённые изменения?'))return
           setTab(t);setTool(null);setSelectedVMId('');setViewFlowId('')
         }}>{t==='items'?'Состав':t==='changes'?'Изменения':'Согласование'}</button>)}</nav>
-      {row.base_changed&&<p role="status">Исходная архитектура изменилась после отправки на согласование.</p>}
+      {row.base_changed&&<p role="status">Исходная архитектура изменилась после отправки на согласование. Для подписи требуется пересогласование обновлённой версии.</p>}
       {tab==='items'?<>
         {row.description&&<p>{row.description}</p>}
         {schema&&selectedVM?<section className="decisionVmDetails" aria-label="Паспорт выбранной ВМ">
@@ -561,9 +573,9 @@ function DecisionInspector({id,request,profile,items,flows,systemName,schema,ope
               placeholder="При возврате на доработку обязательно опишите замечания."/>
           </label>
           <div className="decisionActions">
-            <button type="button" disabled={busy||comment.trim().length<3}
+            <button type="button" disabled={busy||row.base_changed||comment.trim().length<3}
               onClick={()=>void change('/review',{...revision,verdict:'changes_requested',note:comment})}>На доработку</button>
-            <button type="button" className="primary" disabled={busy}
+            <button type="button" className="primary" disabled={busy||row.base_changed}
               onClick={()=>void change('/review',{...revision,verdict:'approved',note:comment})}>Согласовать</button>
           </div>
         </section>}

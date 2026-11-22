@@ -119,6 +119,9 @@
 | 2026-11-22 | Выпуск #221, версия `0f6534cc` | CI, обе выкладки и Live QA после выкладки прошли. Проверка копии реальной БД остаётся открытой в #215 | [CI](https://github.com/tarlykov1/Architecture-Hub/actions/runs/45007442237) · [Frontend](https://github.com/tarlykov1/Architecture-Hub/actions/runs/45007900292) · [Backend](https://github.com/tarlykov1/Architecture-Hub/actions/runs/45007900763) · [Live QA](https://github.com/tarlykov1/Architecture-Hub/actions/runs/45007948080) |
 | 2026-11-22 | AH-06-02. Экспорт согласования ТР | Добавлены автор и дата изменения, голоса с версиями и объектные замечания с идентификаторами. Регрессия проверяет скачанный документ | frontend/e2e/decision-existing-changes.spec.ts |
 
+| 2026-11-22 | AH-05-06. Очередь согласования службы | В реестре доступны ожидаемые службы и переход к подписи. API-тест проходит маршрут из двух персональных подписей до публикации, Playwright проверяет фильтр и обновление после ответа | frontend/e2e/audit-decision-approval-ui.spec.ts · backend/tests/test_optional_named_signoff.py |
+| 2026-11-22 | Выпуск #222, версия `69dccec` | Выкладка и проверка экспорта на CI завершены, Live QA стенда прошёл | [CI](https://github.com/tarlykov1/Architecture-Hub/actions/runs/45010057600) · [Live QA](https://github.com/tarlykov1/Architecture-Hub/actions/runs/45010706736) |
+
 ## Правила актуализации
 
 1. Каждое закрытие задачи: обновить статус, вставить ссылку на PR и подтверждение проверок; не ставить «Готово» до успешной приёмки.

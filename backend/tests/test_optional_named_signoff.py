@@ -46,7 +46,7 @@ def test_open_demo_can_use_named_signoff_without_anonymous_approval(monkeypatch)
         draft = client.put(uri, json={
             "title": "QA-WORK-Approval",
             "expected_revision": decision["revision"],
-            "required_services": ["engineer"],
+            "required_services": ["engineer", "security"],
             "proposed_vms": [{
                 "id": str(uuid4()), "system_id": sys,
                 "kind": "vm", "name": "QA-WORK-Draft-VM",
@@ -68,8 +68,30 @@ def test_open_demo_can_use_named_signoff_without_anonymous_approval(monkeypatch)
             "verdict": "approved", "note": "Infrastructure validated"
         })
         assert approved.status_code == 200, approved.text
-        assert approved.json()["status"] == "approved"
+        assert approved.json()["status"] == "in_review"
         assert approved.json()["approvals"][0]["actor_name"] == "QA reviewer"
+        listing = client.get("/api/technical-decisions", headers=signed)
+        current = next(item for item in listing.json() if item["id"] == decision["id"])
+        assert set(current["required_services"]) == {"engineer", "security"}
+        assert [vote["service"] for vote in current["approvals"]] == ["engineer"]
+
+        security_user = client.post("/api/auth/users", headers={"Authorization": "Bearer " + KEY}, json={
+            "username": "qasecurity" + suffix, "password": password,
+            "role": "security", "display_name": "QA security reviewer"
+        })
+        assert security_user.status_code == 201
+        security_login = client.post("/api/auth/login", json={
+            "username": "qasecurity" + suffix, "password": password
+        })
+        assert security_login.status_code == 200
+        approved = client.post(uri + "/review", headers={
+            "Authorization": "Bearer " + security_login.json()["access_token"]
+        }, json={"expected_revision": current["revision"], "verdict": "approved"})
+        assert approved.status_code == 200, approved.text
+        assert approved.json()["status"] == "approved"
+        assert {vote["actor_name"] for vote in approved.json()["approvals"]} == {
+            "QA reviewer", "QA security reviewer"
+        }
 
         architect = client.post("/api/auth/users", json={
             "username": "qaarchitect" + suffix, "password": password,

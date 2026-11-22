@@ -94,7 +94,7 @@ test('QA-WORK: proposed removals require dependencies, never delete live objects
   await planner.getByRole('combobox',{name:'Действующий объект для изменения'}).selectOption(vm.id)
   await planner.getByRole('combobox',{name:'Планируемое действие'}).selectOption('remove')
   await planner.getByRole('button',{name:'Сохранить в черновик'}).click()
-  await expect(page.getByRole('alert')).toContainText('Stage deletion of connected flows')
+  await expect(page.getByRole('alert')).toContainText('Stage deletion or rerouting of connected flows')
   const empty=await (await request.get(url)).json() as Decision
   expect(empty.existing_changes).toHaveLength(0)
 

@@ -1,15 +1,18 @@
 import React, {useEffect,useRef,type ReactNode} from 'react'
-import {useNodes,useNodesInitialized,useReactFlow} from '@xyflow/react'
+import {getViewportForBounds,useNodes,useNodesInitialized,useReactFlow} from '@xyflow/react'
 
 /** Refit measured graphs on membership/layout changes and actual canvas resize. */
-export function AutoFit({layoutKey='',maxFitZoom=1,groupParentsOnly=false,focusIds=[],suspended=false,settleDelayMs=300,ignoreNodePrefixes=''}:{layoutKey?:string;maxFitZoom?:number;groupParentsOnly?:boolean;focusIds?:string[];suspended?:boolean;settleDelayMs?:number;ignoreNodePrefixes?:string}){
+export function AutoFit({layoutKey='',maxFitZoom=1,groupParentsOnly=false,focusIds=[],suspended=false,settleDelayMs=300,ignoreNodePrefixes='',trackNodeBounds=false}:{layoutKey?:string;maxFitZoom?:number;groupParentsOnly?:boolean;focusIds?:string[];suspended?:boolean;settleDelayMs?:number;ignoreNodePrefixes?:string;trackNodeBounds?:boolean}){
  const anchor=useRef<HTMLSpanElement>(null)
- const {fitView,setCenter}=useReactFlow()
+ const {fitView,setCenter,setViewport}=useReactFlow()
  const initialized=useNodesInitialized()
  const graphNodes=useNodes()
  const ignored=ignoreNodePrefixes.split(',').filter(Boolean)
  const stableNodes=graphNodes.filter(n=>!ignored.some(prefix=>n.id.startsWith(prefix)))
  const ids=stableNodes.map(n=>n.id).sort().join('|')
+ const boundsKey=trackNodeBounds&&!suspended?stableNodes.map(node=>
+  [node.id,node.position.x,node.position.y,node.measured?.width,node.measured?.height].join(':')
+ ).join('|'):''
  const topLevelIds=stableNodes.filter(n=>!n.parentId).map(n=>n.id).sort().join('|')
  const visibleFocusIds=focusIds.filter(id=>graphNodes.some(node=>node.id===id)).sort().join('|')
  // Optional overlays should not block fitting measured target IS cards.
@@ -28,6 +31,23 @@ export function AutoFit({layoutKey='',maxFitZoom=1,groupParentsOnly=false,focusI
    frame=requestAnimationFrame(()=>{
     inner=requestAnimationFrame(()=>{
      const targetIds=visibleFocusIds.split('|').filter(Boolean)
+     if(trackNodeBounds){
+      const targets=new Set(targetIds)
+      const positions=new Map(graphNodes.map(node=>[node.id,node.position]))
+      const boxes=Array.from(canvas.querySelectorAll<HTMLElement>('.react-flow__node[data-id]')).flatMap(element=>{
+       const id=element.dataset.id
+       if(!id||(targets.size&&!targets.has(id)))return []
+       const point=positions.get(id)
+       return point?[{...point,right:point.x+element.offsetWidth,bottom:point.y+element.offsetHeight}]:[]
+      })
+      if(boxes.length){
+       const x=Math.min(...boxes.map(box=>box.x)),y=Math.min(...boxes.map(box=>box.y))
+       const width=Math.max(...boxes.map(box=>box.right))-x,height=Math.max(...boxes.map(box=>box.bottom))-y
+       const viewport=getViewportForBounds({x,y,width,height},canvas.clientWidth,canvas.clientHeight,0.02,maxFitZoom,0.2)
+       void setViewport(viewport)
+       return
+      }
+     }
      // Fitting one selected IS with fitView can still leave it outside the
      // viewport while the rest of the overview is being measured. Its
      // intrinsic geometry is enough to center it deterministically.
@@ -60,15 +80,18 @@ export function AutoFit({layoutKey='',maxFitZoom=1,groupParentsOnly=false,focusI
    width=rect.width;height=rect.height;refit()
   })
   observer.observe(canvas)
+  const cardObserver=trackNodeBounds?new ResizeObserver(refit):undefined
+  if(cardObserver)canvas.querySelectorAll('.react-flow__node').forEach(card=>cardObserver.observe(card))
   window.addEventListener('resize',refit)
   refit()
   return()=>{
    observer.disconnect()
+   cardObserver?.disconnect()
    window.removeEventListener('resize',refit)
    window.clearTimeout(settle)
    cancelAnimationFrame(frame);cancelAnimationFrame(inner)
   }
- },[fitView,setCenter,initialized,measuredFocusReady,ids,topLevelIds,visibleFocusIds,layoutKey,maxFitZoom,groupParentsOnly,suspended,settleDelayMs])
+ },[fitView,setCenter,setViewport,trackNodeBounds,initialized,measuredFocusReady,ids,boundsKey,topLevelIds,visibleFocusIds,layoutKey,maxFitZoom,groupParentsOnly,suspended,settleDelayMs])
  return <span ref={anchor} hidden/>
 }
 

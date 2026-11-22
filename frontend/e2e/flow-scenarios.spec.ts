@@ -87,6 +87,9 @@ test('QA-WORK: removing a saved scenario never deletes its underlying technical 
   const name='QA-WORK-Удаление-'+suffix
   await diagram.getByRole('textbox',{name:'Название нового сценария'}).fill(name)
   await diagram.getByRole('button',{name:'Сохранить общий сценарий'}).click()
+  // The network write is asynchronous; wait for a browser-visible confirmed save.
+  await expect(diagram.getByText('Общий сценарий сохранён в реестре.')).toBeVisible()
+  await expect(diagram.getByRole('combobox',{name:'Сценарий обмена'})).toHaveValue(/.+/)
   const list=await (await request.get(api+'/flow-scenarios')).json() as {id:string;name:string}[]
   const scenario=list.find(s=>s.name===name)
   expect(scenario).toBeTruthy()

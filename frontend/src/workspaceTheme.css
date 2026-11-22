@@ -184,3 +184,8 @@ body {
 .overviewProcessContext button { padding: 4px 8px; text-align: left }
 .overviewAreaChips > strong { align-self: center; font-size: 12px }
 .overviewExchangeSchedule { display: block; font-weight: normal; color: #565967 }
+
+.systemAreaLabels { display:flex; flex-wrap:wrap; gap:3px; margin-top:5px }
+.systemAreaLabels .systemAreaLabel { display:inline-flex; align-items:baseline; gap:4px; padding:2px 5px; border:1px solid #dce1e8; border-radius:5px; font-size:11px; line-height:1.3; color:#283346; overflow-wrap:anywhere }
+.areaColorKey, .systemAreaLabel i { display:inline-block; flex:none; width:8px; height:8px; border-radius:50% }
+.overviewAreaChips button { display:inline-flex; align-items:center; gap:5px }

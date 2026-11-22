@@ -1,4 +1,4 @@
-import React, {useEffect,useMemo,useRef,useState} from 'react'
+import React, {useEffect,useLayoutEffect,useMemo,useRef,useState} from 'react'
 import {architectureIcon,DiagramNodeLabel,diagramCardStyle} from './DiagramVisual'
 import {OverviewFlowEdge, type OverviewFlow} from './OverviewFlowEdge'
 import type {OverviewMode} from './workspaceRoutes'
@@ -28,7 +28,7 @@ type Network={id:string;name:string;kind:string}
 type Interface={item_id:string;zone_id:string|null;vlan_id:string|null;vrf_id:string|null}
 
 import {AutoFit,Disclosure} from './WorkspaceUI'
-import {overviewGridPositions,flowCountLabel} from './graphLayout'
+import {overviewGridColumns,overviewGridPositions,flowCountLabel} from './graphLayout'
 
 type LogicalMap = {
  relations: {id:string; source_id:string; target_id:string; kind:string}[]
@@ -199,7 +199,25 @@ export default function ArchitectureHome({mode,onModeChange,logical,systems,comp
  const compactAreas=membersOnly&&displayAreas.length>0&&!editingLayers
  const shownSystems=compactAreas?mapSystems.filter(system=>areaLabels.has(system.id)):mapSystems
  const shownIds=new Set(shownSystems.map(system=>system.id))
- const gridPositions=overviewGridPositions([...shownIds],340,190)
+ const graphRef=useRef<HTMLDivElement>(null)
+ const [pane,setPane]=useState({width:0,height:0})
+ useLayoutEffect(()=>{
+   const graph=graphRef.current
+   if(!graph)return
+   const measure=()=>{
+     const width=graph.clientWidth
+     // Keep the same grid when selecting areas adds a process toolbar.
+     const context=graph.closest('.homeMap')?.querySelector('.overviewProcessContext')
+     const height=graph.clientHeight+(context?.getBoundingClientRect().height??0)
+     if(width&&height)setPane(previous=>previous.width===width&&previous.height===height?previous:{width,height})
+   }
+   measure()
+   const observer=new ResizeObserver(measure)
+   observer.observe(graph)
+   return ()=>observer.disconnect()
+ },[sequence,layers.systems])
+ const columns=overviewGridColumns(shownIds.size,pane.width,pane.height)
+ const gridPositions=overviewGridPositions([...shownIds],340,190,columns)
  const shownPositions=logicalMode&&manualLayout?{...gridPositions,...logical.positions}:gridPositions
  const componentNodes=layers.components?components.filter(c=>visibleIds.has(c.system_id)).flatMap(c=>{
    const group=components.filter(item=>item.system_id===c.system_id)
@@ -233,11 +251,13 @@ export default function ArchitectureHome({mode,onModeChange,logical,systems,comp
  const edges:Edge[]=[...connectionCounts].filter(([key])=>!compactAreas||key.split('|').every(id=>shownIds.has(id))).map(([key,count])=>{
    const [source,target]=key.split('|')
    const related=(selectedSystem&&(source===selectedSystem||target===selectedSystem))||(mapMode==='flows'&&openFlowPair===key)
+   const outsideArea=displayAreas.length>0&&(!areaLabels.has(source)||!areaLabels.has(target))
+   const muted=outsideArea||Boolean(selectedSystem&&!related)
    const color=mapMode==='business'?'#79738c':'#69707e'
-   return {id:mapMode+':'+key,source,target,type:mapMode==='flows'?'overviewFlow':'smoothstep',label:mapMode==='business'?count+' БП':undefined,
+   return {id:mapMode+':'+key,source,target,type:mapMode==='flows'?'overviewFlow':'smoothstep',label:mapMode==='business'&&!outsideArea?count+' БП':undefined,
      data:{flows:groupedFlows.get(key)||[],open:openFlowPair===key,toggle:()=>setOpenFlowPair(old=>old===key?'':key),close:()=>setOpenFlowPair('')},
      ...(mapMode==='flows'?{markerEnd:{type:MarkerType.ArrowClosed,width:13,height:13,color}}:{}),
-     style:{stroke:related?'var(--hub-accent)':color,strokeWidth:related?2.5:1.4,strokeDasharray:mapMode==='business'?'5 5':undefined,opacity:selectedSystem&&!related?0.18:1}}
+     style:{stroke:related?'var(--hub-accent)':color,strokeWidth:related?2.5:1.4,strokeDasharray:mapMode==='business'?'5 5':undefined,opacity:muted?0.18:1}}
  })
  const logicalEdges:Edge[]=logicalMode?logical.relations.filter(r=>visibleIds.has(r.source_id)&&visibleIds.has(r.target_id)).map(r=>({
    id:r.id,source:r.source_id,target:r.target_id,type:'smoothstep',
@@ -303,7 +323,7 @@ export default function ArchitectureHome({mode,onModeChange,logical,systems,comp
      <div className="homeLayerToolsDraft" aria-live="polite"><span>Черновик: {Object.keys(layerDrafts).length}</span></div>
    </div>}
 
-  <div className="homeMapGraph"><ReactFlow minZoom={0.08} nodes={canvasNodes} edges={logicalMode?logicalEdges:edges} edgeTypes={homeEdgeTypes} nodesDraggable={editingSystems}
+  <div className="homeMapGraph" ref={graphRef}><ReactFlow minZoom={0.08} nodes={canvasNodes} edges={logicalMode?logicalEdges:edges} edgeTypes={homeEdgeTypes} nodesDraggable={editingSystems}
    onNodesChange={(changes:NodeChange[])=>{
     if(!editingSystems)return
     let baseline=manualLayout?undefined:gridPositions

@@ -36,8 +36,21 @@ export function dependencyLayout(ids:string[],edges:LayoutEdge[],xGap=270,yGap=1
 }
 
 /** Balanced grid shared with the Overview; do not render long dependency strips. */
-export function overviewGridPositions(ids:string[],xGap=310,yGap=170):Record<string,LayoutPoint>{
- const columns=ids.length<=4?2:3
+export function overviewGridColumns(count:number,width:number,height:number){
+ if(!count||!width||!height)return count<=4?2:3
+ let best=1,bestScale=0
+ // Prefer the arrangement that fits the largest cards. A small group keeps
+ // the familiar maximum of three columns even on an ultrawide display.
+ const limit=count<=6?Math.min(3,count):count
+ for(let columns=1;columns<=limit;columns++){
+   const rows=Math.ceil(count/columns)
+   const scale=Math.min(width/(245+(columns-1)*340),height/(130+(rows-1)*190))
+   if(scale>bestScale){best=columns;bestScale=scale}
+ }
+ return best
+}
+
+export function overviewGridPositions(ids:string[],xGap=310,yGap=170,columns=ids.length<=4?2:3):Record<string,LayoutPoint>{
  return Object.fromEntries(ids.map((id,index)=>[id,{x:(index%columns)*xGap,y:Math.floor(index/columns)*yGap}]))
 }
 

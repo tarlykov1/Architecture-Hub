@@ -194,8 +194,25 @@ def compare_registered_change(
                     (DataFlow.source_id == change.id) |
                     (DataFlow.target_id == change.id)
                 )).all())
-                if attached - pending_delete_flows:
-                    raise HTTPException(422, "Stage deletion of connected flows before VM removal")
+                # A VM can be retired only when every connected flow is
+                # explicitly removed OR rerouted to another surviving endpoint.
+                # This is a *proposed* topology, not a live network mutation.
+                unresolved = []
+                for flow_id in attached - pending_delete_flows:
+                    rewire = next((planned for planned in changes
+                                   if planned.kind == "flow" and
+                                      planned.id == flow_id and
+                                      planned.action == "update"), None)
+                    original_flow = db.get(DataFlow, flow_id)
+                    if not rewire or not original_flow:
+                        unresolved.append(flow_id)
+                        continue
+                    source = rewire.fields.get("source_id", str(original_flow.source_id))
+                    target = rewire.fields.get("target_id", str(original_flow.target_id))
+                    if str(change.id) in {source, target}:
+                        unresolved.append(flow_id)
+                if unresolved:
+                    raise HTTPException(422, "Stage deletion or rerouting of connected flows before VM removal")
                 for proposed in proposed_flow_rows:
                     if str(change.id) in {str(get_field(proposed, "source_id")), str(get_field(proposed, "target_id"))}:
                         raise HTTPException(422, "A proposed flow still references the removed VM")

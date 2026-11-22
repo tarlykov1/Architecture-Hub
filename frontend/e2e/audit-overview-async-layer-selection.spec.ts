@@ -14,6 +14,9 @@ test('QA-WORK: business area enabled before async catalogs load selects the firs
   const category=await create('/api/business/categories',{name:'QA-WORK-LATE-GROUP-'+suffix})
   const process=await create('/api/business/processes',{category_id:category,name:'QA-WORK-LATE-PROCESS-'+suffix})
   await create('/api/business/system-links',{process_id:process,system_id:sys,role:'supporting'})
+  const partnerName='QA-WORK-LATE-PARTNER-'+suffix
+  const partner=await create('/api/objects',{kind:'system',name:partnerName})
+  await create('/api/business/system-links',{process_id:process,system_id:partner,role:'supporting'})
   let releaseCategories!:()=>void
   const categoryGate=new Promise<void>(resolve=>{releaseCategories=resolve})
   await page.route('**/api/business/categories',async route=>{
@@ -33,10 +36,20 @@ test('QA-WORK: business area enabled before async catalogs load selects the firs
   await expect(map.locator('.react-flow__node-layerRegion')).toHaveCount(1)
   await map.getByRole('button',{name:'QA-WORK-LATE-GROUP-'+suffix}).click()
   await expect(info).toContainText('QA-WORK-LATE-GROUP-'+suffix)
+  const context=map.getByRole('region',{name:'Связанные бизнес-процессы'})
+  await context.getByRole('button',{name:'QA-WORK-LATE-PROCESS-'+suffix}).click()
+  const passport=page.getByRole('dialog',{name:'Паспорт бизнес-процесса'})
+  await expect(passport).toContainText('QA-WORK-LATE-PROCESS-'+suffix)
+  await passport.getByRole('button',{name:'Закрыть паспорт БП'}).click()
   const clear=map.getByRole('button',{name:'Снять выделение'})
   await clear.click()
   await expect(info).toHaveCount(0)
   await expect(toggle).toBeChecked()
+  await map.getByRole('button',{name:'Бизнес-связи',exact:true}).click()
+  await map.getByText('Фильтры и слои',{exact:true}).click()
+  await map.getByLabel('Фокус на ИС').selectOption(sys)
+  await expect(map.locator('.react-flow__node').filter({hasText:partnerName})).toBeVisible()
+  await expect(context.getByRole('button',{name:'QA-WORK-LATE-PROCESS-'+suffix})).toBeVisible()
   // Explicit deselection must not be reverted by the async initial-selection effect.
   await expect(info).toHaveCount(0)
 })

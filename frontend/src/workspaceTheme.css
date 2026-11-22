@@ -179,3 +179,8 @@ body {
 }
 .homeMap .homeLayerToolbar > .homeLayerCatalog { width: auto; margin: 0 }
 .homeMap .homeLayerCatalog .homeLayerColorList { max-width: min(360px,90vw) }
+
+.overviewProcessContext { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; max-height: 7rem; overflow: auto; padding: 4px 16px; font-size: 13px }
+.overviewProcessContext button { padding: 4px 8px; text-align: left }
+.overviewAreaChips > strong { align-self: center; font-size: 12px }
+.overviewExchangeSchedule { display: block; font-weight: normal; color: #565967 }

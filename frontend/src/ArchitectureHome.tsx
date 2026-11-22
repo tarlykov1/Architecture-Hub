@@ -264,7 +264,7 @@ export default function ArchitectureHome({mode,onModeChange,logical,systems,comp
        borderColor:`color-mix(in srgb, ${color} 65%, #384052)`,
        boxShadow:`inset 5px 0 0 ${color}, 0 0 0 1px color-mix(in srgb, ${color} 65%, #384052)`
      }),
-     ...(selected&&{outline:'2px solid var(--hub-accent)',outlineOffset:3}),
+     ...(selected&&{borderColor:'var(--hub-accent)',outline:'2px solid var(--hub-accent)',outlineOffset:3}),
      opacity:outside&&!selected?0.35:!displayAreas.length&&selectedSystem&&!selectedNeighbors.has(node.id)?0.28:1
    }}
  })

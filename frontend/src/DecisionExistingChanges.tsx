@@ -39,7 +39,7 @@ export function existingSummary(changes:ExistingChange[]){
 }
 
 export function DecisionExistingChanges({
-  systemId,items,flows,changes,editable,busy,onSave,onFocus,
+  systemId,items,flows,changes,editable,busy,onSave,onFocus,onDirtyChange,
   initialTarget,
 }:{
   systemId:string
@@ -48,7 +48,8 @@ export function DecisionExistingChanges({
   changes:ExistingChange[]
   editable:boolean
   busy:boolean
-  onSave:(changes:ExistingInput[])=>void
+  onSave:(changes:ExistingInput[])=>Promise<boolean>
+  onDirtyChange?:(dirty:boolean)=>void
   onFocus?:(kind:'vm'|'flow',id:string)=>void
   initialTarget?:{kind:'vm'|'flow';id:string}|null
 }){
@@ -75,12 +76,23 @@ export function DecisionExistingChanges({
     schedule:selectedFlow.schedule||'',verification:selectedFlow.verification||'draft',
   }:{}
   const keys=kind==='vm'?VM_KEYS:FLOW_KEYS
+  const expectedValues={...registered,...(selectedChange?.after||{})}
+  const unsaved=editing&&!!id&&(
+    action!==(selectedChange?.action||'update')||
+    (action==='update'&&keys.some(key=>
+      (values[key]||'')!==(expectedValues[key as keyof typeof expectedValues]||'')
+    ))
+  )
+  useEffect(()=>onDirtyChange?.(Boolean(unsaved)),[unsaved,onDirtyChange])
+  useEffect(()=>()=>onDirtyChange?.(false),[onDirtyChange])
   const names=new Map(items.map(item=>[item.id,item.name]))
   const fieldName=(key:string,value:string)=>(
     (key==='source_id'||key==='target_id')?names.get(value)||value:value
   )
 
   function choose(nextKind:'vm'|'flow',nextId:string){
+    if(unsaved&&(nextId!==id||nextKind!==kind)&&
+      !window.confirm('Есть несохранённые изменения действующего объекта. Отбросить их?'))return
     setKind(nextKind);setId(nextId);setError('')
     const entry=changes.find(c=>c.kind===nextKind&&c.id===nextId)
     setAction(entry?.action||'update')
@@ -108,7 +120,7 @@ export function DecisionExistingChanges({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   },[initialTarget?.id,initialTarget?.kind])
 
-  function stage(event:React.FormEvent){
+  async function stage(event:React.FormEvent){
     event.preventDefault()
     if(!editable||busy||!id)return
     const fields:Record<string,string>={}
@@ -125,10 +137,10 @@ export function DecisionExistingChanges({
     const next:ExistingInput={
       id,kind,action,fields:action==='remove'?{}:fields,
     }
-    onSave([...changes.filter(c=>c.id!==id||c.kind!==kind).map(c=>({
+    const accepted=await onSave([...changes.filter(c=>c.id!==id||c.kind!==kind).map(c=>({
       id:c.id,kind:c.kind,action:c.action,fields:c.fields,
     })),next])
-    setEditing(false)
+    if(accepted)setEditing(false)
   }
   const count=existingSummary(changes)
   return <section className="decisionExistingChanges" aria-label="Изменения действующей архитектуры">
@@ -156,10 +168,13 @@ export function DecisionExistingChanges({
             {change.impacts.map(x=><span key={x}>{x}</span>)}
           </div>}
           <div className="decisionExistingActions">
-            {onFocus&&<button type="button" onClick={()=>onFocus(change.kind,change.id)}>На схеме</button>}
+            {onFocus&&<button type="button" onClick={()=>{
+              if(unsaved&&!window.confirm('Отбросить несохранённые изменения перед переходом на схему?'))return
+              onFocus(change.kind,change.id)
+            }}>На схеме</button>}
             {editable&&<button type="button" disabled={busy} onClick={()=>{
               if(!window.confirm('Убрать запланированное изменение? Действующий объект останется без изменений.'))return
-              onSave(changes.filter(c=>c.id!==change.id||c.kind!==change.kind).map(c=>({
+              void onSave(changes.filter(c=>c.id!==change.id||c.kind!==change.kind).map(c=>({
                 id:c.id,kind:c.kind,action:c.action,fields:c.fields,
               })))
             }}>Отменить план</button>}
@@ -198,11 +213,14 @@ export function DecisionExistingChanges({
             :<input aria-label={'Новое значение: '+labels[key]} value={values[key]||''}
               onChange={e=>setValues(v=>({...v,[key]:e.target.value}))}/>}
           </label>)}
-        </div>:<p>Удаление только запланировано. Зависимые технические потоки нужно предварительно отметить к удалению. Реальные объекты не удаляются.</p>}
+        </div>:<p>Удаление только запланировано. Подключённые потоки нужно предварительно отметить к удалению или перенаправить. Реальные объекты не удаляются.</p>}
         {error&&<p role="alert">{error}</p>}
         <div className="decisionExistingActions">
           <button type="submit" className="primary" disabled={busy}>Сохранить в черновик</button>
-          <button type="button" onClick={()=>{setEditing(false);setError('')}}>Отмена</button>
+          <button type="button" onClick={()=>{
+            if(unsaved&&!window.confirm('Отменить несохранённые изменения?'))return
+            setEditing(false);setError('')
+          }}>Отмена</button>
         </div>
       </form>}
       {!id&&<small>Для удаления ВМ сначала запланируйте удаление её подключённых потоков и отсоединение сетевых интерфейсов.</small>}

@@ -179,7 +179,7 @@ test('QA-WORK: unsaved existing-object changes survive dismissed tab navigation 
   await expect(planner).toBeVisible()
   await expect(port).toHaveValue('999999')
   await planner.getByRole('button',{name:'Сохранить в черновик'}).click()
-  await expect(inspector.getByRole('alert').last()).toContainText('Invalid')
+  await expect(inspector.getByRole('alert').last()).toContainText('Порт должен быть числом')
   await expect(port).toHaveValue('999999')
   expect(((await (await request.get(url)).json()) as Decision).existing_changes).toHaveLength(0)
 

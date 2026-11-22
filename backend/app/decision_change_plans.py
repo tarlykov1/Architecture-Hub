@@ -63,6 +63,7 @@ class ExistingChangeInput(BaseModel):
     # Snapshots are read-only echo fields; clients cannot decide what is true.
     before: dict[str, str] | None = None
     after: dict[str, str] | None = None
+    impacts: list[str] | None = None
 
     @model_validator(mode="after")
     def validate_fields(self):
@@ -107,6 +108,35 @@ def snapshot(kind: str, item_id: UUID, db: Session) -> dict[str, str] | None:
         "security": flow.security or "", "schedule": flow.schedule or "",
         "verification": flow.verification or "",
     }
+
+
+def linked_business_impacts(kind: str, item_id: UUID, db: Session) -> list[str]:
+    """Expose affected documented processes/scenarios without inventing traffic."""
+    from .main import BusinessProcess
+    from .process_passports import ProcessStep
+    from .flow_scenarios import FlowScenario, FlowScenarioStep
+    impact: set[str] = set()
+    if kind == "vm":
+        steps = db.scalars(select(ProcessStep).where(
+            ProcessStep.component_id == item_id
+        )).all()
+        sequences = []
+    else:
+        steps = db.scalars(select(ProcessStep).where(
+            ProcessStep.flow_id == item_id
+        )).all()
+        sequences = db.scalars(select(FlowScenarioStep).where(
+            FlowScenarioStep.flow_id == item_id
+        )).all()
+    for step in steps:
+        process = db.get(BusinessProcess, step.process_id)
+        if process:
+            impact.add("БП: " + process.name + " / " + step.name)
+    for step in sequences:
+        scenario = db.get(FlowScenario, step.scenario_id)
+        if scenario:
+            impact.add("Сценарий обмена: " + scenario.name)
+    return sorted(impact)
 
 
 def compare_registered_change(
@@ -197,6 +227,7 @@ def compare_registered_change(
         output.append({
             "kind": change.kind, "id": str(change.id), "action": change.action,
             "fields": change.fields, "before": before, "after": after,
+            "impacts": linked_business_impacts(change.kind, change.id, db),
         })
     return output
 
@@ -207,3 +238,7 @@ def verify_staged_architecture(row: Any, db: Session) -> None:
         latest = snapshot(changed["kind"], UUID(str(changed["id"])), db)
         if latest != changed.get("before"):
             raise HTTPException(409, "The original architecture has changed. Rework the proposal before review")
+        if changed.get("impacts") is not None and linked_business_impacts(
+            changed["kind"], UUID(str(changed["id"])), db
+        ) != changed["impacts"]:
+            raise HTTPException(409, "Business dependencies of the proposed change have changed")

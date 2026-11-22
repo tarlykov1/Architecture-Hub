@@ -150,6 +150,10 @@ test('QA-WORK: technical decision Markdown exports staged existing changes and l
   const impact=(await staged.json() as Decision & {existing_changes:Array<{impacts:string[]}>}).existing_changes[1].impacts
   expect(impact.some(text=>text.includes(process.name))).toBe(true)
   expect(impact.some(text=>text.includes(scenario.name))).toBe(true)
+  const comment = await request.post(url+'/comments', {data: {
+    anchor_kind: 'flow', anchor_id: flow.id, body: 'Проверить | маршрут'
+  }})
+  expect(comment.ok(), await comment.text()).toBe(true)
   const {inspector}=await open(page,title)
   await expect(inspector.getByRole('note')).toContainText(process.name)
   await expect(inspector.getByRole('note')).toContainText(scenario.name)
@@ -164,6 +168,8 @@ test('QA-WORK: technical decision Markdown exports staged existing changes and l
   expect(markdown).toContain(process.name)
   expect(markdown).toContain(scenario.name)
   expect(markdown).toContain('QA-WORK-NewName')
+  expect(markdown).toContain('Поток · '+flow.name+' · '+flow.id)
+  expect(markdown).toContain('Проверить \\| маршрут')
   expect(markdown).toContain('Запланировано удаление')
   expect(markdown).toContain('Не подтверждает фактическое внедрение')
   expect((await (await request.get(api+'/flows')).json() as {id:string}[]).some(x=>x.id===flow.id)).toBe(true)
@@ -195,4 +201,21 @@ test('QA-WORK: unsaved existing-object changes survive dismissed tab navigation 
   await expect(planner).toContainText('8443')
   await inspector.getByRole('button',{name:'Согласование',exact:true}).click()
   await expect(inspector.getByRole('region',{name:'Маршрут согласования'})).toBeVisible()
+})
+
+test('QA-WORK: an archived vote stays attached to its revision in the exported decision', async () => {
+  const {buildTechnicalDecisionMarkdown} = await import('../src/technicalDecisionDocument')
+  const markdown = buildTechnicalDecisionMarkdown({
+    id: 'qa-export', title: 'QA-WORK', description: '', status: 'in_review',
+    revision: 5, base_changed: false, proposed_vms: [], proposed_flows: [],
+    required_services: ['engineer'], approvals: [], review_history: [{
+      revision: 3, service: 'engineer', verdict: 'approved', actor_name: 'Инженер',
+      created_at: '2026-11-21T10:00:00Z', note: 'Проверена первая версия'
+    }], comments: [{
+      anchor_kind: 'vm', anchor_id: 'removed-vm', body: 'Проверить адрес'
+    }]
+  }, 'QA-WORK', [])
+  expect(markdown).toContain('| Инфраструктура | На рассмотрении |')
+  expect(markdown).toContain('| 3 | Инфраструктура | Согласовано | Инженер | 2026-11-21T10:00:00Z | Проверена первая версия |')
+  expect(markdown).toContain('| ВМ · removed-vm |')
 })

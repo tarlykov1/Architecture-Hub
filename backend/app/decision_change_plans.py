@@ -112,7 +112,7 @@ def snapshot(kind: str, item_id: UUID, db: Session) -> dict[str, str] | None:
 
 def linked_business_impacts(kind: str, item_id: UUID, db: Session) -> list[str]:
     """Expose affected documented processes/scenarios without inventing traffic."""
-    from .main import BusinessProcess
+    from .main import BusinessProcess, DataAttribute, FlowDataUse
     from .process_passports import ProcessStep
     from .flow_scenarios import FlowScenario, FlowScenarioStep
     impact: set[str] = set()
@@ -136,6 +136,15 @@ def linked_business_impacts(kind: str, item_id: UUID, db: Session) -> list[str]:
         scenario = db.get(FlowScenario, step.scenario_id)
         if scenario:
             impact.add("Сценарий обмена: " + scenario.name)
+    if kind == "flow":
+        for use in db.scalars(select(FlowDataUse).where(
+            FlowDataUse.flow_id == item_id
+        )).all():
+            attribute = db.get(DataAttribute, use.attribute_id)
+            if attribute:
+                context = db.get(BusinessProcess, use.process_id) if use.process_id else None
+                impact.add("Атрибут данных: " + attribute.code +
+                           (" · БП: " + context.name if context else ""))
     return sorted(impact)
 
 

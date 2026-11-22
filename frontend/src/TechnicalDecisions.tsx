@@ -9,14 +9,15 @@ import {ObstacleAwareEdge} from './ObstacleAwareEdge'
 import {AutoFit} from './WorkspaceUI'
 import type {AuthProfile} from './UserManagement'
 import {buildTechnicalDecisionMarkdown} from './technicalDecisionDocument'
+import {DecisionExistingChanges,type ExistingChange,type ExistingInput,existingSummary} from './DecisionExistingChanges'
 import './technicalDecisions.css'
 
 type Api = <T>(url: string, init?: RequestInit) => Promise<T>
-type Item = {id: string; name: string; system_id: string; kind: string}
+type Item = {id: string; name: string; system_id: string; kind: string;description?:string;details?:Record<string,unknown>}
 type Link = {id: string; name: string; source_id: string; target_id: string; protocol: string; port: string; source_handle?:string; target_handle?:string; data_description?:string;security?:string;schedule?:string;verification?:string}
 type ProposedVM = Item & {x: number; y: number; description?:string; environment?:string}
 type VMForm = {name:string;kind:'vm'|'server'|'host';description:string;environment:string}
-type ProposalSnapshot = {vms:ProposedVM[];flows:Link[]}
+type ProposalSnapshot = {vms:ProposedVM[];flows:Link[];existing:ExistingChange[]}
 const blankVM = ():VMForm=>({name:'',kind:'vm',description:'',environment:''})
 const decisionEdgeTypes={proposal:ObstacleAwareEdge}
 const emptyFlow:Link={id:'',source_id:'',target_id:'',source_handle:'',target_handle:'',name:'',protocol:'',port:'',data_description:'',security:'',schedule:'',verification:'draft'}
@@ -26,7 +27,7 @@ type Service = keyof typeof services
 type Decision = {id:string; title:string; system_id:string; status:keyof typeof states; author:string; author_name?:string; updated_at:string; revision:number}
 type Review = {service:Service; verdict:'approved'|'changes_requested'; note:string; actor:string; actor_name?:string; created_at:string; revision?:number}
 type DecisionComment = {id:string; actor:string; actor_name?:string; body:string; anchor_kind:'decision'|'vm'|'flow';anchor_id:string;created_at:string}
-type Details = Decision & {description:string; required_services:Service[]; approvals:Review[]; review_history:Review[]; comments:DecisionComment[]; proposed_vms:ProposedVM[]; proposed_flows:Link[]; base_changed:boolean}
+type Details = Decision & {description:string; required_services:Service[]; approvals:Review[]; review_history:Review[]; comments:DecisionComment[]; proposed_vms:ProposedVM[]; proposed_flows:Link[]; existing_changes:ExistingChange[]; base_changed:boolean}
 const path = '/api/technical-decisions'
 const dateFormat = new Intl.DateTimeFormat('ru-RU',{day:'2-digit',month:'2-digit',year:'numeric'})
 function Status({value}:{value:Decision['status']}) {
@@ -102,6 +103,7 @@ function DecisionInspector({id,request,profile,items,flows,systemName,schema,ope
   const [selectedVMId,setSelectedVMId]=useState('')
   const [vmForm,setVmForm]=useState<VMForm>(blankVM)
   const [menu,setMenu]=useState<null|{kind:'vm'|'flow';id:string;x:number;y:number}>(null)
+  const [changeFocus,setChangeFocus]=useState<null|{kind:'vm'|'flow';id:string}>(null)
   const [undoStack,setUndoStack]=useState<ProposalSnapshot[]>([])
   const [redoStack,setRedoStack]=useState<ProposalSnapshot[]>([])
   const [draft,setDraft]=useState<Link>(emptyFlow)
@@ -159,12 +161,12 @@ function DecisionInspector({id,request,profile,items,flows,systemName,schema,ope
   const reviewer=profile?.auth_kind==='named_user'&&!author&&row.status==='in_review'&&row.required_services.includes(profile.role as Service)
   const routeChanged=[...route].sort().join('|')!==[...row.required_services].sort().join('|')
   const approvedCount=row.required_services.filter(service=>row.approvals.some(vote=>vote.service===service&&vote.verdict==='approved')).length
-  const canSubmit=editable&&!routeChanged&&row.required_services.length>0&&(row.proposed_vms.length+row.proposed_flows.length>0)
+  const canSubmit=editable&&!routeChanged&&row.required_services.length>0&&(row.proposed_vms.length+row.proposed_flows.length+row.existing_changes.length>0)
   const canComment=!!profile&&profile.role!=='viewer'
   function saveRoute(){
     if(!row||!editable||!route.length||!routeChanged)return
     void change('',{...revision,title:row.title,description:row.description,
-      required_services:route,proposed_vms:row.proposed_vms,proposed_flows:row.proposed_flows},'PUT')
+      required_services:route,proposed_vms:row.proposed_vms,proposed_flows:row.proposed_flows,existing_changes:row.existing_changes},'PUT')
   }
   function sendComment(){
     if(!discussion.trim()||!canComment)return
@@ -186,7 +188,12 @@ function DecisionInspector({id,request,profile,items,flows,systemName,schema,ope
   const localItems=items.filter(i=>i.system_id===loaded.system_id)
   const localIds=new Set(localItems.map(i=>i.id))
   const baseFlows=flows.filter(f=>localIds.has(f.source_id)||localIds.has(f.target_id))
-  const lines=[...baseFlows,...loaded.proposed_flows]
+  const currentChanges=new Map(loaded.existing_changes.map(c=>[c.kind+':'+c.id,c]))
+  const projectedFlows=baseFlows.map(flow=>{
+    const change=currentChanges.get('flow:'+flow.id)
+    return change?.action==='update'?{...flow,...change.after}:flow
+  })
+  const lines=[...projectedFlows,...loaded.proposed_flows]
   const linkedIds=new Set(lines.flatMap(f=>[f.source_id,f.target_id]))
   const baseline=items.filter(i=>localIds.has(i.id)||linkedIds.has(i.id))
   const choices=[...items,...loaded.proposed_vms]
@@ -231,7 +238,14 @@ function DecisionInspector({id,request,profile,items,flows,systemName,schema,ope
     }while(proposedPositions.some(vm=>Math.abs(vm.x-point.x)<260&&Math.abs(vm.y-point.y)<110))
     return point
   }
-  const nodes=[...baseline.map(i=>({type:'diagramPort',id:i.id,position:nextGridPosition(),draggable:false,data:{label:<DiagramNodeLabel name={i.name} kind={i.kind}/>},style:diagramCardStyle()})),
+  const nodes=[...baseline.map(i=>{
+      const change=currentChanges.get('vm:'+i.id)
+      const projected=change?.action==='update'?{...i,...change.after}:i
+      return {type:'diagramPort',id:i.id,position:nextGridPosition(),draggable:false,
+        data:{label:<DiagramNodeLabel name={projected.name} kind={projected.kind}
+          subtitle={change?.action==='remove'?'Планируется удаление':change?.action==='update'?'Изменение':''}/>},
+        style:diagramCardStyle(change?{border:change.action==='remove'?'2px dashed #ae7648':'2px solid #6550ad'}:{})}
+    }),
     ...loaded.proposed_vms.map(vm=>({type:'diagramPort',id:vm.id,position:dragPositions[vm.id]||{x:vm.x,y:vm.y},draggable:editable&&!busy,data:{label:<DiagramNodeLabel name={vm.name} kind={vm.kind} subtitle="Новая ВМ"/>},style:diagramCardStyle({border:'1px dashed #a46c26'})}))]
   const positions=new Map(nodes.map(n=>[n.id,n.position]))
   const proposedIds=new Set(loaded.proposed_flows.map(f=>f.id))
@@ -253,9 +267,11 @@ function DecisionInspector({id,request,profile,items,flows,systemName,schema,ope
     const proposed=proposedIds.has(f.id)
     return [{id:f.id,source:f.source_id,target:f.target_id,type:'proposal',
       sourceHandle:f.source_handle||ports.source_handle,targetHandle:(f.target_handle||ports.target_handle).replace('in-','out-'),
-      markerEnd:{type:MarkerType.ArrowClosed,color:proposed?'#6652ae':'#737786'},
+      markerEnd:{type:MarkerType.ArrowClosed,color:currentChanges.get('flow:'+f.id)?.action==='remove'?'#b37343':proposed?'#6652ae':'#737786'},
       ariaLabel:f.name,data:{caption:proposed||viewFlowId===f.id?f.name:'',onSelect:()=>inspectFlow(f)},
-      style:{stroke:proposed?'#6652ae':'#737786',strokeDasharray:proposed?'6 4':undefined}}]
+      style:{stroke:currentChanges.get('flow:'+f.id)?.action==='remove'?'#b37343':proposed?'#6652ae':'#737786',
+        strokeWidth:currentChanges.get('flow:'+f.id)?2.3:1.5,
+        strokeDasharray:currentChanges.get('flow:'+f.id)?.action==='remove'?'4 6':proposed?'6 4':undefined}}]
   })
   const flowError=flowPortError(draft.port)
   const sameEnds=!!draft.source_id&&draft.source_id===draft.target_id
@@ -264,15 +280,16 @@ function DecisionInspector({id,request,profile,items,flows,systemName,schema,ope
     if(!editable||busy||c.source===c.target)return
     openFlow({...emptyFlow,source_id:c.source,target_id:c.target,source_handle:c.sourceHandle||'',target_handle:(c.targetHandle||'').replace('out-','in-')})
   }
-  async function writeProposal(vms:ProposedVM[],links:Link[],action:'edit'|'undo'|'redo'='edit') {
+  async function writeProposal(vms:ProposedVM[],links:Link[],action:'edit'|'undo'|'redo'='edit',existing:ExistingInput[]=loaded.existing_changes) {
     if(!editable||busy)return
-    const before={vms:loaded.proposed_vms,flows:loaded.proposed_flows}
-    if(JSON.stringify(before.vms)===JSON.stringify(vms)&&JSON.stringify(before.flows)===JSON.stringify(links))return
+    const before={vms:loaded.proposed_vms,flows:loaded.proposed_flows,existing:loaded.existing_changes}
+    if(JSON.stringify(before.vms)===JSON.stringify(vms)&&JSON.stringify(before.flows)===JSON.stringify(links)
+      &&JSON.stringify(before.existing.map(c=>({kind:c.kind,id:c.id,action:c.action,fields:c.fields})))===JSON.stringify(existing.map(c=>({kind:c.kind,id:c.id,action:c.action,fields:c.fields}))))return
     setBusy(true);setError('')
     try{
       const next=await request<Details>(path+'/'+id,{method:'PUT',body:JSON.stringify({
         ...revision,title:loaded.title,description:loaded.description,required_services:loaded.required_services,
-        proposed_vms:vms,proposed_flows:links,
+        proposed_vms:vms,proposed_flows:links,existing_changes:existing,
       })})
       setRow(next);setRoute(next.required_services);update(next)
       setTool(null);setViewFlowId('');setSelectedVMId('');setMenu(null);setDragPositions({})
@@ -290,12 +307,12 @@ function DecisionInspector({id,request,profile,items,flows,systemName,schema,ope
   function undoProposal(){
     if(!undoStack.length)return
     const snapshot=undoStack[undoStack.length-1]
-    void writeProposal(snapshot.vms,snapshot.flows,'undo')
+    void writeProposal(snapshot.vms,snapshot.flows,'undo',snapshot.existing)
   }
   function redoProposal(){
     if(!redoStack.length)return
     const snapshot=redoStack[redoStack.length-1]
-    void writeProposal(snapshot.vms,snapshot.flows,'redo')
+    void writeProposal(snapshot.vms,snapshot.flows,'redo',snapshot.existing)
   }
   function saveVMProperties(){
     if(!selectedProposedVM||!vmForm.name.trim()||!vmFormDirty)return

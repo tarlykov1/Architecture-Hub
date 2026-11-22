@@ -1,4 +1,5 @@
 import React,{useEffect,useState} from 'react'
+import RuntimeVersion from './RuntimeVersion'
 
 export type AccountRole='admin'|'architect'|'engineer'|'security'|'business_owner'|'viewer'
 export type AuthProfile={id:string|null;username:string|null;display_name:string|null;role:AccountRole;auth_kind:string;permissions?:Record<string,'read'|'write'>}
@@ -80,6 +81,7 @@ export default function UserManagement({request,onClose}:{request:Api;onClose:()
  return <div className="editorBackdrop accountBackdrop">
   <section className="accountDialog" role="dialog" aria-modal="true" aria-label="Управление пользователями">
    <header><div><h2>Пользователи Architecture Hub</h2><p>У каждого сотрудника свой пароль и роль. Изменения прав применяются на сервере.</p></div><button type="button" onClick={onClose} aria-label="Закрыть управление пользователями">×</button></header>
+   <RuntimeVersion request={request}/>
    <form className="accountCreateForm" onSubmit={event=>void create(event)}>
     <h3>Добавить пользователя</h3>
     <div className="accountFormGrid">

@@ -1588,6 +1588,13 @@ def change_own_password(payload: OwnPasswordChange, request: Request,
     return {"status": "ok", "sessions_revoked": True}
 
 
+@app.get("/api/auth/runtime-version")
+def runtime_version(request: Request, db: Session = Depends(db_session)):
+    _require_auth_admin(request)
+    from .runtime_version import read_version
+    return read_version(db.connection())
+
+
 @app.get("/api/health")
 def health():
     return {"status": "ok"}

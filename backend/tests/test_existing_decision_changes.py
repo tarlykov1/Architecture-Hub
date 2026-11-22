@@ -5,6 +5,8 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 
+ADMIN = {"Authorization": "Bearer ci-admin-token-123456789012345678901234"}
+
 
 def created(client, path, data):
     response = client.post(path, json=data)

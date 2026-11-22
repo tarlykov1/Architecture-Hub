@@ -11,8 +11,33 @@ from uuid import UUID
 
 from fastapi import HTTPException
 from pydantic import BaseModel, ConfigDict, Field, model_validator
-from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy import JSON, ForeignKey, Uuid, select
+from sqlalchemy.orm import Mapped, Session, mapped_column
+
+from .main import Base
+
+
+class DecisionChangePlan(Base):
+    """Separate additive table: safe if server skipped altering old decision table."""
+    __tablename__ = "technical_decision_change_plans"
+    decision_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("technical_decisions.id", ondelete="CASCADE"),
+        primary_key=True)
+    changes: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list, nullable=False)
+
+
+def read_staged(row: Any, db: Session) -> list[dict[str, Any]]:
+    plan = db.get(DecisionChangePlan, row.id)
+    return list(plan.changes or []) if plan else []
+
+
+def write_staged(row: Any, changes: list[dict[str, Any]], db: Session) -> None:
+    plan = db.get(DecisionChangePlan, row.id)
+    if plan is None:
+        db.add(DecisionChangePlan(decision_id=row.id, changes=changes))
+    else:
+        plan.changes = changes
+    db.flush()
 
 
 VM_FIELDS = frozenset({"name", "kind", "description", "environment"})
@@ -85,7 +110,9 @@ def snapshot(kind: str, item_id: UUID, db: Session) -> dict[str, str] | None:
 
 
 def compare_registered_change(
-    row: Any, changes: list[ExistingChangeInput], db: Session
+    row: Any, changes: list[ExistingChangeInput], db: Session,
+    proposed_vms: list[Any] | None = None,
+    proposed_flows: list[Any] | None = None,
 ) -> list[dict[str, Any]]:
     """Check scope and dependencies, return server-authored diff snapshots."""
     from .main import (
@@ -97,14 +124,18 @@ def compare_registered_change(
         raise HTTPException(422, "Duplicate change for the same existing object")
     existing = {
         (str(c["kind"]), str(c["id"])): c
-        for c in (row.existing_changes or []) if isinstance(c, dict)
+        for c in read_staged(row, db) if isinstance(c, dict)
     }
     local = set(db.scalars(select(InfrastructureItem.id).where(
         InfrastructureItem.system_id == row.system_id
     )).all())
     pending_delete_vms = {c.id for c in changes if c.kind == "vm" and c.action == "remove"}
     pending_delete_flows = {c.id for c in changes if c.kind == "flow" and c.action == "remove"}
-    proposed_ids = {UUID(str(vm["id"])) for vm in (row.proposed_vms or [])}
+    proposed_vm_rows = proposed_vms if proposed_vms is not None else (row.proposed_vms or [])
+    proposed_flow_rows = proposed_flows if proposed_flows is not None else (row.proposed_flows or [])
+    def get_field(record: Any, key: str):
+        return record[key] if isinstance(record, dict) else getattr(record, key)
+    proposed_ids = {UUID(str(get_field(vm, "id"))) for vm in proposed_vm_rows}
     output: list[dict[str, Any]] = []
     for change in changes:
         before = snapshot(change.kind, change.id, db)
@@ -135,8 +166,8 @@ def compare_registered_change(
                 )).all())
                 if attached - pending_delete_flows:
                     raise HTTPException(422, "Stage deletion of connected flows before VM removal")
-                for proposed in (row.proposed_flows or []):
-                    if str(change.id) in {str(proposed["source_id"]), str(proposed["target_id"])}:
+                for proposed in proposed_flow_rows:
+                    if str(change.id) in {str(get_field(proposed, "source_id")), str(get_field(proposed, "target_id"))}:
                         raise HTTPException(422, "A proposed flow still references the removed VM")
         else:
             flow = db.get(DataFlow, change.id)
@@ -172,7 +203,7 @@ def compare_registered_change(
 
 def verify_staged_architecture(row: Any, db: Session) -> None:
     """Blocks review if a referenced fact changed since planning."""
-    for changed in (row.existing_changes or []):
+    for changed in read_staged(row, db):
         latest = snapshot(changed["kind"], UUID(str(changed["id"])), db)
         if latest != changed.get("before"):
             raise HTTPException(409, "The original architecture has changed. Rework the proposal before review")

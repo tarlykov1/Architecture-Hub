@@ -1,3 +1,4 @@
+import {openWorkspace} from './workspaceNavigation'
 import {test,expect,type Page} from '@playwright/test'
 
 test.beforeEach(async({page})=>{
@@ -24,8 +25,7 @@ async function seed(page:Page){
 
 async function openBoard(page:Page,system:string){
  await page.goto('/')
- await page.getByRole('navigation',{name:'Разделы архитектуры'})
-  .getByRole('button',{name:'Компоненты',exact:true}).click()
+ await openWorkspace(page,'Компоненты')
  await page.getByRole('group',{name:'Представление компонентов'})
   .getByRole('button',{name:'Схема',exact:true}).click()
  await page.getByRole('button',{name:'Редактировать схему'}).click()

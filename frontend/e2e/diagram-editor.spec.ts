@@ -1,3 +1,4 @@
+import {openWorkspace} from './workspaceNavigation'
 import {test,expect,type Locator} from '@playwright/test'
 
 async function visibleNetworkHandle(node:Locator) {
@@ -39,7 +40,7 @@ async function seedSystem(page:import('@playwright/test').Page){
 test('components expose the real palette even when no system is selected or grouping is enabled',async({page})=>{
   const id=await seedSystem(page)
   await page.goto('/')
-  await page.getByRole('navigation',{name:'Разделы архитектуры'}).getByRole('button',{name:'Компоненты',exact:true}).click()
+  await openWorkspace(page,'Компоненты')
   await page.getByRole('group',{name:'Представление компонентов'}).getByRole('button',{name:'Схема',exact:true}).click()
   const scope=page.getByRole('combobox',{name:'Система компонентов'})
   await expect(page.getByRole('combobox',{name:'Группировка компонентов'})).toHaveCount(0)
@@ -114,7 +115,7 @@ test('flow editor keeps the tool rail clear and opens selected properties on the
 test('flow tool selects endpoints on canvas and opens its settings without a horizontal form',async({page})=>{
   const id=await seedSystem(page)
   await page.goto('/')
-  await page.getByRole('navigation',{name:'Разделы архитектуры'}).getByRole('button',{name:'Компоненты',exact:true}).click()
+  await openWorkspace(page,'Компоненты')
   await page.getByRole('group',{name:'Представление компонентов'}).getByRole('button',{name:'Схема',exact:true}).click()
   await page.getByRole('button',{name:'Редактировать схему'}).click()
   await page.getByRole('combobox',{name:'Выбрать ИС для редактора компонентов'}).selectOption(id)
@@ -141,7 +142,7 @@ test('flow tool selects endpoints on canvas and opens its settings without a hor
 test('component properties open in a non-modal right dock without hiding the diagram',async({page})=>{
   const id=await seedSystem(page)
   await page.goto('/')
-  await page.getByRole('navigation',{name:'Разделы архитектуры'}).getByRole('button',{name:'Компоненты',exact:true}).click()
+  await openWorkspace(page,'Компоненты')
   await page.getByRole('group',{name:'Представление компонентов'}).getByRole('button',{name:'Схема',exact:true}).click()
   await page.getByRole('button',{name:'Редактировать схему'}).click()
   await page.getByRole('combobox',{name:'Выбрать ИС для редактора компонентов'}).selectOption(id)
@@ -159,7 +160,7 @@ test('component properties open in a non-modal right dock without hiding the dia
 test('tool labels are visible; dragging creates a container and cancelling removes it',async({page})=>{
   const systemId=await seedSystem(page)
   await page.goto('/')
-  await page.getByRole('navigation',{name:'Разделы архитектуры'}).getByRole('button',{name:'Компоненты',exact:true}).click()
+  await openWorkspace(page,'Компоненты')
   await page.getByRole('group',{name:'Представление компонентов'}).getByRole('button',{name:'Схема',exact:true}).click()
   await page.getByRole('button',{name:'Редактировать схему'}).click()
   await page.getByRole('combobox',{name:'Выбрать ИС для редактора компонентов'}).selectOption(systemId)
@@ -189,7 +190,7 @@ test('tool labels are visible; dragging creates a container and cancelling remov
 test('staged VM remains visible and can be reviewed, then removed by cancelling draft',async({page})=>{
   const id=await seedSystem(page)
   await page.goto('/')
-  await page.getByRole('navigation',{name:'Разделы архитектуры'}).getByRole('button',{name:'Компоненты',exact:true}).click()
+  await openWorkspace(page,'Компоненты')
   await page.getByRole('group',{name:'Представление компонентов'}).getByRole('button',{name:'Схема',exact:true}).click()
   await page.getByRole('button',{name:'Редактировать схему'}).click()
   await page.getByRole('combobox',{name:'Выбрать ИС для редактора компонентов'}).selectOption(id)
@@ -305,7 +306,7 @@ test('closing KIS passport editor keeps the selected system card open',async({pa
 test('network tool marks the required name and returns from history to the editor',async({page})=>{
   const systemId=await seedSystem(page)
   await page.goto('/')
-  await page.getByRole('navigation',{name:'Разделы архитектуры'}).getByRole('button',{name:'Компоненты',exact:true}).click()
+  await openWorkspace(page,'Компоненты')
   await page.getByRole('group',{name:'Представление компонентов'}).getByRole('button',{name:'Схема',exact:true}).click()
   await page.getByRole('button',{name:'Редактировать схему'}).click()
   await page.getByRole('combobox',{name:'Выбрать ИС для редактора компонентов'}).selectOption(systemId)
@@ -346,7 +347,7 @@ test('an existing VRF is draggable and its saved geometry is audited',async({pag
   })
   expect(nic.status()).toBe(201)
   await page.goto('/')
-  await page.getByRole('navigation',{name:'Разделы архитектуры'}).getByRole('button',{name:'Компоненты',exact:true}).click()
+  await openWorkspace(page,'Компоненты')
   await page.getByRole('group',{name:'Представление компонентов'}).getByRole('button',{name:'Схема',exact:true}).click()
   await page.getByRole('button',{name:'Редактировать схему'}).click()
   await page.getByRole('combobox',{name:'Выбрать ИС для редактора компонентов'}).selectOption(systemId)
@@ -422,7 +423,7 @@ test('moving a VRF drags nested VLAN and independent VM while preserving network
   const layout=await page.request.put('http://127.0.0.1:8001/api/board/layout/'+systemId,{data:{positions:start}})
   expect(layout.ok(),await layout.text()).toBeTruthy()
   await page.goto('/')
-  await page.getByRole('navigation',{name:'Разделы архитектуры'}).getByRole('button',{name:'Компоненты',exact:true}).click()
+  await openWorkspace(page,'Компоненты')
   await page.getByRole('group',{name:'Представление компонентов'}).getByRole('button',{name:'Схема',exact:true}).click()
   await page.getByRole('combobox',{name:'Система компонентов'}).selectOption(systemId)
   await expect(page.locator('.miniArchitecture .react-flow__node[data-id="network:'+vrf+'"]')).toBeVisible()
@@ -474,7 +475,7 @@ test('creating a VRF inside an existing VRF is rejected before being staged',asy
     data:{positions:{['network:'+id]:{x:70,y:70,width:1100,height:800}}}
   })
   await page.goto('/')
-  await page.getByRole('navigation',{name:'Разделы архитектуры'}).getByRole('button',{name:'Компоненты',exact:true}).click()
+  await openWorkspace(page,'Компоненты')
   await page.getByRole('group',{name:'Представление компонентов'}).getByRole('button',{name:'Схема',exact:true}).click()
   await page.getByRole('button',{name:'Редактировать схему'}).click()
   await page.getByRole('combobox',{name:'Выбрать ИС для редактора компонентов'}).selectOption(systemId)
@@ -515,7 +516,7 @@ test('dragging VLAN into and out of VRF requires confirmation and resizing zone 
   const seeded=await page.request.put('http://127.0.0.1:8001/api/board/layout/'+systemId,{data:{positions}})
   expect(seeded.ok(),await seeded.text()).toBeTruthy()
   await page.goto('/')
-  await page.getByRole('navigation',{name:'Разделы архитектуры'}).getByRole('button',{name:'Компоненты',exact:true}).click()
+  await openWorkspace(page,'Компоненты')
   await page.getByRole('group',{name:'Представление компонентов'}).getByRole('button',{name:'Схема',exact:true}).click()
   await page.getByRole('button',{name:'Редактировать схему'}).click()
   await page.getByRole('combobox',{name:'Выбрать ИС для редактора компонентов'}).selectOption(systemId)
@@ -580,7 +581,7 @@ test('placing VM inside VLAN requests confirmation and optional NIC is saved onl
   })
   expect(seeded.ok()).toBeTruthy()
   await page.goto('/')
-  await page.getByRole('navigation',{name:'Разделы архитектуры'}).getByRole('button',{name:'Компоненты',exact:true}).click()
+  await openWorkspace(page,'Компоненты')
   await page.getByRole('group',{name:'Представление компонентов'}).getByRole('button',{name:'Схема',exact:true}).click()
   await page.getByRole('button',{name:'Редактировать схему'}).click()
   await page.getByRole('combobox',{name:'Выбрать ИС для редактора компонентов'}).selectOption(systemId)
@@ -627,7 +628,7 @@ test('saved flow edits are reviewed from VM passport and survive reloading the d
   expect(created.status()).toBe(201)
   const flowId=(await created.json()).id as string
   await page.goto('/')
-  await page.getByRole('navigation',{name:'Разделы архитектуры'}).getByRole('button',{name:'Компоненты',exact:true}).click()
+  await openWorkspace(page,'Компоненты')
   await page.getByRole('group',{name:'Представление компонентов'}).getByRole('button',{name:'Схема',exact:true}).click()
   await page.getByRole('button',{name:'Редактировать схему'}).click()
   await page.getByRole('combobox',{name:'Выбрать ИС для редактора компонентов'}).selectOption(systemId)
@@ -663,7 +664,7 @@ test('saved flow edits are reviewed from VM passport and survive reloading the d
   expect(updated).toMatchObject({name:'HR data verified',protocol:'HTTPS',port:'8443',
     security:'TLS',data_description:'Employee identifier and workplace',schedule:'hourly',verification:'verified'})
   await page.reload()
-  await page.getByRole('navigation',{name:'Разделы архитектуры'}).getByRole('button',{name:'Компоненты',exact:true}).click()
+  await openWorkspace(page,'Компоненты')
   await page.getByRole('group',{name:'Представление компонентов'}).getByRole('button',{name:'Схема',exact:true}).click()
   await page.getByRole('button',{name:'Редактировать схему'}).click()
   // On reload the application may remember the chosen IS and open the editor directly.
@@ -687,7 +688,7 @@ test('one grouped arrow exposes its separate saved flow records',async({page})=>
     expect(result.status()).toBe(201)
   }
   await page.goto('/')
-  await page.getByRole('navigation',{name:'Разделы архитектуры'}).getByRole('button',{name:'Компоненты',exact:true}).click()
+  await openWorkspace(page,'Компоненты')
   await page.getByRole('group',{name:'Представление компонентов'}).getByRole('button',{name:'Схема',exact:true}).click()
   await page.getByRole('button',{name:'Редактировать схему'}).click()
   await page.getByRole('combobox',{name:'Выбрать ИС для редактора компонентов'}).selectOption(systemId)
@@ -707,8 +708,7 @@ test('one grouped arrow exposes its separate saved flow records',async({page})=>
 test('unsaved architecture draft stays a compact overlay without shrinking the canvas',async({page})=>{
  const system=await seedSystem(page)
  await page.goto('/')
- await page.getByRole('navigation',{name:'Разделы архитектуры'})
-  .getByRole('button',{name:'Компоненты',exact:true}).click()
+ await openWorkspace(page,'Компоненты')
  await page.getByRole('group',{name:'Представление компонентов'})
   .getByRole('button',{name:'Схема',exact:true}).click()
  await page.getByRole('button',{name:'Редактировать схему'}).click()

@@ -1,3 +1,4 @@
+import {openWorkspace} from './workspaceNavigation'
 import {expect,test} from '@playwright/test'
 
 test.beforeEach(async({page})=>{
@@ -40,8 +41,7 @@ test('saved flow shows distinct attribute sets for each business process and con
   consumer_system_id:consumer.id,purpose:'Call-back contact',verification:'assumed'
  })
  await page.goto('/')
- await page.getByRole('navigation',{name:'Разделы архитектуры'})
-  .getByRole('button',{name:'Компоненты',exact:true}).click()
+ await openWorkspace(page,'Компоненты')
  await page.getByRole('group',{name:'Представление компонентов'})
   .getByRole('button',{name:'Схема',exact:true}).click()
  await page.getByRole('button',{name:'Редактировать схему'}).click()

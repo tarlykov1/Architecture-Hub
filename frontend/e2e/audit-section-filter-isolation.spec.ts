@@ -1,3 +1,4 @@
+import {openWorkspace} from './workspaceNavigation'
 import {expect,test} from '@playwright/test'
 
 test.describe.configure({retries:0})
@@ -37,7 +38,7 @@ test('AH-QA-14: search is independent in Flows, Business, Systems and Components
   await expect(search).toHaveValue('')
   await expect(page.getByText(processName,{exact:true})).toBeVisible()
 
-  await nav.getByRole('button',{name:'Потоки',exact:true}).click()
+  await openWorkspace(page,'Потоки')
   await expect(search).toHaveValue(flowName)
   await expect(page.getByRole('region',{name:'Реестр технических потоков'})).toContainText(flowName)
 
@@ -45,7 +46,7 @@ test('AH-QA-14: search is independent in Flows, Business, Systems and Components
   await expect(search).toHaveValue('')
   await expect(page.getByRole('button',{name:'QA-WORK-Filter-System-'+suffix,exact:true})).toBeVisible()
   await search.fill('QA-WORK-Filter-System-'+suffix)
-  await nav.getByRole('button',{name:'Компоненты',exact:true}).click()
+  await openWorkspace(page,'Компоненты')
   await expect(search).toHaveValue('')
   await nav.getByRole('button',{name:'Системы',exact:true}).click()
   await expect(search).toHaveValue('QA-WORK-Filter-System-'+suffix)

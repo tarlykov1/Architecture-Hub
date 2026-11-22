@@ -1,9 +1,9 @@
+import {openWorkspace} from './workspaceNavigation'
 import {test,expect,type Page} from '@playwright/test'
 
 async function navigate(page:Page,section:'Потоки'|'Компоненты'){
  await page.goto('/')
- await page.getByRole('navigation',{name:'Разделы архитектуры'})
-  .getByRole('button',{name:section,exact:true}).click()
+ await openWorkspace(page,section)
 }
 
 test('AH-01: public demo network route shows an empty state without a white screen',async({page})=>{

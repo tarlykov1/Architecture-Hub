@@ -1,3 +1,4 @@
+import {openWorkspace} from './workspaceNavigation'
 import { test, expect } from '@playwright/test'
 
 // Isolated browser CI: runs against localhost Vite + temporary SQLite backend.
@@ -33,7 +34,7 @@ test('mobile system passport does not intercept section navigation', async ({ pa
   expect(inspectorBounds!.y, 'Inspector must start below the mobile global header').toBeGreaterThanOrEqual(headerBounds!.y + headerBounds!.height - 1)
 
   // Must be a real pointer click; force:true would conceal the reported regression.
-  await navigate(page, 'Компоненты')
+  await openWorkspace(page,'Компоненты')
   await expect(page.getByRole('group', { name: 'Представление компонентов' })).toBeVisible()
   await navigate(page, 'Системы')
   await expect(registry).toBeVisible()

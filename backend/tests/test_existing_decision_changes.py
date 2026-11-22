@@ -206,3 +206,58 @@ def test_stale_live_architecture_blocks_staged_edit_and_review():
         })
         assert changed.status_code == 409
         assert client.get("/api/technical-decisions/" + decision["id"]).json()["status"] == "draft"
+
+
+
+def test_review_diff_names_affected_business_processes_and_exchange_scenarios():
+    with TestClient(app, headers=ADMIN) as client:
+        _, _, _, _, flow, decision = infrastructure(client)
+        suffix = uuid4().hex[:9]
+        category = created(client, "/api/business/categories", {
+            "name": "QA-WORK-DecisionImpactCategory-" + suffix,
+        })
+        process = created(client, "/api/business/processes", {
+            "category_id": category["id"], "name": "QA-WORK-Onboarding-" + suffix,
+        })
+        passport_url = "/api/business/process-passports/" + process["id"]
+        saved_passport = client.put(passport_url, json={
+            "expected_revision": 0, "steps": [{
+                "name": "QA-WORK-TransferIdentity",
+                "flow_id": flow["id"],
+            }],
+        })
+        assert saved_passport.status_code == 200, saved_passport.text
+        scenario = created(client, "/api/flow-scenarios", {
+            "name": "QA-WORK-ExchangeScenario-" + suffix,
+            "process_id": process["id"],
+            "steps": [{"flow_id": flow["id"]}],
+        })
+        stage = put(client, decision, [{
+            "kind": "flow", "action": "update", "id": flow["id"],
+            "fields": {"port": "8443"},
+        }])
+        assert stage.status_code == 200, stage.text
+        staged = stage.json()
+        impact = staged["existing_changes"][0]["impacts"]
+        assert any("QA-WORK-Onboarding-" in x and "QA-WORK-TransferIdentity" in x
+                   for x in impact)
+        assert any("QA-WORK-ExchangeScenario-" in x for x in impact)
+        assert len(impact) == 2
+
+        # Changing the flow's documented business usage after planning must
+        # be visible to reviewers, even if protocol/port did not change.
+        removal = client.put(passport_url, json={
+            "expected_revision": saved_passport.json()["revision"],
+            "steps": [],
+        })
+        assert removal.status_code == 200, removal.text
+        submitted = client.post(
+            "/api/technical-decisions/" + decision["id"] + "/submit",
+            json={"expected_revision": staged["revision"]},
+        )
+        assert submitted.status_code == 409, submitted.text
+        assert "Business dependencies" in submitted.text
+
+        # Existing scenario reference remains documented and unchanged.
+        assert any(s["id"] == scenario["id"]
+                   for s in client.get("/api/flow-scenarios").json())

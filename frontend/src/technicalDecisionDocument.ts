@@ -11,6 +11,10 @@ export type DecisionDocument={
   required_services:string[]
   approvals?:Array<{service:string;verdict:string;actor_name?:string;actor?:string;note?:string}>
   proposed_vms:Array<{id:string;name:string;kind:string;x:number;y:number;description?:string;environment?:string}>
+  existing_changes?:Array<{
+    id:string;kind:'vm'|'flow';action:'update'|'remove'
+    fields:Record<string,string>;before:Record<string,string>;after:Record<string,string>|null;impacts?:string[]
+  }>
   proposed_flows:Array<{
     id:string;name:string;source_id:string;target_id:string;protocol?:string;port?:string
     data_description?:string;security?:string;schedule?:string;verification?:string
@@ -56,6 +60,22 @@ export function buildTechnicalDecisionMarkdown(decision:DecisionDocument,systemN
     ' | '+cell(value(flow.schedule))+' | '+cell(value(flow.verification))+' |'
   )
   if(!decision.proposed_flows.length)rows.push('| Нет проектируемых потоков | — | — | — | — | — | — |')
+  rows.push('','## Изменение действующей архитектуры','','| Объект | Действие | Параметр | Было | Планируется |',
+    '| --- | --- | --- | --- | --- |')
+  for(const change of decision.existing_changes||[]){
+    const state=change.action==='remove'?'Запланировано удаление':'Изменение'
+    const keys=change.action==='remove'?Object.keys(change.before):Object.keys(change.fields)
+    for(const key of keys)rows.push(
+      '| '+cell(change.before.name||change.id)+' (`'+change.id+'`)'+' | '+
+      state+' | '+cell(key)+' | '+cell(change.before[key]||'—')+
+      ' | '+cell(change.after?.[key]||'—')+' |'
+    )
+  }
+  if(!decision.existing_changes?.length)rows.push('| Изменения действующих объектов не запланированы | — | — | — | — |')
+  rows.push('','### Зависимости затронутых объектов','')
+  const affected=[...new Set((decision.existing_changes||[]).flatMap(item=>item.impacts||[]))].sort()
+  if(affected.length)for(const dependency of affected)rows.push('- '+dependency)
+  else rows.push('Связи с бизнес-процессами и сценариями обмена в реестре не обнаружены.')
   rows.push('','## Маршрут согласования','','| Служба | Решение | Сотрудник | Замечание |',
     '| --- | --- | --- | --- |')
   for(const service of decision.required_services){

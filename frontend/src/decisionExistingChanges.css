@@ -1,0 +1,38 @@
+/* Comparison and change-plan controls share the technical decision sidebar. */
+.decisionExistingChanges{display:grid;gap:10px;min-width:0}
+.decisionExistingHeader{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
+.decisionExistingHeader h4{margin:0;font-size:13px}
+.decisionExistingHeader small{display:block;font-size:11px;color:var(--hub-muted,#717583);margin-top:3px}
+.decisionExistingHeader>span{font-size:11px;color:var(--hub-muted,#717583);white-space:nowrap}
+.decisionExistingList{display:grid;gap:9px;max-height:38vh;overflow:auto;min-width:0}
+.decisionExistingCard{border:1px solid var(--hub-line,#dcdeea);border-left:3px solid #6d5bbb;border-radius:7px;padding:8px;background:var(--hub-surface,#fff)}
+.decisionExistingCard.remove{border-left-color:#b57742}
+.decisionExistingCard header{display:grid;grid-template-columns:1fr auto;gap:3px 8px;align-items:center}
+.decisionExistingCard header span{grid-column:1;font-size:11px;color:var(--hub-muted,#717583)}
+.decisionExistingCard header strong{font-size:12px;overflow-wrap:anywhere}
+.decisionExistingCard header button{grid-column:2;grid-row:1 / span 2;font-size:11px}
+.decisionExistingCard table{width:100%;border-collapse:collapse;table-layout:fixed;margin-top:8px}
+.decisionExistingCard :is(td,th){font-size:11px;overflow-wrap:anywhere;padding:5px;text-align:left;border-top:1px solid var(--hub-line,#e7e8ef);vertical-align:top}
+.decisionExistingCard th{width:25%;font-weight:600}
+.decisionExistingCard td{width:38%;color:var(--hub-muted,#717583)}
+.decisionExistingCard td:last-child{color:var(--hub-ink,#252937);font-weight:600}
+.decisionExistingCard.remove td:last-child{color:#9a5630}
+.decisionExistingActions{display:flex;gap:5px;flex-wrap:wrap;padding-top:7px}
+.decisionExistingImpacts{display:grid;gap:4px;padding:7px;margin-top:6px;border-radius:6px;background:#f6f5fa;color:var(--hub-ink,#303145)}
+.decisionExistingImpacts strong{font-size:11px}
+.decisionExistingImpacts span{font-size:11px;line-height:1.3;color:var(--hub-muted,#717583)}
+.decisionExistingActions button,.decisionExistingCard button{padding:5px 8px;font-size:11px;border:1px solid var(--hub-line,#ddddea);border-radius:6px;background:transparent;color:var(--hub-ink,#252937)}
+.decisionExistingActions .primary{background:#594bb3;color:#fff;border-color:#594bb3}
+.decisionExistingEmpty{color:var(--hub-muted,#717583);font-size:12px;padding:10px;border:1px dashed var(--hub-line,#ddddea);border-radius:7px}
+.decisionExistingEditor{display:grid;gap:8px;border-top:1px solid var(--hub-line,#ddddea);padding-top:10px}
+.decisionExistingEditor h4{font-size:13px;margin:0}
+.decisionExistingEditor label{display:grid;gap:4px;font-size:11px;color:var(--hub-muted,#717583)}
+.decisionExistingEditor :is(input,select,textarea){border:1px solid var(--hub-line,#ddddea);border-radius:6px;padding:7px;background:var(--hub-surface,#fff);color:var(--hub-ink,#252937);width:100%;min-width:0;font-size:12px}
+.decisionExistingEditor textarea{min-height:60px;resize:vertical}
+.decisionExistingEditor form{display:grid;gap:8px}
+.decisionExistingFields{display:grid;gap:7px;max-height:38vh;overflow:auto;padding-right:3px}
+.decisionExistingEditor small{color:var(--hub-muted,#717583);line-height:1.35}
+.decisionExistingEditor [role=alert]{color:#a23e2b;font-size:11px}
+.decisionExistingStatus{font-size:11px;padding:6px 8px;border-radius:6px;background:#f7f5ff;color:#54449c}
+.decisionExistingStatus.remove{background:#fff5e8;color:#9a5630}
+@media(max-width:720px){.decisionExistingHeader{flex-wrap:wrap}.decisionExistingList{max-height:48vh}.decisionExistingFields{max-height:50vh}}

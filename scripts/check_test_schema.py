@@ -19,7 +19,7 @@ import sqlite3
 from pathlib import Path
 from urllib.parse import quote
 
-EXPECTED_REVISION = "0020_business_process_passports"
+EXPECTED_REVISION = "0021_technical_decision_change_plans"
 REQUIRED_TABLES: dict[str, set[str]] = {
     "objects": {"id", "kind", "name"},
     "business_processes": {"id", "category_id", "name", "description"},
@@ -31,6 +31,7 @@ REQUIRED_TABLES: dict[str, set[str]] = {
         "process_id", "parent_id", "owner", "participants", "result",
         "status", "revision", "updated_at",
     },
+    "technical_decision_change_plans": {"decision_id", "changes"},
     "business_process_steps": {
         "id", "process_id", "position", "name", "description",
         "responsible", "input", "output", "system_id", "component_id",

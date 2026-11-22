@@ -7,6 +7,7 @@
 - [Этапы разработки и критерии выпуска](docs/product/DELIVERY_ROADMAP.md)
 - [Таблица выполнения плана и результаты QA](docs/product/WORK_PROGRESS.md)
 - [Рабочий процесс технических решений и критерии приёмки](docs/product/TECHNICAL_DECISIONS_WORKFLOW.md)
+- [Планируемые изменения действующей архитектуры: before/after и согласование](docs/product/DECISION_EXISTING_CHANGES.md)
 - [Сценарии обмена данными и связь с бизнес-процессами](docs/product/FLOW_SCENARIOS.md)
 - [Паспорта бизнес-процессов: шаги, ИС, потоки и матрицы](docs/product/BUSINESS_PROCESS_PASSPORTS.md)
 - [Сквозные QA-сценарии](docs/product/ACCEPTANCE_SCENARIOS.md)

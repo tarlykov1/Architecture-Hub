@@ -240,3 +240,11 @@ body {
 .systemAreaStripes > span {flex:1}
 
 .flowWorkspaceTools select { max-width: min(240px,100%); min-width: 0 }
+@media(max-width:650px) {
+  .homeMap .flowWorkspaceTools {
+    flex-wrap: nowrap; overflow-x: auto; overscroll-behavior-x: contain;
+    min-width: 0; max-width: 100%; padding-block: 4px;
+  }
+  .flowWorkspaceTools > * { flex: 0 0 auto; white-space: nowrap }
+  .flowWorkspaceTools select { max-width: 11rem }
+}

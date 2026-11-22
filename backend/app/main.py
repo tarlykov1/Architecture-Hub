@@ -3799,7 +3799,7 @@ app.include_router(monitoring_router)
 REVIEW_SERVICES = {"engineer", "security", "business_owner", "architect"}
 from .decision_change_plans import (
     ExistingChangeInput, compare_registered_change, read_staged,
-    verify_staged_architecture, write_staged,
+    staged_architecture_stale, verify_staged_architecture, write_staged,
 )
 
 
@@ -4072,8 +4072,10 @@ def _decision_response(row: TechnicalDecision, db: Session, include_details: boo
         "required_services": row.required_services,
         "approvals": list(current_reviews.values()),
         "existing_changes_count": len(read_staged(row, db)),
-        "base_changed": bool(row.base_hash) and
-            _decision_current_baseline(row, db) != row.base_hash,
+        "base_changed": bool(row.base_hash) and (
+            _decision_current_baseline(row, db) != row.base_hash
+            or staged_architecture_stale(row, db)
+        ),
         "created_at": row.created_at.isoformat(),
         "updated_at": row.updated_at.isoformat(),
         "published_at": row.published_at.isoformat() if row.published_at else None,
@@ -4307,6 +4309,7 @@ def publish_technical_decision(decision_id: UUID, payload: TechnicalDecisionTran
         raise HTTPException(409, "Decision changed in another session")
     if _decision_current_baseline(row, db) != row.base_hash:
         raise HTTPException(409, "Live architecture changed after review; rework the proposal")
+    verify_staged_architecture(row, db)
     row.status = "published"
     row.published_at = datetime.now(timezone.utc)
     row.updated_at = row.published_at

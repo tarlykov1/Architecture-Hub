@@ -7,7 +7,7 @@ for (const width of [390, 1440]) {
     await page.addInitScript(() => sessionStorage.setItem('architecture-hub:access-token:session','browser-ci-development-token'))
     const items = publicDemoResponse('/api/infra') as {id:string}[]
     const sample = publicDemoResponse('/api/flows') as {id:string; target_id:string}[]
-    const systems = publicDemoResponse('/api/objects') as {id:string}[]
+    const systems = publicDemoResponse('/api/objects') as {id:string;name:string}[]
     const areas = ['A','B'].map(id=>({id,name:'QA-WORK-Area '+id}))
     await page.route('**/api/**', route => {
       const path = new URL(route.request().url()).pathname
@@ -26,7 +26,32 @@ for (const width of [390, 1440]) {
     const member=page.locator('.react-flow__node[data-id="'+systems[0].id+'"]')
     const other=page.locator('.react-flow__node[data-id="'+systems[1].id+'"]')
     const area=(id:string)=>page.getByRole('button',{name:'QA-WORK-Area '+id,exact:true})
+    const inspector=page.locator('aside.details')
+    if(width===1440){
+      await other.click()
+      await expect(inspector).toBeVisible()
+    }
     await area('A').click()
+    await expect(inspector).toHaveCount(0)
+    await expect(other).toHaveAttribute('aria-disabled','true')
+    await expect(other).not.toHaveAttribute('tabindex','0')
+    await other.click({force:true})
+    await expect(inspector).toHaveCount(0)
+    await member.click()
+    await expect(inspector).toBeVisible()
+    await inspector.getByRole('button',{name:/Закрыть/}).first().click()
+
+    const search=page.getByRole('textbox',{name:'Поиск на карте'})
+    await search.fill(systems[1].name)
+    const results=page.getByRole('region',{name:'Результаты поиска по архитектуре'})
+    for(const action of ['Выбрать','Паспорт','Компоненты']){
+      await expect(results.getByRole('button',{name:new RegExp(action==='Паспорт'?'Открыть паспорт':action,'i')})).toBeDisabled()
+    }
+    await search.fill('')
+    const filters=page.getByText('Фильтры и слои',{exact:true})
+    await filters.click()
+    await expect(page.getByLabel('Фокус на ИС').locator('option').filter({hasText:systems[1].name})).toBeDisabled()
+    await filters.click()
     await expect(member).not.toHaveCSS('box-shadow','none')
     const stripes=member.locator('.systemAreaStripes > span')
     const dots=member.locator('.systemAreaLabel i')
@@ -49,6 +74,7 @@ for (const width of [390, 1440]) {
     await page.getByRole('button',{name:'Сбросить фильтры'}).click()
     await expect(stripes).toHaveCount(0)
     await expect(other).toHaveCSS('opacity','1')
+    await expect(other).toHaveAttribute('aria-disabled','false')
     await expect(member).toHaveCSS('background-color','rgb(255, 255, 255)')
     await counter.click()
     await expect(page.locator('.overviewFlowList a').first()).toHaveAttribute('href', /\/flows\?flow=/)

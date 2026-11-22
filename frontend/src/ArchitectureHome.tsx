@@ -193,6 +193,21 @@ export default function ArchitectureHome({mode,onModeChange,logical,systems,comp
      areaLabels.set(systemId,labels)
    }
  }
+ const canSelectSystem=(id:string)=>editingLayers||displayAreas.length===0||areaLabels.has(id)
+ const invalidSelection=Boolean(selectedSystem&&!canSelectSystem(selectedSystem))
+ const invalidFocus=Boolean(focus&&!canSelectSystem(focus))
+ useEffect(()=>{
+   if(invalidFocus)setFocus('')
+   if(invalidSelection){
+     setSelectedSystem('')
+     onCloseSystem()
+   }
+ },[invalidSelection,invalidFocus,onCloseSystem])
+ function selectSystem(id:string){
+   if(!canSelectSystem(id))return
+   setSelectedSystem(id)
+   onOpenSystem(id)
+ }
  function toggleArea(id:string){
    setSelectedAreaIds(ids=>ids.includes(id)?ids.filter(key=>key!==id):[...ids,id])
  }
@@ -257,9 +272,11 @@ export default function ArchitectureHome({mode,onModeChange,logical,systems,comp
  const highlightedNodes=nodes.map(node=>{
    const memberships=areaLabels.get(node.id)
    const outside=displayAreas.length>0&&!memberships
-   const selected=selectedSystem===node.id
-   return {...node,zIndex:memberships||selected?12:10,style:{
+   const allowed=canSelectSystem(node.id)
+   const selected=allowed&&selectedSystem===node.id
+   return {...node,selectable:allowed,focusable:allowed,domAttributes:{'aria-disabled':!allowed},zIndex:memberships||selected?12:10,style:{
      ...node.style,
+     ...(!allowed&&{cursor:'default'}),
      ...(memberships&&{
        background:'#ededed',
        borderColor:'#888',
@@ -300,7 +317,7 @@ export default function ArchitectureHome({mode,onModeChange,logical,systems,comp
  const environments=[...new Set(components.map(c=>String(c.details.environment||'').toLowerCase()).filter(Boolean))].sort()
  return <section className="homeMap" aria-label="Главная карта архитектуры">
   <div className="overviewToolbar">
- <div className="homeMapTools"><input aria-label="Поиск на карте" value={query} onChange={e=>setQuery(e.target.value)} placeholder="Найти систему или ВМ…"/><Disclosure label="Фильтры и слои"><select aria-label="Контур карты" value={environment} onChange={e=>setEnvironment(e.target.value)}><option value="all">Все контуры</option>{environments.map(e=><option key={e} value={e}>{e}</option>)}</select><select aria-label="Фокус на ИС" value={focus} onChange={e=>{setFocus(e.target.value);if(!e.target.value){setSelectedSystem('');onCloseSystem()}}}><option value="">Все системы</option>{systems.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select>
+ <div className="homeMapTools"><input aria-label="Поиск на карте" value={query} onChange={e=>setQuery(e.target.value)} placeholder="Найти систему или ВМ…"/><Disclosure label="Фильтры и слои"><select aria-label="Контур карты" value={environment} onChange={e=>setEnvironment(e.target.value)}><option value="all">Все контуры</option>{environments.map(e=><option key={e} value={e}>{e}</option>)}</select><select aria-label="Фокус на ИС" value={focus} onChange={e=>{setFocus(e.target.value);if(!e.target.value){setSelectedSystem('');onCloseSystem()}}}><option value="">Все системы</option>{systems.map(s=><option key={s.id} value={s.id} disabled={!canSelectSystem(s.id)}>{s.name}</option>)}</select>
   {!sequence&&<details className="homeMapLayersDisclosure"><summary>Слои карты <span aria-hidden="true">▾</span></summary><div className="homeMapLayers" aria-label="Слои карты">{([['systems','Информационные системы']] as const).map(([key,label])=><label key={key}><input type="checkbox" checked={layers[key]} onChange={e=>setLayers(old=>({...old,[key]:e.target.checked}))}/>{label}</label>)}</div></details>}</Disclosure></div>
   <div className="homeMapMode" role="group" aria-label="Тип связей на архитектурной карте">
     {([['business','Бизнес-связи'],['flows','Потоки данных'],['logical','Логические связи']] as const).map(([id,label])=><button key={id} type="button" aria-pressed={mapMode===id} className={mapMode===id?'current':''} disabled={editingLayers||editingSystems} onClick={()=>onModeChange(id)}>{label}</button>)}
@@ -341,9 +358,9 @@ export default function ArchitectureHome({mode,onModeChange,logical,systems,comp
     {!filteredSystems.length&&<span>Системы не найдены.</span>}
     {filteredSystems.slice(0,12).map(system=><div key={system.id} className="homeMapSearchMatch">
       <span>{system.name}</span>
-      <button type="button" onClick={()=>{setSelectedSystem(system.id);onOpenSystem(system.id)}} aria-label={`Выбрать ИС из поиска: ${system.name}`}>Выбрать</button>
-      <button type="button" onClick={()=>{setSelectedSystem(system.id);onOpenSystem(system.id)}} aria-label={`Открыть паспорт ИС из поиска: ${system.name}`}>Паспорт</button>
-      <button type="button" onClick={()=>onOpenComponents(system.id)} aria-label={`Открыть компоненты ИС из поиска: ${system.name}`}>Компоненты</button>
+      <button type="button" disabled={!canSelectSystem(system.id)} onClick={()=>selectSystem(system.id)} aria-label={`Выбрать ИС из поиска: ${system.name}`}>Выбрать</button>
+      <button type="button" disabled={!canSelectSystem(system.id)} onClick={()=>selectSystem(system.id)} aria-label={`Открыть паспорт ИС из поиска: ${system.name}`}>Паспорт</button>
+      <button type="button" disabled={!canSelectSystem(system.id)} onClick={()=>onOpenComponents(system.id)} aria-label={`Открыть компоненты ИС из поиска: ${system.name}`}>Компоненты</button>
     </div>)}
     {filteredSystems.length>12&&<small>Показаны первые 12 систем. Уточните запрос.</small>}
   </div>}
@@ -366,7 +383,7 @@ export default function ArchitectureHome({mode,onModeChange,logical,systems,comp
       baseline=undefined
       setManualLayout(true)
     }
-   }} fitView fitViewOptions={{padding:0.15,minZoom:0.3,maxZoom:1}} nodesConnectable={editingSystems} onConnect={logical.onConnect} deleteKeyCode={null} onEdgeClick={(_,edge)=>{if(mapMode==='business')selectBusinessPair(edge.source+'|'+edge.target)}} onNodeClick={(_,node)=>{if(node.id.startsWith('component:')){onOpenComponent(node.id.slice('component:'.length));return}setSelectedSystem(node.id);onOpenSystem(node.id)}} onPaneClick={()=>{setBusinessPair('');setProcessMenu('');setSelectedSystem('');onCloseSystem()}}><AutoFit trackNodeBounds layoutKey={fitRequest+mapMode+(manualLayout?'-manual':'-grid')+(inspectorOpen?'-open':'-closed')} ignoreNodePrefixes="overlay:,component:" focusIds={compactAreas?[...shownIds]:selectedSystemInfo?(mapMode==='business'?[...selectedNeighbors]:[selectedSystemInfo.id]):mapSystems.map(s=>s.id)} suspended={editingLayers||editingSystems}/><Background gap={20}/><Controls showInteractive={false} onFitView={()=>setFitRequest(n=>n+1)} fitViewOptions={{padding:0.2,maxZoom:1}}/>
+   }} fitView fitViewOptions={{padding:0.15,minZoom:0.3,maxZoom:1}} nodesConnectable={editingSystems} onConnect={logical.onConnect} deleteKeyCode={null} onEdgeClick={(_,edge)=>{if(mapMode==='business')selectBusinessPair(edge.source+'|'+edge.target)}} onNodeClick={(_,node)=>{if(node.id.startsWith('component:')){onOpenComponent(node.id.slice('component:'.length));return}selectSystem(node.id)}} onPaneClick={()=>{setBusinessPair('');setProcessMenu('');setSelectedSystem('');onCloseSystem()}}><AutoFit trackNodeBounds layoutKey={fitRequest+mapMode+(manualLayout?'-manual':'-grid')+(inspectorOpen?'-open':'-closed')} ignoreNodePrefixes="overlay:,component:" focusIds={compactAreas?[...shownIds]:selectedSystemInfo?(mapMode==='business'?[...selectedNeighbors]:[selectedSystemInfo.id]):mapSystems.map(s=>s.id)} suspended={editingLayers||editingSystems}/><Background gap={20}/><Controls showInteractive={false} onFitView={()=>setFitRequest(n=>n+1)} fitViewOptions={{padding:0.2,maxZoom:1}}/>
    </ReactFlow></div>
 
    {editingLayers&&<aside className="homeLayerDock" role="complementary" aria-label="Свойства архитектурной области">

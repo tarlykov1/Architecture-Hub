@@ -15,10 +15,10 @@
 | ID | Приоритет | Работа | Статус | Проверка / доказательство | Следующий шаг |
 |---|---|---|---|---|---|
 | AH-00-01 | P0 | Проверить актуальный `main`, PR и состав первой очереди | **Готово (проверка)** | `main` `fed2ce1` на 21.11.2026; PR [#210](https://github.com/tarlykov1/Architecture-Hub/pull/210) слит | Проверять свежесть `main` перед каждым PR |
-| AH-00-02 | P0 | Проверить актуальный CI и Live QA | **Готово для релиза #214** | Браузерная диагностика восстановлена; [Live QA 44950646586](https://github.com/tarlykov1/Architecture-Hub/actions/runs/44950646586): 10 passed | По PR #216 – новая проверка после выкладки |
+| AH-00-02 | P0 | Проверить актуальный CI и Live QA | **В работе** | Релиз `461cc264` опубликован, [Live QA 45001604279](https://github.com/tarlykov1/Architecture-Hub/actions/runs/45001604279): 8 page.goto timeout, Node HTTP probe 200; [PR #221](https://github.com/tarlykov1/Architecture-Hub/pull/221) добавляет ограниченный сетевой retry и диагностику | Повторить после нового тестового релиза |
 | AH-00-03 | P0 | Версии UI/API, схема миграций, ошибки несовместимости | План | [AH-PLAT-001](DELIVERY_ROADMAP.md) | Проверка отображаемых хешей, совместимости |
 | AH-00-04 | P0 | Защита целостности изменений и перепроверка исходной модели техрешений | **Готово и опубликовано** | [PR #212](https://github.com/tarlykov1/Architecture-Hub/pull/212) слит, CI и обе выкладки успешны; повторный Live QA после #214 прошёл |
-| AH-00-05 | P0 | Backup, restore, dry-run миграций | План | [AH-PLAT-003](DELIVERY_ROADMAP.md) | Проверить на изолированной БД |
+| AH-00-05 | P0 | Backup, restore, dry-run миграций | **Частично** | [PR #221](https://github.com/tarlykov1/Architecture-Hub/pull/221): copy-only Alembic dry-run, проверки существующих записей и fail-closed preflight; не меняет исходную БД | Проверка текущего снимка VPS и восстановление бэкапа – отдельный этап #215 |
 | AH-00-06 | P0 | Повторная регрессия создания, переноса, удаления, Escape, AutoFit, истории | Частично | Исправления [#208](https://github.com/tarlykov1/Architecture-Hub/pull/208), [#204](https://github.com/tarlykov1/Architecture-Hub/pull/204), [#203](https://github.com/tarlykov1/Architecture-Hub/pull/203) слиты; отдельная полная сквозная проверка ещё нужна | Прогон сценариев [#177](https://github.com/tarlykov1/Architecture-Hub/issues/177), [#178](https://github.com/tarlykov1/Architecture-Hub/issues/178) |
 | AH-01 | P0 | Канонические ID, типы сущностей и связей, разделение данных/представлений | Частично | Есть метамодель, API и тесты; сквозной аудит всех представлений не завершён | Сверить таблицы, API и UI |
 | AH-02 | P0 | Универсальный холст, инструменты и редактирование во всех разделах | **В работе** | Начат [PR #212](https://github.com/tarlykov1/Architecture-Hub/pull/212): перемещение и удаление проектируемых ВМ, тесты | После CI продолжить общие инструменты/инспектор |
@@ -61,6 +61,7 @@
 | AH-03-01 | P1 | Единый редактор потока | Частично | Создать/редактировать/переподключить/удалить |
 | AH-03-02 | P1 | Быстрое управление атрибутами потока | Частично | Добавление/удаление с записью аудита |
 | AH-03-03 | P1 | Сохраняемые серверные сценарии обмена | **Готово и опубликовано** | [PR #214](https://github.com/tarlykov1/Architecture-Hub/pull/214) слит; [CI 44950097114](https://github.com/tarlykov1/Architecture-Hub/actions/runs/44950097114), [Live QA 44950646586](https://github.com/tarlykov1/Architecture-Hub/actions/runs/44950646586): success |
+| AH-03-03b | P1 | Конкурентное редактирование: безопасное обновление сценария после 409 | **Готово (код + CI)** | [PR #221](https://github.com/tarlykov1/Architecture-Hub/pull/221): серверное обновление, защита черновика, Playwright конкурентной записи; [CI 45006043720](https://github.com/tarlykov1/Architecture-Hub/actions/runs/45006043720): **196 Chromium passed** | Дождаться новой выкладки и Live QA |
 | AH-03-04 | P1 | Использование сценария в нескольких БП | **Частично** | [PR #214](https://github.com/tarlykov1/Architecture-Hub/pull/214): один технический поток переиспользуется в нескольких сценариях, каждый со своим БП | Многоконтекстные связи одного сценария – отдельно |
 | AH-03-05 | P1 | Корректная VRF/VLAN/IP/NIC-модель | Частично | NetBox-подобные ограничения на API |
 | AH-03-06 | P1 | Проверки сетевых конфликтов | План | Предупреждения до фиксации |
@@ -91,8 +92,8 @@
 | AH-06-06 | P2 | Объяснимый анализ влияния | Частично | Граф без вывода непроверенных фактов |
 | AH-06-07 | P2 | История архитектурных решений ADR | План | Решение, причина, последствия, ревизия |
 | AH-07-01 | P0 | Сквозные API и Playwright-тесты | План | QA-WORK, полный CRUD и links |
-| AH-07-02 | P0 | Браузерная desktop/mobile приёмка | **Частично** | [Live QA 44950646586](https://github.com/tarlykov1/Architecture-Hub/actions/runs/44950646586): 10 desktop/mobile passed; сквозной QA всех пользовательских сценариев остаётся в плане | Повторить после PR #216 |
-| AH-07-03 | P0 | Приёмка миграций/backup/restore | **Частично** | Новая аддитивная таблица и миграция 0021, тесты сохранности существующих ТР на копии; ревизия SQLite VPS по [#215](https://github.com/tarlykov1/Architecture-Hub/issues/215) требует отдельной проверки |
+| AH-07-02 | P0 | Браузерная desktop/mobile приёмка | **Частично / Live QA требует повтора** | [Live QA 45001604279](https://github.com/tarlykov1/Architecture-Hub/actions/runs/45001604279): сетевые таймауты Chromium до DOM, Node HTTP 200; [PR #221](https://github.com/tarlykov1/Architecture-Hub/pull/221) корректирует сетевой транспорт и разграничивает проблемы сети/DOM | Не считать 8 навигационных таймаутов 8 независимыми дефектами UX |
+| AH-07-03 | P0 | Приёмка миграций/backup/restore | **Частично** | [PR #221](https://github.com/tarlykov1/Architecture-Hub/pull/221): безопасный dry-run на копии, тест старой ревизии, bootstrap и fail-closed; миграция SQLite VPS не выполнялась | Отдельно проверить реальный бэкап/revision на сервере по [#215](https://github.com/tarlykov1/Architecture-Hub/issues/215) |
 | AH-07-04 | P0 | Контролируемый релиз на тестовый сервер | **Частично** | Пользователь разрешил сливать и публиковать после зелёного CI без уточнений; GitHub Actions фиксирует точную версию и Live QA | Production – только по отдельному решению |
 
 ## Журнал реальных изменений
@@ -111,7 +112,9 @@
 
 | 2026-11-22 | Крупный спринт AH-04: паспорта, иерархия БП, шаги, связи с ИС/ВМ/потоками/атрибутами, схема, матрицы, Markdown | Релиз `fdd0254` на test.web-tie.ru; **140 API, 191 Chromium, 10 Live QA passed** (Live QA успешен при повторном запуске). Миграции Alembic на VPS по-прежнему заблокированы до проверки #215 | [PR #216](https://github.com/tarlykov1/Architecture-Hub/pull/216) · [CI #44956010970](https://github.com/tarlykov1/Architecture-Hub/actions/runs/44956010970) · [Live QA #44956541234](https://github.com/tarlykov1/Architecture-Hub/actions/runs/44956541234) |
 
-| 2026-11-22 | AH-05: следующий крупный спринт – проектирование изменений и удаления действующих объектов, before/after diff, защита зависимостей, комментарии и документация | Код и тесты в [PR #219](https://github.com/tarlykov1/Architecture-Hub/pull/219), ожидается полный CI, выкладка и Live QA | [Методика](DECISION_EXISTING_CHANGES.md) · [PR #219](https://github.com/tarlykov1/Architecture-Hub/pull/219) |
+| 2026-11-22 | AH-05: проектирование изменений/удаления действующих объектов, before/after diff, защита зависимостей | [PR #219](https://github.com/tarlykov1/Architecture-Hub/pull/219) слит, релиз `461cc264`: CI и frontend/backend deploy success, **Live QA не прошёл** по сетевому page.goto (содержимое приложения не проверено) | [Методика](DECISION_EXISTING_CHANGES.md) · [CI](https://github.com/tarlykov1/Architecture-Hub/actions/runs/45000991011) · [Live QA](https://github.com/tarlykov1/Architecture-Hub/actions/runs/45001604279) |
+
+| 2026-11-22 | Крупный пакет P0: безопасный Alembic dry-run на копии, защита preflight, восстановление сценария при конфликтах, детерминированный E2E, диагностика/повтор сетевой навигации Live QA | Код прошёл первоначальный полный CI: **153 backend и 196 Chromium**, сборка/Compose/PowerShell успешны. Предстоит выпуск и Live QA; реальные SQLite VPS и миграции не изменялись | [PR #221](https://github.com/tarlykov1/Architecture-Hub/pull/221) · [CI 45006043720](https://github.com/tarlykov1/Architecture-Hub/actions/runs/45006043720) · [Инструкция](../database-migrations.md) |
 
 ## Правила актуализации
 

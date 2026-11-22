@@ -101,17 +101,17 @@ with sqlite3.connect(f"file:{db}?mode=ro", uri=True) as connection:
             "SELECT version_num FROM alembic_version"
         )
     ]
-    known = {
-        "0009_monitoring_links", "0010_auth_users",
-        "0011_architecture_layer_regions", "0012_layer_region_opacity",
-        "0013_logical_relation_unique", "0014_layer_region_revisions",
-    }
-    if len(revisions) != 1 or revisions[0] not in known:
+    # Release is only READY after a verified upgrade to the current schema.
+    # Never label an older but recognizable revision safe for a new rollout.
+    expected = "0021_technical_decision_change_plans"
+    if len(revisions) != 1 or revisions[0] != expected:
         raise SystemExit(
-            "BLOCKED: unknown/ambiguous Alembic baseline; inspect manually. "
-            "Reported revisions: " + ", ".join(revisions)
+            "BLOCKED: Alembic is not at expected release revision. "
+            "Verify backups and run scripts/dry_run_test_migrations.py "
+            "on a temporary COPY before any manual live upgrade. "
+            "Reported revision count: " + str(len(revisions))
         )
-    print("PASS: Alembic baseline:", revisions[0])
+    print("PASS: Alembic revision matches this verified release")
     duplicate_count = connection.execute("""
         SELECT COUNT(*) FROM (
             SELECT kind, source_id, target_id

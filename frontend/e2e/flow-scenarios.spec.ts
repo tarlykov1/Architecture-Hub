@@ -87,6 +87,9 @@ test('QA-WORK: removing a saved scenario never deletes its underlying technical 
   const name='QA-WORK-Удаление-'+suffix
   await diagram.getByRole('textbox',{name:'Название нового сценария'}).fill(name)
   await diagram.getByRole('button',{name:'Сохранить общий сценарий'}).click()
+  // The network write is asynchronous; wait for a browser-visible confirmed save.
+  await expect(diagram.getByText('Общий сценарий сохранён в реестре.')).toBeVisible()
+  await expect(diagram.getByRole('combobox',{name:'Сценарий обмена'})).toHaveValue(/.+/)
   const list=await (await request.get(api+'/flow-scenarios')).json() as {id:string;name:string}[]
   const scenario=list.find(s=>s.name===name)
   expect(scenario).toBeTruthy()
@@ -100,4 +103,47 @@ test('QA-WORK: removing a saved scenario never deletes its underlying technical 
   expect(live.some(x=>x.id===forward.id)).toBe(true)
   expect(live.some(x=>x.id===backward.id)).toBe(true)
   expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(392)
+})
+
+
+test('QA-WORK: concurrent scenario edit stays visible on conflict and can refresh safely',async({page,request})=>{
+  const {suffix,forward}=await setup(request)
+  const diagram=await openSequence(page,'QA-WORK-Scenario-'+suffix)
+  await diagram.getByRole('button',{name:'Сохранить как сценарий'}).click()
+  const name='QA-WORK-Concurrent-'+suffix
+  await diagram.getByRole('textbox',{name:'Название нового сценария'}).fill(name)
+  await diagram.getByRole('button',{name:'Сохранить общий сценарий'}).click()
+  await expect(diagram.getByText('Общий сценарий сохранён в реестре.')).toBeVisible()
+  const list=await (await request.get(api+'/flow-scenarios')).json() as {id:string;name:string;revision:number;steps:{id:string;flow_id:string;reply:boolean;note:string}[];description:string;process_id:string|null}[]
+  const server=list.find(x=>x.name===name)!
+  expect(server).toBeTruthy()
+  await diagram.getByRole('button',{name:'Настроить шаги'}).click()
+  await diagram.getByRole('textbox',{name:'Примечание шага 1'}).fill('QA-WORK-Несохранённая правка')
+
+  // Simulate another architect publishing revision 2 before this editor saves.
+  const other=await request.put(api+'/flow-scenarios/'+server.id,{data:{
+    name,description:'Обновлено другим архитектором',process_id:null,
+    expected_revision:server.revision,
+    steps:server.steps.map(step=>({id:step.id,flow_id:step.flow_id,reply:step.reply,note:step.note})),
+  }})
+  expect(other.status(),await other.text()).toBe(200)
+  await diagram.getByRole('button',{name:'Сохранить сценарий'}).click()
+  await expect(diagram.getByRole('alert')).toContainText('конфликт')
+  await expect(diagram.getByRole('textbox',{name:'Примечание шага 1'})).toHaveValue('QA-WORK-Несохранённая правка')
+  page.once('dialog',dialog=>{expect(dialog.message()).toContain('несохранённые изменения');void dialog.dismiss()})
+  await diagram.getByRole('button',{name:'Обновить сценарий'}).click()
+  await expect(diagram.getByRole('textbox',{name:'Примечание шага 1'})).toHaveValue('QA-WORK-Несохранённая правка')
+  page.once('dialog',dialog=>void dialog.accept())
+  await diagram.getByRole('button',{name:'Обновить сценарий'}).click()
+  await expect(diagram.getByText('Актуальная версия сценария: 2')).toBeVisible()
+  await expect(diagram).toContainText('версия 2')
+  await diagram.getByRole('button',{name:'Настроить шаги'}).click()
+  await expect(diagram.getByRole('textbox',{name:'Описание выбранного сценария'})).toHaveValue('Обновлено другим архитектором')
+  await diagram.getByRole('textbox',{name:'Примечание шага 1'}).fill('Новая согласованная правка')
+  await diagram.getByRole('button',{name:'Сохранить сценарий'}).click()
+  await expect(diagram.getByText('Версия сценария сохранена: 3')).toBeVisible()
+  const final=(await (await request.get(api+'/flow-scenarios/'+server.id)).json()) as {revision:number;steps:{flow_id:string;note:string}[]}
+  expect(final.revision).toBe(3)
+  expect(final.steps[0].note).toBe('Новая согласованная правка')
+  expect(final.steps.some(x=>x.flow_id===forward.id)).toBe(true)
 })

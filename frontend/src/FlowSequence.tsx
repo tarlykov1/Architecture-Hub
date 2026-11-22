@@ -1,5 +1,5 @@
 import {useEffect, useState, type CSSProperties} from 'react'
-import {ArrowDown, ArrowUp, Plus, Trash2} from 'lucide-react'
+import {ArrowDown, ArrowUp, Plus, RefreshCw, Trash2} from 'lucide-react'
 import {workspaceRouteUrl} from './workspaceRoutes'
 import type {OverviewFlow} from './OverviewFlowEdge'
 import './flowSequence.css'
@@ -153,8 +153,21 @@ export function FlowSequence({exchanges,systems,visible,request,processes=[],can
       })
       setScenarios(old=>old.map(row=>row.id===result.id?result:row).sort((a,b)=>a.name.localeCompare(b.name,'ru')))
       setDraft(null);setEditing(false);setNotice('Версия сценария сохранена: '+result.revision)
-    }catch(e){setError('Не удалось сохранить сценарий: '+String(e)+'. При конфликте обновите страницу.')}
+    }catch(e){setError('Не удалось сохранить сценарий: '+String(e)+'. При конфликте используйте «Обновить сценарий». Несохранённая правка остаётся в редакторе до вашего решения.')}
     finally{setBusy(false)}
+  }
+  async function refreshScenario(){
+    if(!request||!selectedScenario||busy)return
+    if(dirty&&!window.confirm('Есть несохранённые изменения сценария. Загрузить серверную версию и отбросить их?'))return
+    setBusy(true);setError('');setNotice('')
+    try{
+      const fresh=await request<Scenario>('/api/flow-scenarios/'+selectedScenario.id)
+      setScenarios(previous=>previous.map(item=>item.id===fresh.id?fresh:item).sort((a,b)=>a.name.localeCompare(b.name,'ru')))
+      setDraft(null);setEditing(false)
+      setNotice('Актуальная версия сценария: '+fresh.revision)
+    }catch(e){
+      setError('Не удалось обновить сценарий: '+String(e))
+    }finally{setBusy(false)}
   }
   async function deleteScenario(){
     if(!request||!current||!canManage)return
@@ -188,10 +201,12 @@ export function FlowSequence({exchanges,systems,visible,request,processes=[],can
       {canManage&&!current&&rows.length>0&&<button type="button" onClick={()=>setCreating(value=>!value)}>
         <Plus size={14}/> Сохранить как сценарий
       </button>}
-      {canManage&&current&&<div className="sequenceSaveActions">
-        <button type="button" disabled={busy||!dirty} onClick={()=>void saveScenario()}>Сохранить сценарий</button>
-        <button type="button" disabled={busy||!dirty} onClick={()=>{setDraft(null);setEditing(false);setError('')}}>Отменить изменения</button>
-        <button type="button" disabled={busy} aria-label="Удалить сценарий" onClick={()=>void deleteScenario()}><Trash2 size={15}/></button>
+      {current&&<div className="sequenceSaveActions">
+        <button type="button" aria-label="Обновить сценарий" title="Загрузить актуальную версию с сервера"
+          disabled={busy} onClick={()=>void refreshScenario()}><RefreshCw size={15}/></button>
+        {canManage&&<button type="button" disabled={busy||!dirty} onClick={()=>void saveScenario()}>Сохранить сценарий</button>}
+        {canManage&&<button type="button" disabled={busy||!dirty} onClick={()=>{setDraft(null);setEditing(false);setError('')}}>Отменить изменения</button>}
+        {canManage&&<button type="button" disabled={busy} aria-label="Удалить сценарий" onClick={()=>void deleteScenario()}><Trash2 size={15}/></button>}
       </div>}
       {storageError&&<span role="status">Настройки доступны до закрытия страницы.</span>}
     </div>

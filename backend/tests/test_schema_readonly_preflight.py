@@ -55,3 +55,17 @@ def test_readonly_schema_check_never_creates_missing_database(tmp_path):
     assert code==3
     assert report["status"]=="BLOCKED"
     assert not nonexistent.exists()
+
+
+
+def test_release_preflight_requires_exact_current_alembic_revision():
+    """Release readiness cannot silently accept an obsolete known stamp."""
+    import subprocess
+    root=Path(__file__).resolve().parents[2]
+    checker=_checker()
+    script=root/"scripts"/"preflight_test_release.sh"
+    body=script.read_text(encoding="utf-8")
+    assert 'expected = "'+checker.EXPECTED_REVISION+'"' in body
+    assert "revisions[0] != expected" in body
+    assert "dry_run_test_migrations.py" in body
+    subprocess.run(["bash","-n",str(script)],check=True,capture_output=True,text=True)

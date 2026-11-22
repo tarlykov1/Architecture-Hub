@@ -232,6 +232,14 @@ def test_review_diff_names_affected_business_processes_and_exchange_scenarios():
             "process_id": process["id"],
             "steps": [{"flow_id": flow["id"]}],
         })
+        attribute = created(client, "/api/data-attributes", {
+            "code": "qa.work.decision." + suffix,
+            "name": "QA-WORK-ReferenceData",
+        })
+        mapping = created(client, "/api/flow-data-uses", {
+            "flow_id": flow["id"], "attribute_id": attribute["id"],
+            "process_id": process["id"], "verification": "draft",
+        })
         stage = put(client, decision, [{
             "kind": "flow", "action": "update", "id": flow["id"],
             "fields": {"port": "8443"},
@@ -242,7 +250,8 @@ def test_review_diff_names_affected_business_processes_and_exchange_scenarios():
         assert any("QA-WORK-Onboarding-" in x and "QA-WORK-TransferIdentity" in x
                    for x in impact)
         assert any("QA-WORK-ExchangeScenario-" in x for x in impact)
-        assert len(impact) == 2
+        assert any(attribute["code"] in x and process["name"] in x for x in impact)
+        assert len(impact) == 3
 
         # Changing the flow's documented business usage after planning must
         # be visible to reviewers, even if protocol/port did not change.

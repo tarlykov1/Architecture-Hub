@@ -49,7 +49,7 @@ def put(client, decision, changes, **other):
 
 
 def test_existing_vm_flow_update_saved_as_before_after_without_touching_live_register():
-    with TestClient(app) as client:
+    with TestClient(app, headers=ADMIN) as client:
         system, _, vm, _, flow, decision = infrastructure(client)
         changes = [
             {
@@ -123,7 +123,7 @@ def test_existing_vm_flow_update_saved_as_before_after_without_touching_live_reg
 
 
 def test_staged_only_removals_and_dependency_guard_protect_live_records():
-    with TestClient(app) as client:
+    with TestClient(app, headers=ADMIN) as client:
         _, _, vm, _, flow, decision = infrastructure(client)
         blocked = put(client, decision, [{
             "kind": "vm", "action": "remove", "id": vm["id"],
@@ -148,7 +148,7 @@ def test_staged_only_removals_and_dependency_guard_protect_live_records():
 
 
 def test_invalid_scope_duplicate_actions_ports_endpoints_are_rejected_atomically():
-    with TestClient(app) as client:
+    with TestClient(app, headers=ADMIN) as client:
         _, _, vm, external, flow, decision = infrastructure(client)
         cases = [
             [{"kind": "vm", "action": "update", "id": external["id"],
@@ -178,7 +178,7 @@ def test_invalid_scope_duplicate_actions_ports_endpoints_are_rejected_atomically
 
 
 def test_stale_live_architecture_blocks_staged_edit_and_review():
-    with TestClient(app) as client:
+    with TestClient(app, headers=ADMIN) as client:
         _, _, _, _, flow, decision = infrastructure(client)
         staged = put(client, decision, [{
             "kind": "flow", "action": "update", "id": flow["id"],

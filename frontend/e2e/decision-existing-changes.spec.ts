@@ -121,6 +121,18 @@ test('QA-WORK: proposed removals require dependencies, never delete live objects
 
 test('QA-WORK: technical decision Markdown exports staged existing changes and live records remain intact',async({page,request})=>{
   const {title,vm,flow,url}=await setup(request)
+  const category=await created(request,'/business/categories',{name:'QA-WORK-ImpactArea-'+title})
+  const process=await created(request,'/business/processes',{
+    name:'QA-WORK-ImpactProcess-'+title,category_id:category.id
+  })
+  const processSave=await request.put(api+'/business/process-passports/'+process.id,{data:{
+    expected_revision:0,steps:[{name:'QA-WORK-ImpactStep',flow_id:flow.id}]
+  }})
+  expect(processSave.status(),await processSave.text()).toBe(200)
+  const scenario=await created(request,'/flow-scenarios',{
+    name:'QA-WORK-ImpactScenario-'+title,
+    process_id:process.id,steps:[{flow_id:flow.id}]
+  })
   const row=await (await request.get(url)).json() as Decision
   const staged=await request.put(url,{data:{
     title,expected_revision:row.revision,existing_changes:[
@@ -129,7 +141,12 @@ test('QA-WORK: technical decision Markdown exports staged existing changes and l
     ],
   }})
   expect(staged.status(),await staged.text()).toBe(200)
+  const impact=(await staged.json() as Decision & {existing_changes:Array<{impacts:string[]}>}).existing_changes[1].impacts
+  expect(impact.some(text=>text.includes(process.name))).toBe(true)
+  expect(impact.some(text=>text.includes(scenario.name))).toBe(true)
   const {inspector}=await open(page,title)
+  await expect(inspector.getByRole('note')).toContainText(process.name)
+  await expect(inspector.getByRole('note')).toContainText(scenario.name)
   const downloadEvent=page.waitForEvent('download')
   await inspector.getByRole('button',{name:'Скачать техническое решение (.md)'}).click()
   const file=await downloadEvent
@@ -138,6 +155,8 @@ test('QA-WORK: technical decision Markdown exports staged existing changes and l
   const fs=await import('node:fs/promises')
   const markdown=await fs.readFile((await file.path())!,'utf8')
   expect(markdown).toContain('## Изменение действующей архитектуры')
+  expect(markdown).toContain(process.name)
+  expect(markdown).toContain(scenario.name)
   expect(markdown).toContain('QA-WORK-NewName')
   expect(markdown).toContain('Запланировано удаление')
   expect(markdown).toContain('Не подтверждает фактическое внедрение')

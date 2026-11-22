@@ -261,3 +261,38 @@ def test_review_diff_names_affected_business_processes_and_exchange_scenarios():
         # Existing scenario reference remains documented and unchanged.
         assert any(s["id"] == scenario["id"]
                    for s in client.get("/api/flow-scenarios").json())
+
+
+
+def test_proposed_vm_retirement_can_reroute_existing_flow_without_live_mutation():
+    with TestClient(app, headers=ADMIN) as client:
+        system, _, vm, external, flow, decision = infrastructure(client)
+        new_source = created(client, "/api/infra", {
+            "kind": "vm", "name": "QA-WORK-ReplacementVM-" + uuid4().hex[:8],
+            "system_id": system["id"],
+        })
+        staged = put(client, decision, [
+            {
+                "kind": "flow", "action": "update", "id": flow["id"],
+                "fields": {"source_id": new_source["id"]},
+            },
+            {
+                "kind": "vm", "action": "remove", "id": vm["id"],
+                "fields": {},
+            },
+        ])
+        assert staged.status_code == 200, staged.text
+        planned = staged.json()["existing_changes"]
+        assert planned[0]["before"]["source_id"] == vm["id"]
+        assert planned[0]["after"]["source_id"] == new_source["id"]
+        assert planned[1]["action"] == "remove"
+        assert planned[1]["after"] is None
+        assert next(f for f in client.get("/api/flows").json()
+                    if f["id"] == flow["id"])["source_id"] == vm["id"]
+        assert any(c["id"] == vm["id"] for c in client.get("/api/infra").json())
+        review = client.post(
+            "/api/technical-decisions/" + decision["id"] + "/submit",
+            json={"expected_revision": staged.json()["revision"]},
+        )
+        assert review.status_code == 200, review.text
+        assert review.json()["status"] == "in_review"

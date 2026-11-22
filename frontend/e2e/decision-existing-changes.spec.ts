@@ -64,7 +64,7 @@ test('QA-WORK: edit existing VM and flow with visual diff, reload, undo, redo an
   const activeFlow=(await (await request.get(api+'/flows')).json() as {id:string;port:string}[]).find(x=>x.id===flow.id)
   expect(activeFlow?.port).toBe('443')
 
-  await page.getByRole('button',{name:'Открыть схему'}).click()
+  await planner.getByRole('button',{name:'На схеме'}).first().click()
   const node=page.locator(`.decisionCanvas .react-flow__node[data-id="${vm.id}"]`)
   await expect(node).toContainText('QA-WORK-RenamedServer')
   await expect(node).toContainText('Изменение')

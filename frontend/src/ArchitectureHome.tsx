@@ -252,7 +252,22 @@ export default function ArchitectureHome({mode,onModeChange,logical,systems,comp
    (!selectedAreas.length || selectedAreas.some(group=>group.id==='business:'+process.category_id || group.id==='business:process:'+process.id)) &&
    (!contextSystem || links.some(link=>link.process_id===process.id && link.system_id===contextSystem.id))
  )
- const highlightedNodes=nodes.map(n=>({...n,zIndex:10,style:{...n.style,border:selectedSystem===n.id?'2px solid var(--hub-accent)':n.style.border,opacity:displayAreas.length?(areaLabels.has(n.id)?1:0.52):selectedSystem&&!selectedNeighbors.has(n.id)?0.28:1}}))
+ const highlightedNodes=nodes.map(node=>{
+   const memberships=areaLabels.get(node.id)
+   const outside=displayAreas.length>0&&!memberships
+   const selected=selectedSystem===node.id
+   const color=memberships?.length===1?groupColor(memberships[0]):'var(--hub-accent)'
+   return {...node,zIndex:memberships||selected?12:10,style:{
+     ...node.style,
+     ...(memberships&&{
+       background:`color-mix(in srgb, ${color} 14%, white)`,
+       borderColor:`color-mix(in srgb, ${color} 65%, #384052)`,
+       boxShadow:`inset 5px 0 0 ${color}, 0 0 0 1px color-mix(in srgb, ${color} 65%, #384052)`
+     }),
+     ...(selected&&{borderColor:'var(--hub-accent)',outline:'2px solid var(--hub-accent)',outlineOffset:3}),
+     opacity:outside&&!selected?0.35:!displayAreas.length&&selectedSystem&&!selectedNeighbors.has(node.id)?0.28:1
+   }}
+ })
  const canvasNodes=[...highlightedNodes,...componentNodes]
  function selectBusinessPair(key:string){
    const group=pairProcesses.get(key)
@@ -272,7 +287,7 @@ export default function ArchitectureHome({mode,onModeChange,logical,systems,comp
    const color=mapMode==='business'?'#79738c':'#69707e'
    const clickableProcess=mapMode==='business'&&!!onOpenProcess
    return {id:mapMode+':'+key,source,target,type:mapMode==='flows'||clickableProcess?'overviewFlow':'smoothstep',label:mapMode==='business'&&!outsideArea&&!clickableProcess?count+' БП':undefined,
-     data:clickableProcess?{flows:[],label:count+' БП · '+(systemNames.get(source)||source)+' ↔ '+(systemNames.get(target)||target),processes:pairProcesses.get(key),hideControl:outsideArea,selected:businessPair===key,open:processMenu===key,toggle:()=>selectBusinessPair(key),close:()=>setProcessMenu(''),openProcess:(id:string)=>{setProcessMenu('');onOpenProcess?.(id)}}:{flows:groupedFlows.get(key)||[],open:openFlowPair===key,toggle:()=>setOpenFlowPair(old=>old===key?'':key),close:()=>setOpenFlowPair('')},
+     data:clickableProcess?{flows:[],label:count+' БП · '+(systemNames.get(source)||source)+' ↔ '+(systemNames.get(target)||target),processes:pairProcesses.get(key),hideControl:outsideArea,selected:businessPair===key,open:processMenu===key,toggle:()=>selectBusinessPair(key),close:()=>setProcessMenu(''),openProcess:(id:string)=>{setProcessMenu('');onOpenProcess?.(id)}}:{muted:outsideArea,flows:groupedFlows.get(key)||[],open:openFlowPair===key,toggle:()=>setOpenFlowPair(old=>old===key?'':key),close:()=>setOpenFlowPair('')},
      ...(mapMode==='flows'?{markerEnd:{type:MarkerType.ArrowClosed,width:13,height:13,color}}:{}),
      style:{stroke:related?'var(--hub-accent)':color,strokeWidth:related?2.5:1.4,strokeDasharray:mapMode==='business'?'5 5':undefined,opacity:muted?0.18:1}}
  })

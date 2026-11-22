@@ -3797,6 +3797,10 @@ app.include_router(monitoring_router)
 # Technical decisions are a separate proposed architecture, not live CMDB edits.
 # "Published" publishes an approved document/diagram, never deploys a VM or flow.
 REVIEW_SERVICES = {"engineer", "security", "business_owner", "architect"}
+from .decision_change_plans import (
+    ExistingChangeInput, compare_registered_change, read_staged,
+    verify_staged_architecture, write_staged,
+)
 
 
 class ProposedDecisionVM(BaseModel):
@@ -3840,6 +3844,9 @@ class TechnicalDecisionDraftInput(BaseModel):
     description: str = Field(default="", max_length=4000)
     proposed_vms: list[ProposedDecisionVM] = Field(default_factory=list, max_length=150)
     proposed_flows: list[ProposedDecisionFlow] = Field(default_factory=list, max_length=250)
+    # None preserves existing staged changes for older clients that only edit
+    # newly proposed VMs/flows. [] explicitly clears staged changes.
+    existing_changes: list[ExistingChangeInput] | None = Field(default=None, max_length=150)
     required_services: list[Literal["engineer", "security", "business_owner", "architect"]] = Field(
         default_factory=lambda: ["engineer", "security"], min_length=1, max_length=4)
 
@@ -4064,6 +4071,7 @@ def _decision_response(row: TechnicalDecision, db: Session, include_details: boo
         "author": row.author, "author_name": actor_name(row.author), "revision": row.revision,
         "required_services": row.required_services,
         "approvals": list(current_reviews.values()),
+        "existing_changes_count": len(read_staged(row, db)),
         "base_changed": bool(row.base_hash) and
             _decision_current_baseline(row, db) != row.base_hash,
         "created_at": row.created_at.isoformat(),
@@ -4076,6 +4084,7 @@ def _decision_response(row: TechnicalDecision, db: Session, include_details: boo
         ).order_by(TechnicalDecisionComment.created_at)).all()
         result["proposed_vms"] = row.proposed_vms
         result["proposed_flows"] = row.proposed_flows
+        result["existing_changes"] = read_staged(row, db)
         result["review_history"] = [{
             "revision": item.revision, "service": item.service,
             "actor": item.actor, "actor_name": actor_name(item.actor),
@@ -4132,18 +4141,29 @@ def edit_technical_decision(decision_id: UUID, payload: TechnicalDecisionDraftIn
         raise HTTPException(409, "Decision is in review or is already approved")
     _lock_decision_version(row, payload.expected_revision, db)
     _decision_validate_draft(row, payload, db)
-    old = {"title": row.title, "vms": len(row.proposed_vms), "flows": len(row.proposed_flows)}
+    staged_before = read_staged(row, db)
+    if payload.existing_changes is not None:
+        planned = compare_registered_change(
+            row, payload.existing_changes, db, payload.proposed_vms, payload.proposed_flows
+        )
+    else:
+        verify_staged_architecture(row, db)
+        planned = staged_before
+    old = {"title": row.title, "vms": len(row.proposed_vms),
+           "flows": len(row.proposed_flows), "existing_changes": len(staged_before)}
     row.title = payload.title.strip()
     row.description = payload.description.strip()
     row.proposed_vms = [item.model_dump(mode="json", exclude_none=True) for item in payload.proposed_vms]
     row.proposed_flows = [item.model_dump(mode="json", exclude_none=True) for item in payload.proposed_flows]
+    write_staged(row, planned, db)
     row.required_services = payload.required_services
     row.status = "draft"
     row.base_hash = ""
     row.revision += 1
     row.updated_at = datetime.now(timezone.utc)
     audit_direct_edit(db, request, "update_technical_decision", row.id, old,
-                      {"title": row.title, "vms": len(row.proposed_vms), "flows": len(row.proposed_flows)},
+                      {"title": row.title, "vms": len(row.proposed_vms), "flows": len(row.proposed_flows),
+                       "existing_changes": len(planned), "affected_ids": [c["id"] for c in planned]},
                       "Изменён проект технического решения " + row.title)
     db.commit()
     return _decision_response(row, db, True)
@@ -4157,8 +4177,9 @@ def submit_technical_decision(decision_id: UUID, payload: TechnicalDecisionTrans
     if row.status not in ("draft", "changes_requested"):
         raise HTTPException(409, "Only a draft or reworked decision can be submitted")
     _lock_decision_version(row, payload.expected_revision, db)
-    if not row.proposed_vms and not row.proposed_flows:
-        raise HTTPException(422, "Add at least one proposed VM or flow")
+    if not row.proposed_vms and not row.proposed_flows and not read_staged(row, db):
+        raise HTTPException(422, "Add at least one proposed architecture change")
+    verify_staged_architecture(row, db)
     row.base_hash = _decision_current_baseline(row, db)
     row.status = "in_review"
     row.revision += 1
@@ -4199,9 +4220,11 @@ def comment_on_technical_decision(decision_id: UUID, payload: TechnicalDecisionC
         raise HTTPException(422, "Decision comments do not have an object ID")
     if payload.anchor_kind != "decision":
         ids = (
-            {str(vm["id"]) for vm in row.proposed_vms}
+            {str(vm["id"]) for vm in row.proposed_vms} |
+            {c["id"] for c in read_staged(row, db) if c["kind"] == "vm"}
             if payload.anchor_kind == "vm" else
-            {str(flow["id"]) for flow in row.proposed_flows}
+            {str(flow["id"]) for flow in row.proposed_flows} |
+            {c["id"] for c in read_staged(row, db) if c["kind"] == "flow"}
         )
         if payload.anchor_id not in ids:
             raise HTTPException(422, "Comment anchor must belong to this proposal")
@@ -4234,6 +4257,9 @@ def review_technical_decision(decision_id: UUID, payload: TechnicalDecisionRevie
         raise HTTPException(403, "Author cannot approve their own solution")
     if row.status != "in_review":
         raise HTTPException(409, "Decision is not open for review")
+    verify_staged_architecture(row, db)
+    if row.base_hash and _decision_current_baseline(row, db) != row.base_hash:
+        raise HTTPException(409, "Registered architecture changed during review")
     _lock_decision_version(row, payload.expected_revision, db)
     if payload.verdict == "changes_requested" and len(payload.note.strip()) < 3:
         raise HTTPException(422, "Give a reason for the required changes")

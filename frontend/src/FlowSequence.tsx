@@ -153,7 +153,7 @@ export function FlowSequence({exchanges,systems,visible,request,processes=[],can
       })
       setScenarios(old=>old.map(row=>row.id===result.id?result:row).sort((a,b)=>a.name.localeCompare(b.name,'ru')))
       setDraft(null);setEditing(false);setNotice('Версия сценария сохранена: '+result.revision)
-    }catch(e){setError('Не удалось сохранить сценарий: '+String(e)+'. При конфликте обновите страницу.')}
+    }catch(e){setError('Не удалось сохранить сценарий: '+String(e)+'. При конфликте используйте «Обновить сценарий». Несохранённая правка остаётся в редакторе до вашего решения.')}
     finally{setBusy(false)}
   }
   async function refreshScenario(){

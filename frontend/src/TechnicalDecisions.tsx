@@ -383,6 +383,12 @@ function DecisionInspector({id,request,profile,items,flows,systemName,schema,ope
             setMenu(null)
           }}>{menu.kind==='vm'?'Открыть карточку':'Открыть поток'}</button>
           {editable&&menu.kind==='vm'&&proposedVmIds.has(menu.id)&&<button type="button" role="menuitem" onClick={()=>deleteProposedVM(menu.id)}>Удалить проектируемую ВМ</button>}
+          {editable&&menu.kind==='vm'&&!proposedVmIds.has(menu.id)&&localIds.has(menu.id)&&<button type="button" role="menuitem" onClick={()=>{
+            setChangeFocus({kind:'vm',id:menu.id});setTab('changes');setTool(null);setMenu(null)
+          }}>Запланировать изменение ВМ</button>}
+          {editable&&menu.kind==='flow'&&!proposedIds.has(menu.id)&&baseFlows.some(f=>f.id===menu.id)&&<button type="button" role="menuitem" onClick={()=>{
+            setChangeFocus({kind:'flow',id:menu.id});setTab('changes');setTool(null);setMenu(null)
+          }}>Запланировать изменение потока</button>}
           {editable&&menu.kind==='flow'&&proposedIds.has(menu.id)&&<button type="button" role="menuitem" onClick={()=>{
             if(window.confirm('Удалить проектируемый поток?'))persist(row.proposed_vms,row.proposed_flows.filter(flow=>flow.id!==menu.id))
             setMenu(null)
@@ -417,7 +423,9 @@ function DecisionInspector({id,request,profile,items,flows,systemName,schema,ope
             </div>
           </form>:<>
             <strong>{selectedVM.name}</strong>
-            <small>Из действующего реестра. Здесь объект можно только просмотреть.</small>
+            <small>Действующий реестр защищён от изменений черновика.</small>
+            {editable&&!selectedProposedVM&&localIds.has(selectedVM.id)&&<button type="button"
+              onClick={()=>{setChangeFocus({kind:'vm',id:selectedVM.id});setSelectedVMId('');setTab('changes')}}>Запланировать изменение этой ВМ</button>}
             {selectedProposedVM&&<small>Позиция: {Math.round(selectedProposedVM.x)}, {Math.round(selectedProposedVM.y)}</small>}
           </>}
           <button type="button" onClick={()=>setSelectedVMId('')}>К составу решения</button>
@@ -429,6 +437,9 @@ function DecisionInspector({id,request,profile,items,flows,systemName,schema,ope
           {viewedFlow.data_description&&<p>{viewedFlow.data_description}</p>}
           {viewedFlow.security&&<small>Защита: {viewedFlow.security}</small>}
           {viewedFlow.schedule&&<small>Периодичность: {viewedFlow.schedule}</small>}
+          {editable&&!proposedIds.has(viewedFlow.id)&&<button type="button" onClick={()=>{
+            setChangeFocus({kind:'flow',id:viewedFlow.id});setViewFlowId('');setTab('changes')
+          }}>Запланировать изменение этого потока</button>}
           <button onClick={()=>setViewFlowId('')}>К составу решения</button>
         </section>:schema&&tool&&editable?<form key={tool} onSubmit={e=>{e.preventDefault();saveProposal()}}>
           <label>{tool==='vm'?'Название ВМ':'Название потока'}<input autoFocus required maxLength={250} value={tool==='vm'?name:draft.name} onChange={e=>tool==='vm'?setName(e.target.value):setDraft({...draft,name:e.target.value})}/></label>
@@ -470,11 +481,14 @@ function DecisionInspector({id,request,profile,items,flows,systemName,schema,ope
           {!row.proposed_vms.length&&!row.proposed_flows.length&&<p>В черновике пока нет изменений.</p>}
         </>}
         {!schema&&<button onClick={openSchema}>Открыть схему</button>}
-        {editable&&!tool&&!vmFormDirty&&(row.proposed_vms.length+row.proposed_flows.length>0)&&<button className="primary" disabled={busy||routeChanged} title={routeChanged?'Сохраните изменённый маршрут согласования на вкладке «Согласование»':undefined} onClick={()=>void change('/submit',revision)}>На согласование</button>}
+        {editable&&!tool&&!vmFormDirty&&(row.proposed_vms.length+row.proposed_flows.length+row.existing_changes.length>0)&&<button className="primary" disabled={busy||routeChanged} title={routeChanged?'Сохраните изменённый маршрут согласования на вкладке «Согласование»':undefined} onClick={()=>void change('/submit',revision)}>На согласование</button>}
       </>:tab==='changes'?<section className="decisionChanges" aria-label="Изменения технического решения">
         <div className="decisionActions"><h4>Предлагаемые изменения</h4><button type="button" onClick={downloadDocument}>Скачать техническое решение (.md)</button></div>
         <p>Действующая архитектура остаётся без изменений. Новые объекты появятся в реестре только после отдельного подтверждённого внедрения.</p>
-        <div className="decisionChangeCounts"><strong>+ {row.proposed_vms.length} ВМ</strong><strong>+ {row.proposed_flows.length} потоков</strong></div>
+        <div className="decisionChangeCounts"><strong>+ {row.proposed_vms.length} ВМ</strong><strong>+ {row.proposed_flows.length} потоков</strong>
+          <strong>~ {existingSummary(row.existing_changes).changed} изменено</strong>
+          <strong>− {existingSummary(row.existing_changes).removed} к удалению</strong>
+        </div>
         {row.proposed_vms.map(vm=><div className="decisionItem" key={vm.id}>
           <span>+ {vm.name}</span><small>{vm.kind} · {vm.environment||'Среда не указана'}</small>
         </div>)}
@@ -485,9 +499,17 @@ function DecisionInspector({id,request,profile,items,flows,systemName,schema,ope
           </small>
           <small>{flow.data_description||'Состав данных не описан'} · {flow.security||'Защита не указана'}</small>
         </div>)}
-        {!row.proposed_vms.length&&!row.proposed_flows.length&&<small>Изменений пока нет.</small>}
+        {!row.proposed_vms.length&&!row.proposed_flows.length&&!row.existing_changes.length&&<small>Изменений пока нет.</small>}
+        <DecisionExistingChanges systemId={row.system_id} items={items} flows={flows}
+          changes={row.existing_changes} editable={editable} busy={busy}
+          initialTarget={changeFocus}
+          onSave={existing=>{void writeProposal(row.proposed_vms,row.proposed_flows,'edit',existing)}}
+          onFocus={(kind,id)=>{
+            if(kind==='vm'){setTab('items');openSchema();inspectVM(id)}
+            else {const f=baseFlows.find(item=>item.id===id);if(f){setTab('items');openSchema();inspectFlow(f)}}
+          }}/>
         {row.base_changed&&<p role="alert">Исходная архитектура изменилась. Перед публикацией потребуется пересогласование новой версии.</p>}
-        <small>Изменение/удаление действующих объектов появится после расширения типов технических решений. Сейчас поддерживается добавление проектируемых ВМ и потоков.</small>
+        <small>План изменений и документ согласуются без внесения изменений в действующий реестр. Внедрение подтверждается отдельным процессом.</small>
       </section>:<>
         <section className="decisionApprovalRoute" aria-label="Маршрут согласования">
           <h4>Маршрут согласования</h4>
@@ -517,7 +539,7 @@ function DecisionInspector({id,request,profile,items,flows,systemName,schema,ope
           {editable&&<div className="decisionActions">
             <button type="button" className="primary" disabled={busy||!canSubmit}
               onClick={()=>void change('/submit',revision)}>Отправить на согласование</button>
-            {!row.proposed_vms.length&&!row.proposed_flows.length&&<small>Сначала добавьте в проект ВМ или поток.</small>}
+            {!row.proposed_vms.length&&!row.proposed_flows.length&&!row.existing_changes.length&&<small>Сначала добавьте в проект ВМ, поток или изменение существующего объекта.</small>}
             {routeChanged&&<small>Сначала сохраните изменённый маршрут.</small>}
           </div>}
         </section>
@@ -553,8 +575,8 @@ function DecisionInspector({id,request,profile,items,flows,systemName,schema,ope
           {(row.comments||[]).length?<ol>{row.comments.map(message=><li key={message.id}>
             <strong>{message.actor_name||message.actor}</strong>
             <small>{dateFormat.format(new Date(message.created_at))}
-              {message.anchor_kind==='vm'?' · ВМ: '+(row.proposed_vms.find(vm=>vm.id===message.anchor_id)?.name||'ВМ')
-                :message.anchor_kind==='flow'?' · Поток: '+(row.proposed_flows.find(flow=>flow.id===message.anchor_id)?.name||'Поток'):''}
+              {message.anchor_kind==='vm'?' · ВМ: '+(row.proposed_vms.find(vm=>vm.id===message.anchor_id)?.name||row.existing_changes.find(c=>c.kind==='vm'&&c.id===message.anchor_id)?.before.name||'ВМ')
+                :message.anchor_kind==='flow'?' · Поток: '+(row.proposed_flows.find(flow=>flow.id===message.anchor_id)?.name||row.existing_changes.find(c=>c.kind==='flow'&&c.id===message.anchor_id)?.before.name||'Поток'):''}
             </small><p>{message.body}</p>
           </li>)}</ol>:<p>Замечаний пока нет.</p>}
           {canComment&&<form onSubmit={event=>{event.preventDefault();sendComment()}}>
@@ -563,6 +585,9 @@ function DecisionInspector({id,request,profile,items,flows,systemName,schema,ope
                 <option value="decision:">Решение целиком</option>
                 {row.proposed_vms.map(vm=><option key={vm.id} value={'vm:'+vm.id}>ВМ · {vm.name}</option>)}
                 {row.proposed_flows.map(flow=><option key={flow.id} value={'flow:'+flow.id}>Поток · {flow.name}</option>)}
+                {row.existing_changes.map(change=><option key={change.kind+change.id} value={change.kind+':'+change.id}>
+                  Изменение · {change.before.name}
+                </option>)}
               </select>
             </label>
             <label>Комментарий<textarea value={discussion} maxLength={2000} onChange={e=>setDiscussion(e.target.value)}

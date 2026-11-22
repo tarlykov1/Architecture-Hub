@@ -44,6 +44,11 @@ def _scenario_database(path:Path,monkeypatch):
 def test_copy_migration_upgrades_old_revision_and_preserves_original(tmp_path,monkeypatch):
     path=tmp_path/"QA-WORK-upgrade-old.sqlite"
     _url,obj_id=_scenario_database(path,monkeypatch)
+    # Operators run the script outside backend/ as well; imports and migration
+    # locations must be absolute, not tied to the test runner's working dir.
+    other=tmp_path/"QA-WORK-other-working-directory"
+    other.mkdir()
+    monkeypatch.chdir(other)
     run=_runner()
     report,code=run.dry_run(path)
     assert code==0,report

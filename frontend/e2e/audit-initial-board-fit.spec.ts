@@ -1,3 +1,4 @@
+import {openWorkspace} from './workspaceNavigation'
 import {test,expect} from '@playwright/test'
 
 test.beforeEach(async({page})=>{
@@ -24,8 +25,7 @@ test('AH-QA-04: saved VRF/VLAN fit after hydration and stay fixed during drag',a
  expect(saved.status(),await saved.text()).toBe(200)
 
  await page.goto('/')
- await page.getByRole('navigation',{name:'Разделы архитектуры'})
-  .getByRole('button',{name:'Компоненты',exact:true}).click()
+ await openWorkspace(page,'Компоненты')
  await page.getByRole('group',{name:'Представление компонентов'})
   .getByRole('button',{name:'Схема',exact:true}).click()
  await page.getByRole('button',{name:'Редактировать схему'}).click()

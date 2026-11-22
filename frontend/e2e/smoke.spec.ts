@@ -1,3 +1,4 @@
+import {openWorkspace} from './workspaceNavigation'
 import { expect, test, type Page } from '@playwright/test'
 
 // Existing editor smoke tests exercise the authenticated API against the CI backend.
@@ -9,12 +10,6 @@ test.beforeEach(async({page},info)=>{
  })
 })
 
-async function openFlowActionsMenu(page: Page) {
-  const menu=page.locator('details.flowActionsMenu')
-  if(!(await menu.evaluate(element=>element.hasAttribute('open')))){
-    await menu.locator('summary').click()
-  }
-}
 
 async function navigateTo(page: Page, section: 'Реестр сетей'|'Инциденты'|'Топология сетей') {
   const mobile=page.locator('nav.layerTabs details.mobileSectionMenu')
@@ -63,8 +58,8 @@ test('workspace navigation is integrated into the single global header',async({p
   await expect(header.getByRole('button',{name:'Обзор',exact:true})).toBeVisible()
   await navigation.getByRole('button',{name:'Системы',exact:true}).click()
   await expect(navigation.getByRole('button',{name:'Системы',exact:true})).toHaveClass(/current/)
-  await navigation.getByRole('button',{name:'Компоненты',exact:true}).click()
-  await expect(navigation.getByRole('button',{name:'Компоненты',exact:true})).toHaveClass(/current/)
+  await openWorkspace(page,'Компоненты')
+  await expect(navigation.getByRole('button',{name:'Системы',exact:true})).toHaveClass(/current/)
   await navigation.locator('details.secondaryNavigation summary').click()
   await navigation.getByRole('button',{name:'Реестр сетей',exact:true}).click()
   await expect(navigation.locator('details.secondaryNavigation summary')).toContainText('Реестр сетей')
@@ -184,7 +179,7 @@ test('component card shows passport, interfaces and flows tabs', async ({ page }
   const vm=await page.request.post('http://127.0.0.1:8001/api/infra',{data:{system_id:systemId,name:componentName,kind:'vm',description:'Test node'}})
   expect(vm.status()).toBe(201)
   await page.goto('/')
-  await page.getByRole('navigation',{name:'Разделы архитектуры'}).getByRole('button',{name:'Компоненты',exact:true}).click()
+  await openWorkspace(page,'Компоненты')
   await page.getByRole('combobox',{name:'Система компонентов'}).selectOption(systemId)
   await page.getByRole('textbox',{name:'Фильтр по названию'}).fill(componentName)
   await page.getByRole('group',{name:'Представление компонентов'}).getByRole('button',{name:'Карточки',exact:true}).click()
@@ -490,7 +485,7 @@ async function uxSystem(page: Page) {
 test('component group overview opens real members while keeping editor available',async({page})=>{
   const system=await uxSystem(page)
   await page.goto('/')
-  await page.getByRole('navigation',{name:'Разделы архитектуры'}).getByRole('button',{name:'Компоненты',exact:true}).click()
+  await openWorkspace(page,'Компоненты')
   await page.getByRole('combobox',{name:'Система компонентов'}).selectOption(system.id)
   await page.getByRole('group',{name:'Представление компонентов'}).getByRole('button',{name:'Схема',exact:true}).click()
   await page.getByRole('combobox',{name:'Группировка компонентов'}).selectOption('environment')
@@ -611,7 +606,7 @@ test('passport buttons inside separate map nodes always open the matching system
 test('component views are exclusive and bulk actions appear with a selection',async({page})=>{
   const system=await uxSystem(page)
   await page.goto('/')
-  await page.getByRole('navigation',{name:'Разделы архитектуры'}).getByRole('button',{name:'Компоненты',exact:true}).click()
+  await openWorkspace(page,'Компоненты')
   await page.getByRole('combobox',{name:'Система компонентов'}).selectOption(system.id)
   const views=page.getByRole('group',{name:'Представление компонентов'})
   await views.getByRole('button',{name:'Реестр',exact:true}).click()
@@ -634,7 +629,7 @@ test('component views are exclusive and bulk actions appear with a selection',as
 test('registry columns are configurable and persist after reload',async({page})=>{
   await uxSystem(page)
   await page.goto('/')
-  await page.getByRole('navigation',{name:'Разделы архитектуры'}).getByRole('button',{name:'Компоненты',exact:true}).click()
+  await openWorkspace(page,'Компоненты')
   const registry=page.getByRole('region',{name:'Архитектурный реестр'})
   await expect(registry).toBeVisible()
   await expect(registry.locator('.architectureRegistryTableWrap th').filter({hasText:'Владелец'})).toHaveCount(0)
@@ -642,19 +637,19 @@ test('registry columns are configurable and persist after reload',async({page})=
   await registry.getByRole('group',{name:'Видимые столбцы реестра'}).getByRole('checkbox',{name:'Владелец'}).check()
   await expect(registry.locator('.architectureRegistryTableWrap th').filter({hasText:'Владелец'})).toHaveCount(1)
   await page.reload()
-  await page.getByRole('navigation',{name:'Разделы архитектуры'}).getByRole('button',{name:'Компоненты',exact:true}).click()
+  await openWorkspace(page,'Компоненты')
   await expect(page.getByRole('region',{name:'Архитектурный реестр'}).locator('.architectureRegistryTableWrap th').filter({hasText:'Владелец'})).toBeVisible()
 })
 
 test('component view choice survives a reload',async({page})=>{
   await uxSystem(page)
   await page.goto('/')
-  await page.getByRole('navigation',{name:'Разделы архитектуры'}).getByRole('button',{name:'Компоненты',exact:true}).click()
+  await openWorkspace(page,'Компоненты')
   const views=page.getByRole('group',{name:'Представление компонентов'})
   await views.getByRole('button',{name:'Карточки',exact:true}).click()
   await expect(page.locator('.infraGrid .infraCard').first()).toBeVisible()
   await page.reload()
-  await page.getByRole('navigation',{name:'Разделы архитектуры'}).getByRole('button',{name:'Компоненты',exact:true}).click()
+  await openWorkspace(page,'Компоненты')
   await expect(page.getByRole('group',{name:'Представление компонентов'}).getByRole('button',{name:'Карточки',exact:true})).toHaveAttribute('aria-pressed','true')
 })
 
@@ -732,6 +727,7 @@ for(const width of [390,768,1440]) {
     await assertNoOverflow()
     for(const name of ['Системы','Компоненты','Потоки']) {
       const nav=page.getByRole('navigation',{name:'Разделы архитектуры'})
+      if(name==='Компоненты'){await openWorkspace(page,'Компоненты');await assertNoOverflow();continue}
       if(width<650){
         const mobile=nav.locator('details.mobileSectionMenu')
         await mobile.locator('summary').click()
@@ -838,9 +834,8 @@ test('flow attribute drawer reuses dictionary fields for distinct business consu
   const directory=await create('/api/business/processes',{category_id:category,name:'Directory '+suffix})
   const servicing=await create('/api/business/processes',{category_id:category,name:'Servicing '+suffix})
   await page.goto('/')
-  await page.getByRole('navigation',{name:'Разделы архитектуры'}).getByRole('button',{name:'Потоки',exact:true}).click()
-  await openFlowActionsMenu(page)
-   await page.locator('details.flowActionsMenu').getByRole('button',{name:'Справочник атрибутов и состав данных'}).click()
+  await openWorkspace(page,'Потоки')
+   await page.getByRole('button',{name:'Атрибуты и данные'}).click()
   const drawer=page.getByRole('dialog',{name:'Атрибуты потоков данных'})
   await expect(drawer).toBeVisible()
   await drawer.getByRole('tab',{name:/Справочник/}).click()
@@ -919,9 +914,8 @@ test('declare a flow path through existing VRF and security appliance',async({pa
   const flow=await create('/api/flows',{source_id:source,target_id:target,name:'Path '+suffix})
   const vrf=await create('/api/networks',{kind:'vrf',name:'VRF '+suffix})
   await page.goto('/')
-  await page.getByRole('navigation',{name:'Разделы архитектуры'}).getByRole('button',{name:'Потоки',exact:true}).click()
-  await openFlowActionsMenu(page)
-   await page.locator('details.flowActionsMenu').getByRole('button',{name:'Сетевой маршрут и средства защиты'}).click()
+  await openWorkspace(page,'Потоки')
+   await page.getByRole('button',{name:'Маршруты и СЗИ'}).click()
   const drawer=page.getByRole('dialog',{name:'Технический маршрут потока'})
   await expect(drawer).toBeVisible()
   await drawer.getByRole('tab',{name:/Справочник объектов/}).click()
@@ -940,8 +934,7 @@ test('declare a flow path through existing VRF and security appliance',async({pa
   await drawer.getByRole('button',{name:'Сохранить маршрут'}).click()
   await expect(drawer.getByRole('button',{name:'Изменений нет'})).toBeDisabled()
   await drawer.getByRole('button',{name:'Закрыть маршрут'}).click()
-  await openFlowActionsMenu(page)
-   await page.locator('details.flowActionsMenu').getByRole('button',{name:'Сетевой маршрут и средства защиты'}).click()
+   await page.getByRole('button',{name:'Маршруты и СЗИ'}).click()
   const saved=page.getByRole('dialog',{name:'Технический маршрут потока'})
   await saved.getByRole('combobox',{name:'Поток для сетевого маршрута'}).selectOption(flow)
   await expect(saved.getByRole('region',{name:'Шаги технического маршрута'})).toContainText('PTAF '+suffix)
@@ -950,17 +943,12 @@ test('declare a flow path through existing VRF and security appliance',async({pa
 test('each main section has its own URL and reload preserves the current section',async({page})=>{
   await page.goto('/')
   const nav=page.getByRole('navigation',{name:'Разделы архитектуры'})
-  const sections=[
-    ['Системы','/systems'],
-    ['Компоненты','/components'],
-    ['Потоки','/flows'],
-    ['Обзор','/'],
-  ] as const
-  for(const [title,path] of sections){
-    await nav.getByRole('button',{name:title,exact:true}).click()
-    await expect(page).toHaveURL(new RegExp(path==='/'?'\\/$':'\\'+path+'$'))
+  for(const [title,path] of [['Системы','/systems'],['Компоненты','/components'],['Потоки','/?map=flows'],['Обзор','/']] as const){
+    if(title==='Компоненты')await page.locator('.systemsWorkspaceActions').getByRole('button',{name:title,exact:true}).click()
+    else await nav.getByRole('button',{name:title,exact:true}).click()
+    await expect(page).toHaveURL(new URL(path,'http://127.0.0.1:5174').href)
     await page.reload()
-    await expect(nav.getByRole('button',{name:title,exact:true})).toHaveClass(/current/)
+    await expect(nav.getByRole('button',{name:title==='Компоненты'?'Системы':title,exact:true})).toHaveClass(/current/)
   }
   await navigateTo(page,'Реестр сетей')
   await expect(page).toHaveURL(/\/networks$/)
@@ -981,13 +969,13 @@ test('direct links preserve system context and browser back-forward navigation',
   await expect(page.getByRole('combobox',{name:'Система компонентов'})).toHaveValue(id)
   await page.reload()
   await expect(page.getByRole('combobox',{name:'Система компонентов'})).toHaveValue(id)
-  await page.getByRole('navigation',{name:'Разделы архитектуры'}).getByRole('button',{name:'Потоки',exact:true}).click()
-  await expect(page).toHaveURL(/\/flows$/)
+  await page.getByRole('navigation').getByRole('button',{name:'Потоки',exact:true}).click()
+  await expect(page).toHaveURL(/\/\?map=flows$/)
   await page.goBack()
   await expect(page).toHaveURL(new RegExp('/components\\?system='+id+'$'))
   await expect(page.getByRole('combobox',{name:'Система компонентов'})).toHaveValue(id)
   await page.goForward()
-  await expect(page).toHaveURL(/\/flows$/)
+  await expect(page).toHaveURL(/\/\?map=flows$/)
   await expect(page.getByRole('navigation',{name:'Разделы архитектуры'}).getByRole('button',{name:'Потоки',exact:true})).toHaveClass(/current/)
 })
 
@@ -1275,7 +1263,7 @@ test('monitoring tab binds Grafana dashboard to an existing standalone VM',async
   expect(vmResponse.status()).toBe(201)
   const vmId=(await vmResponse.json()).id
   await page.goto('/')
-  await page.getByRole('navigation',{name:'Разделы архитектуры'}).getByRole('button',{name:'Компоненты',exact:true}).click()
+  await openWorkspace(page,'Компоненты')
   await page.getByRole('combobox',{name:'Система компонентов'}).selectOption(systemId)
   await page.getByRole('group',{name:'Представление компонентов'}).getByRole('button',{name:'Карточки',exact:true}).click()
   await page.getByRole('button',{name:'Карточка компонента'}).click()

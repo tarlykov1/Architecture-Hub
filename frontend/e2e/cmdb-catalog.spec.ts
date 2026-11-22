@@ -1,3 +1,4 @@
+import {openWorkspace} from './workspaceNavigation'
 import {expect,test} from '@playwright/test'
 
 const api='http://127.0.0.1:8001'
@@ -20,8 +21,7 @@ test('admin creates a CI class in the right inspector and the custom field appea
     system_id:system.id,kind:ciClass,name:'Catalog component '+suffix
   })
   await page.goto('/')
-  await page.getByRole('navigation',{name:'Разделы архитектуры'})
-    .getByRole('button',{name:'Компоненты',exact:true}).click()
+  await openWorkspace(page,'Компоненты')
   await page.getByRole('combobox',{name:'Система компонентов'}).selectOption(system.id)
   await page.getByRole('group',{name:'Представление компонентов'})
     .getByRole('button',{name:'Схема',exact:true}).click()

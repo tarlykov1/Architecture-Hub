@@ -13,7 +13,7 @@ for(const width of [390,768,1440,1920]){
    const chooser=page.getByRole('button',{name:'Выбрать раздел'}).or(page.locator('summary[aria-label="Выбрать раздел"]'))
    await expect(chooser.first()).toBeVisible()
    await chooser.first().click()
-   await expect(page.locator('.mobileSectionOptions').getByRole('button',{name:'Компоненты'})).toBeVisible()
+   await expect(page.locator('.mobileSectionOptions').getByRole('button',{name:'Системы'})).toBeVisible()
    await chooser.first().click()
   }else{
    await expect(page.getByRole('navigation',{name:'Разделы архитектуры'})).toBeVisible()

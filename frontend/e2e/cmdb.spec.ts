@@ -1,3 +1,4 @@
+import {openWorkspace} from './workspaceNavigation'
 import {test,expect} from '@playwright/test'
 
 const api='http://127.0.0.1:8001'
@@ -20,7 +21,7 @@ test('CMDB impact tab shows directed dependencies without leaving the component 
   await create('/api/flows',{source_id:vm1.id,target_id:vm2.id,name:'CMDB test flow '+id,protocol:'HTTPS',port:'443'})
 
   await page.goto('/')
-  await page.getByRole('navigation',{name:'Разделы архитектуры'}).getByRole('button',{name:'Компоненты',exact:true}).click()
+  await openWorkspace(page,'Компоненты')
   await page.getByRole('combobox',{name:'Система компонентов'}).selectOption(system.id)
   await page.getByRole('group',{name:'Представление компонентов'}).getByRole('button',{name:'Схема',exact:true}).click()
   await page.locator('.react-flow__node').filter({hasText:'CMDB source '+id}).first().click()

@@ -1,3 +1,4 @@
+import {openWorkspace} from './workspaceNavigation'
 import {test,expect} from '@playwright/test'
 
 // The 20 navigation loops must pass on the first attempt, not via runner retry.
@@ -22,7 +23,7 @@ for(let batch=0;batch<4;batch++)test('QA-WORK: #164 focus transitions '+(batch*5
  page.on('pageerror',error=>errors.push(error.message))
  for(let iteration=batch*5+1;iteration<=batch*5+5;iteration++){
   await page.goto('/')
-  await page.getByRole('navigation',{name:'Разделы архитектуры'}).getByRole('button',{name:'Потоки',exact:true}).click()
+  await openWorkspace(page,'Потоки')
   await page.getByRole('combobox',{name:'Система потоков'}).selectOption(system)
   const registry=page.getByRole('region',{name:'Реестр технических потоков'})
   await expect(registry.locator('.infraCard')).toHaveCount(1)

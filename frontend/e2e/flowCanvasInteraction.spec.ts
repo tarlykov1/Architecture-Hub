@@ -1,3 +1,4 @@
+import {openWorkspace} from './workspaceNavigation'
 import {test,expect,type Page} from '@playwright/test'
 
 // Regression tests use the isolated SQLite backend from the Chromium CI job.
@@ -25,7 +26,7 @@ async function seed(page:Page){
 
 async function navigate(page:Page,section:'Потоки'|'Компоненты'){
   await page.goto('/')
-  await page.getByRole('navigation',{name:'Разделы архитектуры'}).getByRole('button',{name:section,exact:true}).click()
+  await openWorkspace(page,section)
 }
 
 test('flow registry opens exact technical flow and overview remains independently focusable',async({page})=>{
@@ -67,20 +68,15 @@ test('components diagram opens its right-side passport and keeps selected node h
   await expect(node).toHaveCSS('border-top-color','rgb(83, 70, 199)')
 })
 
-test('flow utilities remain available from More while flow workspace is a registry',async({page})=>{
+test('flow utilities are directly available while flow workspace is a registry',async({page})=>{
   const {system}=await seed(page)
   await navigate(page,'Потоки')
   await page.getByRole('combobox',{name:'Система потоков'}).selectOption(system)
   await expect(page.getByRole('region',{name:'Реестр технических потоков'})).toBeVisible()
   await expect(page.locator('[data-active-graph="flows"]')).toHaveCount(0)
-  const menu=page.locator('details.flowActionsMenu')
-  await expect(menu).not.toHaveAttribute('open','')
-  await expect(menu.getByRole('button',{name:'Справочник атрибутов и состав данных'})).toBeHidden()
-  await menu.locator('summary').click()
-  await expect(menu.getByRole('button',{name:'Справочник атрибутов и состав данных'})).toBeVisible()
-  await expect(menu.getByRole('button',{name:'Сетевой маршрут и средства защиты'})).toBeVisible()
-  await menu.locator('summary').click()
-  await expect(menu).not.toHaveAttribute('open','')
+  await expect(page.getByRole('button',{name:'Атрибуты и данные'})).toBeVisible()
+  await expect(page.getByRole('button',{name:'Маршруты и СЗИ'})).toBeVisible()
+
 })
 
 

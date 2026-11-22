@@ -157,11 +157,11 @@ body {
   width: 26px; height: 26px; border-radius: 5px; background: var(--hub-accent-soft); color: #484357;
 }
 .architectureGraphIcon .systemLogo { margin: 0 }
-.flowRegisterRows.infraGrid { display: flex; flex-direction: column; gap: 0; border-top: 1px solid var(--hub-line) }
+.flowRegisterRows.infraGrid { margin-top: 6px; display: flex; flex-direction: column; gap: 0; border-top: 1px solid var(--hub-line) }
 .flowRegisterRows .infraCard {
-  display: grid; align-items: center; gap: 8px 14px; cursor: pointer;
+  display: grid; min-height: 0; align-items: center; gap: 4px 12px; cursor: pointer;
   grid-template-columns: minmax(110px,1fr) minmax(145px,1.3fr) minmax(120px,1fr) minmax(170px,auto);
-  border: 0; border-bottom: 1px solid var(--hub-line); border-radius: 0; padding: 9px 10px; margin: 0;
+  border: 0; border-bottom: 1px solid var(--hub-line); border-radius: 0; padding: 5px 8px; margin: 0;
 }
 .flowRegisterRows .infraCard[aria-pressed=true] { background: var(--hub-accent-soft) }
 .flowRegisterRows .infraCard h3 { margin: 0; font-size: 13px; color: var(--hub-ink) }
@@ -238,3 +238,13 @@ body {
   overflow:hidden; border-radius:3px; pointer-events:none;
 }
 .systemAreaStripes > span {flex:1}
+
+.flowWorkspaceTools select { max-width: min(240px,100%); min-width: 0 }
+@media(max-width:650px) {
+  .homeMap .flowWorkspaceTools {
+    flex-wrap: nowrap; overflow-x: auto; overscroll-behavior-x: contain;
+    min-width: 0; max-width: 100%; padding-block: 4px;
+  }
+  .flowWorkspaceTools > * { flex: 0 0 auto; white-space: nowrap }
+  .flowWorkspaceTools select { max-width: 11rem }
+}

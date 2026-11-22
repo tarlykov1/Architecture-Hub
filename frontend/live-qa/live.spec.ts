@@ -90,6 +90,11 @@ test('test server: deployed revision is available without authentication', async
 })
 
 async function switchSection(page: import('@playwright/test').Page, section: string) {
+  if(section==='Компоненты'){
+    await switchSection(page,'Системы')
+    await page.locator('.systemsWorkspaceActions').getByRole('button',{name:'Компоненты',exact:true}).click()
+    return
+  }
   const nav = page.getByRole('navigation', { name: 'Разделы архитектуры' })
   const mobile = nav.locator('details.mobileSectionMenu > summary')
   const desktop = nav.getByRole('button', { name: section, exact: true })

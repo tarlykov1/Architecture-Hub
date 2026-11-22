@@ -52,3 +52,9 @@ export function readOverviewMode(search: string): OverviewMode {
   const mode = new URLSearchParams(search).get('map')
   return mode === 'flows' || mode === 'sequence' || mode === 'logical' ? mode : 'business'
 }
+
+export function withBusinessAreas(url:string, areaIds:string[]):string {
+  const target=new URL(url,window.location.origin)
+  for(const id of areaIds)target.searchParams.append('area',id)
+  return target.pathname+target.search
+}

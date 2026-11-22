@@ -10,22 +10,41 @@ async function navigateToTestSite(page:Page,request:APIRequestContext){
     try{path=new URL(failed.url()).pathname}catch{}
     failures.push(path+': '+(failed.failure()?.errorText||'request failed'))
   })
-  try{
-    const response=await page.goto('/',{waitUntil:'domcontentloaded',timeout:32000})
-    if(!response)throw new Error('No HTTP document response from Chromium')
-    if(response.status()>=400)throw new Error('Chromium received HTTP '+response.status())
-  }catch(error){
-    let probe='HTTP probe failed'
+  let lastError:unknown=null
+  let stage='HTTP navigation'
+  // The VPS may be reachable by the CI HTTP client while hosted Chromium has
+  // a transient proxy/DNS handshake timeout. Retry only before receiving a
+  // document response, and never retry a real 4xx/5xx or a React/DOM failure.
+  for(let attempt=0;attempt<2;attempt++){
     try{
-      const check=await request.get('/build-info.json',{timeout:8000,headers:{'Cache-Control':'no-cache'}})
-      probe='Node HTTP probe: '+check.status()
-    }catch(e){probe='Node HTTP probe error: '+(e instanceof Error?e.message:String(e))}
-    throw new Error(
-      'Browser could not navigate to test server; '+probe+
-      '; Chromium request failures: '+(failures.join('; ')||'none observed')+
-      '; original error: '+(error instanceof Error?error.message:String(error))
-    )
+      stage='HTTP navigation'
+      const response=await page.goto('/',{waitUntil:'commit',timeout:16000})
+      if(!response)throw new Error('Chromium received no document response')
+      if(response.status()>=400)throw new Error('Chromium received HTTP '+response.status())
+      stage='DOM readiness'
+      await page.waitForLoadState('domcontentloaded',{timeout:14000})
+      return
+    }catch(error){
+      lastError=error
+      const transient=stage==='HTTP navigation'&&error instanceof Error&&/Timeout|net::ERR_CONNECTION|net::ERR_TIMED_OUT/i.test(error.message)
+      if(!transient||attempt===1)break
+      // A fresh blank page discards the cancelled navigation without changing
+      // the context, headers or authentication init script for the next try.
+      await page.goto('about:blank',{waitUntil:'commit',timeout:3000}).catch(()=>{})
+    }
   }
+  let probe='HTTP probe failed'
+  try{
+    const check=await request.get('/build-info.json',{timeout:8000,headers:{'Cache-Control':'no-cache'}})
+    probe='Node HTTP probe: '+check.status()
+  }catch(error){
+    probe='Node HTTP probe error: '+(error instanceof Error?error.name:String(error))
+  }
+  throw new Error(
+    'Live QA browser '+stage+' failed after guarded navigation; '+probe+
+    '; Chromium request failures: '+(failures.join('; ')||'none observed')+
+    '; original error: '+(lastError instanceof Error?lastError.message:String(lastError))
+  )
 }
 
 // Authenticate live tests in session storage before the app's first script runs.

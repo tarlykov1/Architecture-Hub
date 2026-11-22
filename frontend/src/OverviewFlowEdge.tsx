@@ -3,7 +3,7 @@ import {useEffect, useRef} from 'react'
 import {flowCountLabel} from './graphLayout'
 import {workspaceRouteUrl} from './workspaceRoutes'
 
-export type OverviewFlow = {id: string; name: string; data_description: string}
+export type OverviewFlow = {id: string; name: string; data_description: string; schedule?: string}
 type FlowEdge = Edge<{flows: OverviewFlow[]; open: boolean; toggle: () => void; close: () => void}>
 
 export function OverviewFlowEdge(props: EdgeProps<FlowEdge>) {
@@ -36,7 +36,7 @@ export function OverviewFlowEdge(props: EdgeProps<FlowEdge>) {
         <button ref={trigger} type="button" aria-expanded={data.open} onClick={data.toggle}>{flowCountLabel(data.flows.length)}</button>
         {data.open && <div className="overviewFlowList nowheel" aria-label="Потоки между системами">
           {data.flows.map(flow => <a key={flow.id} href={workspaceRouteUrl('flows', '', '', false, flow.id)}>
-            <span>{flow.name || flow.data_description || 'Поток '+flow.id.slice(0,8)}</span><span aria-hidden="true">›</span>
+            <span>{flow.name || flow.data_description || 'Поток '+flow.id.slice(0,8)}{flow.schedule&&<small className="overviewExchangeSchedule">{flow.schedule}</small>}</span><span aria-hidden="true">›</span>
           </a>)}
         </div>}
       </div>

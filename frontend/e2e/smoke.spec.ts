@@ -943,17 +943,12 @@ test('declare a flow path through existing VRF and security appliance',async({pa
 test('each main section has its own URL and reload preserves the current section',async({page})=>{
   await page.goto('/')
   const nav=page.getByRole('navigation',{name:'Разделы архитектуры'})
-  const sections=[
-    ['Системы','/systems'],
-    ['Компоненты','/components'],
-    ['Потоки','/flows'],
-    ['Обзор','/'],
-  ] as const
-  for(const [title,path] of sections){
-    await nav.getByRole('button',{name:title,exact:true}).click()
-    await expect(page).toHaveURL(new RegExp(path==='/'?'\\/$':'\\'+path+'$'))
+  for(const [title,path] of [['Системы','/systems'],['Компоненты','/components'],['Потоки','/?map=flows'],['Обзор','/']] as const){
+    if(title==='Компоненты')await page.locator('.systemsWorkspaceActions').getByRole('button',{name:title,exact:true}).click()
+    else await nav.getByRole('button',{name:title,exact:true}).click()
+    await expect(page).toHaveURL(new URL(path,'http://127.0.0.1:5174').href)
     await page.reload()
-    await expect(nav.getByRole('button',{name:title,exact:true})).toHaveClass(/current/)
+    await expect(nav.getByRole('button',{name:title==='Компоненты'?'Системы':title,exact:true})).toHaveClass(/current/)
   }
   await navigateTo(page,'Реестр сетей')
   await expect(page).toHaveURL(/\/networks$/)

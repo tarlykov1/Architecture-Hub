@@ -9,10 +9,10 @@
 .topologyBundleFilter { display: grid; justify-items: start; gap: 6px; margin: 8px 0 }
 @media (min-width: 901px) {
   section.topologyWorkspace:has(.topologyInspector) {
-    padding-right: calc(clamp(285px, 27vw, 390px) + 16px);
+    padding-right: calc(var(--hub-panel-width) + 16px);
   }
   section.topologyWorkspace:has(.topologyInspector) > .topologyInspectorShell {
-    position: absolute; top: 0; width: clamp(285px, 27vw, 390px);
+    position: absolute; top: 0; width: var(--hub-panel-width);
   }
 }
 @media (max-width: 900px) {

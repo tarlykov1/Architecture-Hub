@@ -198,7 +198,7 @@ body {
 .overviewFlowList > button {display:block;width:100%;text-align:left;border:0;padding:7px;background:white}
 .overviewFlowList > button:hover,.overviewFlowList > button:focus-visible {background:var(--hub-accent-soft)}
 
-:root {--hub-panel-width:min(100vw,max(440px,25vw))}
+:root {--hub-panel-width:min(100vw,max(340px,25vw))}
 @media(max-width:700px){:root {--hub-panel-width:100vw}}
 .shell :is(.editorBackdrop,.architectureDrawerBackdrop,.topologyNicBackdrop) .architectureDrawer,
 .shell .boardInspector,

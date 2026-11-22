@@ -150,7 +150,7 @@ async def access_middleware(request: Request, call_next):
     if path.startswith("/api/auth/"):
         if path.startswith("/api/auth/users") and role != "admin":
             return JSONResponse({"detail": "Only admins may manage accounts"}, status_code=403)
-        if path not in ("/api/auth/me", "/api/auth/change-password") and not path.startswith("/api/auth/users"):
+        if path not in ("/api/auth/me", "/api/auth/change-password", "/api/auth/runtime-version") and not path.startswith("/api/auth/users"):
             return JSONResponse({"detail": "Unknown authentication endpoint"}, status_code=403)
         request.state.role = role
         return await call_next(request)

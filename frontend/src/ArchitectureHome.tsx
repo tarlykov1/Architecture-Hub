@@ -36,7 +36,7 @@ type LogicalMap = {
  controls: React.ReactNode
  editing: boolean
  toggleEdit: ()=>void
- move: (id:string, point:{x:number;y:number})=>void
+ move: (id:string, point:{x:number;y:number}, startingPositions?:LogicalMap['positions'])=>void
  onConnect: (connection:Connection)=>void
 }
 export default function ArchitectureHome({mode,onModeChange,logical,systems,components,flows,processes,categories,links,onOpenProcess,onOpenSystem,onCloseSystem,inspectorOpen,onOpenComponents,onOpenComponent,onOpenFlows,focusSystemId='',request,canEditLayers=false,canEditFlows=false}:{mode:OverviewMode;onModeChange:(mode:OverviewMode)=>void;logical:LogicalMap;systems:System[];components:Component[];flows:Flow[];processes:Process[];categories:Category[];links:Link[];networks:Network[];interfaces:Interface[];onOpenProcess?:(id:string)=>void;onOpenSystem:(id:string)=>void;onCloseSystem:()=>void;inspectorOpen:boolean;onOpenComponents:(id:string)=>void;onOpenComponent:(id:string)=>void;onOpenFlows:()=>void;onOpenNetworks:()=>void;focusSystemId?:string;request?:<T>(url:string,init?:RequestInit)=>Promise<T>;canEditLayers?:boolean;canEditFlows?:boolean}){
@@ -45,6 +45,8 @@ export default function ArchitectureHome({mode,onModeChange,logical,systems,comp
  const mapMode=sequence?'flows':mode
  const flowPresentation=sequence?'sequence':'map'
  const logicalMode=mapMode==='logical'
+ const [fitRequest,setFitRequest]=useState(0)
+ const [manualLayout,setManualLayout]=useState(false)
  const editingSystems=logicalMode&&logical.editing&&canEditLayers
  const [selectedAreaIds,setSelectedAreaIds]=useState<string[]>([])
  const [membersOnly,setMembersOnly]=useState(false)
@@ -157,16 +159,6 @@ export default function ArchitectureHome({mode,onModeChange,logical,systems,comp
      const key=ids[i]+'|'+ids[j];businessCounts.set(key,(businessCounts.get(key)||0)+1)
    }
  }
- // A three-column overview avoids microscopic nodes in long dependency chains.
- // The coordinate space is defined by the full architecture, never by
- // active overlays or search filters. Node coordinates cannot jump on layer changes.
- const componentRows=Math.max(1,...systems.map(sys=>Math.ceil(components.filter(c=>c.system_id===sys.id).length/2)))
- const systemRowGap=Math.max(330,120+componentRows*43)
- const basePositions=overviewGridPositions(systems.map(s=>s.id))
- const positions=Object.fromEntries(systems.map((sys,index)=>{
-   const original=basePositions[sys.id]||{x:(index%3)*320,y:Math.floor(index/3)*190}
-   return [sys.id,(logicalMode&&logical.positions[sys.id])||{x:original.x/310*410,y:original.y/170*systemRowGap}]
- }))
  const overlayGroups:OverlayGroup[]=[]
  for(const cat of categories){
    const ids=new Set(processes.filter(p=>p.category_id===cat.id).map(p=>p.id))
@@ -207,16 +199,17 @@ export default function ArchitectureHome({mode,onModeChange,logical,systems,comp
  const compactAreas=membersOnly&&displayAreas.length>0&&!editingLayers
  const shownSystems=compactAreas?mapSystems.filter(system=>areaLabels.has(system.id)):mapSystems
  const shownIds=new Set(shownSystems.map(system=>system.id))
- const shownPositions=compactAreas?overviewGridPositions([...shownIds],340,190):positions
+ const gridPositions=overviewGridPositions([...shownIds],340,190)
+ const shownPositions=logicalMode&&manualLayout?{...gridPositions,...logical.positions}:gridPositions
  const componentNodes=layers.components?components.filter(c=>visibleIds.has(c.system_id)).flatMap(c=>{
    const group=components.filter(item=>item.system_id===c.system_id)
    const index=group.findIndex(item=>item.id===c.id)
-   const parent=positions[c.system_id]
+   const parent=shownPositions[c.system_id]
    return parent?[{id:'component:'+c.id,position:{x:parent.x+(index%2)*144,y:parent.y+100+Math.floor(index/2)*43},
      data:{label:<span title={c.name}>{architectureIcon(c.kind)} {c.name}</span>},style:{width:136,fontSize:11,padding:'7px',borderRadius:6,border:'1px solid #cbd5e1',background:'#fff',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' as const},selectable:true,draggable:false,zIndex:20}]:[]
  }):[]
 
- const nodes=shownSystems.map((s,i)=>({id:s.id,draggable:editingSystems,initialWidth:245,initialHeight:86,handles:systemHandles,sourcePosition:Position.Right,targetPosition:Position.Left,position:shownPositions[s.id]||{x:(i%4)*320,y:Math.floor(i/4)*190},data:{label:<DiagramNodeLabel name={s.name} kind={s.kind} logo={logoFromAttributes(s.attributes)} subtitle={components.filter(c=>c.system_id===s.id).length+' компонентов · '+links.filter(l=>l.system_id===s.id).length+' бизнес-связей'}>
+ const nodes=shownSystems.map(s=>({id:s.id,draggable:editingSystems,initialWidth:245,initialHeight:86,handles:systemHandles,sourcePosition:Position.Right,targetPosition:Position.Left,position:shownPositions[s.id],data:{label:<DiagramNodeLabel name={s.name} kind={s.kind} logo={logoFromAttributes(s.attributes)} subtitle={components.filter(c=>c.system_id===s.id).length+' компонентов · '+links.filter(l=>l.system_id===s.id).length+' бизнес-связей'}>
    {areaLabels.has(s.id)&&<span className="systemAreaLabels">{areaLabels.get(s.id)!.map(group=><span key={group.id} className="systemAreaLabel" title={processes.filter(p=>(group.id==='business:'+p.category_id||group.id==='business:process:'+p.id)&&links.some(link=>link.system_id===s.id&&link.process_id===p.id)).map(p=>p.name).join(', ')||'Метка задана в составе области'}><i aria-hidden="true" style={{backgroundColor:groupColor(group)}}/>{group.name}</span>)}</span>}
    </DiagramNodeLabel>},style:diagramCardStyle()}))
  const selectedSystemInfo=shownSystems.find(s=>s.id===selectedSystem)
@@ -264,6 +257,7 @@ export default function ArchitectureHome({mode,onModeChange,logical,systems,comp
   </div>}
   </div>
   {logicalMode&&<div className="overviewToolbar" role="group" aria-label="Раскладка логических связей">{logical.controls}
+    {Object.keys(logical.positions).length>0&&<label><input type="checkbox" disabled={editingSystems} checked={manualLayout} onChange={event=>setManualLayout(event.target.checked)}/> Ручная раскладка</label>}
     {canEditLayers&&<button type="button" aria-pressed={editingSystems} onClick={logical.toggleEdit}>{editingSystems?'Завершить редактирование':'Редактировать схему'}</button>}
   </div>}
   {!logicalMode&&!sequence&&<div className="homeLayerToolbar" role="group" aria-label="Бизнес-области">
@@ -311,8 +305,15 @@ export default function ArchitectureHome({mode,onModeChange,logical,systems,comp
 
   <div className="homeMapGraph"><ReactFlow minZoom={0.08} nodes={canvasNodes} edges={logicalMode?logicalEdges:edges} edgeTypes={homeEdgeTypes} nodesDraggable={editingSystems}
    onNodesChange={(changes:NodeChange[])=>{
-    if(editingSystems)for(const change of changes)if(change.type==='position'&&change.position&&visibleIds.has(change.id))logical.move(change.id,change.position)
-   }} fitView fitViewOptions={{padding:0.15,minZoom:0.3,maxZoom:1}} nodesConnectable={editingSystems} onConnect={logical.onConnect} deleteKeyCode={null} onNodeClick={(_,node)=>{if(node.id.startsWith('component:')){onOpenComponent(node.id.slice('component:'.length));return}setSelectedSystem(node.id);onOpenSystem(node.id)}} onPaneClick={()=>{setSelectedSystem('');onCloseSystem()}}><AutoFit layoutKey={(compactAreas?'area-members':'overview')+(inspectorOpen?'-open':'-closed')} ignoreNodePrefixes="overlay:,component:" focusIds={compactAreas?[...shownIds]:selectedSystemInfo?(mapMode==='business'?[...selectedNeighbors]:[selectedSystemInfo.id]):mapSystems.map(s=>s.id)} suspended={editingLayers||editingSystems}/><Background gap={20}/><Controls showInteractive={false}/>
+    if(!editingSystems)return
+    let baseline=manualLayout?undefined:gridPositions
+    for(const change of changes){
+      if(change.type!=='position'||!change.position||!shownIds.has(change.id))continue
+      logical.move(change.id,change.position,baseline)
+      baseline=undefined
+      setManualLayout(true)
+    }
+   }} fitView fitViewOptions={{padding:0.15,minZoom:0.3,maxZoom:1}} nodesConnectable={editingSystems} onConnect={logical.onConnect} deleteKeyCode={null} onNodeClick={(_,node)=>{if(node.id.startsWith('component:')){onOpenComponent(node.id.slice('component:'.length));return}setSelectedSystem(node.id);onOpenSystem(node.id)}} onPaneClick={()=>{setSelectedSystem('');onCloseSystem()}}><AutoFit trackNodeBounds layoutKey={fitRequest+mapMode+(manualLayout?'-manual':'-grid')+(inspectorOpen?'-open':'-closed')} ignoreNodePrefixes="overlay:,component:" focusIds={compactAreas?[...shownIds]:selectedSystemInfo?(mapMode==='business'?[...selectedNeighbors]:[selectedSystemInfo.id]):mapSystems.map(s=>s.id)} suspended={editingLayers||editingSystems}/><Background gap={20}/><Controls showInteractive={false} onFitView={()=>setFitRequest(n=>n+1)} fitViewOptions={{padding:0.2,maxZoom:1}}/>
    </ReactFlow></div>
 
    {editingLayers&&<aside className="homeLayerDock" role="complementary" aria-label="Свойства архитектурной области">

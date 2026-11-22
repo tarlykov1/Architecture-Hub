@@ -235,7 +235,9 @@ export default function ArchitectureHome({mode,onModeChange,logical,systems,comp
  }):[]
 
  const nodes=shownSystems.map(s=>({id:s.id,draggable:editingSystems,initialWidth:245,initialHeight:86,handles:systemHandles,sourcePosition:Position.Right,targetPosition:Position.Left,position:shownPositions[s.id],data:{label:<DiagramNodeLabel name={s.name} kind={s.kind} logo={logoFromAttributes(s.attributes)} subtitle={components.filter(c=>c.system_id===s.id).length+' компонентов · '+links.filter(l=>l.system_id===s.id).length+' бизнес-связей'}>
-   {areaLabels.has(s.id)&&<span className="systemAreaLabels">{areaLabels.get(s.id)!.map(group=><span key={group.id} className="systemAreaLabel" title={group.name} role="img" aria-label={group.name}><i aria-hidden="true" style={{backgroundColor:groupColor(group)}}/><span className="areaNameAccessible">{group.name}</span></span>)}</span>}
+   {areaLabels.has(s.id)&&<><span className="systemAreaStripes" aria-hidden="true">
+     {areaLabels.get(s.id)!.map(group=><span key={group.id} style={{backgroundColor:groupColor(group)}}/>)}
+   </span><span className="systemAreaLabels">{areaLabels.get(s.id)!.map(group=><span key={group.id} className="systemAreaLabel" title={group.name} role="img" aria-label={group.name}><i aria-hidden="true" style={{backgroundColor:groupColor(group)}}/><span className="areaNameAccessible">{group.name}</span></span>)}</span></>}
    </DiagramNodeLabel>},style:diagramCardStyle()}))
  const selectedSystemInfo=shownSystems.find(s=>s.id===selectedSystem)
  const selectedNeighbors=new Set<string>([selectedSystem])
@@ -256,13 +258,12 @@ export default function ArchitectureHome({mode,onModeChange,logical,systems,comp
    const memberships=areaLabels.get(node.id)
    const outside=displayAreas.length>0&&!memberships
    const selected=selectedSystem===node.id
-   const color=memberships?.length===1?groupColor(memberships[0]):'var(--hub-accent)'
    return {...node,zIndex:memberships||selected?12:10,style:{
      ...node.style,
      ...(memberships&&{
-       background:`color-mix(in srgb, ${color} 14%, white)`,
-       borderColor:`color-mix(in srgb, ${color} 65%, #384052)`,
-       boxShadow:`inset 5px 0 0 ${color}, 0 0 0 1px color-mix(in srgb, ${color} 65%, #384052)`
+       background:'#ededed',
+       borderColor:'#888',
+       boxShadow:'0 0 0 1px #888'
      }),
      ...(selected&&{borderColor:'var(--hub-accent)',outline:'2px solid var(--hub-accent)',outlineOffset:3}),
      opacity:outside&&!selected?0.35:!displayAreas.length&&selectedSystem&&!selectedNeighbors.has(node.id)?0.28:1

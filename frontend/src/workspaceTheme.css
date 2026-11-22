@@ -231,3 +231,10 @@ body {
 .overviewEdgeControl[data-muted] > button:not(:hover):not(:focus-visible) {
   opacity:.35;
 }
+
+.systemAreaStripes {
+  position:absolute; inset:3px auto 3px 1px; width:5px;
+  display:flex; flex-direction:column; gap:1px;
+  overflow:hidden; border-radius:3px; pointer-events:none;
+}
+.systemAreaStripes > span {flex:1}

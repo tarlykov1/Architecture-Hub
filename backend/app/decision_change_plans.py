@@ -258,13 +258,24 @@ def compare_registered_change(
     return output
 
 
-def verify_staged_architecture(row: Any, db: Session) -> None:
-    """Blocks review if a referenced fact changed since planning."""
+def staged_architecture_stale(row: Any, db: Session) -> bool:
+    """Read-only drift check, also shown on existing decision cards."""
     for changed in read_staged(row, db):
-        latest = snapshot(changed["kind"], UUID(str(changed["id"])), db)
-        if latest != changed.get("before"):
-            raise HTTPException(409, "The original architecture has changed. Rework the proposal before review")
+        item_id = UUID(str(changed["id"]))
+        if snapshot(changed["kind"], item_id, db) != changed.get("before"):
+            return True
         if changed.get("impacts") is not None and linked_business_impacts(
-            changed["kind"], UUID(str(changed["id"])), db
+            changed["kind"], item_id, db
         ) != changed["impacts"]:
-            raise HTTPException(409, "Business dependencies of the proposed change have changed")
+            return True
+    return False
+
+
+def verify_staged_architecture(row: Any, db: Session) -> None:
+    """Stop review or publication when any approved fact is stale."""
+    if staged_architecture_stale(row, db):
+        raise HTTPException(
+            409,
+            "The original architecture or its business dependencies changed. "
+            "Rework the proposal before approval or publication",
+        )

@@ -276,6 +276,6 @@ def verify_staged_architecture(row: Any, db: Session) -> None:
     if staged_architecture_stale(row, db):
         raise HTTPException(
             409,
-            "The original architecture or its business dependencies changed. "
+            "Business dependencies or original architecture changed. "
             "Rework the proposal before approval or publication",
         )

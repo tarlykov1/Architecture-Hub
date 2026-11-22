@@ -98,6 +98,12 @@ test('QA-WORK: proposed removals require dependencies, never delete live objects
   const empty=await (await request.get(url)).json() as Decision
   expect(empty.existing_changes).toHaveLength(0)
 
+  // The failed removal is intentionally still in the form. Explicitly discard
+  // it before selecting the flow whose dependency must be removed first.
+  page.once('dialog',dialog=>{
+    expect(dialog.message()).toContain('несохранённые изменения')
+    void dialog.accept()
+  })
   await planner.getByRole('combobox',{name:'Тип изменяемого объекта'}).selectOption('flow')
   await planner.getByRole('combobox',{name:'Действующий объект для изменения'}).selectOption(flow.id)
   await planner.getByRole('combobox',{name:'Планируемое действие'}).selectOption('remove')

@@ -2,7 +2,7 @@ import {expect,test} from '@playwright/test'
 
 test.describe.configure({retries:0})
 
-test('QA-WORK: business area enabled before async catalogs load selects the first available group',async({page})=>{
+test('QA-WORK: async area catalog exposes user-selected membership and process passports',async({page})=>{
   await page.addInitScript(()=>sessionStorage.setItem('architecture-hub:access-token:session','browser-ci-development-token'))
   const api='http://127.0.0.1:8001',suffix=String(Date.now())
   const create=async(path:string,data:Record<string,unknown>)=>{
@@ -25,31 +25,24 @@ test('QA-WORK: business area enabled before async catalogs load selects the firs
   })
   await page.goto('/',{waitUntil:'domcontentloaded'})
   const map=page.getByRole('region',{name:'Главная карта архитектуры'})
-  const toggle=map.getByRole('checkbox',{name:'Показать бизнес-области'})
-  await toggle.check()
-  const info=map.getByRole('status').filter({hasText:'Показана бизнес-область:'})
-  await expect(info).toHaveCount(0)
+  const toggle=map.getByRole('button',{name:'QA-WORK-LATE-GROUP-'+suffix,exact:true})
+  await expect(toggle).toHaveCount(0)
   releaseCategories()
-  // Other tests can seed categories into the same isolated CI database.
-  // Initial selection must exist, but need not be our newly created category.
-  await expect(info).toContainText('Показана бизнес-область:')
-  await expect(map.locator('.react-flow__node-layerRegion')).toHaveCount(1)
-  await map.getByRole('button',{name:'QA-WORK-LATE-GROUP-'+suffix}).click()
-  await expect(info).toContainText('QA-WORK-LATE-GROUP-'+suffix)
+  await expect(toggle).toHaveAttribute('aria-pressed','false')
+  await toggle.click()
+  await expect(map.locator('.react-flow__node[data-id="'+sys+'"] .systemAreaLabel')).toHaveText('QA-WORK-LATE-GROUP-'+suffix)
   const context=map.getByRole('region',{name:'Связанные бизнес-процессы'})
   await context.getByRole('button',{name:'QA-WORK-LATE-PROCESS-'+suffix}).click()
   const passport=page.getByRole('dialog',{name:'Паспорт бизнес-процесса'})
   await expect(passport).toContainText('QA-WORK-LATE-PROCESS-'+suffix)
   await passport.getByRole('button',{name:'Закрыть паспорт БП'}).click()
-  const clear=map.getByRole('button',{name:'Снять выделение'})
-  await clear.click()
-  await expect(info).toHaveCount(0)
-  await expect(toggle).toBeChecked()
+  await toggle.click()
+  await expect(toggle).toHaveAttribute('aria-pressed','false')
   await map.getByRole('button',{name:'Бизнес-связи',exact:true}).click()
   await map.getByText('Фильтры и слои',{exact:true}).click()
   await map.getByLabel('Фокус на ИС').selectOption(sys)
   await expect(map.locator('.react-flow__node').filter({hasText:partnerName})).toBeVisible()
   await expect(context.getByRole('button',{name:'QA-WORK-LATE-PROCESS-'+suffix})).toBeVisible()
   // Explicit deselection must not be reverted by the async initial-selection effect.
-  await expect(info).toHaveCount(0)
+  await expect(toggle).toHaveAttribute('aria-pressed','false')
 })

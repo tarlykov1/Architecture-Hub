@@ -13,7 +13,7 @@ export type DecisionDocument={
   proposed_vms:Array<{id:string;name:string;kind:string;x:number;y:number;description?:string;environment?:string}>
   existing_changes?:Array<{
     id:string;kind:'vm'|'flow';action:'update'|'remove'
-    fields:Record<string,string>;before:Record<string,string>;after:Record<string,string>|null
+    fields:Record<string,string>;before:Record<string,string>;after:Record<string,string>|null;impacts?:string[]
   }>
   proposed_flows:Array<{
     id:string;name:string;source_id:string;target_id:string;protocol?:string;port?:string
@@ -72,6 +72,10 @@ export function buildTechnicalDecisionMarkdown(decision:DecisionDocument,systemN
     )
   }
   if(!decision.existing_changes?.length)rows.push('| Изменения действующих объектов не запланированы | — | — | — | — |')
+  rows.push('','### Зависимости затронутых объектов','')
+  const affected=[...new Set((decision.existing_changes||[]).flatMap(item=>item.impacts||[]))].sort()
+  if(affected.length)for(const dependency of affected)rows.push('- '+dependency)
+  else rows.push('Связи с бизнес-процессами и сценариями обмена в реестре не обнаружены.')
   rows.push('','## Маршрут согласования','','| Служба | Решение | Сотрудник | Замечание |',
     '| --- | --- | --- | --- |')
   for(const service of decision.required_services){

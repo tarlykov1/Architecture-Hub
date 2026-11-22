@@ -24,8 +24,13 @@ function browserProxy(){
 
 export default defineConfig({
   testDir: './live-qa',
-  timeout: 45000,
+  // Two explicit, bounded connection attempts plus React UI assertions.
+  timeout: 90000,
   retries: 1,
+  // The test VPS and shared outbound proxy are easily saturated by several
+  // independent Chromium contexts. Keep desktop/mobile coverage, but limit
+  // concurrent browser handshakes without weakening assertions.
+  workers: 2,
   reporter: [['list'], ['html', { outputFolder: 'live-qa-report', open: 'never' }], ['json', { outputFile: 'live-qa-results/playwright-results.json' }]],
   outputDir: 'live-qa-results',
   use: {

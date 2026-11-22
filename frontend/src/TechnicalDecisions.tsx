@@ -104,6 +104,7 @@ function DecisionInspector({id,request,profile,items,flows,systemName,schema,ope
   const [vmForm,setVmForm]=useState<VMForm>(blankVM)
   const [menu,setMenu]=useState<null|{kind:'vm'|'flow';id:string;x:number;y:number}>(null)
   const [changeFocus,setChangeFocus]=useState<null|{kind:'vm'|'flow';id:string}>(null)
+  const [existingFormDirty,setExistingFormDirty]=useState(false)
   const [undoStack,setUndoStack]=useState<ProposalSnapshot[]>([])
   const [redoStack,setRedoStack]=useState<ProposalSnapshot[]>([])
   const [draft,setDraft]=useState<Link>(emptyFlow)
@@ -205,7 +206,7 @@ function DecisionInspector({id,request,profile,items,flows,systemName,schema,ope
   const editingFlow=loaded.proposed_flows.find(flow=>flow.id===draft.id)
   const flowFormDirty=tool==='flow'&&(editingFlow?JSON.stringify({...emptyFlow,...editingFlow})!==JSON.stringify({...emptyFlow,...draft}):Boolean(draft.name||draft.source_id||draft.target_id||draft.protocol||draft.port||draft.data_description||draft.security||draft.schedule))
   const newVMFormDirty=tool==='vm'&&Boolean(name.trim()||newVM.description.trim()||newVM.environment.trim())
-  const hasUnsavedForm=vmFormDirty||flowFormDirty||newVMFormDirty
+  const hasUnsavedForm=vmFormDirty||flowFormDirty||newVMFormDirty||existingFormDirty
   function exitEditor(){
     if(hasUnsavedForm&&!window.confirm('Есть несохранённые изменения. Закрыть без сохранения?'))return
     close()
@@ -281,10 +282,10 @@ function DecisionInspector({id,request,profile,items,flows,systemName,schema,ope
     openFlow({...emptyFlow,source_id:c.source,target_id:c.target,source_handle:c.sourceHandle||'',target_handle:(c.targetHandle||'').replace('out-','in-')})
   }
   async function writeProposal(vms:ProposedVM[],links:Link[],action:'edit'|'undo'|'redo'='edit',existing:ExistingInput[]=loaded.existing_changes) {
-    if(!editable||busy)return
+    if(!editable||busy)return false
     const before={vms:loaded.proposed_vms,flows:loaded.proposed_flows,existing:loaded.existing_changes}
     if(JSON.stringify(before.vms)===JSON.stringify(vms)&&JSON.stringify(before.flows)===JSON.stringify(links)
-      &&JSON.stringify(before.existing.map(c=>({kind:c.kind,id:c.id,action:c.action,fields:c.fields})))===JSON.stringify(existing.map(c=>({kind:c.kind,id:c.id,action:c.action,fields:c.fields}))))return
+      &&JSON.stringify(before.existing.map(c=>({kind:c.kind,id:c.id,action:c.action,fields:c.fields})))===JSON.stringify(existing.map(c=>({kind:c.kind,id:c.id,action:c.action,fields:c.fields}))))return true
     setBusy(true);setError('')
     try{
       const next=await request<Details>(path+'/'+id,{method:'PUT',body:JSON.stringify({
@@ -296,9 +297,11 @@ function DecisionInspector({id,request,profile,items,flows,systemName,schema,ope
       if(action==='edit'){setUndoStack(stack=>[...stack.slice(-39),before]);setRedoStack([])}
       else if(action==='undo'){setUndoStack(stack=>stack.slice(0,-1));setRedoStack(stack=>[...stack.slice(-39),before])}
       else {setRedoStack(stack=>stack.slice(0,-1));setUndoStack(stack=>[...stack.slice(-39),before])}
+      return true
     }catch(err){
       setError('Не удалось сохранить изменения: '+(err as Error).message)
       setDragPositions({})
+      return false
     }finally{setBusy(false)}
   }
   function persist(vms:ProposedVM[],links:Link[]) {
@@ -502,8 +505,8 @@ function DecisionInspector({id,request,profile,items,flows,systemName,schema,ope
         {!row.proposed_vms.length&&!row.proposed_flows.length&&!row.existing_changes.length&&<small>Изменений пока нет.</small>}
         <DecisionExistingChanges systemId={row.system_id} items={items} flows={flows}
           changes={row.existing_changes} editable={editable} busy={busy}
-          initialTarget={changeFocus}
-          onSave={existing=>{void writeProposal(row.proposed_vms,row.proposed_flows,'edit',existing)}}
+          initialTarget={changeFocus} onDirtyChange={setExistingFormDirty}
+          onSave={existing=>writeProposal(row.proposed_vms,row.proposed_flows,'edit',existing)}
           onFocus={(kind,id)=>{
             if(kind==='vm'){setTab('items');openSchema();inspectVM(id)}
             else {const f=baseFlows.find(item=>item.id===id);if(f){setTab('items');openSchema();inspectFlow(f)}}

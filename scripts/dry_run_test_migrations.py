@@ -86,6 +86,9 @@ def dry_run(source: Path, backend_dir: Path | None = None) -> tuple[dict, int]:
 
     cfg = Config(str(config_file))
     cfg.set_main_option("script_location", str(migration_dir))
+    # The operator may invoke this from a repository checkout, $HOME or /tmp.
+    # Alembic env.py imports app.main; never depend on the current directory.
+    cfg.set_main_option("prepend_sys_path", str(root))
     scripts = ScriptDirectory.from_config(cfg)
     head = scripts.get_current_head()
     checker = _load_schema_checker()
@@ -154,7 +157,7 @@ def dry_run(source: Path, backend_dir: Path | None = None) -> tuple[dict, int]:
                 ),
             }
             return report, 0 if accepted else 2
-    except (OSError, sqlite3.Error, ValueError, Exception) as exc:
+    except Exception as exc:
         # The exception may include private host paths or SQL values; report
         # the class only. Diagnostics can be reproduced on the isolated copy.
         return {

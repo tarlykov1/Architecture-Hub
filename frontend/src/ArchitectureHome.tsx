@@ -106,6 +106,8 @@ export default function ArchitectureHome({mode,onModeChange,logical,systems,comp
   try{const value=JSON.parse(localStorage.getItem('architecture-hub-layer-colors-v1')||'{}');return value&&typeof value==='object'&&!Array.isArray(value)?value:{}}catch{return {}}
  })
  
+ const [businessPair,setBusinessPair]=useState('')
+ const [processMenu,setProcessMenu]=useState('')
  const [openFlowPair,setOpenFlowPair]=useState('')
  const [query,setQuery]=useState('')
  const [focus,setFocus]=useState('')
@@ -152,11 +154,16 @@ export default function ArchitectureHome({mode,onModeChange,logical,systems,comp
    const members=processSystems.get(link.process_id)||new Set<string>()
    members.add(link.system_id);processSystems.set(link.process_id,members)
  }
- const businessCounts=new Map<string,number>()
- for(const members of processSystems.values()){
+ const pairProcesses=new Map<string,Process[]>()
+ for(const process of processes){
+   const members=processSystems.get(process.id)
+   if(!members)continue
    const ids=[...members].sort()
    for(let i=0;i<ids.length;i++)for(let j=i+1;j<ids.length;j++){
-     const key=ids[i]+'|'+ids[j];businessCounts.set(key,(businessCounts.get(key)||0)+1)
+     const key=ids[i]+'|'+ids[j]
+     const group=pairProcesses.get(key)
+     if(group)group.push(process)
+     else pairProcesses.set(key,[process])
    }
  }
  const overlayGroups:OverlayGroup[]=[]
@@ -228,7 +235,7 @@ export default function ArchitectureHome({mode,onModeChange,logical,systems,comp
  }):[]
 
  const nodes=shownSystems.map(s=>({id:s.id,draggable:editingSystems,initialWidth:245,initialHeight:86,handles:systemHandles,sourcePosition:Position.Right,targetPosition:Position.Left,position:shownPositions[s.id],data:{label:<DiagramNodeLabel name={s.name} kind={s.kind} logo={logoFromAttributes(s.attributes)} subtitle={components.filter(c=>c.system_id===s.id).length+' компонентов · '+links.filter(l=>l.system_id===s.id).length+' бизнес-связей'}>
-   {areaLabels.has(s.id)&&<span className="systemAreaLabels">{areaLabels.get(s.id)!.map(group=><span key={group.id} className="systemAreaLabel" title={processes.filter(p=>(group.id==='business:'+p.category_id||group.id==='business:process:'+p.id)&&links.some(link=>link.system_id===s.id&&link.process_id===p.id)).map(p=>p.name).join(', ')||'Метка задана в составе области'}><i aria-hidden="true" style={{backgroundColor:groupColor(group)}}/>{group.name}</span>)}</span>}
+   {areaLabels.has(s.id)&&<span className="systemAreaLabels">{areaLabels.get(s.id)!.map(group=><span key={group.id} className="systemAreaLabel" title={group.name} role="img" aria-label={group.name}><i aria-hidden="true" style={{backgroundColor:groupColor(group)}}/><span className="areaNameAccessible">{group.name}</span></span>)}</span>}
    </DiagramNodeLabel>},style:diagramCardStyle()}))
  const selectedSystemInfo=shownSystems.find(s=>s.id===selectedSystem)
  const selectedNeighbors=new Set<string>([selectedSystem])
@@ -247,15 +254,25 @@ export default function ArchitectureHome({mode,onModeChange,logical,systems,comp
  )
  const highlightedNodes=nodes.map(n=>({...n,zIndex:10,style:{...n.style,border:selectedSystem===n.id?'2px solid var(--hub-accent)':n.style.border,opacity:displayAreas.length?(areaLabels.has(n.id)?1:0.52):selectedSystem&&!selectedNeighbors.has(n.id)?0.28:1}}))
  const canvasNodes=[...highlightedNodes,...componentNodes]
+ function selectBusinessPair(key:string){
+   const group=pairProcesses.get(key)
+   if(!group?.length||!onOpenProcess)return
+   setBusinessPair(key)
+   if(group.length===1){setProcessMenu('');onOpenProcess(group[0].id)}
+   else setProcessMenu(previous=>previous===key?'':key)
+ }
+ const businessCounts=new Map(Array.from(pairProcesses,([key,group])=>[key,group.length]))
+ const systemNames=new Map(shownSystems.map(system=>[system.id,system.name]))
  const connectionCounts=mapMode==='business'?businessCounts:flowCounts
  const edges:Edge[]=[...connectionCounts].filter(([key])=>!compactAreas||key.split('|').every(id=>shownIds.has(id))).map(([key,count])=>{
    const [source,target]=key.split('|')
-   const related=(selectedSystem&&(source===selectedSystem||target===selectedSystem))||(mapMode==='flows'&&openFlowPair===key)
+   const related=(selectedSystem&&(source===selectedSystem||target===selectedSystem))||(mapMode==='flows'?openFlowPair===key:businessPair===key)
    const outsideArea=displayAreas.length>0&&(!areaLabels.has(source)||!areaLabels.has(target))
    const muted=outsideArea||Boolean(selectedSystem&&!related)
    const color=mapMode==='business'?'#79738c':'#69707e'
-   return {id:mapMode+':'+key,source,target,type:mapMode==='flows'?'overviewFlow':'smoothstep',label:mapMode==='business'&&!outsideArea?count+' БП':undefined,
-     data:{flows:groupedFlows.get(key)||[],open:openFlowPair===key,toggle:()=>setOpenFlowPair(old=>old===key?'':key),close:()=>setOpenFlowPair('')},
+   const clickableProcess=mapMode==='business'&&!!onOpenProcess
+   return {id:mapMode+':'+key,source,target,type:mapMode==='flows'||clickableProcess?'overviewFlow':'smoothstep',label:mapMode==='business'&&!outsideArea&&!clickableProcess?count+' БП':undefined,
+     data:clickableProcess?{flows:[],label:count+' БП · '+(systemNames.get(source)||source)+' ↔ '+(systemNames.get(target)||target),processes:pairProcesses.get(key),hideControl:outsideArea,selected:businessPair===key,open:processMenu===key,toggle:()=>selectBusinessPair(key),close:()=>setProcessMenu(''),openProcess:(id:string)=>{setProcessMenu('');onOpenProcess?.(id)}}:{flows:groupedFlows.get(key)||[],open:openFlowPair===key,toggle:()=>setOpenFlowPair(old=>old===key?'':key),close:()=>setOpenFlowPair('')},
      ...(mapMode==='flows'?{markerEnd:{type:MarkerType.ArrowClosed,width:13,height:13,color}}:{}),
      style:{stroke:related?'var(--hub-accent)':color,strokeWidth:related?2.5:1.4,strokeDasharray:mapMode==='business'?'5 5':undefined,opacity:muted?0.18:1}}
  })
@@ -333,7 +350,7 @@ export default function ArchitectureHome({mode,onModeChange,logical,systems,comp
       baseline=undefined
       setManualLayout(true)
     }
-   }} fitView fitViewOptions={{padding:0.15,minZoom:0.3,maxZoom:1}} nodesConnectable={editingSystems} onConnect={logical.onConnect} deleteKeyCode={null} onNodeClick={(_,node)=>{if(node.id.startsWith('component:')){onOpenComponent(node.id.slice('component:'.length));return}setSelectedSystem(node.id);onOpenSystem(node.id)}} onPaneClick={()=>{setSelectedSystem('');onCloseSystem()}}><AutoFit trackNodeBounds layoutKey={fitRequest+mapMode+(manualLayout?'-manual':'-grid')+(inspectorOpen?'-open':'-closed')} ignoreNodePrefixes="overlay:,component:" focusIds={compactAreas?[...shownIds]:selectedSystemInfo?(mapMode==='business'?[...selectedNeighbors]:[selectedSystemInfo.id]):mapSystems.map(s=>s.id)} suspended={editingLayers||editingSystems}/><Background gap={20}/><Controls showInteractive={false} onFitView={()=>setFitRequest(n=>n+1)} fitViewOptions={{padding:0.2,maxZoom:1}}/>
+   }} fitView fitViewOptions={{padding:0.15,minZoom:0.3,maxZoom:1}} nodesConnectable={editingSystems} onConnect={logical.onConnect} deleteKeyCode={null} onEdgeClick={(_,edge)=>{if(mapMode==='business')selectBusinessPair(edge.source+'|'+edge.target)}} onNodeClick={(_,node)=>{if(node.id.startsWith('component:')){onOpenComponent(node.id.slice('component:'.length));return}setSelectedSystem(node.id);onOpenSystem(node.id)}} onPaneClick={()=>{setBusinessPair('');setProcessMenu('');setSelectedSystem('');onCloseSystem()}}><AutoFit trackNodeBounds layoutKey={fitRequest+mapMode+(manualLayout?'-manual':'-grid')+(inspectorOpen?'-open':'-closed')} ignoreNodePrefixes="overlay:,component:" focusIds={compactAreas?[...shownIds]:selectedSystemInfo?(mapMode==='business'?[...selectedNeighbors]:[selectedSystemInfo.id]):mapSystems.map(s=>s.id)} suspended={editingLayers||editingSystems}/><Background gap={20}/><Controls showInteractive={false} onFitView={()=>setFitRequest(n=>n+1)} fitViewOptions={{padding:0.2,maxZoom:1}}/>
    </ReactFlow></div>
 
    {editingLayers&&<aside className="homeLayerDock" role="complementary" aria-label="Свойства архитектурной области">

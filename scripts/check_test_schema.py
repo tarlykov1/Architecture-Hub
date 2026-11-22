@@ -31,7 +31,8 @@ REQUIRED_TABLES: dict[str, set[str]] = {
         "process_id", "parent_id", "owner", "participants", "result",
         "status", "revision", "updated_at",
     },
-    "technical_decision_change_plans": {"decision_id", "changes"},\n    "business_process_steps": {
+    "technical_decision_change_plans": {"decision_id", "changes"},
+    "business_process_steps": {
         "id", "process_id", "position", "name", "description",
         "responsible", "input", "output", "system_id", "component_id",
         "flow_id", "attribute_ids",

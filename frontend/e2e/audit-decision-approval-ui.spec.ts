@@ -60,7 +60,7 @@ test('QA-WORK: review route, submit, anchored comment and honest personal-signat
 
 test('QA-WORK: service queue shows only pending decisions and opens the review tab', async ({page}) => {
   await page.addInitScript(()=>sessionStorage.setItem('architecture-hub:access-token:session','browser-ci-development-token'))
-  const profile = {id:'qa-engineer', username:'qa', display_name:'QA engineer', role:'engineer', auth_kind:'named_user'}
+  const profile = {id:'qa-engineer', username:'qa', display_name:'QA engineer', role:'engineer', auth_kind:'named_user', permissions:{decisions:'write',systems:'read',infrastructure:'write',flows:'read'}}
   await page.route('**/api/auth/me', route=>route.fulfill({json:profile}))
   const base = {
     system_id:'qa-system', status:'in_review', author:'user:qa-architect', updated_at:'2026-11-22T09:00:00Z',

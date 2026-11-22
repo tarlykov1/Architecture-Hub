@@ -143,8 +143,8 @@ function App() {
   const [registryRegions,setRegistryRegions]=useState<Record<string,string[]>|null>(null)
   const [homeEntry,setHomeEntry]=useState(()=>readOverviewMode(location.search))
   const [systemsShowTechnologyInventory,setSystemsShowTechnologyInventory]=useState(false)
-  const [flowEditMode,setFlowEditMode]=useState(()=>location.pathname==='/flows'&&new URLSearchParams(location.search).get('edit')==='1')
-  const [flowView,setFlowView]=useState<'diagram'|'cards'>(()=>parseWorkspaceRoute(window.location).flowId||flowEditMode?'diagram':'cards')
+  const [flowEditMode,setFlowEditMode]=useState(false)
+  const [flowView,setFlowView]=useState<'diagram'|'cards'>(()=>parseWorkspaceRoute(window.location).flowId?'diagram':'cards')
   useEffect(()=>{
     try{localStorage.setItem('architecture-hub-component-view-v1',componentView)}catch{/* Storage unavailable. */}
   },[componentView])
@@ -592,8 +592,7 @@ function App() {
       setViewSystem(route.systemId)
       setSelectedFlow(route.flowId)
       if(route.layer==='flows'){
-        const edit=new URLSearchParams(location.search).get('edit')==='1'
-        setFlowEditMode(edit);setFlowView(edit||route.flowId?'diagram':'cards')
+        setFlowEditMode(false);setFlowView(route.flowId?'diagram':'cards')
       }
       if(route.flowId){setFlowView('diagram');setFlowEditMode(false);setFlowDetailPreference('components');setFlowFocusOnly(true);setFlowComponentFocus('');setWorkspaceQuery('');setWorkspaceVerified('all')}
       setSelected(route.passportId)
@@ -606,7 +605,6 @@ function App() {
   },[])
   useEffect(()=>{
     const nextUrl=new URL(workspaceRouteUrl(layer,viewSystem,inspectorOpen?selected:'',inspectorExpanded,layer==='flows'?selectedFlow:''),window.location.origin)
-    if(layer==='flows'&&flowEditMode)nextUrl.searchParams.set('edit','1')
     if(layer==='flows'||layer==='home')for(const id of areaIds)nextUrl.searchParams.append('area',id)
     if(layer==='home'&&homeEntry!=='business')nextUrl.searchParams.set('map',homeEntry)
     if(layer==='home'&&homeFocusSystemId)nextUrl.searchParams.set('focus',homeFocusSystemId)
@@ -627,7 +625,7 @@ function App() {
     }else{
       window.history.pushState(null,'',next)
     }
-  },[layer,viewSystem,inspectorOpen,selected,inspectorExpanded,homeFocusSystemId,selectedFlow,homeEntry,areaIds,flowEditMode])
+  },[layer,viewSystem,inspectorOpen,selected,inspectorExpanded,homeFocusSystemId,selectedFlow,homeEntry,areaIds])
   const [infraName,setInfraName] = useState('')
   // The create form has its own explicit IS context; `selected` also points to passports.
   const [infraSystemId,setInfraSystemId] = useState('')

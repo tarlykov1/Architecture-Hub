@@ -31,21 +31,21 @@ def test_readonly_schema_check_passes_at_head_and_reports_outdated_revision(tmp_
     passed,code=checker.check(path)
     assert code==0,passed
     assert passed["status"]=="PASS"
-    assert passed["actual_revision"]=="0020_business_process_passports"
+    assert passed["actual_revision"]=="0021_technical_decision_change_plans"
     assert passed["broken_foreign_key_count"]==0
     assert not passed["missing_indexes"]
     assert not passed["missing_columns"]
     assert not passed["missing_tables"]
     with sqlite3.connect(path) as db:
-        db.execute("UPDATE alembic_version SET version_num = ?",("0019_flow_scenarios",))
+        db.execute("UPDATE alembic_version SET version_num = ?",("0020_business_process_passports",))
         db.commit()
     report,code=checker.check(path)
     assert code==2
     assert report["status"]=="BLOCKED"
-    assert report["actual_revision"]=="0019_flow_scenarios"
+    assert report["actual_revision"]=="0020_business_process_passports"
     assert "test Alembic migration" in report["next_action"]
     with sqlite3.connect(path) as db:
-        assert db.execute("SELECT version_num FROM alembic_version").fetchone()[0]=="0019_flow_scenarios"
+        assert db.execute("SELECT version_num FROM alembic_version").fetchone()[0]=="0020_business_process_passports"
 
 
 def test_readonly_schema_check_never_creates_missing_database(tmp_path):

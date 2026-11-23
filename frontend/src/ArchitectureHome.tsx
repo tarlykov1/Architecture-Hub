@@ -39,7 +39,7 @@ type LogicalMap = {
  move: (id:string, point:{x:number;y:number}, startingPositions?:LogicalMap['positions'])=>void
  onConnect: (connection:Connection)=>void
 }
-export default function ArchitectureHome({selectedAreaIds,setSelectedAreaIds,flowTools,onOpenFlowWorkspace,mode,onModeChange,logical,systems,components,flows,processes,categories,links,onOpenProcess,onOpenSystem,onCloseSystem,inspectorOpen,onOpenComponents,onOpenComponent,focusSystemId='',request,canEditLayers=false,canEditFlows=false}:{selectedAreaIds:string[];setSelectedAreaIds:React.Dispatch<React.SetStateAction<string[]>>;flowTools:React.ReactNode;onOpenFlowWorkspace:(systemId:string,edit:boolean)=>void;mode:OverviewMode;onModeChange:(mode:OverviewMode)=>void;logical:LogicalMap;systems:System[];components:Component[];flows:Flow[];processes:Process[];categories:Category[];links:Link[];networks:Network[];interfaces:Interface[];onOpenProcess?:(id:string)=>void;onOpenSystem:(id:string)=>void;onCloseSystem:()=>void;inspectorOpen:boolean;onOpenComponents:(id:string)=>void;onOpenComponent:(id:string)=>void;onOpenNetworks:()=>void;focusSystemId?:string;request?:<T>(url:string,init?:RequestInit)=>Promise<T>;canEditLayers?:boolean;canEditFlows?:boolean}){
+export default function ArchitectureHome({flowSystemId,onFlowSystemChange,selectedAreaIds,setSelectedAreaIds,flowTools,onOpenFlowWorkspace,mode,onModeChange,logical,systems,components,flows,processes,categories,links,onOpenProcess,onOpenSystem,onCloseSystem,inspectorOpen,onOpenComponents,onOpenComponent,focusSystemId='',request,canEditLayers=false,canEditFlows=false}:{flowSystemId:string;onFlowSystemChange:(id:string)=>void;selectedAreaIds:string[];setSelectedAreaIds:React.Dispatch<React.SetStateAction<string[]>>;flowTools:React.ReactNode;onOpenFlowWorkspace:(systemId:string,edit:boolean)=>void;mode:OverviewMode;onModeChange:(mode:OverviewMode)=>void;logical:LogicalMap;systems:System[];components:Component[];flows:Flow[];processes:Process[];categories:Category[];links:Link[];networks:Network[];interfaces:Interface[];onOpenProcess?:(id:string)=>void;onOpenSystem:(id:string)=>void;onCloseSystem:()=>void;inspectorOpen:boolean;onOpenComponents:(id:string)=>void;onOpenComponent:(id:string)=>void;onOpenNetworks:()=>void;focusSystemId?:string;request?:<T>(url:string,init?:RequestInit)=>Promise<T>;canEditLayers?:boolean;canEditFlows?:boolean}){
  const [layers,setLayers]=useState({systems:true,components:false,flows:false,business:false})
  const sequence=mode==='sequence'
  const mapMode=sequence?'flows':mode
@@ -109,7 +109,9 @@ export default function ArchitectureHome({selectedAreaIds,setSelectedAreaIds,flo
  const [processMenu,setProcessMenu]=useState('')
  const [openFlowPair,setOpenFlowPair]=useState('')
  const [query,setQuery]=useState('')
- const [focus,setFocus]=useState('')
+ const [overviewFocus,setOverviewFocus]=useState('')
+ const focus=mapMode==='flows'?flowSystemId:overviewFocus
+ const setFocus=mapMode==='flows'?onFlowSystemChange:setOverviewFocus
  const [selectedSystem,setSelectedSystem]=useState('')
  const validFocusSystemId=systems.some(system=>system.id===focusSystemId)?focusSystemId:''
  useEffect(()=>{

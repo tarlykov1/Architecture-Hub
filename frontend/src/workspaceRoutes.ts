@@ -27,7 +27,8 @@ export function parseWorkspaceRoute(location: Pick<Location, 'pathname' | 'searc
   const layer = PATH_SECTIONS[pathname] ?? 'home'
   const params = new URLSearchParams(location.search)
   // A system filter is meaningful only on the components/flows workspaces.
-  const systemId = layer === 'infrastructure' || layer === 'flows'
+  const flowMap = layer === 'home' && ['flows', 'sequence'].includes(params.get('map') || '')
+  const systemId = layer === 'infrastructure' || layer === 'flows' || flowMap
     ? (params.get('system') || '')
     : ''
   const passportId = layer === 'systems' ? params.get('passport') || '' : ''

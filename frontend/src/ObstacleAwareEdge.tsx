@@ -109,7 +109,7 @@ export function ObstacleAwareEdge({id,source,target,sourceX,sourceY,targetX,targ
    const a={x:sourceX,y:sourceY},b={x:targetX,y:targetY}
    // Source and target cards are obstacles too: ignoring their bodies let a
    // path wrap behind its own card and arrive along the wrong edge.
-   const obstacles:Rect[]=nodes.filter(n=>!n.id.startsWith('network:')&&!n.hidden).map(n=>{
+   const obstacles:Rect[]=nodes.filter(n=>!n.id.startsWith('network:')&&!n.hidden&&!n.data.placementFrame).map(n=>{
      const x=n.measured?.width||Number(n.style?.width)||220
      const y=n.measured?.height||Number(n.style?.height)||140
      return {left:n.position.x-10,top:n.position.y-10,right:n.position.x+x+10,bottom:n.position.y+y+10}
@@ -133,6 +133,7 @@ export function ObstacleAwareEdge({id,source,target,sourceX,sourceY,targetX,targ
    return {path:pathString(points),label:midpoint(points)}
  },[nodes,source,target,sourceX,sourceY,targetX,targetY,sourcePosition,targetPosition,data?.reciprocal])
  const caption=typeof data?.caption==='string'?data.caption:''
+ const labelOffsetY=typeof data?.labelOffsetY==='number'?data.labelOffsetY:-26
  const fullCaption=typeof data?.fullCaption==='string'?data.fullCaption:caption
  const onSelect=data?.onSelect as undefined|(()=>void)
  const onContextMenu=data?.onContextMenu as undefined|((event:React.MouseEvent)=>void)
@@ -154,7 +155,7 @@ export function ObstacleAwareEdge({id,source,target,sourceX,sourceY,targetX,targ
  return <>
    <BaseEdge id={id} path={path} markerEnd={markerEnd} style={style} interactionWidth={18}/>
    {(caption||endpointEditor)&&<EdgeLabelRenderer>
-     {caption&&(onSelect?<button type="button" className="reciprocalEdgeLabel boardSelectableEdgeLabel nodrag nopan" aria-label={'Выбрать поток '+fullCaption} title={fullCaption} onContextMenu={event=>{event.preventDefault();event.stopPropagation();onContextMenu?.(event)}} onClick={event=>{event.preventDefault();event.stopPropagation();onSelect()}} style={{position:'absolute',transform:`translate(-50%,-50%) translate(${label.x}px,${label.y-26}px)`,pointerEvents:'auto',opacity:style?.opacity??1}}>{caption}</button>:<div className="reciprocalEdgeLabel" style={{position:'absolute',transform:`translate(-50%,-50%) translate(${label.x}px,${label.y}px)`,pointerEvents:'none',opacity:style?.opacity??1}}>{caption}</div>)}
+     {caption&&(onSelect?<button type="button" className="reciprocalEdgeLabel boardSelectableEdgeLabel nodrag nopan" aria-label={'Выбрать поток '+fullCaption} title={fullCaption} onContextMenu={event=>{event.preventDefault();event.stopPropagation();onContextMenu?.(event)}} onClick={event=>{event.preventDefault();event.stopPropagation();onSelect()}} style={{position:'absolute',transform:`translate(-50%,-50%) translate(${label.x}px,${label.y+labelOffsetY}px)`,pointerEvents:'auto',opacity:style?.opacity??1}}>{caption}</button>:<div className="reciprocalEdgeLabel" style={{position:'absolute',transform:`translate(-50%,-50%) translate(${label.x}px,${label.y}px)`,pointerEvents:'none',opacity:style?.opacity??1}}>{caption}</div>)}
      {endpointEditor&&grip('source',sourceX,sourceY)}
      {endpointEditor&&grip('target',targetX,targetY)}
    </EdgeLabelRenderer>}

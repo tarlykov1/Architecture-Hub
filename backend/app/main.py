@@ -3814,7 +3814,8 @@ class ProposedDecisionVM(BaseModel):
     id: UUID
     system_id: UUID
     name: str = Field(min_length=1, max_length=250)
-    kind: Literal["vm", "server", "host"] = "vm"
+    kind: Literal["vm", "server", "host", "application", "service", "database", "queue"] = "vm"
+    parent_id: UUID | None = None
     x: float = Field(ge=-100000, le=100000, allow_inf_nan=False)
     y: float = Field(ge=-100000, le=100000, allow_inf_nan=False)
     # Optional until explicitly defined; old proposals round-trip unchanged.
@@ -4031,6 +4032,14 @@ def _decision_validate_draft(row: TechnicalDecision, payload: TechnicalDecisionD
         raise HTTPException(422, "New VMs must belong to the selected IS")
     if any(db.get(InfrastructureItem, vm.id) for vm in vms):
         raise HTTPException(409, "Proposed VM ID already exists in the live register")
+    hosts = {"vm", "host", "server"}
+    proposed = {item.id: item for item in vms}
+    for item in vms:
+        if item.parent_id is None:
+            continue
+        parent = proposed.get(item.parent_id) or db.get(InfrastructureItem, item.parent_id)
+        if item.kind in hosts or not parent or parent.kind not in hosts or parent.system_id != row.system_id:
+            raise HTTPException(422, "Выберите ВМ или сервер из этой ИС для размещения компонента")
     flows = payload.proposed_flows
     if len({flow.id for flow in flows}) != len(flows):
         raise HTTPException(422, "Duplicate proposed flow")
@@ -4158,6 +4167,9 @@ def edit_technical_decision(decision_id: UUID, payload: TechnicalDecisionDraftIn
     else:
         verify_staged_architecture(row, db)
         planned = staged_before
+    removed_hosts = {str(change["id"]) for change in planned if change["kind"] == "vm" and change["action"] == "remove"}
+    if any(str(item.parent_id) in removed_hosts for item in payload.proposed_vms):
+        raise HTTPException(422, "На удаляемой ВМ запланированы компоненты")
     old = {"title": row.title, "vms": len(row.proposed_vms),
            "flows": len(row.proposed_flows), "existing_changes": len(staged_before)}
     row.title = payload.title.strip()

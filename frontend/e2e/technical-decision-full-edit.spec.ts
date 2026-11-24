@@ -175,3 +175,24 @@ test('QA-WORK: technical decision editor stays usable on a 390px viewport',async
   await page.getByRole('button',{name:'Состав',exact:true}).click()
   await expect(page.locator(`.decisionCanvas .react-flow__node[data-id="${vm.id}"]`)).toBeVisible()
 })
+
+test('mixed VM placement persists in a proposal and rejects a missing host atomically',async({page,request})=>{
+  const {title,url,vm,liveId}=await build(request,'MixedPlacement')
+  await open(page,title)
+  await page.getByRole('button',{name:'Компонент',exact:true}).click()
+  await page.getByLabel('Название компонента').fill('QA-WORK-Queue')
+  await page.getByLabel('Тип новой ВМ').selectOption('queue')
+  await page.getByLabel('Размещение',{exact:true}).selectOption(vm.id)
+  await page.getByRole('button',{name:'Добавить в черновик'}).click()
+  await expect.poll(async()=>((await (await request.get(url)).json()).proposed_vms.length)).toBe(2)
+  const saved=await (await request.get(url)).json()
+  const queue=saved.proposed_vms.find((item:Vm)=>item.kind==='queue')
+  expect(queue.parent_id).toBe(vm.id)
+  for(const [parent,expected] of [[queue.id,422],[crypto.randomUUID(),422],[liveId,200]] as const){
+    const change=await request.put(url,{data:{
+      title,expected_revision:saved.revision,proposed_vms:[vm,{...queue,parent_id:parent}]
+    }})
+    expect(change.status(),await change.text()).toBe(expected)
+  }
+  expect((await (await request.get(api+'/infra')).json()).some((item:Vm)=>item.id===queue.id)).toBeFalsy()
+})

@@ -1,6 +1,7 @@
 import {useEffect, useState} from 'react'
 import {ArrowLeft, FileText, Plus, X, Undo2, Redo2, MousePointer2, GitBranch, Monitor, Maximize2} from 'lucide-react'
 import {Background, ConnectionMode, Controls, MarkerType, ReactFlow, type Connection} from '@xyflow/react'
+import {SystemComposition} from './SystemComposition'
 import {DiagramNodeLabel, diagramCardStyle} from './DiagramVisual'
 import {diagramPortNodes,useDiagramMeasurements} from './DiagramPortNode'
 import {autoFlowPorts} from './flowPorts'
@@ -13,7 +14,7 @@ import {DecisionExistingChanges,type ExistingChange,type ExistingInput,existingS
 import './technicalDecisions.css'
 
 type Api = <T>(url: string, init?: RequestInit) => Promise<T>
-type Item = {id: string; name: string; system_id: string; kind: string;description?:string;details?:Record<string,unknown>}
+type Item = {id: string; name: string; system_id: string; kind: string;parent_id?:string|null;description?:string;details?:Record<string,unknown>}
 type Link = {id: string; name: string; source_id: string; target_id: string; protocol: string; port: string; source_handle?:string; target_handle?:string; data_description?:string;security?:string;schedule?:string;verification?:string}
 type ProposedVM = Item & {x: number; y: number; description?:string; environment?:string}
 type VMForm = {name:string;kind:'vm'|'server'|'host';description:string;environment:string}
@@ -254,9 +255,10 @@ function DecisionInspector({id,initialReview,request,profile,items,flows,systemN
   const nodes=[...baseline.map(i=>{
       const change=currentChanges.get('vm:'+i.id)
       const projected=change?.action==='update'?{...i,...change.after}:i
+      const parent=items.find(item=>item.id===i.parent_id)
       return {type:'diagramPort',id:i.id,position:nextGridPosition(),draggable:false,
         data:{label:<DiagramNodeLabel name={projected.name} kind={projected.kind}
-          subtitle={change?.action==='remove'?'Планируется удаление':change?.action==='update'?'Изменение':''}/>},
+          subtitle={change?.action==='remove'?'Планируется удаление':change?.action==='update'?'Изменение':''} detail={parent?'Размещение: '+parent.name:undefined}/>},
         style:diagramCardStyle(change?{border:change.action==='remove'?'2px dashed #ae7648':'2px solid #6550ad'}:{})}
     }),
     ...loaded.proposed_vms.map(vm=>({type:'diagramPort',id:vm.id,position:dragPositions[vm.id]||{x:vm.x,y:vm.y},draggable:editable&&!busy,data:{label:<DiagramNodeLabel name={vm.name} kind={vm.kind} subtitle="Новая ВМ"/>},style:diagramCardStyle({border:'1px dashed #a46c26'})}))]
@@ -422,8 +424,9 @@ function DecisionInspector({id,initialReview,request,profile,items,flows,systemN
       {row.base_changed&&<p role="status">Исходная архитектура изменилась после отправки на согласование. Для подписи требуется пересогласование обновлённой версии.</p>}
       {tab==='items'?<>
         {row.description&&<p>{row.description}</p>}
+        {schema&&<details><summary>Текущее размещение компонентов ИС</summary><SystemComposition flows={flows} items={items.filter(item=>item.system_id===row.system_id)} onOpen={inspectVM}/></details>}
         {schema&&selectedVM?<section className="decisionVmDetails" aria-label="Паспорт выбранной ВМ">
-          <h4>{selectedProposedVM?'Проектируемая ВМ':'Действующая ВМ'}</h4>
+          <h4>{selectedProposedVM?'Проектируемая ВМ':['vm','server','host'].includes(selectedVM.kind)?'Действующая ВМ или сервер':'Действующий компонент'}</h4>
           {selectedProposedVM&&editable?<form onSubmit={event=>{event.preventDefault();saveVMProperties()}}>
             <label>Имя проектируемой ВМ<input aria-label="Имя проектируемой ВМ" required maxLength={250} value={vmForm.name} onChange={event=>setVmForm({...vmForm,name:event.target.value})}/></label>
             <label>Тип<select aria-label="Тип проектируемой ВМ" value={vmForm.kind} onChange={event=>setVmForm({...vmForm,kind:event.target.value as VMForm['kind']})}>

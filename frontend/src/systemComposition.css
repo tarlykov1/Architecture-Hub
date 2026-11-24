@@ -1,0 +1,10 @@
+.systemComposition {height:clamp(360px,65vh,760px);width:100%;background:#fafbfe}
+.systemComposition .placementFrame {border:1px dashed #8796ad;background:#f0f4fa80;pointer-events:none}
+.systemComposition .placementHeading,.systemComposition .placementItem {padding:0;border-radius:6px}
+.systemComposition .placementHeading {border:none;background:transparent;text-align:left;padding:4px}
+.systemComposition .placementItem {border-color:#a9b7ca}
+.systemComposition button:not(.react-flow__controls-button) {display:flex;align-items:center;gap:8px;width:100%;padding:6px 8px;border:0;background:transparent;text-align:left}
+.systemComposition button span {min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.systemComposition button svg {width:18px;height:18px;flex:none}
+.systemComposition small {display:block;color:var(--hub-muted)}
+.systemComposition .react-flow__edge-text {font-size:10px}

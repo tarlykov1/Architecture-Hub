@@ -1,14 +1,31 @@
-import {Background, Controls, MarkerType, Position, ReactFlow, type Node} from '@xyflow/react'
+import {Background, Controls, MarkerType, ReactFlow, type Node} from '@xyflow/react'
+import {useEffect, useRef, useState} from 'react'
+import {autoFlowPorts, ReadonlyFlowNode} from './flowPorts'
+import {ObstacleAwareEdge} from './ObstacleAwareEdge'
+import {flowCountLabel} from './graphLayout'
 import {ListOrdered, AppWindow} from 'lucide-react'
 import {architectureIcon} from './DiagramVisual'
 import './systemComposition.css'
 
-type Item={id:string;name:string;kind:string;parent_id?:string|null}
+type Item={id:string;name:string;kind:string;parent_id?:string|null;description?:string}
 const labels:Record<string,string>={vm:'ВМ',server:'Сервер',host:'Хост',database:'База данных',service:'Сервис',application:'Приложение',queue:'Очередь',api:'API',container:'Контейнер'}
 
 type Flow = {id:string; source_id:string; target_id:string; name:string; protocol:string; port:string}
 
+const nodeTypes={component:ReadonlyFlowNode}
+const edgeTypes={placement:ObstacleAwareEdge}
 export function SystemComposition({items,flows,onOpen}:{items:Item[];flows:Flow[];onOpen:(id:string)=>void}){
+  const container=useRef<HTMLElement>(null)
+  const [width,setWidth]=useState(0)
+  const [selection,setSelection]=useState('')
+  useEffect(()=>{
+    const element=container.current
+    if(!element)return
+    const observer=new ResizeObserver(([entry])=>setWidth(entry.contentRect.width))
+    observer.observe(element)
+    return ()=>observer.disconnect()
+  },[])
+  const narrow=width<600
   const byId=new Map(items.map(item=>[item.id,item]))
   const isHost=(item:Item)=>['vm','server','host'].includes(item.kind)
   const hosts=items.filter(isHost)
@@ -33,39 +50,66 @@ export function SystemComposition({items,flows,onOpen}:{items:Item[];flows:Flow[
   let left=0
   let rowHeight=0
   sections.forEach(({host,members},index)=>{
-    const columns=Math.min(2,Math.max(1,members.length))
+    const columns=Math.min(narrow?1:2,Math.max(1,members.length))
     const width=columns*224+24
     const height=Math.max(110,68+Math.ceil(members.length/columns)*88)
-    if(index%2===0){top+=rowHeight;left=0;rowHeight=0}
+    if(narrow||index%2===0){top+=rowHeight;left=0;rowHeight=0}
     const frameId='placement-frame:'+host.id
-    nodes.push({id:frameId,type:'group',position:{x:left,y:top},style:{width,height},
-      className:'placementFrame',selectable:false,focusable:false,data:{}})
+    if(members.length)nodes.push({id:frameId,type:'group',position:{x:left,y:top},style:{width,height},
+      className:'placementFrame',selectable:false,focusable:false,data:{placementFrame:true}})
+    const frameLeft=left
     left+=width+96
-    rowHeight=Math.max(rowHeight,height+80)
+    rowHeight=Math.max(rowHeight,(members.length?height:54)+80)
 
     function addNode(item:Item,x:number,y:number,heading=false){
       const icon=item.kind==='queue'?<ListOrdered/>:item.kind==='application'?<AppWindow/>:architectureIcon(item.kind)
-      const label=item.id?<button type="button" title={item.name} onClick={()=>onOpen(item.id)}>
-        {icon}<span>{item.name}{!heading&&<small>{labels[item.kind]??item.kind}</small>}</span>
+      const subtitle=heading?item.description?.trim():labels[item.kind]??item.kind
+      const label=item.id?<button type="button" title={[item.name,subtitle].filter(Boolean).join(' · ')} onClick={()=>onOpen(item.id)}>
+        {icon}<span>{item.name}{subtitle&&<small>{subtitle}</small>}</span>
       </button>:<strong>{item.name}</strong>
-      nodes.push({id:item.id||'placement-unassigned',parentId:frameId,position:{x,y},style:{width:192},
-        className:heading?'placementHeading':'placementItem',sourcePosition:Position.Right,
-        targetPosition:Position.Left,selectable:false,focusable:false,data:{label}})
+      nodes.push({id:item.id||'placement-unassigned',type:'component',position:{x:frameLeft+x,y:top+y},style:{width:192},zIndex:2,
+        className:heading?'placementHeading':'placementItem',selectable:false,focusable:false,data:{label}})
     }
     addNode(host,16,8,true)
     members.forEach((item,i)=>addNode(item,18+(i%columns)*224,60+Math.floor(i/columns)*88))
   })
-  const edges=flows.filter(f=>byId.has(f.source_id)&&byId.has(f.target_id)).map(f=>({
-    id:f.id,source:f.source_id,target:f.target_id,type:'smoothstep',zIndex:1,
-    markerEnd:{type:MarkerType.ArrowClosed},label:[f.protocol,f.port].filter(Boolean).join(' ')||f.name,
-    ariaLabel:f.name
-  }))
-  if(!items.length)return <p>Компоненты ещё не добавлены.</p>
-  return <section className="systemComposition" aria-label="Размещение компонентов по ВМ">
-    <ReactFlow key={sections.map(section=>section.host.id+':'+section.members.length).join('|')}
-      nodes={nodes} edges={edges} nodesDraggable={false} nodesConnectable={false}
-      deleteKeyCode={null} fitView fitViewOptions={{padding:0.12,maxZoom:1}} minZoom={0.08}>
-      <Background gap={20}/><Controls showInteractive={false}/>
-    </ReactFlow>
+  const positions=new Map(nodes.map(node=>[node.id,node.position]))
+  const directions=new Map<string,Flow[]>()
+  for(const flow of flows){
+    if(!byId.has(flow.source_id)||!byId.has(flow.target_id))continue
+    const pair=JSON.stringify([flow.source_id,flow.target_id])
+    const group=directions.get(pair)
+    if(group)group.push(flow)
+    else directions.set(pair,[flow])
+  }
+  const edges=Array.from(directions,([id,group])=>{
+    const first=group[0]
+    const source=first.source_id,target=first.target_id
+    const ports=autoFlowPorts(positions.get(source)!,positions.get(target)!)
+    const secondLane=source>target&&directions.has(JSON.stringify([target,source]))
+    const caption=group.length>1?flowCountLabel(group.length):[first.protocol,first.port].filter(Boolean).join(' ')||'1 поток'
+    const fullCaption=byId.get(source)!.name+' → '+byId.get(target)!.name+' · '+caption
+    return {id,source,target,type:'placement',zIndex:1,
+      sourceHandle:secondLane?ports.source_handle.replace('-1','-2'):ports.source_handle,
+      targetHandle:secondLane?ports.target_handle.replace('-1','-2'):ports.target_handle,
+      markerEnd:{type:MarkerType.ArrowClosed},ariaLabel:fullCaption,
+      data:{caption,fullCaption,onSelect:()=>setSelection(id)}}
+  })
+  const selected=directions.get(selection)
+  return <section ref={container} aria-label="Размещение компонентов по ВМ">
+    {!items.length?<p>Компоненты ещё не добавлены.</p>:width>0&&<div className="systemComposition">
+      <ReactFlow key={JSON.stringify([narrow,sections.map(section=>[section.host.id,section.members.length])])}
+        nodeTypes={nodeTypes} edgeTypes={edgeTypes} nodes={nodes} edges={edges}
+        onEdgeClick={(_,edge)=>setSelection(edge.id)} onPaneClick={()=>setSelection('')}
+        nodesDraggable={false} nodesConnectable={false} deleteKeyCode={null}
+        fitView={!narrow} defaultViewport={{x:18,y:22,zoom:1}} fitViewOptions={{padding:0.12,maxZoom:1}} minZoom={0.08}>
+        <Background gap={20}/><Controls showInteractive={false}/>
+      </ReactFlow>
+    </div>}
+    {selected&&<aside className="placementFlows" aria-label="Потоки направления">
+      <header><strong>{byId.get(selected[0].source_id)?.name} → {byId.get(selected[0].target_id)?.name}</strong>
+        <button type="button" onClick={()=>setSelection('')}>Закрыть</button></header>
+      <ul>{selected.map(flow=><li key={flow.id}>{flow.name} <small>{[flow.protocol,flow.port].filter(Boolean).join(' ')}</small></li>)}</ul>
+    </aside>}
   </section>
 }

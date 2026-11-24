@@ -23,7 +23,7 @@ export type DecisionDocument={
   author?: string
   author_name?: string
   updated_at?: string
-  proposed_vms:Array<{id:string;name:string;kind:string;x:number;y:number;description?:string;environment?:string}>
+  proposed_vms:Array<{id:string;name:string;kind:string;parent_id?:string|null;x:number;y:number;description?:string;environment?:string}>
   existing_changes?:Array<{
     id:string;kind:'vm'|'flow';action:'update'|'remove'
     fields:Record<string,string>;before:Record<string,string>;after:Record<string,string>|null;impacts?:string[]
@@ -56,16 +56,16 @@ export function buildTechnicalDecisionMarkdown(decision:DecisionDocument,systemN
     '',
     value(decision.description),
     '',
-    '## Проектируемые ВМ и серверы',
+    '## Проектируемые ВМ и серверы'+(decision.proposed_vms.some(item=>!['vm','server','host'].includes(item.kind))?' и их компоненты':''),
     '',
-    '| Объект | Тип | Среда | Описание | Положение на схеме |',
-    '| --- | --- | --- | --- | --- |',
+    '| Объект | Тип | Среда | Описание | Положение на схеме | Размещение |',
+    '| --- | --- | --- | --- | --- | --- |',
   ]
   for(const vm of decision.proposed_vms)rows.push(
     '| '+cell(vm.name)+' | '+cell(vm.kind)+' | '+cell(value(vm.environment))+' | '+cell(value(vm.description))+
-    ' | '+Math.round(vm.x)+', '+Math.round(vm.y)+' |'
+    ' | '+Math.round(vm.x)+', '+Math.round(vm.y)+' | '+cell(vm.parent_id?(names.get(vm.parent_id)||vm.parent_id):'—')+' |'
   )
-  if(!decision.proposed_vms.length)rows.push('| Нет проектируемых объектов | — | — | — | — |')
+  if(!decision.proposed_vms.length)rows.push('| Нет проектируемых объектов | — | — | — | — | — |')
   rows.push('','## Проектируемые потоки','','| Поток | Источник → получатель | Протокол / порт | Данные | Защита | Периодичность | Достоверность |',
     '| --- | --- | --- | --- | --- | --- | --- |')
   for(const flow of decision.proposed_flows)rows.push(

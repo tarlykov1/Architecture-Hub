@@ -109,7 +109,7 @@ export function ObstacleAwareEdge({id,source,target,sourceX,sourceY,targetX,targ
    const a={x:sourceX,y:sourceY},b={x:targetX,y:targetY}
    // Source and target cards are obstacles too: ignoring their bodies let a
    // path wrap behind its own card and arrive along the wrong edge.
-   const obstacles:Rect[]=nodes.filter(n=>!n.id.startsWith('network:')&&!n.hidden).map(n=>{
+   const obstacles:Rect[]=nodes.filter(n=>!n.id.startsWith('network:')&&!n.hidden&&!n.data.placementFrame).map(n=>{
      const x=n.measured?.width||Number(n.style?.width)||220
      const y=n.measured?.height||Number(n.style?.height)||140
      return {left:n.position.x-10,top:n.position.y-10,right:n.position.x+x+10,bottom:n.position.y+y+10}

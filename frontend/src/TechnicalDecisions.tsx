@@ -17,9 +17,11 @@ type Api = <T>(url: string, init?: RequestInit) => Promise<T>
 type Item = {id: string; name: string; system_id: string; kind: string;parent_id?:string|null;description?:string;details?:Record<string,unknown>}
 type Link = {id: string; name: string; source_id: string; target_id: string; protocol: string; port: string; source_handle?:string; target_handle?:string; data_description?:string;security?:string;schedule?:string;verification?:string}
 type ProposedVM = Item & {x: number; y: number; description?:string; environment?:string}
-type VMForm = {name:string;kind:'vm'|'server'|'host';description:string;environment:string}
+const componentKinds:Record<string,string>={vm:'ВМ',server:'Сервер',host:'Хост',application:'Приложение',service:'Сервис',database:'База данных',queue:'Очередь'}
+const isHost=(kind:string)=>['vm','server','host'].includes(kind)
+type VMForm = {name:string;kind:string;parent_id:string;description:string;environment:string}
 type ProposalSnapshot = {vms:ProposedVM[];flows:Link[];existing:ExistingChange[]}
-const blankVM = ():VMForm=>({name:'',kind:'vm',description:'',environment:''})
+const blankVM = ():VMForm=>({name:'',kind:'vm',parent_id:'',description:'',environment:''})
 const decisionEdgeTypes={proposal:ObstacleAwareEdge}
 const emptyFlow:Link={id:'',source_id:'',target_id:'',source_handle:'',target_handle:'',name:'',protocol:'',port:'',data_description:'',security:'',schedule:'',verification:'draft'}
 const states = {draft:'Черновик', in_review:'На согласовании', changes_requested:'На доработке', approved:'Согласовано', published:'Опубликовано'}
@@ -211,14 +213,19 @@ function DecisionInspector({id,initialReview,request,profile,items,flows,systemN
   const linkedIds=new Set(lines.flatMap(f=>[f.source_id,f.target_id]))
   const baseline=items.filter(i=>localIds.has(i.id)||linkedIds.has(i.id))
   const choices=[...items,...loaded.proposed_vms]
+  const compositionItems=choices.filter(item=>item.system_id===loaded.system_id&&currentChanges.get('vm:'+item.id)?.action!=='remove').map(item=>{
+    const change=currentChanges.get('vm:'+item.id)
+    return change?.action==='update'?{...item,...change.after}:item
+  })
+  const availableHosts=compositionItems.filter(item=>isHost(item.kind))
   const proposedPositions=loaded.proposed_vms
   const proposedVmIds=new Set(proposedPositions.map(vm=>vm.id))
   const selectedVM=choices.find(vm=>vm.id===selectedVMId)
   const selectedProposedVM=loaded.proposed_vms.find(vm=>vm.id===selectedVMId)
-  const vmFormDirty=!!selectedProposedVM&&(vmForm.name!==selectedProposedVM.name||vmForm.kind!==selectedProposedVM.kind||vmForm.description!==(selectedProposedVM.description||'')||vmForm.environment!==(selectedProposedVM.environment||''))
+  const vmFormDirty=!!selectedProposedVM&&(vmForm.parent_id!==(selectedProposedVM.parent_id||'')||vmForm.name!==selectedProposedVM.name||vmForm.kind!==selectedProposedVM.kind||vmForm.description!==(selectedProposedVM.description||'')||vmForm.environment!==(selectedProposedVM.environment||''))
   const editingFlow=loaded.proposed_flows.find(flow=>flow.id===draft.id)
   const flowFormDirty=tool==='flow'&&(editingFlow?JSON.stringify({...emptyFlow,...editingFlow})!==JSON.stringify({...emptyFlow,...draft}):Boolean(draft.name||draft.source_id||draft.target_id||draft.protocol||draft.port||draft.data_description||draft.security||draft.schedule))
-  const newVMFormDirty=tool==='vm'&&Boolean(name.trim()||newVM.description.trim()||newVM.environment.trim())
+  const newVMFormDirty=tool==='vm'&&Boolean(name.trim()||newVM.parent_id||newVM.kind!=='vm'||newVM.description.trim()||newVM.environment.trim())
   const hasUnsavedForm=vmFormDirty||flowFormDirty||newVMFormDirty||existingFormDirty
   function exitEditor(){
     if(hasUnsavedForm&&!window.confirm('Есть несохранённые изменения. Закрыть без сохранения?'))return
@@ -230,12 +237,13 @@ function DecisionInspector({id,initialReview,request,profile,items,flows,systemN
     const vm=choices.find(x=>x.id===vmId)
     if(!vm)return
     setMenu(null);setSelectedVMId(vmId);setViewFlowId('');setTool(null);setTab('items');setError('')
-    setVmForm({name:vm.name,kind:vm.kind==='server'||vm.kind==='host'?vm.kind:'vm',description:(vm as ProposedVM).description||'',environment:(vm as ProposedVM).environment||''})
+    setVmForm({name:vm.name,kind:vm.kind,parent_id:vm.parent_id||'',description:(vm as ProposedVM).description||'',environment:(vm as ProposedVM).environment||''})
   }
   function deleteProposedVM(vmId:string){
     if(!editable||busy)return
     const vm=loaded.proposed_vms.find(item=>item.id===vmId)
     if(!vm)return
+    if(loaded.proposed_vms.some(item=>item.parent_id===vmId)){setError('Сначала перенесите или удалите размещённые компоненты');return}
     const attached=loaded.proposed_flows.filter(flow=>flow.source_id===vmId||flow.target_id===vmId)
     const message=attached.length?'Удалить ВМ «'+vm.name+'» и связанные проектируемые потоки ('+attached.length+')?':'Удалить проектируемую ВМ «'+vm.name+'»?'
     if(!window.confirm(message))return
@@ -261,7 +269,7 @@ function DecisionInspector({id,initialReview,request,profile,items,flows,systemN
           subtitle={change?.action==='remove'?'Планируется удаление':change?.action==='update'?'Изменение':''} detail={parent?'Размещение: '+parent.name:undefined}/>},
         style:diagramCardStyle(change?{border:change.action==='remove'?'2px dashed #ae7648':'2px solid #6550ad'}:{})}
     }),
-    ...loaded.proposed_vms.map(vm=>({type:'diagramPort',id:vm.id,position:dragPositions[vm.id]||{x:vm.x,y:vm.y},draggable:editable&&!busy,data:{label:<DiagramNodeLabel name={vm.name} kind={vm.kind} subtitle="Новая ВМ"/>},style:diagramCardStyle({border:'1px dashed #a46c26'})}))]
+    ...loaded.proposed_vms.map(vm=>({type:'diagramPort',id:vm.id,position:dragPositions[vm.id]||{x:vm.x,y:vm.y},draggable:editable&&!busy,data:{label:<DiagramNodeLabel name={vm.name} kind={vm.kind} subtitle={componentKinds[vm.kind]} detail={choices.find(parent=>parent.id===vm.parent_id)?.name}/>},style:diagramCardStyle({border:'1px dashed #a46c26'})}))]
   const positions=new Map(nodes.map(n=>[n.id,n.position]))
   const proposedIds=new Set(loaded.proposed_flows.map(f=>f.id))
   function openFlow(flow:Link) {
@@ -334,7 +342,7 @@ function DecisionInspector({id,initialReview,request,profile,items,flows,systemN
   function saveVMProperties(){
     if(!selectedProposedVM||!vmForm.name.trim()||!vmFormDirty)return
     persist(loaded.proposed_vms.map(vm=>vm.id===selectedProposedVM.id?{
-      ...vm,name:vmForm.name.trim(),kind:vmForm.kind,
+      ...vm,name:vmForm.name.trim(),kind:vmForm.kind,parent_id:vmForm.parent_id||undefined,
       description:vmForm.description.trim(),environment:vmForm.environment.trim(),
     }:vm),loaded.proposed_flows)
   }
@@ -348,7 +356,7 @@ function DecisionInspector({id,initialReview,request,profile,items,flows,systemN
   function saveProposal() {
     if(!row)return
     if(tool==='vm'&&name.trim()){
-      const vm={id:crypto.randomUUID(),system_id:loaded.system_id,kind:newVM.kind,name:name.trim(),description:newVM.description.trim(),environment:newVM.environment.trim(),...nextGridPosition()}
+      const vm={id:crypto.randomUUID(),system_id:loaded.system_id,kind:newVM.kind,parent_id:newVM.parent_id||undefined,name:name.trim(),description:newVM.description.trim(),environment:newVM.environment.trim(),...nextGridPosition()}
       persist([...loaded.proposed_vms,vm],loaded.proposed_flows)
     }else if(tool==='flow'&&draft.name.trim()&&draft.source_id&&draft.target_id&&!sameEnds&&!outside&&!flowError){
       const flow={...draft,id:draft.id||crypto.randomUUID(),name:draft.name.trim(),protocol:draft.protocol.trim(),port:draft.port.trim(),data_description:draft.data_description?.trim()||'',security:draft.security?.trim()||'',schedule:draft.schedule?.trim()||'',verification:draft.verification||'draft'}
@@ -388,10 +396,15 @@ function DecisionInspector({id,initialReview,request,profile,items,flows,systemN
             if(hasUnsavedForm&&!window.confirm('Отбросить несохранённые изменения?'))return
             setSelectedVMId('');setViewFlowId('');setTool('vm');setTab('items');setName('');setNewVM(blankVM())
           }}><Monitor size={15}/> ＋ ВМ</button>
+          <button type="button" disabled={busy} onClick={()=>{
+            if(hasUnsavedForm&&!window.confirm('Отбросить несохранённые изменения?'))return
+            setSelectedVMId('');setViewFlowId('');setTool('vm');setTab('items');setName('')
+            setNewVM({...blankVM(),kind:'application',parent_id:availableHosts.find(host=>host.id===selectedVMId)?.id||''})
+          }}><Plus size={15}/> Компонент</button>
           <button type="button" disabled={busy} onClick={()=>openFlow(emptyFlow)}><GitBranch size={15}/> ＋ Поток</button>
           <button type="button" data-decision-undo title="Отменить последнее изменение черновика (Ctrl+Z)" aria-label="Отменить изменение черновика" disabled={busy||!undoStack.length} onClick={undoProposal}><Undo2 size={16}/></button>
           <button type="button" data-decision-redo title="Повторить изменение черновика (Ctrl+Shift+Z)" aria-label="Повторить изменение черновика" disabled={busy||!redoStack.length} onClick={redoProposal}><Redo2 size={16}/></button>
-          <span className="decisionToolCount" title="Действующая архитектура отображается только для чтения">{row.proposed_vms.length} ВМ · {row.proposed_flows.length} потоков</span>
+          <span className="decisionToolCount" title="Действующая архитектура отображается только для чтения">Компонентов: {row.proposed_vms.length} · {row.proposed_flows.length} потоков</span>
         </div>}
         {menu&&<div className="decisionContextMenu" role="menu" aria-label="Действия с объектом" style={{position:'fixed',left:Math.max(8,menu.x),top:Math.max(8,menu.y),zIndex:250}}>
           <button type="button" role="menuitem" onClick={()=>{
@@ -424,19 +437,22 @@ function DecisionInspector({id,initialReview,request,profile,items,flows,systemN
       {row.base_changed&&<p role="status">Исходная архитектура изменилась после отправки на согласование. Для подписи требуется пересогласование обновлённой версии.</p>}
       {tab==='items'?<>
         {row.description&&<p>{row.description}</p>}
-        {schema&&<details><summary>Текущее размещение компонентов ИС</summary><SystemComposition flows={flows} items={items.filter(item=>item.system_id===row.system_id)} onOpen={inspectVM}/></details>}
-        {schema&&selectedVM?<section className="decisionVmDetails" aria-label="Паспорт выбранной ВМ">
-          <h4>{selectedProposedVM?'Проектируемая ВМ':['vm','server','host'].includes(selectedVM.kind)?'Действующая ВМ или сервер':'Действующий компонент'}</h4>
+        {schema&&<details><summary>Размещение по техрешению</summary><SystemComposition flows={lines.filter(flow=>currentChanges.get('flow:'+flow.id)?.action!=='remove')} items={compositionItems} onOpen={inspectVM}/></details>}
+        {schema&&selectedVM?<section className="decisionVmDetails" aria-label={isHost(selectedVM.kind)?'Паспорт выбранной ВМ':'Паспорт компонента'}>
+          <h4>{selectedProposedVM?(isHost(selectedProposedVM.kind)?'Проектируемая ВМ':'Проектируемый компонент'):['vm','server','host'].includes(selectedVM.kind)?'Действующая ВМ или сервер':'Действующий компонент'}</h4>
           {selectedProposedVM&&editable?<form onSubmit={event=>{event.preventDefault();saveVMProperties()}}>
-            <label>Имя проектируемой ВМ<input aria-label="Имя проектируемой ВМ" required maxLength={250} value={vmForm.name} onChange={event=>setVmForm({...vmForm,name:event.target.value})}/></label>
-            <label>Тип<select aria-label="Тип проектируемой ВМ" value={vmForm.kind} onChange={event=>setVmForm({...vmForm,kind:event.target.value as VMForm['kind']})}>
-              <option value="vm">ВМ</option><option value="server">Сервер</option><option value="host">Хост</option>
+            <label>{isHost(vmForm.kind)?'Имя проектируемой ВМ':'Имя компонента'}<input aria-label={isHost(vmForm.kind)?'Имя проектируемой ВМ':'Имя компонента'} required maxLength={250} value={vmForm.name} onChange={event=>setVmForm({...vmForm,name:event.target.value})}/></label>
+            <label>Тип<select aria-label="Тип проектируемой ВМ" value={vmForm.kind} onChange={e=>setVmForm({...vmForm,kind:e.target.value,parent_id:isHost(e.target.value)?'':vmForm.parent_id})}>
+              {Object.entries(componentKinds).map(([id,label])=><option key={id} value={id}>{label}</option>)}
             </select></label>
+            {!isHost(vmForm.kind)&&<label>Размещение<select value={vmForm.parent_id} onChange={e=>setVmForm({...vmForm,parent_id:e.target.value})}>
+              <option value="">Без привязки к ВМ</option>{availableHosts.filter(host=>host.id!==selectedVMId).map(host=><option key={host.id} value={host.id}>{host.name}</option>)}
+            </select></label>}
             <label>Среда<input aria-label="Среда проектируемой ВМ" maxLength={120} value={vmForm.environment} onChange={event=>setVmForm({...vmForm,environment:event.target.value})} placeholder="prod / test / dev"/></label>
             <label>Описание<textarea aria-label="Описание проектируемой ВМ" maxLength={4000} value={vmForm.description} onChange={event=>setVmForm({...vmForm,description:event.target.value})}/></label>
             <small>Позиция: {Math.round(selectedProposedVM.x)}, {Math.round(selectedProposedVM.y)}. Перемещайте ВМ на схеме.</small>
             <div className="decisionActions">
-              <button className="primary" disabled={busy||!vmFormDirty||!vmForm.name.trim()}>Сохранить свойства ВМ</button>
+              <button className="primary" disabled={busy||!vmFormDirty||!vmForm.name.trim()}>{isHost(vmForm.kind)?'Сохранить свойства ВМ':'Сохранить свойства компонента'}</button>
               <button type="button" disabled={busy} onClick={()=>deleteProposedVM(selectedProposedVM.id)}>Удалить ВМ</button>
             </div>
           </form>:<>
@@ -460,11 +476,14 @@ function DecisionInspector({id,initialReview,request,profile,items,flows,systemN
           }}>Запланировать изменение этого потока</button>}
           <button onClick={()=>setViewFlowId('')}>К составу решения</button>
         </section>:schema&&tool&&editable?<form key={tool} onSubmit={e=>{e.preventDefault();saveProposal()}}>
-          <label>{tool==='vm'?'Название ВМ':'Название потока'}<input autoFocus required maxLength={250} value={tool==='vm'?name:draft.name} onChange={e=>tool==='vm'?setName(e.target.value):setDraft({...draft,name:e.target.value})}/></label>
+          <label>{tool==='vm'?(isHost(newVM.kind)?'Название ВМ':'Название компонента'):'Название потока'}<input autoFocus required maxLength={250} value={tool==='vm'?name:draft.name} onChange={e=>tool==='vm'?setName(e.target.value):setDraft({...draft,name:e.target.value})}/></label>
           {tool==='vm'&&<>
-            <label>Тип<select aria-label="Тип новой ВМ" value={newVM.kind} onChange={e=>setNewVM({...newVM,kind:e.target.value as VMForm['kind']})}>
-              <option value="vm">ВМ</option><option value="server">Сервер</option><option value="host">Хост</option>
+            <label>Тип<select aria-label="Тип новой ВМ" value={newVM.kind} onChange={e=>setNewVM({...newVM,kind:e.target.value,parent_id:isHost(e.target.value)?'':newVM.parent_id})}>
+              {Object.entries(componentKinds).map(([id,label])=><option key={id} value={id}>{label}</option>)}
             </select></label>
+            {!isHost(newVM.kind)&&<label>Размещение<select value={newVM.parent_id} onChange={e=>setNewVM({...newVM,parent_id:e.target.value})}>
+              <option value="">Без привязки к ВМ</option>{availableHosts.filter(host=>host.id!==selectedVMId).map(host=><option key={host.id} value={host.id}>{host.name}</option>)}
+            </select></label>}
             <label>Среда<input maxLength={120} value={newVM.environment} onChange={e=>setNewVM({...newVM,environment:e.target.value})}/></label>
             <label>Описание<textarea maxLength={4000} value={newVM.description} onChange={e=>setNewVM({...newVM,description:e.target.value})}/></label>
           </>}
@@ -489,7 +508,7 @@ function DecisionInspector({id,initialReview,request,profile,items,flows,systemN
           {tool==='flow'&&draft.id&&<button type="button" disabled={busy} onClick={()=>{if(window.confirm('Удалить поток из этого черновика?'))persist(row.proposed_vms,row.proposed_flows.filter(f=>f.id!==draft.id))}}>Удалить поток</button>}</div>
         </form>:<>
           {row.proposed_vms.map(vm=><div className="decisionItem" key={vm.id}>
-            <button type="button" onClick={()=>{openSchema();inspectVM(vm.id)}}>{vm.name}</button><small>Новая ВМ</small>
+            <button type="button" onClick={()=>{openSchema();inspectVM(vm.id)}}>{vm.name}</button><small>{componentKinds[vm.kind]}</small>
             {editable&&<button type="button" disabled={busy} aria-label={'Удалить ВМ '+vm.name} onClick={()=>deleteProposedVM(vm.id)}>Удалить ВМ</button>}
           </div>)}
           {row.proposed_flows.map(f=><div className="decisionItem" key={f.id}>

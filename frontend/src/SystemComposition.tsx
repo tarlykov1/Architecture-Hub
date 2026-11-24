@@ -52,7 +52,8 @@ export function SystemComposition({items,flows,onOpen}:{items:Item[];flows:Flow[
   sections.forEach(({host,members},index)=>{
     const columns=Math.min(narrow?1:2,Math.max(1,members.length))
     const width=columns*224+24
-    const height=Math.max(110,68+Math.ceil(members.length/columns)*88)
+    const rowSpacing=narrow?128:108
+    const height=Math.max(110,80+Math.ceil(members.length/columns)*rowSpacing)
     if(narrow||index%2===0){top+=rowHeight;left=0;rowHeight=0}
     const frameId='placement-frame:'+host.id
     if(members.length)nodes.push({id:frameId,type:'group',position:{x:left,y:top},style:{width,height},
@@ -71,7 +72,7 @@ export function SystemComposition({items,flows,onOpen}:{items:Item[];flows:Flow[
         className:heading?'placementHeading':'placementItem',selectable:false,focusable:false,data:{label}})
     }
     addNode(host,16,8,true)
-    members.forEach((item,i)=>addNode(item,18+(i%columns)*224,60+Math.floor(i/columns)*88))
+    members.forEach((item,i)=>addNode(item,18+(i%columns)*224,76+Math.floor(i/columns)*rowSpacing))
   })
   const positions=new Map(nodes.map(node=>[node.id,node.position]))
   const directions=new Map<string,Flow[]>()
@@ -93,7 +94,7 @@ export function SystemComposition({items,flows,onOpen}:{items:Item[];flows:Flow[
       sourceHandle:secondLane?ports.source_handle.replace('-1','-2'):ports.source_handle,
       targetHandle:secondLane?ports.target_handle.replace('-1','-2'):ports.target_handle,
       markerEnd:{type:MarkerType.ArrowClosed},ariaLabel:fullCaption,
-      data:{caption,fullCaption,onSelect:()=>setSelection(id)}}
+      data:{caption,fullCaption,labelOffsetY:0,onSelect:()=>setSelection(id)}}
   })
   const selected=directions.get(selection)
   return <section ref={container} aria-label="Размещение компонентов по ВМ">

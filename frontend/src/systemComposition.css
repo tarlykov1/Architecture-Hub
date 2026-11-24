@@ -14,3 +14,5 @@
 .placementFlows {padding:8px 12px;border:1px solid var(--hub-line);border-radius:6px}
 .placementFlows header {display:flex;align-items:center;justify-content:space-between;gap:8px}
 .placementFlows ul {padding-inline-start:18px;margin:6px 0}
+
+.systemComposition .react-flow__edgelabel-renderer {z-index:3}

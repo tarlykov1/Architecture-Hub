@@ -393,7 +393,7 @@ function DecisionInspector({id,initialReview,request,profile,items,flows,systemN
         }}
         onConnectStart={()=>setDrawing(true)} onConnectEnd={()=>setDrawing(false)} onConnect={connect}
         onEdgeClick={(_,edge)=>{const f=lines.find(f=>f.id===edge.id);if(f)inspectFlow(f)}}
-        isValidConnection={c=>c.source!==c.target} fitView><AutoFit layoutKey={id} suspended={drawing}/><Background gap={20}/><Controls showInteractive={false}/></ReactFlow>:<p>В этой системе пока нет компонентов.</p>}
+        isValidConnection={c=>c.source!==c.target} fitView><AutoFit layoutKey={id} settleDelayMs={0} suspended={drawing}/><Background gap={20}/><Controls showInteractive={false}/></ReactFlow>:<p>В этой системе пока нет компонентов.</p>}
         {editable&&<div role="toolbar" aria-label="Инструменты решения" className="decisionTools">
           <button type="button" disabled={busy} title="Выбрать объект" aria-label="Выбрать объект" onClick={()=>{setMenu(null);setTool(null);setSelectedVMId('');setViewFlowId('')}}><MousePointer2 size={16}/> Выбрать</button>
           <button type="button" disabled={busy} onClick={()=>{

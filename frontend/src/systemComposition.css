@@ -9,7 +9,7 @@
 .systemComposition small {display:block;color:var(--hub-muted)}
 .systemComposition .react-flow__edge-text {font-size:10px}
 
-.systemComposition .react-flow__node button {font-size:14px;min-height:40px}
+.systemComposition .react-flow__node button {pointer-events:auto;font-size:14px;min-height:40px}
 .systemComposition .react-flow__node small {overflow:hidden;text-overflow:ellipsis}
 .placementFlows {padding:8px 12px;border:1px solid var(--hub-line);border-radius:6px}
 .placementFlows header {display:flex;align-items:center;justify-content:space-between;gap:8px}

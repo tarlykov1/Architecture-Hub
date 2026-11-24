@@ -364,7 +364,11 @@ function DecisionInspector({id,initialReview,request,profile,items,flows,systemN
     }
   }
   return <>
-    {schema&&<div className="decisionDrawing"><header><button aria-label="Вернуться к списку" disabled={busy} onClick={exitEditor}><ArrowLeft size={16}/></button><h2>{row.title}</h2><Status value={row.status}/></header>
+    {schema&&<div className="decisionDrawing"><header><button aria-label="Вернуться к списку" disabled={busy} onClick={exitEditor}><ArrowLeft size={16}/></button><h2>{row.title}</h2><Status value={row.status}/>{editable&&<button type="button" disabled={busy} onClick={()=>{
+            if(hasUnsavedForm&&!window.confirm('Отбросить несохранённые изменения?'))return
+            setSelectedVMId('');setViewFlowId('');setTool('vm');setTab('items');setName('')
+            setNewVM({...blankVM(),kind:'application',parent_id:availableHosts.find(host=>host.id===selectedVMId)?.id||''})
+          }}><Plus size={15}/> Компонент</button>}</header>
       <div className="decisionCanvas">{nodes.length?<ReactFlow nodes={measurements.apply(nodes)} edges={edges} onNodesChange={changes=>{
         measurements.record(changes)
         if(!editable||busy)return
@@ -396,15 +400,10 @@ function DecisionInspector({id,initialReview,request,profile,items,flows,systemN
             if(hasUnsavedForm&&!window.confirm('Отбросить несохранённые изменения?'))return
             setSelectedVMId('');setViewFlowId('');setTool('vm');setTab('items');setName('');setNewVM(blankVM())
           }}><Monitor size={15}/> ＋ ВМ</button>
-          <button type="button" disabled={busy} onClick={()=>{
-            if(hasUnsavedForm&&!window.confirm('Отбросить несохранённые изменения?'))return
-            setSelectedVMId('');setViewFlowId('');setTool('vm');setTab('items');setName('')
-            setNewVM({...blankVM(),kind:'application',parent_id:availableHosts.find(host=>host.id===selectedVMId)?.id||''})
-          }}><Plus size={15}/> Компонент</button>
           <button type="button" disabled={busy} onClick={()=>openFlow(emptyFlow)}><GitBranch size={15}/> ＋ Поток</button>
           <button type="button" data-decision-undo title="Отменить последнее изменение черновика (Ctrl+Z)" aria-label="Отменить изменение черновика" disabled={busy||!undoStack.length} onClick={undoProposal}><Undo2 size={16}/></button>
           <button type="button" data-decision-redo title="Повторить изменение черновика (Ctrl+Shift+Z)" aria-label="Повторить изменение черновика" disabled={busy||!redoStack.length} onClick={redoProposal}><Redo2 size={16}/></button>
-          <span className="decisionToolCount" title="Действующая архитектура отображается только для чтения">Компонентов: {row.proposed_vms.length} · {row.proposed_flows.length} потоков</span>
+          <span className="decisionToolCount" title="Действующая архитектура отображается только для чтения">{row.proposed_vms.length} объектов · {row.proposed_flows.length} потоков</span>
         </div>}
         {menu&&<div className="decisionContextMenu" role="menu" aria-label="Действия с объектом" style={{position:'fixed',left:Math.max(8,menu.x),top:Math.max(8,menu.y),zIndex:250}}>
           <button type="button" role="menuitem" onClick={()=>{
@@ -445,7 +444,7 @@ function DecisionInspector({id,initialReview,request,profile,items,flows,systemN
             <label>Тип<select aria-label="Тип проектируемой ВМ" value={vmForm.kind} onChange={e=>setVmForm({...vmForm,kind:e.target.value,parent_id:isHost(e.target.value)?'':vmForm.parent_id})}>
               {Object.entries(componentKinds).map(([id,label])=><option key={id} value={id}>{label}</option>)}
             </select></label>
-            {!isHost(vmForm.kind)&&<label>Размещение<select value={vmForm.parent_id} onChange={e=>setVmForm({...vmForm,parent_id:e.target.value})}>
+            {!isHost(vmForm.kind)&&<label>Размещение<select aria-label="Размещение" value={vmForm.parent_id} onChange={e=>setVmForm({...vmForm,parent_id:e.target.value})}>
               <option value="">Без привязки к ВМ</option>{availableHosts.filter(host=>host.id!==selectedVMId).map(host=><option key={host.id} value={host.id}>{host.name}</option>)}
             </select></label>}
             <label>Среда<input aria-label="Среда проектируемой ВМ" maxLength={120} value={vmForm.environment} onChange={event=>setVmForm({...vmForm,environment:event.target.value})} placeholder="prod / test / dev"/></label>
@@ -481,7 +480,7 @@ function DecisionInspector({id,initialReview,request,profile,items,flows,systemN
             <label>Тип<select aria-label="Тип новой ВМ" value={newVM.kind} onChange={e=>setNewVM({...newVM,kind:e.target.value,parent_id:isHost(e.target.value)?'':newVM.parent_id})}>
               {Object.entries(componentKinds).map(([id,label])=><option key={id} value={id}>{label}</option>)}
             </select></label>
-            {!isHost(newVM.kind)&&<label>Размещение<select value={newVM.parent_id} onChange={e=>setNewVM({...newVM,parent_id:e.target.value})}>
+            {!isHost(newVM.kind)&&<label>Размещение<select aria-label="Размещение" value={newVM.parent_id} onChange={e=>setNewVM({...newVM,parent_id:e.target.value})}>
               <option value="">Без привязки к ВМ</option>{availableHosts.filter(host=>host.id!==selectedVMId).map(host=><option key={host.id} value={host.id}>{host.name}</option>)}
             </select></label>}
             <label>Среда<input maxLength={120} value={newVM.environment} onChange={e=>setNewVM({...newVM,environment:e.target.value})}/></label>

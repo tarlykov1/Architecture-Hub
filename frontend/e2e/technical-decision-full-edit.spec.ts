@@ -179,7 +179,7 @@ test('QA-WORK: technical decision editor stays usable on a 390px viewport',async
 test('mixed VM placement persists in a proposal and rejects a missing host atomically',async({page,request})=>{
   const {title,url,vm,liveId}=await build(request,'MixedPlacement')
   await open(page,title)
-  await page.getByRole('toolbar',{name:'Инструменты решения'}).getByRole('button',{name:'Компонент',exact:true}).click()
+  await page.getByRole('button',{name:'Компонент',exact:true}).click()
   await page.getByLabel('Название компонента').fill('QA-WORK-Queue')
   await page.getByLabel('Тип новой ВМ').selectOption('queue')
   await page.getByLabel('Размещение',{exact:true}).selectOption(vm.id)

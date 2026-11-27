@@ -75,3 +75,22 @@ def test_architecture_layer_regions_persist_and_obey_permissions():
         assert invalid_opacity.status_code == 422
         unknown = client.put("/api/diagrams/layer-regions/business:99999999-9999-4999-8999-999999999999", headers=ADMIN, json=payload)
         assert unknown.status_code == 404
+
+
+def test_batch_placement_rolls_back_on_stale_parent():
+    with TestClient(app) as client:
+        system = client.post("/api/objects", headers=ADMIN, json={"kind":"system","name":"Placement QA"}).json()["id"]
+        def create(kind, name):
+            r = client.post("/api/infra", headers=ADMIN, json={"system_id":system,"kind":kind,"name":name})
+            assert r.status_code == 201, r.text
+            return r.json()["id"]
+        vm = create("vm", "Host")
+        app_id = create("application", "Web")
+        db_id = create("database", "DB")
+        moves = [{"id":app_id,"previous":None,"target":vm},{"id":db_id,"previous":vm,"target":None}]
+        url = "/api/infra/placement/" + system
+        assert client.put(url, headers=VIEWER, json=moves).status_code == 403
+        assert client.put(url, headers=ADMIN, json=moves).status_code == 409
+        items = client.get("/api/infra", params={"system_id":system}, headers=ADMIN).json()
+        assert all(i["parent_id"] is None for i in items)
+        assert client.put(url, headers=ADMIN, json=moves[:1]).status_code == 204

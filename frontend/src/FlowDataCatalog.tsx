@@ -8,14 +8,14 @@ type Attribute={id:string;code:string;name:string;description:string;data_type:s
 type Use={id:string;flow_id:string;attribute_id:string;process_id:string|null;consumer_system_id:string|null;purpose:string;verification:string}
 type DataMap={attributes:(Use&{code:string;name:string;consumer_system_name:string|null;process_name:string|null;sensitivity:string})[]}
 type Request=<T>(url:string,init?:RequestInit)=>Promise<T>
-type Props={request:Request;flows:Flow[];systems:ObjectItem[];components:Component[];processes:Process[];initialFlowId:string;onClose:()=>void}
+type Props={initialTab?:'map'|'catalog';request:Request;flows:Flow[];systems:ObjectItem[];components:Component[];processes:Process[];initialFlowId:string;onClose:()=>void}
 
 const emptyAttribute={code:'',name:'',description:'',data_type:'string',sensitivity:'unclassified'}
 const sensitivityNames:Record<string,string>={unclassified:'Не классифицировано',internal:'Внутренние',personal:'Персональные',restricted:'Ограниченный доступ'}
 const statuses:Record<string,string>={draft:'Черновик',assumed:'Предполагается',verified:'Подтверждено'}
 
-export default function FlowDataCatalog({request,flows,systems,components,processes,initialFlowId,onClose}:Props){
-  const [tab,setTab]=useState<'map'|'catalog'>('map')
+export default function FlowDataCatalog({request,flows,systems,components,processes,initialFlowId,onClose,initialTab='map'}:Props){
+  const [tab,setTab]=useState<'map'|'catalog'>(initialTab)
   const [flowId,setFlowId]=useState(initialFlowId||flows[0]?.id||'')
   const [attributes,setAttributes]=useState<Attribute[]>([])
   const [uses,setUses]=useState<Use[]>([])

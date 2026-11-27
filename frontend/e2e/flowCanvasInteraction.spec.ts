@@ -74,8 +74,8 @@ test('flow utilities are directly available while flow workspace is a registry',
   await page.getByRole('combobox',{name:'Система потоков'}).selectOption(system)
   await expect(page.getByRole('region',{name:'Реестр технических потоков'})).toBeVisible()
   await expect(page.locator('[data-active-graph="flows"]')).toHaveCount(0)
-  await expect(page.getByRole('button',{name:'Атрибуты и данные'})).toBeVisible()
-  await expect(page.getByRole('button',{name:'Маршруты и СЗИ'})).toBeVisible()
+  await expect(page.locator('.flowToolsActions').getByRole('button',{name:'Атрибуты',exact:true})).toBeVisible()
+  await expect(page.locator('.flowToolsActions').getByRole('button',{name:'Маршрут',exact:true})).toBeVisible()
 
 })
 

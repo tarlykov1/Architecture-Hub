@@ -40,3 +40,37 @@ test('register a switch in an office and find it on the system resource map',asy
   await expect(map.getByText(/Коммутатор · Санкт-Петербург › 412/)).toBeVisible()
   await expect(map.locator('.react-flow__edge-path')).toHaveCount(2)
 })
+
+for(const width of [390,1280]){
+  test('persist workload placement from map at '+width,async({page,request})=>{
+    const name='Placement-'+width+'-'+Date.now()
+    const create=async(path:string,data:object)=>{
+      const r=await request.post('http://127.0.0.1:8001/api/'+path,{data})
+      expect(r.status()).toBe(201)
+      return (await r.json()).id as string
+    }
+    const system=await create('objects',{name,kind:'system'})
+    const vm=await create('infra',{name:'First VM',kind:'vm',system_id:system})
+    const target=await create('infra',{name:'Second VM',kind:'vm',system_id:system})
+    await create('infra',{name:'PostgreSQL',kind:'database',system_id:system,parent_id:vm})
+    await page.setViewportSize({width,height:844})
+    await page.addInitScript(()=>sessionStorage.setItem('architecture-hub:access-token:session','browser-ci-development-token'))
+    await page.goto('/systems')
+    const tabs=page.getByRole('navigation',{name:'Представления систем'})
+    await tabs.getByText('Ресурсная карта').click()
+    await page.getByLabel('Система компонентов').selectOption(system)
+    await page.getByRole('button',{name:'Редактировать состав'}).click()
+    await page.getByRole('combobox',{name:'PostgreSQL',exact:true}).selectOption(target)
+    await page.getByRole('button',{name:'Сохранить размещение'}).click()
+    await expect(page.getByRole('form',{name:'Размещение компонентов'})).toHaveCount(0)
+    await page.reload()
+    const map=page.getByRole('region',{name:'Ресурсная карта ИС'})
+    const node=map.getByRole('button',{name:/Second VM.*PostgreSQL/}).last()
+    await node.click()
+    const passport=page.getByRole('dialog').filter({has:page.getByRole('heading',{name:'Second VM'})})
+    await expect(passport.getByRole('button',{name:'PostgreSQL',exact:true})).toBeVisible()
+    await passport.getByRole('button',{name:/Закрыть/}).first().click()
+    await tabs.getByText('Компоненты').click()
+    await expect(page.getByRole('row').filter({hasText:'PostgreSQL'})).toContainText('Second VM')
+  })
+}

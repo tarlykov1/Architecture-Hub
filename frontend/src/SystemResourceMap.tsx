@@ -37,7 +37,7 @@ export default function SystemResourceMap({system,items,request,onOpen,readAsset
   }
   const withChildren=new Set(items.map(i=>i.parent_id))
   for(const item of items){
-    bands[componentLane(item.kind)].push({...item,detail:item.description,open:()=>onOpen(item.id)})
+    bands[componentLane(item.kind)].push({...item,detail:item.kind==='vm'?[item.description,items.filter(child=>child.parent_id===item.id).map(child=>child.name).join(', ')].filter(Boolean).join(' · '):item.description,open:()=>onOpen(item.id)})
     if(!withChildren.has(item.id))connect(root,item.id)
     if(item.parent_id&&ids.has(item.parent_id))connect(item.id,item.parent_id)
   }
@@ -57,11 +57,11 @@ export default function SystemResourceMap({system,items,request,onOpen,readAsset
   bands.forEach((band,index)=>{
     if(!band.length)return
     const height=42+Math.ceil(band.length/columns)*116
-    nodes.push({id:'band:'+index,type:'group',position:{x:0,y},style:{width:columns*250+20,height},data:{},className:'resourceBand band'+index,selectable:false})
-    nodes.push({id:'caption:'+index,type:'default',position:{x:10,y:y+5},style:{width:235},className:'resourceCaption',data:{label:lanes[index]},selectable:false})
+    nodes.push({id:'band:'+index,type:'group',width:columns*250+20,height,position:{x:0,y},style:{width:columns*250+20,height},data:{},className:'resourceBand band'+index,selectable:false})
+    nodes.push({id:'caption:'+index,type:'default',initialWidth:235,initialHeight:27,position:{x:10,y:y+5},style:{width:235},className:'resourceCaption',data:{label:lanes[index]},selectable:false})
     band.forEach((card,i)=>{
       const body=<>{architectureIcon(card.kind)}<span><strong>{card.name}</strong>{card.detail&&<small>{card.detail}</small>}</span></>
-      nodes.push({id:card.id,position:{x:20+(columns-Math.min(columns,band.length-Math.floor(i/columns)*columns))*125+(i%columns)*250,y:y+40+Math.floor(i/columns)*116},
+      nodes.push({id:card.id,initialWidth:214,initialHeight:58,position:{x:20+(columns-Math.min(columns,band.length-Math.floor(i/columns)*columns))*125+(i%columns)*250,y:y+40+Math.floor(i/columns)*116},
         style:{width:214},zIndex:2,className:'resourceNode resourceLevel'+index,sourcePosition:Position.Bottom,targetPosition:Position.Top,
         data:{label:card.open?<button type="button" onClick={card.open}>{body}</button>:<div title={card.detail}>{body}</div>}})
     })

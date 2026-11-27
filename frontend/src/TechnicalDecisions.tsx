@@ -82,7 +82,7 @@ export default function TechnicalDecisions({request, profile, systems, items, fl
     {!schema&&<div className="decisionRegister">
       <header><h2>Технические решения</h2>{canCreate&&<button className="primary" onClick={()=>{close();setCreating(true)}}><Plus size={15}/>Создать решение</button>}</header>
       <div className="decisionFilters">
-        <div className="decisionFilterTabs" role="group" aria-label="Статус решения">
+        <div className="decisionFilterTabs workspaceActionBar" role="group" aria-label="Статус решения">
           {myService && <button type="button" aria-pressed={showQueue} onClick={()=>setFilter('mine')}>Моё согласование · {myQueue.length}</button>}
           {[['','Все'],...Object.entries(states)].map(([key,label])=><button type="button" key={key} aria-pressed={filter===key} onClick={()=>setFilter(key)}>{label}</button>)}
         </div>
@@ -450,7 +450,7 @@ function DecisionInspector({id,initialReview,request,profile,items,flows,systemN
             <label>Среда<input aria-label="Среда проектируемой ВМ" maxLength={120} value={vmForm.environment} onChange={event=>setVmForm({...vmForm,environment:event.target.value})} placeholder="prod / test / dev"/></label>
             <label>Описание<textarea aria-label="Описание проектируемой ВМ" maxLength={4000} value={vmForm.description} onChange={event=>setVmForm({...vmForm,description:event.target.value})}/></label>
             <small>Позиция: {Math.round(selectedProposedVM.x)}, {Math.round(selectedProposedVM.y)}. Перемещайте ВМ на схеме.</small>
-            <div className="decisionActions">
+            <div className="decisionActions workspaceActionBar">
               <button className="primary" disabled={busy||!vmFormDirty||!vmForm.name.trim()}>{isHost(vmForm.kind)?'Сохранить свойства ВМ':'Сохранить свойства компонента'}</button>
               <button type="button" disabled={busy} onClick={()=>deleteProposedVM(selectedProposedVM.id)}>Удалить ВМ</button>
             </div>
@@ -499,7 +499,7 @@ function DecisionInspector({id,initialReview,request,profile,items,flows,systemN
             </select></label>
             {(sameEnds||outside||flowError)&&<small role="alert">{sameEnds?'Выберите два разных компонента.':outside?'Один из компонентов должен принадлежать системе решения.':flowError}</small>}
           </>}
-          <div className="decisionActions"><button className="primary" disabled={busy||(tool==='vm'?!name.trim():!draft.name.trim()||!draft.source_id||!draft.target_id||sameEnds||outside||!!flowError)}>{tool==='flow'&&draft.id?'Сохранить поток':'Добавить в черновик'}</button>
+          <div className="decisionActions workspaceActionBar"><button className="primary" disabled={busy||(tool==='vm'?!name.trim():!draft.name.trim()||!draft.source_id||!draft.target_id||sameEnds||outside||!!flowError)}>{tool==='flow'&&draft.id?'Сохранить поток':'Добавить в черновик'}</button>
           <button type="button" disabled={busy} onClick={()=>{
             if(hasUnsavedForm&&!window.confirm('Отбросить несохранённые изменения?'))return
             setTool(null)
@@ -519,7 +519,7 @@ function DecisionInspector({id,initialReview,request,profile,items,flows,systemN
         {!schema&&<button onClick={openSchema}>Открыть схему</button>}
         {editable&&!tool&&!vmFormDirty&&(row.proposed_vms.length+row.proposed_flows.length+row.existing_changes.length>0)&&<button className="primary" disabled={busy||routeChanged} title={routeChanged?'Сохраните изменённый маршрут согласования на вкладке «Согласование»':undefined} onClick={()=>void change('/submit',revision)}>На согласование</button>}
       </>:tab==='changes'?<section className="decisionChanges" aria-label="Изменения технического решения">
-        <div className="decisionActions"><h4>Предлагаемые изменения</h4><button type="button" onClick={downloadDocument}>Скачать техническое решение (.md)</button></div>
+        <div className="decisionActions workspaceActionBar"><h4>Предлагаемые изменения</h4><button type="button" onClick={downloadDocument}>Скачать техническое решение (.md)</button></div>
         <p>Действующая архитектура остаётся без изменений. Новые объекты появятся в реестре только после отдельного подтверждённого внедрения.</p>
         <div className="decisionChangeCounts"><strong>+ {row.proposed_vms.length} ВМ</strong><strong>+ {row.proposed_flows.length} потоков</strong>
           <strong>~ {existingSummary(row.existing_changes).changed} изменено</strong>
@@ -555,7 +555,7 @@ function DecisionInspector({id,initialReview,request,profile,items,flows,systemN
               <label key={service}><input type="checkbox" checked={route.includes(service)} onChange={event=>setRoute(current=>event.target.checked?[...current,service]:current.filter(key=>key!==service))}/>{label}</label>
             )}
           </div>}
-          {editable&&routeChanged&&<div className="decisionActions">
+          {editable&&routeChanged&&<div className="decisionActions workspaceActionBar">
             <button type="button" disabled={busy||!route.length} onClick={saveRoute}>Сохранить маршрут</button>
             <button type="button" disabled={busy} onClick={()=>setRoute(row.required_services)}>Отменить изменение</button>
           </div>}
@@ -572,7 +572,7 @@ function DecisionInspector({id,initialReview,request,profile,items,flows,systemN
               </div>
             })}
           </div>
-          {editable&&<div className="decisionActions">
+          {editable&&<div className="decisionActions workspaceActionBar">
             <button type="button" className="primary" disabled={busy||!canSubmit}
               onClick={()=>void change('/submit',revision)}>Отправить на согласование</button>
             {!row.proposed_vms.length&&!row.proposed_flows.length&&!row.existing_changes.length&&<small>Сначала добавьте в проект ВМ, поток или изменение существующего объекта.</small>}
@@ -587,20 +587,20 @@ function DecisionInspector({id,initialReview,request,profile,items,flows,systemN
             :author?'Автор не может согласовать собственное решение.'
             :'Решение ожидает согласования назначенных служб. Ваша роль не включена в маршрут.'}
         </p>}
-        {reviewer&&<section className="decisionReviewerActions" aria-label="Моё согласование">
+        {reviewer&&<section className="decisionReviewerActions workspaceActionBar" aria-label="Моё согласование">
           <h4>Решение согласующего – {services[profile!.role as Service]}</h4>
           <label>Замечания или пояснение к решению
             <textarea value={comment} maxLength={2000} onChange={e=>setComment(e.target.value)}
               placeholder="При возврате на доработку обязательно опишите замечания."/>
           </label>
-          <div className="decisionActions">
+          <div className="decisionActions workspaceActionBar">
             <button type="button" disabled={busy||row.base_changed||comment.trim().length<3}
               onClick={()=>void change('/review',{...revision,verdict:'changes_requested',note:comment})}>На доработку</button>
             <button type="button" className="primary" disabled={busy||row.base_changed}
               onClick={()=>void change('/review',{...revision,verdict:'approved',note:comment})}>Согласовать</button>
           </div>
         </section>}
-        {row.status==='approved'&&editor&&<div className="decisionActions">
+        {row.status==='approved'&&editor&&<div className="decisionActions workspaceActionBar">
           {profile?.auth_kind==='named_user'
             ?<button type="button" className="primary" disabled={busy||row.base_changed}
               onClick={()=>void change('/publish',revision)}>Опубликовать согласованное решение</button>

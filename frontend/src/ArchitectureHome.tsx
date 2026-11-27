@@ -329,7 +329,7 @@ export default function ArchitectureHome({flowSystemId,onFlowSystemChange,select
     {([['map','Карта'],['sequence','Последовательность']] as const).map(([id,label])=><button key={id} type="button" disabled={editingLayers} aria-pressed={flowPresentation===id} className={flowPresentation===id?'current':''} onClick={()=>onModeChange(id==='map'?'flows':'sequence')}>{label}</button>)}
   </div>}
   </div>
-  {mapMode==='flows'&&<div className="overviewToolbar flowWorkspaceTools" role="group" aria-label="Инструменты потоков">
+  {mapMode==='flows'&&<div className="overviewToolbar flowWorkspaceTools workspaceActionBar" role="group" aria-label="Инструменты потоков">
     {systemPicker}
     <button type="button" onClick={()=>onOpenFlowWorkspace(focus||selectedSystem,false)}>Реестр потоков</button>
     {canEditFlows&&<button type="button" onClick={()=>onOpenFlowWorkspace(focus||selectedSystem,true)}>Редактор потоков</button>}

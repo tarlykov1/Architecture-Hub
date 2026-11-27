@@ -33,8 +33,8 @@ test('AH-QA-14: search is independent in Flows, Business, Systems and Components
   await expect(search).toHaveValue('')
   await expect(page.getByText(processName,{exact:true})).toBeVisible()
   await search.fill('QA-WORK-no-such-process-'+suffix)
-  await expect(page.getByRole('status').filter({hasText:'Нет бизнес-процессов по фильтру'})).toBeVisible()
-  await page.getByRole('button',{name:'Сбросить поиск'}).click()
+  await expect(page.getByRole('status').filter({hasText:'Бизнес-процессы не найдены'})).toBeVisible()
+  await page.getByRole('button',{name:'Сбросить',exact:true}).click()
   await expect(search).toHaveValue('')
   await expect(page.getByText(processName,{exact:true})).toBeVisible()
 

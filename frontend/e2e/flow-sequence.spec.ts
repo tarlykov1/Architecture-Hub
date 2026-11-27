@@ -19,7 +19,7 @@ for (const width of [390, 1440]) {
     })
     const system=(publicDemoResponse('/api/objects') as {id:string}[])[0].id
     await page.goto('/flows?system='+system)
-    await page.getByRole('link',{name:'Общая карта связей'}).click()
+    await page.getByRole('navigation',{name:'Представления потоков'}).getByRole('button',{name:'Карта',exact:true}).click()
     const picker=page.getByLabel('Система потоков на карте')
     await expect(picker).toHaveValue(system)
     await page.reload()

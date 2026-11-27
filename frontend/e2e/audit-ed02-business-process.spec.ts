@@ -17,7 +17,7 @@ test('QA-WORK ED-02: process stays in business model after edit, link and reload
  const nav=page.getByRole('navigation',{name:'Разделы архитектуры'})
  await nav.getByText('Ещё', {exact:false}).first().click()
  await nav.getByRole('button',{name:'Бизнес-процессы',exact:true}).click()
- await page.getByRole('button',{name:'+ Создать бизнес-процесс'}).click()
+ await page.getByRole('button',{name:'Создать процесс'}).click()
  const drawer=page.getByRole('dialog',{name:'Редактор бизнес-процесса'})
  await drawer.getByRole('combobox',{name:'Категория бизнес-процесса'}).selectOption(category)
  const initial='QA-WORK-ED02 Process '+suffix
@@ -26,7 +26,8 @@ test('QA-WORK ED-02: process stays in business model after edit, link and reload
  await drawer.getByRole('button',{name:'Сохранить бизнес-процесс'}).click()
  await expect(drawer).toHaveCount(0)
  await expect(page.getByText(initial,{exact:true})).toBeVisible()
- await page.getByRole('button',{name:'Редактировать БП'}).last().click()
+ await page.getByRole('button',{name:initial,exact:true}).click()
+ await page.getByRole('complementary',{name:'Карточка: '+initial}).getByRole('button',{name:'Редактировать'}).click()
  const editor=page.getByRole('dialog',{name:'Редактор бизнес-процесса'})
  const changed='QA-WORK-ED02 Changed '+suffix
  await editor.getByRole('textbox',{name:'Название'}).fill(changed)

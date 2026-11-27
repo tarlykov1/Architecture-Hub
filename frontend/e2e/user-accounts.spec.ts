@@ -79,7 +79,7 @@ test('viewer sees read-only sections without unavailable create and edit control
  await expect(page.getByText('Limited Viewer · Наблюдатель')).toBeVisible()
  await expect(nav.getByRole('button',{name:'Компоненты',exact:true})).toHaveCount(0)
  await expect(nav.getByRole('button',{name:'Потоки',exact:true})).toHaveCount(0)
- await expect(page.getByRole('button',{name:'+ Создать ИС'})).toHaveCount(0)
+ await expect(page.getByRole('button',{name:'Создать ИС'})).toHaveCount(0)
  await expect(page.getByRole('button',{name:'Создать схему'})).toHaveCount(0)
  await expect(page.getByRole('status').filter({hasText:'только для просмотра'})).toBeVisible()
  // A bookmarked restricted URL may not bypass the navigation policy.

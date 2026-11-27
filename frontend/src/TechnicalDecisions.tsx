@@ -87,6 +87,7 @@ export default function TechnicalDecisions({request, profile, systems, items, fl
           {[['','Все'],...Object.entries(states)].map(([key,label])=><button type="button" key={key} aria-pressed={filter===key} onClick={()=>setFilter(key)}>{label}</button>)}
         </div>
         <input type="search" aria-label="Поиск решений" placeholder="Найти решение" value={query} onChange={e=>setQuery(e.target.value)}/>
+        <button disabled={!filter&&!query} onClick={()=>{setFilter('');setQuery('')}}>Сбросить</button>
       </div>
       {loading?<p role="status">Загрузка…</p>:<div className="decisionTable"><table><thead><tr><th scope="col">Название</th><th scope="col">Статус</th><th scope="col">Система</th><th scope="col">Обновлено</th></tr></thead>
         <tbody>{visible.map(row=><tr key={row.id} className={selection===row.id?'current':''}>

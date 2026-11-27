@@ -26,8 +26,9 @@ for(let batch=0;batch<4;batch++)test('QA-WORK: #164 focus transitions '+(batch*5
   await openWorkspace(page,'Потоки')
   await page.getByRole('combobox',{name:'Система потоков'}).selectOption(system)
   const registry=page.getByRole('region',{name:'Реестр технических потоков'})
-  await expect(registry.locator('.infraCard')).toHaveCount(1)
+  await expect(registry.locator('tbody tr')).toHaveCount(1)
   // A record's «На карте» now opens that exact technical flow.
+  await registry.locator('tbody button').click()
   const link=registry.getByRole('link',{name:'На карте'}).first()
   await expect(link).toHaveAttribute('href',new RegExp('^/flows\\?system='+system+'&flow='))
   // The independent overview ?focus contract must still work for repeated IS navigation.

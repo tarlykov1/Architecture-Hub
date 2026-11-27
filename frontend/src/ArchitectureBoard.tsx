@@ -1,4 +1,5 @@
 import React, {useEffect, useMemo, useRef, useState} from 'react'
+import {createPortal} from 'react-dom'
 import './board.css'
 import {DiagramNodeLabel,diagramCardStyle} from './DiagramVisual'
 import MonitoringPanel from './MonitoringPanel'
@@ -1163,7 +1164,7 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
  }
  const openContextMenu=(event:React.MouseEvent|MouseEvent,kind:'vm'|'network'|'flow'|'note'|'pane',id:string,flowIds?:string[])=>{
    event.preventDefault();event.stopPropagation()
-   setContextMenu({kind,id,flowIds,x:Math.max(8,Math.min(event.clientX,window.innerWidth-260)),y:Math.max(8,Math.min(event.clientY,window.innerHeight-300))})
+   setContextMenu({kind,id,flowIds,x:Math.max(8,Math.min(event.clientX,window.innerWidth-328)),y:Math.max(8,Math.min(event.clientY,window.innerHeight-300))})
  }
  const blockersFor=(kind:'vm'|'network'|'flow'|'note'|'pane',id:string):string[]=>{
    if(kind==='vm')return [
@@ -1486,7 +1487,7 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
          <button disabled={busy} onClick={submitPreview}>Проверить изменения ({changes.length})</button>
        </>}<button disabled={!changes.length||busy} onClick={discardDraft}>Отменить черновик</button></div>}
      </aside>}
-     {contextMenu&&<div className="boardContextMenu" role="menu" aria-label="Действия с объектом" style={{position:'fixed',left:contextMenu.x,top:contextMenu.y,zIndex:250}}>
+     {contextMenu&&createPortal(<div className="boardContextMenu" role="menu" aria-label="Действия с объектом" style={{position:'fixed',left:contextMenu.x,top:contextMenu.y,maxHeight:`calc(100dvh - ${contextMenu.y+8}px)`,boxSizing:'border-box',zIndex:250}}>
        {contextMenu.kind!=='pane'&&<div className="boardContextMeta">
        <strong>{contextMenu.kind==='note'?'Заметка':contextMenu.kind==='flow'?'Поток':contextMenu.kind==='network'?'Сеть / VLAN / VRF':'Компонент'}</strong>
        {contextMenu.id&&<small>ID: {contextMenu.id.slice(0,8)} · {contextMenu.kind==='vm'?items.find(item=>item.id===contextMenu.id)?.name:contextMenu.kind==='network'?allNetworks.find(item=>item.id===contextMenu.id)?.name:contextMenu.kind==='flow'?effectiveFlows.find(item=>item.id===contextMenu.id)?.name:notes.find(note=>note.id===contextMenu.id)?.text.slice(0,35)}</small>}
@@ -1503,7 +1504,7 @@ function Editor({systemId,demoMode,ownerName='',ownerBySystemId={},items,network
        </>}
        </>}
        <button type="button" onClick={()=>setContextMenu(null)}>Закрыть меню</button>
-     </div>}
+     </div>,document.fullscreenElement||document.body)}
      {(Boolean(error)||Boolean(layoutMessage))&&<div className="boardCanvasToast" role="status">{error||layoutMessage}<button type="button" aria-label="Закрыть сообщение" onClick={()=>{setError('');setLayoutMessage('')}}>✕</button></div>}
    </div>
    {pendingGrouping&&<div className="boardConfirm" role="dialog" aria-modal="true" aria-label="Подтверждение вложенности">

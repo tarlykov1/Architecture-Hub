@@ -39,7 +39,7 @@ type LogicalMap = {
  move: (id:string, point:{x:number;y:number}, startingPositions?:LogicalMap['positions'])=>void
  onConnect: (connection:Connection)=>void
 }
-export default function ArchitectureHome({flowSystemId,onFlowSystemChange,selectedAreaIds,setSelectedAreaIds,flowTools,onOpenFlowWorkspace,mode,onModeChange,logical,systems,components,flows,processes,categories,links,onOpenProcess,onOpenSystem,onCloseSystem,inspectorOpen,onOpenComponents,onOpenComponent,focusSystemId='',request,canEditLayers=false,canEditFlows=false}:{flowSystemId:string;onFlowSystemChange:(id:string)=>void;selectedAreaIds:string[];setSelectedAreaIds:React.Dispatch<React.SetStateAction<string[]>>;flowTools:React.ReactNode;onOpenFlowWorkspace:(systemId:string,edit:boolean)=>void;mode:OverviewMode;onModeChange:(mode:OverviewMode)=>void;logical:LogicalMap;systems:System[];components:Component[];flows:Flow[];processes:Process[];categories:Category[];links:Link[];networks:Network[];interfaces:Interface[];onOpenProcess?:(id:string)=>void;onOpenSystem:(id:string)=>void;onCloseSystem:()=>void;inspectorOpen:boolean;onOpenComponents:(id:string)=>void;onOpenComponent:(id:string)=>void;onOpenNetworks:()=>void;focusSystemId?:string;request?:<T>(url:string,init?:RequestInit)=>Promise<T>;canEditLayers?:boolean;canEditFlows?:boolean}){
+export default function ArchitectureHome({flowSystemId,onFlowSystemChange,selectedAreaIds,setSelectedAreaIds,onOpenFlowWorkspace,mode,onModeChange,logical,systems,components,flows,processes,categories,links,onOpenProcess,onOpenSystem,onCloseSystem,inspectorOpen,onOpenComponents,onOpenComponent,focusSystemId='',request,canEditLayers=false,canEditFlows=false}:{flowSystemId:string;onFlowSystemChange:(id:string)=>void;selectedAreaIds:string[];setSelectedAreaIds:React.Dispatch<React.SetStateAction<string[]>>;onOpenFlowWorkspace:(systemId:string,edit:boolean)=>void;mode:OverviewMode;onModeChange:(mode:OverviewMode)=>void;logical:LogicalMap;systems:System[];components:Component[];flows:Flow[];processes:Process[];categories:Category[];links:Link[];networks:Network[];interfaces:Interface[];onOpenProcess?:(id:string)=>void;onOpenSystem:(id:string)=>void;onCloseSystem:()=>void;inspectorOpen:boolean;onOpenComponents:(id:string)=>void;onOpenComponent:(id:string)=>void;onOpenNetworks:()=>void;focusSystemId?:string;request?:<T>(url:string,init?:RequestInit)=>Promise<T>;canEditLayers?:boolean;canEditFlows?:boolean}){
  const [layers,setLayers]=useState({systems:true,components:false,flows:false,business:false})
  const sequence=mode==='sequence'
  const mapMode=sequence?'flows':mode
@@ -326,14 +326,13 @@ export default function ArchitectureHome({flowSystemId,onFlowSystemChange,select
     {([['business','Бизнес-связи'],['flows','Потоки данных'],['logical','Логические связи']] as const).map(([id,label])=><button key={id} type="button" aria-pressed={mapMode===id} className={mapMode===id?'current':''} disabled={editingLayers||editingSystems} onClick={()=>onModeChange(id)}>{label}</button>)}
    </div>
   {mapMode==='flows'&&<div className="homeMapMode" role="group" aria-label="Представление потоков данных">
+    <button type="button" onClick={()=>onOpenFlowWorkspace(focus||selectedSystem,false)}>Реестр потоков</button>
     {([['map','Карта'],['sequence','Последовательность']] as const).map(([id,label])=><button key={id} type="button" disabled={editingLayers} aria-pressed={flowPresentation===id} className={flowPresentation===id?'current':''} onClick={()=>onModeChange(id==='map'?'flows':'sequence')}>{label}</button>)}
   </div>}
   </div>
   {mapMode==='flows'&&<div className="overviewToolbar flowWorkspaceTools workspaceActionBar" role="group" aria-label="Инструменты потоков">
     {systemPicker}
-    <button type="button" onClick={()=>onOpenFlowWorkspace(focus||selectedSystem,false)}>Реестр потоков</button>
     {canEditFlows&&<button type="button" onClick={()=>onOpenFlowWorkspace(focus||selectedSystem,true)}>Редактор потоков</button>}
-    {flowTools}
   </div>}
   {logicalMode&&<div className="overviewToolbar" role="group" aria-label="Раскладка логических связей">{logical.controls}
     {Object.keys(logical.positions).length>0&&<label><input type="checkbox" disabled={editingSystems} checked={manualLayout} onChange={event=>setManualLayout(event.target.checked)}/> Ручная раскладка</label>}

@@ -90,7 +90,7 @@ export default function TechnicalDecisions({request, profile, systems, items, fl
       </div>
       {loading?<p role="status">Загрузка…</p>:<div className="decisionTable"><table><thead><tr><th scope="col">Название</th><th scope="col">Статус</th><th scope="col">Система</th><th scope="col">Обновлено</th></tr></thead>
         <tbody>{visible.map(row=><tr key={row.id} className={selection===row.id?'current':''}>
-          <td><button onClick={()=>{setCreating(false);setOpenReview(showQueue);select(row.id)}}><FileText size={15}/>{row.title}</button></td>
+          <td><button className="entityName" onClick={()=>{setCreating(false);setOpenReview(showQueue);select(row.id)}}><FileText size={15}/>{row.title}</button></td>
           <td><Status value={row.status}/>{row.status==='in_review'&&<small className="decisionPendingServices">Ожидается ответ: {pendingServices(row).map(service=>services[service]).join(', ')||'—'}</small>}</td><td>{systems.find(s=>s.id===row.system_id)?.name||'—'}</td><td>{dateFormat.format(new Date(row.updated_at))}</td>
         </tr>)}</tbody></table>{!visible.length&&!error&&<p>{showQueue&&!query.trim()?'Нет решений, ожидающих ответа вашей службы.':rows.length?'Решения по этому запросу не найдены.':'Технических решений пока нет.'}</p>}</div>}
     </div>}

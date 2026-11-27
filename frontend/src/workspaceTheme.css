@@ -279,3 +279,10 @@ body {
 @media(max-width:650px){
  .shell .workspaceActionBar > :is(button,select,summary,a){min-height:36px;white-space:normal}
 }
+
+.shell button.entityName,.shell .incidentRow strong,.shell .flowRegisterName h3{
+  color:var(--hub-accent);text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:3px
+}
+.shell button.entityName{
+  border:0;background:transparent;padding:3px 0;text-align:left;font:inherit;font-weight:600;cursor:pointer
+}

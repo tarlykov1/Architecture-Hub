@@ -32,6 +32,7 @@ export default function NetworkPathCatalog({request,flows,components,interfaces,
   const [newPlace,setNewPlace]=useState(false)
   const [place,setPlace]=useState(emptyPlace)
   const [placeFilter,setPlaceFilter]=useState('')
+  const [selectedAsset,setSelectedAsset]=useState('')
   const [assetQuery,setAssetQuery]=useState('')
   const flow=flows.find(f=>f.id===flowId)
   const source=components.find(c=>c.id===flow?.source_id)
@@ -139,12 +140,12 @@ export default function NetworkPathCatalog({request,flows,components,interfaces,
           const profile=asset.equipment
           const location=places.find(p=>p.id===profile?.location_id)
           const routes=usage.filter(u=>u.asset_id===asset.id)
-          return <tr key={asset.id}><th scope="row">{asset.name}</th><td>{kinds[asset.kind]||asset.kind}</td>
+          return <React.Fragment key={asset.id}><tr><th scope="row"><button className="entityName" aria-expanded={selectedAsset===asset.id} onClick={()=>setSelectedAsset(selectedAsset===asset.id?'':asset.id)}>{asset.name}</button></th><td>{kinds[asset.kind]||asset.kind}</td>
             <td>{profile?.model||'—'}</td><td>{location?placeName(location):'—'}</td>
             <td>{profile?.inventory_number||'—'}</td><td>{profile?.serial_number||'—'}</td>
             <td>{components.filter(c=>profile?.component_ids.includes(c.id)).map(c=>c.name).join(', ')||'—'}</td>
             <td>{routes.length?routes.map(u=><button key={u.flow_id} onClick={()=>openUsage(u.flow_id)}>{u.flow_name}</button>):'—'}</td>
-            <td>{canEditAssets&&<button onClick={()=>editAsset(asset)}>Редактировать</button>}</td></tr>
+            <td>{canEditAssets&&<button onClick={()=>editAsset(asset)}>Редактировать</button>}</td></tr>{selectedAsset===asset.id&&<tr><td colSpan={9}><section aria-label={'Карточка устройства '+asset.name}><strong>{asset.name}</strong><p>{asset.description||'Назначение не указано'}</p><p>{[asset.address,location&&placeName(location),profile?.model,status[asset.verification]].filter(Boolean).join(' · ')}</p><button onClick={()=>setSelectedAsset('')}>Свернуть карточку</button></section></td></tr>}</React.Fragment>
         })}</tbody></table>{!visibleAssets.length&&<p>Оборудование не найдено.</p>}</div>:<div className="networkPathRegistry">{visibleAssets.map(a=><article key={a.id}><div><strong>{a.name}</strong><small>{kinds[a.kind]||a.kind} · {status[a.verification]||a.verification}</small></div><small>{places.filter(p=>p.id===a.equipment?.location_id).map(placeName).join('')}</small><small>{[a.equipment?.model,a.equipment?.inventory_number&&'Инв. '+a.equipment.inventory_number,a.equipment?.serial_number&&'S/N '+a.equipment.serial_number].filter(Boolean).join(' · ')}</small><p>{a.description||'Назначение не описано'}{a.address?' · '+a.address:''}</p><small>Упоминаний в маршрутах: {usage.filter(u=>u.asset_id===a.id).length}</small><div className="networkPathUsageLinks">{usage.filter(u=>u.asset_id===a.id).map(u=><button type="button" key={u.flow_id} onClick={()=>openUsage(u.flow_id)}>{u.flow_name} · шаг {u.position+1}</button>)}</div>{canEditAssets&&<button type="button" onClick={()=>editAsset(a)}>Редактировать</button>}</article>)}{!assets.length&&<p className="hint">В справочнике пока нет объектов. VRF, VLAN и зоны используются из существующего сетевого реестра.</p>}</div>}
         {!inventory&&<><h3>Существующие VRF, VLAN и зоны</h3>
         <p className="hint">Редактируются в «Реестре сетей». Здесь видно, в каких маршрутах они зарегистрированы.</p>

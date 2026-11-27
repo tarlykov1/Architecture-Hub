@@ -58,7 +58,7 @@ export default function SystemDataMap({request,systems,components,flows,processe
 
   return <div className="architectureDrawerBackdrop" onMouseDown={event=>{if(event.target===event.currentTarget)onClose()}}>
     <aside className="architectureDrawer systemDataDrawer" role="dialog" aria-modal="true" aria-label="Карта данных информационной системы">
-      <div className="flowDataHeading"><div><small>СВЯЗИ · ИНФОРМАЦИОННЫЕ СИСТЕМЫ · ДАННЫЕ</small><h2>Карта данных ИС</h2></div><button type="button" onClick={onClose} aria-label="Закрыть карту данных">Закрыть ×</button></div>
+      <div className="flowDataHeading"><div><small className="panelKind">{systems.find(s=>s.id===systemId)?.name||'Информационная система'}</small><h2>Карта данных ИС</h2></div><button type="button" onClick={onClose} aria-label="Закрыть карту данных">Закрыть ×</button></div>
       <label className="flowDataField">Информационная система<select aria-label="Информационная система карты данных" value={systemId} onChange={event=>changeSystem(event.target.value)}>{systems.map(system=><option value={system.id} key={system.id}>{system.name}</option>)}</select></label>
       <p className="hint">Показаны зарегистрированные направления обмена. Наличие записи не подтверждает фактическую передачу данных или сетевую доступность.</p>
       {error&&<p role="alert" className="kisError">{error}</p>}

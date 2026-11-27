@@ -1,5 +1,5 @@
 import {useEffect, useState} from 'react'
-import {ArrowLeft, FileText, Plus, X, Undo2, Redo2, MousePointer2, GitBranch, Monitor, Maximize2} from 'lucide-react'
+import {ArrowLeft, FileText, Plus, Undo2, Redo2, MousePointer2, GitBranch, Monitor, Maximize2} from 'lucide-react'
 import {Background, ConnectionMode, Controls, MarkerType, ReactFlow, type Connection} from '@xyflow/react'
 import {SystemComposition} from './SystemComposition'
 import {DiagramNodeLabel, diagramCardStyle} from './DiagramVisual'
@@ -96,7 +96,7 @@ export default function TechnicalDecisions({request, profile, systems, items, fl
         </tr>)}</tbody></table>{!visible.length&&!error&&<p>{showQueue&&!query.trim()?'Нет решений, ожидающих ответа вашей службы.':rows.length?'Решения по этому запросу не найдены.':'Технических решений пока нет.'}</p>}</div>}
     </div>}
     {creating&&<form className="decisionSide" onSubmit={e=>{e.preventDefault();void create()}}>
-      <header><h3>Новое решение</h3><button type="button" aria-label="Закрыть создание" disabled={saving} onClick={()=>setCreating(false)}><X size={16}/></button></header>
+      <header><h3>Новое решение</h3><button type="button" aria-label="Закрыть создание" disabled={saving} onClick={()=>setCreating(false)}>Закрыть ×</button></header>
       <label>Название<input required maxLength={250} value={title} onChange={e=>setTitle(e.target.value)} autoFocus/></label>
       <label>Информационная система<select aria-label="Информационная система" required value={system} onChange={e=>setSystem(e.target.value)}><option value="">Выберите систему</option>{systems.filter(s=>s.kind==='system').map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select></label>
       <button className="primary" disabled={saving||!title.trim()||!system}>Создать черновик</button>
@@ -169,7 +169,7 @@ function DecisionInspector({id,initialReview,request,profile,items,flows,systemN
     document.addEventListener('mousedown',hide);document.addEventListener('keydown',escape)
     return()=>{document.removeEventListener('mousedown',hide);document.removeEventListener('keydown',escape)}
   },[menu])
-  if(!row)return <aside className="decisionSide"><header><h3>Решение</h3><button aria-label="Закрыть решение" onClick={close}><X size={16}/></button></header>{error?<p role="alert">{error} <button onClick={()=>retry(v=>v+1)}>Повторить</button></p>:<p role="status">Загрузка…</p>}</aside>
+  if(!row)return <aside className="decisionSide"><header><h3>Решение</h3><button aria-label="Закрыть решение" onClick={close}>Закрыть ×</button></header>{error?<p role="alert">{error} <button onClick={()=>retry(v=>v+1)}>Повторить</button></p>:<p role="status">Загрузка…</p>}</aside>
   const loaded=row
   const revision={expected_revision:row.revision}
   const author=!!profile?.id && row.author==='user:'+profile.id
@@ -428,7 +428,7 @@ function DecisionInspector({id,initialReview,request,profile,items,flows,systemN
       </div>
     </div>}
     <aside className="decisionSide" aria-label="Карточка технического решения">
-      <header><h3>{schema?'Свойства решения':row.title}</h3><button disabled={busy} aria-label="Закрыть решение" onClick={exitEditor}><X size={16}/></button></header>
+      <header><div><small className="panelKind">Техническое решение</small><h3>{row.title}</h3></div><button disabled={busy} aria-label="Закрыть решение" onClick={exitEditor}>Закрыть ×</button></header>
       <small>Версия {row.revision} · Автор: {row.author_name||row.author}</small>
       <nav aria-label="Сведения о решении">{(['items','changes','review'] as const).map(t=><button key={t} aria-pressed={tab===t} onClick={()=>{
           if(hasUnsavedForm&&!window.confirm('Отбросить несохранённые изменения?'))return

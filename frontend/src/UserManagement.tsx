@@ -80,7 +80,7 @@ export default function UserManagement({request,onClose}:{request:Api;onClose:()
  }
  return <div className="editorBackdrop accountBackdrop">
   <section className="accountDialog" role="dialog" aria-modal="true" aria-label="Управление пользователями">
-   <header><div><h2>Пользователи Architecture Hub</h2><p>У каждого сотрудника свой пароль и роль. Изменения прав применяются на сервере.</p></div><button type="button" onClick={onClose} aria-label="Закрыть управление пользователями">×</button></header>
+   <header><div><h2>Пользователи Architecture Hub</h2><p>У каждого сотрудника свой пароль и роль. Изменения прав применяются на сервере.</p></div><button type="button" onClick={onClose} aria-label="Закрыть управление пользователями">Закрыть ×</button></header>
    <RuntimeVersion request={request}/>
    <form className="accountCreateForm" onSubmit={event=>void create(event)}>
     <h3>Добавить пользователя</h3>
@@ -118,7 +118,7 @@ export function ChangePasswordDialog({request,onClose,onChanged}:{request:Api;on
   }catch(err){setError((err as Error).message)}finally{setBusy(false)}
  }
  return <div className="editorBackdrop"><section className="editorDialog" role="dialog" aria-modal="true" aria-label="Смена личного пароля">
-  <div className="dialogHead"><h2>Сменить пароль</h2><button type="button" aria-label="Закрыть смену пароля" onClick={onClose}>×</button></div>
+  <div className="dialogHead"><h2>Сменить пароль</h2><button type="button" aria-label="Закрыть смену пароля" onClick={onClose}>Закрыть ×</button></div>
   <p>После смены пароля все предыдущие сеансы этой учётной записи будут завершены.</p>
   <form className="detailForm" onSubmit={event=>void submit(event)}>
    <label>Текущий пароль<input type="password" required autoComplete="current-password" value={current} onChange={e=>setCurrent(e.target.value)}/></label>

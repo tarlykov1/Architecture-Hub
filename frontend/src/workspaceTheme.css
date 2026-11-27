@@ -198,7 +198,8 @@ body {
 .overviewFlowList > button {display:block;width:100%;text-align:left;border:0;padding:7px;background:white}
 .overviewFlowList > button:hover,.overviewFlowList > button:focus-visible {background:var(--hub-accent-soft)}
 
-:root {--hub-panel-width:min(100vw,max(340px,25vw))}
+:root {--hub-panel-width:30vw}
+@media(min-width:701px) and (max-width:999px){:root {--hub-panel-width:max(320px,30vw)}}
 @media(max-width:700px){:root {--hub-panel-width:100vw}}
 .shell :is(.editorBackdrop,.architectureDrawerBackdrop,.topologyNicBackdrop) .architectureDrawer,
 .shell .boardInspector,
@@ -320,3 +321,40 @@ body {
 .incidentWorkspace .incidentFilters { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
 .incidentFilters input { flex: 1 1 170px; }
 .businessMatrix { min-width: 0; }
+
+/* Entity selections and their editors share the same right edge and width,
+   including dialogs mounted by React portals outside the application shell. */
+.panelKind {display:block;color:var(--hub-accent,#5346c7);font-size:12px;font-weight:650;margin-bottom:4px}
+.panelRoute {overflow-wrap:anywhere;color:var(--hub-muted);font-size:13px}
+.registrySplit:has(>.registrySelection) {padding-right:var(--hub-panel-width)}
+.registrySplit>.registrySelection {position:fixed;inset:var(--hub-header-height,52px) 0 0 auto;width:var(--hub-panel-width);min-width:0;z-index:25;background:white;overflow:auto;overscroll-behavior:contain;border-left:1px solid var(--hub-line);box-shadow:-4px 0 14px #2020320d}
+.registrySelection header {position:sticky;top:-14px;background:white;z-index:1;padding:10px 0;border-bottom:1px solid var(--hub-line);align-items:flex-start;flex-wrap:nowrap}
+.registrySelection header>div {min-width:0;flex:1}
+.registrySelection header button {flex:none}
+.registrySplit .inspectedRow td:first-child {box-shadow:inset 3px 0 var(--hub-accent)}
+.registrySelection .workspaceActionBar {flex-wrap:wrap}
+.shell .decisionSide {flex:0 0 var(--hub-panel-width);width:var(--hub-panel-width)}
+.businessPassportHeaderActions button {width:auto;padding:0 9px;white-space:nowrap}
+body :is(.editorBackdrop,.architectureDrawerBackdrop,.topologyNicBackdrop,.boardConfirm) {display:flex;align-items:stretch;justify-content:flex-end;padding:0}
+body :is(.editorBackdrop,.architectureDrawerBackdrop,.topologyNicBackdrop,.boardConfirm)>:is(.editorDialog,.architectureDrawer,.businessPassport,.accountDialog,.boardConfirmInner) {
+  width:var(--hub-panel-width);max-width:100vw;min-width:0;height:100dvh;max-height:100dvh;
+  margin:0;border-radius:0;box-sizing:border-box;overflow:auto;background:white;overscroll-behavior:contain;
+}
+:is(.architectureDrawer,.editorDialog,.accountDialog,.businessPassport,.registrySelection) :is(input:not([type=checkbox]):not([type=radio]),select,textarea) {max-width:100%;min-width:0}
+:is(.architectureDrawer,.editorDialog,.accountDialog,.businessPassport) :is(.dialogHead,.networkPathHead,.flowDataHeading,.registryHeader,.businessPassportHeader) {gap:8px;flex-wrap:wrap}
+.shell .editorBackdrop .architectureDrawer,.shell .businessPassportBackdrop .businessPassport {border-radius:0}
+@media(max-width:700px){
+  .registrySplit:has(>.registrySelection) {padding-right:0}
+  .registrySplit>.registrySelection,.shell .decisionSide {position:fixed;inset:var(--hub-header-height,52px) 0 0 auto;width:100vw;height:auto;background:white;z-index:75;overflow:auto}
+}
+:is(.architectureDrawer,.editorDialog,.accountDialog) {container-type:inline-size}
+@container (max-width:480px){
+  :is(.formPair,.flowDataFilters,.networkPathAdd) {grid-template-columns:minmax(0,1fr)}
+  :is(.networkPathTabs,.componentInspectorTabs,.workspaceActionBar) {flex-wrap:wrap}
+}
+
+.registrySplit tbody tr:has(.entityName) {cursor:pointer}
+.registrySplit tbody tr:not(.inspectedRow):hover td {background:var(--hub-accent-soft)}
+@media(max-width:720px){
+  .shell .decisionDrawing ~ .decisionSide {position:static;width:100%;height:auto}
+}

@@ -358,3 +358,6 @@ body :is(.editorBackdrop,.architectureDrawerBackdrop,.topologyNicBackdrop,.board
 @media(max-width:720px){
   .shell .decisionDrawing ~ .decisionSide {position:static;width:100%;height:auto}
 }
+.boardEditorStage:not(.boardDockCollapsed)>.boardDock>.boardDockToggle {
+  position:static;margin:6px 10px 0 auto;flex-shrink:0
+}

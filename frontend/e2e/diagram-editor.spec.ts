@@ -554,9 +554,15 @@ test('dragging VLAN into and out of VRF requires confirmation and resizing zone 
   await board.getByRole('button',{name:'Сохранить расположение'}).click()
   await expect.poll(async()=>(await read())['network:'+vlan]?.parent_id||null).toBe(null)
 
+  await board.getByRole('button',{name:'Показать всё'}).click()
   const grips=parent.locator('.react-flow__resize-control.handle')
   await expect(grips.first()).toBeVisible()
   const before=(await read())['network:'+vrf]!.width!
+  await expect.poll(async()=>grips.last().evaluate(handle=>{
+    const box=handle.getBoundingClientRect()
+    return handle.contains(document.elementFromPoint(box.x+box.width/2,box.y+box.height/2))
+  })).toBe(true)
+  await grips.last().click({trial:true})
   const grip=await grips.last().boundingBox()
   expect(grip).not.toBeNull()
   await page.mouse.move(grip!.x+grip!.width/2,grip!.y+grip!.height/2)

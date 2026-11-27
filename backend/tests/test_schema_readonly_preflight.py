@@ -31,7 +31,7 @@ def test_readonly_schema_check_passes_at_head_and_reports_outdated_revision(tmp_
     passed,code=checker.check(path)
     assert code==0,passed
     assert passed["status"]=="PASS"
-    assert passed["actual_revision"]=="0021_technical_decision_change_plans"
+    assert passed["actual_revision"]=="0022_equipment_locations"
     assert passed["broken_foreign_key_count"]==0
     assert not passed["missing_indexes"]
     assert not passed["missing_columns"]

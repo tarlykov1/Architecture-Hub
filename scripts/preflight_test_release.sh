@@ -103,7 +103,7 @@ with sqlite3.connect(f"file:{db}?mode=ro", uri=True) as connection:
     ]
     # Release is only READY after a verified upgrade to the current schema.
     # Never label an older but recognizable revision safe for a new rollout.
-    expected = "0021_technical_decision_change_plans"
+    expected = "0022_equipment_locations"
     if len(revisions) != 1 or revisions[0] != expected:
         raise SystemExit(
             "BLOCKED: Alembic is not at expected release revision. "

@@ -76,3 +76,27 @@ def test_declared_flow_network_path_is_ordered_validated_and_reusable():
         assert client.delete("/api/flows/"+flow,headers=ADMIN).status_code==204
         assert client.delete("/api/networks/"+vrf,headers=ADMIN).status_code==204
         assert client.delete("/api/network-assets/"+ptaf,headers=ADMIN).status_code==204
+
+
+def test_equipment_move_preserves_shared_location_and_legacy_updates():
+    with TestClient(app, headers=ADMIN) as client:
+        name = 'QA-WORK-' + uuid4().hex[:10]
+        api = '/api/network-assets'
+        place = {'city': 'СПб', 'site': name, 'room': '101'}
+        first = create(client, api+'/locations', place)
+        assert create(client, api+'/locations', place) == first
+        second = create(client, api+'/locations', {**place, 'room':'102'})
+        system = create(client, '/api/objects', {'kind':'system','name':name})
+        vm = create(client, '/api/infra', {'kind':'vm','name':name,'system_id':system})
+        profile = {'location_id':first,'component_ids':[vm],'inventory_number':'0001'}
+        data = {'name':name, 'kind':'switch'}
+        asset = create(client, api, {**data,'equipment':profile})
+        url = api+'/'+asset
+        assert client.put(url,json=data).json()['equipment']['location_id'] == first
+        moved = client.put(url,json={**data,'equipment':{**profile,'location_id':second}})
+        assert moved.json()['equipment']['component_ids'] == [vm]
+        assert moved.json()['equipment']['location_id'] == second
+        assert client.put(url,json={**data,'equipment':{**profile,'component_ids':[str(uuid4())]}}).status_code == 422
+        assert client.delete('/api/infra/'+vm).status_code == 409
+        assert client.delete(url).status_code == 204
+        assert client.delete('/api/infra/'+vm).status_code == 204

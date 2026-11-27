@@ -1286,7 +1286,7 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
         setInspectorOpen(false);setDiagramEditMode(false)
         setEquipmentOpen(index===3);setSystemsShowTechnologyInventory(index===4)
         if(index===1){openResourceMap(objects.find(o=>o.id===viewSystem)?.id||registrySystems[0]?.id||objects[0]?.id||'');return}
-        if(index===2){setComponentView('registry');setLayer('infrastructure');return}
+        if(index===2){if(componentView==='resources')setComponentView('registry');setLayer('infrastructure');return}
         setLayer('systems')
       }}>{name}</button>
     })}
@@ -1410,7 +1410,7 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
       {!categories.length?<p>Бизнес-процессы пока не добавлены.</p>:!categories.some(cat=>!workspaceQuery||cat.name.toLowerCase().includes(workspaceQuery.toLowerCase())||processes.some(p=>p.category_id===cat.id&&[p.name,p.description].join(' ').toLowerCase().includes(workspaceQuery.toLowerCase())))&&<p role="status">Нет бизнес-процессов по фильтру «{workspaceQuery}». <button type="button" onClick={()=>setWorkspaceQuery('')}>Сбросить поиск</button></p>}
       </>}</section> : layer==='systems' ? <section className="systemsWorkspace" aria-label="Реестр информационных систем">
         {systemsTabs}
-        {!equipmentOpen&&!systemsShowTechnologyInventory&&<div className="systemsWorkspaceHead"><h2>Информационные системы</h2>{canWrite('systems')&&<button type="button" className="primary" onClick={()=>{setPassportEditId('');setCreateObjectOpen(true)}}>+ Создать ИС</button>}</div>}
+        {!equipmentOpen&&!systemsShowTechnologyInventory&&<div className="systemsWorkspaceHead"><h2>Информационные системы</h2><div className="workspaceActionBar"><button type="button" onClick={()=>openSection('home')}>Общая карта</button>{canWrite('systems')&&<button type="button" className="primary" onClick={()=>{setPassportEditId('');setCreateObjectOpen(true)}}>+ Создать ИС</button>}</div></div>}
 
         {equipmentOpen&&canSee('networks') ? <NetworkPathCatalog inventory systems={objects} canEditAssets={canWrite('networks')} request={request} flows={flows} components={infra} interfaces={nics} segments={segments} initialFlowId={selectedFlow} onClose={()=>setEquipmentOpen(false)}/> : systemsShowTechnologyInventory ? <TechnologyInventory request={request} onOpenSystem={id=>{setSystemsShowTechnologyInventory(false);setSelected(id);setInspectorOpen(true);setPanelTab('technologies')}}/> : <div className="systemsTableWrap">
         <div className="systemSecurityFilterBar" role="group" aria-label="Фильтры защиты информации">

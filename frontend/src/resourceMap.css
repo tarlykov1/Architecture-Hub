@@ -1,0 +1,11 @@
+.resourceMap{height:clamp(380px,68vh,820px)}
+.resourceMap .resourceBand{background:#f1f5fa;border:1px solid #c9d4e1;border-radius:8px;pointer-events:none}
+.resourceMap .band1,.resourceMap .band4{background:#f5f3e9}
+.resourceMap .band2,.resourceMap .band5{background:#eef6f5}
+.resourceMap .resourceCaption{background:none;border:0;padding:5px;text-align:left;color:#344558;font-weight:600}
+.resourceCaption .react-flow__handle{visibility:hidden}
+.resourceMap .resourceNode{padding:0;border:1px solid #b2c3d3;border-radius:6px}
+.resourceNode button,.resourceNode [title]{width:100%;display:flex;align-items:center;gap:8px;padding:8px;text-align:left;background:#fff;border:0;border-radius:6px}
+.resourceNode span{min-width:0}
+.resourceNode small,.resourceNode strong{display:block;white-space:nowrap;text-overflow:ellipsis;overflow:hidden}
+.resourceNode svg{flex:none}

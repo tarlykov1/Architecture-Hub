@@ -480,6 +480,54 @@ class NetworkAsset(Base):
     verification: Mapped[str] = mapped_column(String(30), default="draft")
 
 
+class EquipmentLocation(Base):
+    __tablename__ = "equipment_locations"
+    __table_args__ = (UniqueConstraint("city", "site", "building", "room", "rack"),)
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    city: Mapped[str] = mapped_column(String(120))
+    site: Mapped[str] = mapped_column(String(120))
+    building: Mapped[str] = mapped_column(String(120))
+    room: Mapped[str] = mapped_column(String(120))
+    rack: Mapped[str] = mapped_column(String(120))
+
+
+class EquipmentProfile(Base):
+    __tablename__ = "equipment_profiles"
+    asset_id: Mapped[UUID] = mapped_column(ForeignKey("network_assets.id"), primary_key=True)
+    location_id: Mapped[UUID | None] = mapped_column(ForeignKey("equipment_locations.id"))
+    inventory_number: Mapped[str] = mapped_column(String(120))
+    serial_number: Mapped[str] = mapped_column(String(120))
+    model: Mapped[str] = mapped_column(String(200))
+
+
+class EquipmentComponent(Base):
+    __tablename__ = "equipment_components"
+    asset_id: Mapped[UUID] = mapped_column(ForeignKey("network_assets.id", ondelete="CASCADE"), primary_key=True)
+    component_id: Mapped[UUID] = mapped_column(ForeignKey("infrastructure_items.id", ondelete="CASCADE"), primary_key=True)
+
+
+class LocationInput(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True, str_max_length=120)
+    city: str = ""
+    site: str = ""
+    building: str = ""
+    room: str = ""
+    rack: str = ""
+
+
+class LocationOutput(LocationInput):
+    model_config = ConfigDict(from_attributes=True)
+    id: UUID
+
+
+class EquipmentInput(BaseModel):
+    location_id: UUID | None = None
+    inventory_number: str = Field(default="", max_length=120)
+    serial_number: str = Field(default="", max_length=120)
+    model: str = Field(default="", max_length=200)
+    component_ids: list[UUID] = Field(default_factory=list, max_length=500)
+
+
 class FlowNetworkHop(Base):
     """Ordered declared passage via a network object, NOT automatically discovered routing."""
     __tablename__ = "flow_network_hops"
@@ -493,8 +541,9 @@ class FlowNetworkHop(Base):
 
 
 class NetworkAssetInput(BaseModel):
+    equipment: EquipmentInput | None = None
     name: str = Field(min_length=1, max_length=250)
-    kind: str = Field(pattern="^(subnet|dmz|firewall|waf|ptaf|router|gateway|load_balancer|vpn|other)$")
+    kind: str = Field(pattern="^(subnet|dmz|firewall|waf|ptaf|router|switch|access_point|server|storage|gateway|load_balancer|vpn|other)$")
     description: str = Field(default="", max_length=2000)
     address: str = Field(default="", max_length=120)
     verification: str = Field(default="draft", pattern="^(draft|assumed|verified)$")
@@ -2694,6 +2743,8 @@ def delete_infra(item_id: UUID, request: Request, db: Session = Depends(db_sessi
     from .process_passports import ProcessStep
     if db.scalar(select(ProcessStep.id).where(ProcessStep.component_id == item_id)):
         raise HTTPException(409, "Component is referenced by a business-process step; unlink it first")
+    if db.scalar(select(EquipmentComponent.asset_id).where(EquipmentComponent.component_id == item_id)):
+        raise HTTPException(409, "Сначала снимите привязку оборудования в реестре")
     audit_direct_edit(db, request, "delete_vm", item.id,
                       {"name":item.name,"kind":item.kind,"system_id":item.system_id},
                       None, "Удалён компонент " + item.name)
@@ -2839,20 +2890,82 @@ def network_path_usage(db: Session = Depends(db_session)):
     ]
 
 
+@app.get("/api/network-assets/locations", response_model=list[LocationOutput])
+def equipment_locations(db: Session = Depends(db_session)):
+    return db.scalars(select(EquipmentLocation).order_by(
+        EquipmentLocation.city, EquipmentLocation.site, EquipmentLocation.building,
+        EquipmentLocation.room, EquipmentLocation.rack)).all()
+
+
+@app.post("/api/network-assets/locations", response_model=LocationOutput, status_code=201)
+def create_equipment_location(payload: LocationInput, db: Session = Depends(db_session)):
+    fields = payload.model_dump()
+    if not any(fields.values()):
+        raise HTTPException(422, "Укажите хотя бы один уровень места")
+    query = select(EquipmentLocation).filter_by(**fields)
+    existing = db.scalar(query)
+    if existing:
+        return existing
+    location = EquipmentLocation(**fields)
+    db.add(location)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        existing = db.scalar(query)
+        if existing:
+            return existing
+        raise
+    return location
+
+
+def save_equipment_profile(db: Session, asset_id: UUID, data: EquipmentInput):
+    if data.location_id and not db.get(EquipmentLocation, data.location_id):
+        raise HTTPException(422, "Место не найдено")
+    ids = set(data.component_ids)
+    if ids and ids != set(db.scalars(select(InfrastructureItem.id).where(InfrastructureItem.id.in_(ids)))):
+        raise HTTPException(422, "Компонент не найден")
+    db.merge(EquipmentProfile(asset_id=asset_id, **data.model_dump(exclude={"component_ids"})))
+    db.query(EquipmentComponent).filter_by(asset_id=asset_id).delete()
+    db.add_all(EquipmentComponent(asset_id=asset_id, component_id=item) for item in ids)
+
+
+def inventory_rows(db: Session, asset_id: UUID | None = None):
+    query = select(NetworkAsset, EquipmentProfile).outerjoin(EquipmentProfile)
+    links = select(EquipmentComponent)
+    if asset_id:
+        query = query.where(NetworkAsset.id == asset_id)
+        links = links.where(EquipmentComponent.asset_id == asset_id)
+    components = {}
+    for link in db.scalars(links):
+        components.setdefault(link.asset_id, []).append(link.component_id)
+    result = []
+    for asset, profile in db.execute(query.order_by(NetworkAsset.kind, NetworkAsset.name)):
+        row = NetworkAssetOutput.model_validate(asset)
+        if profile:
+            row.equipment = EquipmentInput.model_validate(profile, from_attributes=True)
+            row.equipment.component_ids = components.get(asset.id, [])
+        result.append(row)
+    return result
+
+
 @app.get("/api/network-assets", response_model=list[NetworkAssetOutput])
 def list_network_assets(db: Session = Depends(db_session)):
-    return db.scalars(select(NetworkAsset).order_by(NetworkAsset.kind, NetworkAsset.name)).all()
+    return inventory_rows(db)
 
 
 @app.post("/api/network-assets", response_model=NetworkAssetOutput, status_code=201)
 def add_network_asset(payload: NetworkAssetInput, db: Session = Depends(db_session)):
     if db.scalars(select(NetworkAsset).where(NetworkAsset.name == payload.name, NetworkAsset.kind == payload.kind)).first():
         raise HTTPException(409, "Network object already exists")
-    asset = NetworkAsset(**payload.model_dump())
+    asset = NetworkAsset(**payload.model_dump(exclude={"equipment"}))
     db.add(asset)
+    db.flush()
+    if payload.equipment is not None:
+        save_equipment_profile(db, asset.id, payload.equipment)
     db.commit()
     db.refresh(asset)
-    return asset
+    return inventory_rows(db, asset.id)[0]
 
 
 @app.put("/api/network-assets/{asset_id}", response_model=NetworkAssetOutput)
@@ -2862,11 +2975,13 @@ def update_network_asset(asset_id: UUID, payload: NetworkAssetInput, db: Session
         raise HTTPException(404, "Network object not found")
     if db.scalars(select(NetworkAsset).where(NetworkAsset.name == payload.name, NetworkAsset.kind == payload.kind, NetworkAsset.id != asset_id)).first():
         raise HTTPException(409, "Network object already exists")
-    for key, value in payload.model_dump().items():
+    for key, value in payload.model_dump(exclude={"equipment"}).items():
         setattr(asset, key, value)
+    if payload.equipment is not None:
+        save_equipment_profile(db, asset.id, payload.equipment)
     db.commit()
     db.refresh(asset)
-    return asset
+    return inventory_rows(db, asset.id)[0]
 
 
 @app.delete("/api/network-assets/{asset_id}", status_code=204)
@@ -2876,6 +2991,8 @@ def delete_network_asset(asset_id: UUID, db: Session = Depends(db_session)):
         raise HTTPException(404, "Network object not found")
     if db.scalars(select(FlowNetworkHop).where(FlowNetworkHop.asset_id == asset_id)).first():
         raise HTTPException(409, "Object is referenced by flow paths")
+    db.query(EquipmentComponent).filter_by(asset_id=asset_id).delete()
+    db.query(EquipmentProfile).filter_by(asset_id=asset_id).delete()
     db.delete(asset)
     db.commit()
 

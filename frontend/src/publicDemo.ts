@@ -37,6 +37,7 @@ const data:Record<string,unknown>={
  '/api/data-attributes':[],
  '/api/flow-data-uses':[],
  '/api/network-assets':[],
+ '/api/network-assets/locations':[],
 }
 export function publicDemoResponse(url:string):unknown{
  const pathname=url.split('?')[0]

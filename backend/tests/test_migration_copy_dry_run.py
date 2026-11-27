@@ -55,7 +55,7 @@ def test_copy_migration_upgrades_old_revision_and_preserves_original(tmp_path,mo
     assert report["status"]=="PASS"
     assert report["mode"]=="temporary_copy_only"
     assert report["source_revision"]=="0019_flow_scenarios"
-    assert report["target_revision"]=="0021_technical_decision_change_plans"
+    assert report["target_revision"]=="0022_equipment_locations"
     assert report["copy_revision"]==report["target_revision"]
     assert report["existing_table_row_counts_preserved"] is True
     with sqlite3.connect(path) as db:

@@ -272,3 +272,10 @@ body {
  .shell :where(.registryHeaderActions,.topologyGuide,.businessMatrixToolbar,.decisionTools,.businessPassportSaveActions,.decisionExistingActions,.decisionReviewerActions){flex-wrap:wrap;max-width:100%}
  .shell :where(.viewHead,.registryHeader,.decisionTools,.networkPathHead,.businessMatrixToolbar,.workspaceFiltersCompact,.mobileSectionMenu,.homeLayerTools,.incidentActions,.layerActionMenu,.decisionActions,.drawerFormActions,.componentInspectorTabs) button{min-height:36px}
 }
+
+.shell .workspaceActionBar{display:flex;flex-wrap:wrap;align-items:center;gap:6px;min-width:0}
+.shell .workspaceActionBar > :is(button,select,summary,a){max-width:100%;margin-block:0}
+.shell .workspaceActionBar button[aria-pressed=true]{color:var(--hub-accent);background:var(--hub-accent-soft);border-color:var(--hub-accent)}
+@media(max-width:650px){
+ .shell .workspaceActionBar > :is(button,select,summary,a){min-height:36px;white-space:normal}
+}

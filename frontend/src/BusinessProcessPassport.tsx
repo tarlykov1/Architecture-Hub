@@ -129,7 +129,7 @@ export function BusinessProcessPassport({processId,processes,systems,components,
     onClick={e=>e.stopPropagation()}>
    <header className="businessPassportHeader">
     <div><small>Бизнес-архитектура / паспорт</small><h2>{record?.name||processes.find(p=>p.id===processId)?.name||'Бизнес-процесс'}</h2></div>
-    <div className="businessPassportHeaderActions">
+    <div className="businessPassportHeaderActions workspaceActionBar">
       {record&&<span className="businessPassportRevision">Версия {record.revision}</span>}
       <button type="button" aria-label="Закрыть паспорт БП" onClick={close}><X size={19}/></button>
     </div>
@@ -169,7 +169,7 @@ export function BusinessProcessPassport({processId,processes,systems,components,
             <small>{systems.find(s=>s.id===step.system_id)?.name||'Без ИС'}{step.flow_id?' · поток':''}</small>
             <ChevronRight size={16}/>
           </button>
-          {canEdit&&<div className="businessStepActions">
+          {canEdit&&<div className="businessStepActions workspaceActionBar">
            <button type="button" aria-label={'Поднять шаг БП '+(i+1)} disabled={busy||i===0} onClick={()=>reorder(step.id,-1)}><ArrowUp size={16}/></button>
            <button type="button" aria-label={'Опустить шаг БП '+(i+1)} disabled={busy||i===data.steps.length-1} onClick={()=>reorder(step.id,1)}><ArrowDown size={16}/></button>
            <button type="button" aria-label={'Удалить шаг БП '+(i+1)} disabled={busy} onClick={()=>deleteStep(step.id)}><Trash2 size={16}/></button>
@@ -228,7 +228,7 @@ export function BusinessProcessPassport({processId,processes,systems,components,
       {error&&<p role="alert" className="businessPassportError">{error}</p>}
       {message&&<p role="status" className="businessPassportSuccess">{message}</p>}
       <button type="button" title="Экспорт последней сохранённой версии паспорта" onClick={downloadDocument}><Download size={15}/> Скачать описание БП (.md)</button>
-      {canEdit?<div className="businessPassportSaveActions">
+      {canEdit?<div className="businessPassportSaveActions workspaceActionBar">
        <button type="button" className="primary" disabled={!dirty||busy} onClick={()=>void save()}><Save size={16}/>{busy?'Сохранение…':'Сохранить паспорт'}</button>
        <button type="button" disabled={!dirty||busy} onClick={()=>{setDraft({...record,steps:record.steps.map(s=>({...s,attribute_ids:[...s.attribute_ids]}))});setError('')}}>Отменить изменения</button>
       </div>:<p>Режим просмотра. Для изменений требуются права на бизнес-архитектуру.</p>}

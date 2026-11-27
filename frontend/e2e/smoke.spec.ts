@@ -955,7 +955,7 @@ test('declare a flow path through existing VRF and security appliance',async({pa
 test('each main section has its own URL and reload preserves the current section',async({page})=>{
   await page.goto('/')
   const nav=page.getByRole('navigation',{name:'Разделы архитектуры'})
-  for(const [title,path] of [['Системы','/systems'],['Компоненты','/components'],['Потоки','/?map=flows'],['Обзор','/']] as const){
+  for(const [title,path] of [['Системы','/systems'],['Компоненты','/components'],['Потоки','/flows'],['Обзор','/']] as const){
     if(title==='Компоненты')await page.locator('.systemsWorkspaceActions').getByRole('button',{name:title,exact:true}).click()
     else await nav.getByRole('button',{name:title,exact:true}).click()
     await expect(page).toHaveURL(new URL(path,'http://127.0.0.1:5174').href)
@@ -982,12 +982,12 @@ test('direct links preserve system context and browser back-forward navigation',
   await page.reload()
   await expect(page.getByRole('combobox',{name:'Система компонентов'})).toHaveValue(id)
   await page.getByRole('navigation').getByRole('button',{name:'Потоки',exact:true}).click()
-  await expect(page).toHaveURL(/\/\?map=flows$/)
+  await expect(page).toHaveURL(/\/flows$/)
   await page.goBack()
   await expect(page).toHaveURL(new RegExp('/components\\?system='+id+'$'))
   await expect(page.getByRole('combobox',{name:'Система компонентов'})).toHaveValue(id)
   await page.goForward()
-  await expect(page).toHaveURL(/\/\?map=flows$/)
+  await expect(page).toHaveURL(/\/flows$/)
   await expect(page.getByRole('navigation',{name:'Разделы архитектуры'}).getByRole('button',{name:'Потоки',exact:true})).toHaveClass(/current/)
 })
 

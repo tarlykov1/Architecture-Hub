@@ -286,3 +286,37 @@ body {
 .shell button.entityName{
   border:0;background:transparent;padding:3px 0;text-align:left;font:inherit;font-weight:600;cursor:pointer
 }
+
+/* Shared section headings, view selectors and object inspection. */
+.hubSectionBar, .registrySelection header {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+}
+.hubSectionBar { padding: 12px 16px; background: white; border-bottom: 1px solid var(--hub-line); }
+.hubSectionBar h2, .registrySelection h3 { margin: 0; }
+.hubSectionBar > .primary, .registrySelection header button { margin-left: auto; }
+.hubViewTabs { display: flex; gap: 4px; flex-wrap: wrap; }
+.shell :is(.hubViewTabs,.systemsWorkspaceActions,.businessRegistryToolbar) button[aria-pressed=true],
+.shell .incidentFilters button[aria-pressed=true] {
+  background: #efecff; color: #4737a3; border-color: #978bd4;
+}
+.registrySplit { display: flex; align-items: flex-start; width: 100%; min-width: 0; gap: 0; }
+.registrySplit > :first-child { flex: 1; min-width: 0; overflow-x: auto; }
+.registrySplit table { width: 100%; border-collapse: collapse; background: white; }
+.registrySplit :is(th,td) { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--hub-line); }
+.registrySplit th { background: #f6f6fa; }
+.registrySplit tr.inspectedRow td { background: #ececf0; }
+.registrySelection { box-sizing: border-box; flex: 0 0 min(34%,390px); padding: 14px; background: white; border-left: 1px solid var(--hub-line); overflow-wrap: anywhere; position: sticky; top: 0; }
+.registrySelection header { margin-bottom: 12px; }
+.registrySelection dl { display: grid; grid-template-columns: auto 1fr; gap: 8px; }
+.registrySelection dd { margin: 0; }
+.registrySelection dt { color: var(--hub-muted); }
+.knowledgeSearch { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+@media (max-width: 720px) {
+  .registrySplit { flex-direction: column; }
+  .registrySplit > :first-child { width: 100%; }
+  .registrySelection { order: -1; position: static; width: 100%; border-left: 0; border-bottom: 1px solid var(--hub-line); }
+}
+.shell .systemsTable tr.inspectedRow > td { background: #ececf0; }
+.incidentWorkspace .incidentFilters { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.incidentFilters input { flex: 1 1 170px; }
+.businessMatrix { min-width: 0; }

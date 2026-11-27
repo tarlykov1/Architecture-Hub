@@ -24,7 +24,7 @@ async function setup(request:import('@playwright/test').APIRequestContext){
 async function openSequence(page:import('@playwright/test').Page,systemSearch:string){
   await page.addInitScript(()=>sessionStorage.setItem('architecture-hub:access-token:session','browser-ci-development-token'))
   await page.goto('/flows')
-  await page.getByRole('link',{name:'Общая карта связей'}).click()
+  await page.getByRole('navigation',{name:'Представления потоков'}).getByRole('button',{name:'Карта',exact:true}).click()
   await page.getByRole('button',{name:'Потоки данных',exact:true}).click()
   await page.getByRole('textbox',{name:'Поиск на карте'}).fill(systemSearch)
   await page.getByRole('button',{name:'Последовательность'}).click()

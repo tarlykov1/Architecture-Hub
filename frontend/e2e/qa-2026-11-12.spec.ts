@@ -11,7 +11,8 @@ test('AH-01: public demo network route shows an empty state without a white scre
  page.on('pageerror',error=>exceptions.push(error.message))
  await navigate(page,'Потоки')
  await expect(page.getByRole('region',{name:'Реестр технических потоков'})).toBeVisible()
- await page.getByRole('button',{name:'Сетевой маршрут',exact:true}).first().click()
+ await page.getByRole('region',{name:'Реестр технических потоков'}).locator('tbody button').first().click()
+ await page.getByRole('button',{name:'Маршрут',exact:true}).click()
  const drawer=page.getByRole('dialog',{name:'Технический маршрут потока'})
  await expect(drawer).toBeVisible()
  await expect(drawer.getByRole('region',{name:'Шаги технического маршрута'}))
@@ -25,6 +26,7 @@ test('AH-01: public demo network route shows an empty state without a white scre
 test('AH-04: save restriction is visible before editing a demo flow',async({page})=>{
  await navigate(page,'Потоки')
  await expect(page.getByRole('region',{name:'Реестр технических потоков'})).toBeVisible()
+ await page.getByRole('region',{name:'Реестр технических потоков'}).locator('tbody button').first().click()
  await page.getByRole('button',{name:'Редактировать',exact:true}).first().click()
  const drawer=page.getByRole('dialog',{name:'Редактор потока'})
  await expect(drawer).toBeVisible()
@@ -162,7 +164,7 @@ test('Unified overview changes relation semantics without duplicating the flow g
  await navigate(page,'Потоки')
  await expect(page.getByRole('region',{name:'Реестр технических потоков'})).toBeVisible()
  await expect(page.locator('[data-active-graph="flows"]')).toHaveCount(0)
- await page.getByRole('link',{name:'Общая карта связей'}).click()
+ await page.getByRole('navigation',{name:'Представления потоков'}).getByRole('button',{name:'Карта',exact:true}).click()
  await expect(map).toBeVisible()
 })
 

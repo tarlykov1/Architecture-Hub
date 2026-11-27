@@ -8,7 +8,5 @@ export async function openWorkspace(page:Page,section:'Компоненты'|'П
   await nav.getByRole('button',{name:section==='Компоненты'?'Системы':'Потоки',exact:true}).click()
   if(section==='Компоненты'){
     await page.locator('.systemsWorkspaceActions').getByRole('button',{name:'Компоненты',exact:true}).click()
-  }else{
-    await page.getByRole('button',{name:'Реестр потоков',exact:true}).click()
   }
 }

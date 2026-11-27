@@ -9,3 +9,11 @@
 .resourceNode span{min-width:0}
 .resourceNode small,.resourceNode strong{display:block;white-space:nowrap;text-overflow:ellipsis;overflow:hidden}
 .resourceNode svg{flex:none}
+
+.resourceMap .band0{background:#eef3e8}
+.resourceMap .band3{background:#e6f2f3}
+.resourceMap .resourceNode{border-left:4px solid #328d9d}
+.resourceMap .resourceLevel1{border-left-color:#589555}
+.resourceMap .resourceLevel2{border-left-color:#6586b8}
+.resourceNode button,.resourceNode [title]{min-height:56px}
+.resourceNode small{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;white-space:normal;line-height:1.3}

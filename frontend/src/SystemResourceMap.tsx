@@ -33,7 +33,7 @@ export default function SystemResourceMap({system,items,request,onOpen,readAsset
   bands[0].push({id:root,name:system.name,kind:'system'})
   const edges:Edge[]=[]
   function connect(source:string,target:string){
-    edges.push({id:source+'/'+target,source,target,type:'smoothstep',markerEnd:{type:MarkerType.ArrowClosed}})
+    edges.push({id:source+'/'+target,source,target,zIndex:1,type:'smoothstep',markerEnd:{type:MarkerType.ArrowClosed}})
   }
   const withChildren=new Set(items.map(i=>i.parent_id))
   for(const item of items){
@@ -56,13 +56,13 @@ export default function SystemResourceMap({system,items,request,onOpen,readAsset
   let y=0
   bands.forEach((band,index)=>{
     if(!band.length)return
-    const height=42+Math.ceil(band.length/columns)*92
+    const height=42+Math.ceil(band.length/columns)*116
     nodes.push({id:'band:'+index,type:'group',position:{x:0,y},style:{width:columns*250+20,height},data:{},className:'resourceBand band'+index,selectable:false})
     nodes.push({id:'caption:'+index,type:'default',position:{x:10,y:y+5},style:{width:235},className:'resourceCaption',data:{label:lanes[index]},selectable:false})
     band.forEach((card,i)=>{
       const body=<>{architectureIcon(card.kind)}<span><strong>{card.name}</strong>{card.detail&&<small>{card.detail}</small>}</span></>
-      nodes.push({id:card.id,position:{x:20+(i%columns)*250,y:y+40+Math.floor(i/columns)*92},
-        style:{width:214},zIndex:2,className:'resourceNode',sourcePosition:Position.Bottom,targetPosition:Position.Top,
+      nodes.push({id:card.id,position:{x:20+(columns-Math.min(columns,band.length-Math.floor(i/columns)*columns))*125+(i%columns)*250,y:y+40+Math.floor(i/columns)*116},
+        style:{width:214},zIndex:2,className:'resourceNode resourceLevel'+index,sourcePosition:Position.Bottom,targetPosition:Position.Top,
         data:{label:card.open?<button type="button" onClick={card.open}>{body}</button>:<div title={card.detail}>{body}</div>}})
     })
     y+=height+22

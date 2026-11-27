@@ -41,7 +41,7 @@ export function overviewGridColumns(count:number,width:number,height:number){
  let best=1,bestScale=0
  // Prefer the arrangement that fits the largest cards. A small group keeps
  // the familiar maximum of three columns even on an ultrawide display.
- const limit=count<=6?Math.min(3,count):count
+ const limit=width<=480?Math.min(2,count):count<=6?Math.min(3,count):count
  for(let columns=1;columns<=limit;columns++){
    const rows=Math.ceil(count/columns)
    const scale=Math.min(width/(245+(columns-1)*340),height/(130+(rows-1)*190))

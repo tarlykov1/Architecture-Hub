@@ -108,7 +108,7 @@ export default function FlowDataCatalog({request,flows,systems,components,proces
   }
   return <div className="architectureDrawerBackdrop" onMouseDown={e=>{if(e.target===e.currentTarget)close()}}>
     <aside className="architectureDrawer flowDataDrawer" role="dialog" aria-modal="true" aria-label="Атрибуты потоков данных">
-      <div className="flowDataHeading"><div><small>АРХИТЕКТУРА ДАННЫХ</small><h2>Атрибуты потоков</h2></div><button type="button" onClick={close} aria-label="Закрыть справочник">Закрыть ×</button></div>
+      <div className="flowDataHeading"><div><small className="panelKind">{selected?'Поток · '+selected.name:'Потоки'}</small><h2>Атрибуты потоков</h2></div><button type="button" onClick={close} aria-label="Закрыть справочник">Закрыть ×</button></div>
       <p className="hint">Справочник хранит определения полей, но не значения персональных данных. Один атрибут может участвовать в разных потоках и бизнес-процессах.</p>
       <button type="button" disabled={busy} onClick={()=>void loadDemoAttributes()}>Загрузить демоатрибуты и привязки к потокам</button>
       <div className="componentInspectorTabs" role="tablist" aria-label="Представление данных"><button type="button" role="tab" aria-selected={tab==='map'} className={tab==='map'?'current':''} onClick={()=>setTab('map')}>Данные потока</button><button type="button" role="tab" aria-selected={tab==='catalog'} className={tab==='catalog'?'current':''} onClick={()=>setTab('catalog')}>Справочник ({attributes.length})</button></div>

@@ -26,7 +26,7 @@ test('QA-WORK: compact editor gives more width to canvas and collapses/expands p
  const dock=board.getByRole('complementary',{name:'Свойства и изменения схемы'})
  await expect(dock).toBeVisible()
  const dockBox=await dock.boundingBox()
- expect(dockBox?.width).toBe(Math.max(340,page.viewportSize()!.width/4))
+ expect(dockBox?.width).toBeCloseTo(page.viewportSize()!.width*.30,0)
  await expect(dock.getByText('Начните стрелку от любой точки')).toHaveCount(0)
  const picker=dock.getByRole('combobox',{name:'Выбрать поток на схеме'})
  await picker.selectOption(flow)

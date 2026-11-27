@@ -1,5 +1,5 @@
 import {useEffect,useState} from 'react'
-import {ArrowDown,ArrowUp,ChevronRight,Download,Plus,Save,Trash2,X} from 'lucide-react'
+import {ArrowDown,ArrowUp,ChevronRight,Download,Plus,Save,Trash2} from 'lucide-react'
 import {buildBusinessProcessMarkdown} from './businessProcessDocument'
 import './businessProcessPassport.css'
 
@@ -128,10 +128,10 @@ export function BusinessProcessPassport({processId,processes,systems,components,
   <section className="businessPassport" role="dialog" aria-modal="true" aria-label="Паспорт бизнес-процесса"
     onClick={e=>e.stopPropagation()}>
    <header className="businessPassportHeader">
-    <div><small>Бизнес-архитектура / паспорт</small><h2>{record?.name||processes.find(p=>p.id===processId)?.name||'Бизнес-процесс'}</h2></div>
+    <div><small>Паспорт бизнес-процесса</small><h2>{record?.name||processes.find(p=>p.id===processId)?.name||'Бизнес-процесс'}</h2></div>
     <div className="businessPassportHeaderActions workspaceActionBar">
       {record&&<span className="businessPassportRevision">Версия {record.revision}</span>}
-      <button type="button" aria-label="Закрыть паспорт БП" onClick={close}><X size={19}/></button>
+      <button type="button" aria-label="Закрыть паспорт БП" onClick={close}>Закрыть ×</button>
     </div>
    </header>
    {loading?<p role="status">Загрузка паспорта…</p>:data&&record?<>

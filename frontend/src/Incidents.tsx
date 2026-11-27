@@ -55,7 +55,7 @@ export default function Incidents({request,systems,components,networks,flows,con
     {error&&!editing&&<p role="alert" className="kisError">{error}</p>}
     {!error&&!selected.length&&<p className="hint">Нет инцидентов по выбранному фильтру.</p>}
     {(editing||current)&&createPortal(<div className="architectureDrawerBackdrop" onClick={e=>e.stopPropagation()} onMouseDown={e=>{e.stopPropagation();if(e.target===e.currentTarget)close()}}><aside className="incidentDetail architectureDrawer" role="dialog" aria-modal="true" aria-label={editing?'Редактор инцидента':'Просмотр инцидента'}>
-      <div className="registryHeader"><h3>{editing?(current?'Изменить инцидент':'Новый инцидент'):current?.title}</h3><div className="incidentActions workspaceActionBar">{current&&!editing&&!readOnly&&<button onClick={()=>setEditing(true)}>Редактировать</button>}<button type="button" onClick={close}>{editing?'Отмена':'Закрыть'} ×</button></div></div>
+      <div className="registryHeader"><div><small className="panelKind">Инцидент{editing&&current?' · '+current.title:''}</small><h3>{editing?(current?'Изменить инцидент':'Новый инцидент'):current?.title}</h3></div><div className="incidentActions workspaceActionBar">{current&&!editing&&!readOnly&&<button onClick={()=>setEditing(true)}>Редактировать</button>}<button type="button" onClick={close}>{editing?'Отмена':'Закрыть'} ×</button></div></div>
       {editing?<form className="incidentForm" onSubmit={save}>
         <label>Название<input required minLength={2} value={form.title} onChange={e=>setForm({...form,title:e.target.value})}/></label>
         <label>Описание<textarea rows={4} value={form.description} onChange={e=>setForm({...form,description:e.target.value})}/></label>

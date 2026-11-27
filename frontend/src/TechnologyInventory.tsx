@@ -50,7 +50,7 @@ export default function TechnologyInventory({request,onOpenSystem}:{
   <div className="technologyInventoryScroll"><table>
    <thead><tr><th>Технология</th><th>Версия в паспорте</th><th>Где установлена</th><th>Среда</th><th>Мониторинг</th><th>Поддержка</th></tr></thead>
    <tbody>{result.items.map(item=><tr key={item.id}>
-    <td><strong>{item.name}</strong><small>{categoryLabels[item.category]||item.category}</small></td>
+    <td><button className="entityName" title="Открыть технологический стек ИС" onClick={()=>onOpenSystem(item.system_id)}>{item.name}</button><small>{categoryLabels[item.category]||item.category}</small></td>
     <td>{item.version||'Не указана'}{item.version_mismatch&&<strong className="technologyInventoryWarning">Версии различаются</strong>}</td>
     <td><button type="button" onClick={()=>onOpenSystem(item.system_id)}>{item.system_name||'Неизвестная ИС'}</button><small>{item.component_name||'ИС в целом'}</small></td>
     <td>{envLabels[item.environment]||item.environment}<small>{item.verification==='verified'?'Подтверждено':item.verification==='assumed'?'Предположение':'Не проверено'}</small></td>

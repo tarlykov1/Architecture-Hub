@@ -17,7 +17,7 @@ async function setup(request:APIRequestContext){
  const vm=await created(request,'/infra',{name:'QA-WORK-HR-VM-'+suffix,kind:'vm',system_id:system.id})
  const vm2=await created(request,'/infra',{name:'QA-WORK-Directory-VM-'+suffix,kind:'vm',system_id:other.id})
  const flow=await created(request,'/flows',{name:'QA-WORK-EmployeeFlow-'+suffix,source_id:vm.id,target_id:vm2.id,protocol:'HTTPS',port:'443'})
- const attribute=await created(request,'/data-attributes',{code:'qa.work.proc.'+suffix,name:'Employee reference',sensitivity:'internal'})
+ const attribute=await created(request,'/data-attributes',{code:'qa.work.proc.'+suffix,name:'Employee reference '+suffix,sensitivity:'internal'})
  return {suffix,main,parent,system,other,vm,vm2,flow,attribute}
 }
 async function open(page:Page,name:string){
@@ -33,7 +33,7 @@ async function open(page:Page,name:string){
  }
  const card=page.locator('.businessProcess').filter({hasText:name})
  await expect(card).toBeVisible()
- await card.getByRole('button',{name:'Паспорт и шаги'}).click()
+ await card.getByRole('button',{name,exact:true}).click()
  return page.getByRole('dialog',{name:'Паспорт бизнес-процесса'})
 }
 
@@ -56,7 +56,7 @@ test('QA-WORK: business passport stores hierarchy, canonical references, step re
  await step.getByRole('combobox',{name:'Компонент шага БП'}).selectOption(vm.id)
  await step.getByRole('combobox',{name:'Поток шага БП'}).selectOption(flow.id)
  await step.getByText('Атрибуты данных').click()
- await step.getByRole('checkbox',{name:/Employee reference/}).check()
+ await step.getByRole('checkbox',{name:new RegExp(attribute.name)}).check()
  await dlg.getByRole('button',{name:'Сохранить паспорт'}).click()
  await expect(dlg.getByText('Паспорт сохранён · версия 1')).toBeVisible()
  const url=api+'/business/process-passports/'+main.id
@@ -87,7 +87,7 @@ test('QA-WORK: business passport stores hierarchy, canonical references, step re
  const card=page.locator('.businessProcess').filter({hasText:main.name})
  await expect(card).toHaveCSS('margin-left','14px')
  const categoryRows=page.locator('.businessCategory').filter({hasText:parent.name}).locator('.businessProcess')
- const names=await categoryRows.locator('strong').allTextContents()
+ const names=await categoryRows.locator('.entityName').allTextContents()
  expect(names.indexOf(parent.name)).toBeLessThan(names.indexOf(main.name))
  await card.getByRole('button',{name:'Паспорт и шаги'}).click()
  const reopened=page.getByRole('dialog',{name:'Паспорт бизнес-процесса'})

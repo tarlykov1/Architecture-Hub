@@ -938,6 +938,12 @@ test('declare a flow path through existing VRF and security appliance',async({pa
   const saved=page.getByRole('dialog',{name:'Технический маршрут потока'})
   await saved.getByRole('combobox',{name:'Поток для сетевого маршрута'}).selectOption(flow)
   await expect(saved.getByRole('region',{name:'Шаги технического маршрута'})).toContainText('PTAF '+suffix)
+  await saved.getByRole('button',{name:'Закрыть маршрут'}).click()
+  await page.locator('.flowToolsActions').getByRole('button',{name:'СЗИ',exact:true}).click()
+  await expect(saved.getByRole('tab',{name:'СЗИ потока'})).toHaveAttribute('aria-selected','true')
+  await saved.getByRole('combobox',{name:'Поток',exact:true}).selectOption(flow)
+  await expect(saved.getByRole('listitem')).toHaveText('PTAF '+suffix)
+
 })
 
 test('each main section has its own URL and reload preserves the current section',async({page})=>{

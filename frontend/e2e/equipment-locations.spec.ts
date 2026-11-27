@@ -60,7 +60,7 @@ for(const width of [390,1280]){
     await tabs.getByText('Ресурсная карта').click()
     await page.getByLabel('Система компонентов').selectOption(system)
     await page.getByRole('button',{name:'Редактировать состав'}).click()
-    await page.getByLabel('PostgreSQL',{exact:true}).selectOption(target)
+    await page.getByRole('combobox',{name:'PostgreSQL',exact:true}).selectOption(target)
     await page.getByRole('button',{name:'Сохранить размещение'}).click()
     await expect(page.getByRole('form',{name:'Размещение компонентов'})).toHaveCount(0)
     await page.reload()

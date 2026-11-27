@@ -37,7 +37,7 @@ export default function SystemResourceMap({system,items,request,onOpen,readAsset
   }
   const withChildren=new Set(items.map(i=>i.parent_id))
   for(const item of items){
-    bands[componentLane(item.kind)].push({...item,detail:item.description,open:()=>onOpen(item.id)})
+    bands[componentLane(item.kind)].push({...item,detail:item.kind==='vm'?[item.description,items.filter(child=>child.parent_id===item.id).map(child=>child.name).join(', ')].filter(Boolean).join(' · '):item.description,open:()=>onOpen(item.id)})
     if(!withChildren.has(item.id))connect(root,item.id)
     if(item.parent_id&&ids.has(item.parent_id))connect(item.id,item.parent_id)
   }

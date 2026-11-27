@@ -9,12 +9,12 @@ type Nic={id:string;item_id:string;name:string;ip_address:string;zone_id:string|
 type Usage={flow_id:string;flow_name:string;asset_id:string|null;segment_id:string|null;position:number;verification:string}
 type Hop={asset_id:string|null;segment_id:string|null;position:number;notes:string;verification:string;name?:string;kind?:string}
 type FlowPath={flow_id:string;declared_only:boolean;hops:Hop[]}
-type Props={inventory?:boolean;systems?:{id:string;name:string}[];canEditAssets?:boolean;request:Request;flows:Flow[];components:Component[];interfaces:Nic[];segments:Segment[];initialFlowId:string;onClose:()=>void}
+type Props={security?:boolean;inventory?:boolean;systems?:{id:string;name:string}[];canEditAssets?:boolean;request:Request;flows:Flow[];components:Component[];interfaces:Nic[];segments:Segment[];initialFlowId:string;onClose:()=>void}
 const emptyAsset={equipment:emptyEquipment,name:'',kind:'firewall',description:'',address:'',verification:'draft'}
 const status:{[key:string]:string}={draft:'Черновик',assumed:'Предположение',verified:'Подтверждено'}
 
-export default function NetworkPathCatalog({request,flows,components,interfaces,segments,initialFlowId,onClose,inventory=false,systems=[],canEditAssets=true}:Props){
-  const [tab,setTab]=useState<'path'|'assets'>(inventory?'assets':'path')
+export default function NetworkPathCatalog({request,flows,components,interfaces,segments,initialFlowId,onClose,inventory=false,security=false,systems=[],canEditAssets=true}:Props){
+  const [tab,setTab]=useState<'path'|'assets'|'security'>(inventory?'assets':security?'security':'path')
   const [flowId,setFlowId]=useState(initialFlowId||flows[0]?.id||'')
   const [assets,setAssets]=useState<Asset[]>([])
   const [usage,setUsage]=useState<Usage[]>([])
@@ -112,7 +112,9 @@ export default function NetworkPathCatalog({request,flows,components,interfaces,
       {(!inventory||tab==='path')&&<div className="networkPathTabs" role="tablist" aria-label="Инфраструктурные данные">
         <button type="button" role="tab" aria-selected={tab==='path'} className={tab==='path'?'current':''} onClick={()=>setTab('path')}>Маршрут данных</button>
         <button type="button" role="tab" aria-selected={tab==='assets'} className={tab==='assets'?'current':''} onClick={()=>setTab('assets')}>Справочник объектов ({assets.length})</button>
+        {!inventory&&<button type="button" role="tab" aria-selected={tab==='security'} onClick={()=>setTab('security')}>СЗИ потока</button>}
       </div>}
+      {tab==='security'&&<section><h3>Средства защиты в маршруте</h3><label>Поток<select value={flowId} onChange={e=>{if(!dirty||window.confirm('Отменить изменения маршрута?')){setDirty(false);setFlowId(e.target.value)}}}>{flows.map(f=><option key={f.id} value={f.id}>{f.name}</option>)}</select></label>{loading?<p>Загрузка…</p>:hops.some(h=>['firewall','waf','ptaf','vpn'].includes(assets.find(a=>a.id===h.asset_id)?.kind||''))?<ol>{hops.filter(h=>['firewall','waf','ptaf','vpn'].includes(assets.find(a=>a.id===h.asset_id)?.kind||'')).map(h=><li key={h.asset_id}>{hopName(h)}</li>)}</ol>:<p>Для этого маршрута средства защиты не указаны.</p>}<button onClick={()=>setTab('path')}>Открыть маршрут</button></section>}
       {tab==='path'&&<>
         <label className="networkPathField">Поток<select aria-label="Поток для сетевого маршрута" value={flowId} onChange={e=>{if(dirty&&!window.confirm('Отменить изменения текущего маршрута?'))return;setFlowId(e.target.value);setDirty(false);setNotice('')}}><option value="">Выберите поток</option>{flows.map(f=><option key={f.id} value={f.id}>{f.name}</option>)}</select></label>
         {flow&&<div className="networkPathEndpoints"><div><strong>{source?.name||'Источник не указан'}</strong><small>{endpoint(source)}</small></div><span>→</span><div><strong>{target?.name||'Получатель не указан'}</strong><small>{endpoint(target)}</small></div></div>}

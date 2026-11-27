@@ -2302,6 +2302,40 @@ def create_infra(payload: InfraInput, request: Request, db: Session = Depends(db
     return item
 
 
+class PlacementMove(BaseModel):
+    id: UUID
+    previous: UUID | None
+    target: UUID | None
+
+
+@app.put("/api/infra/placement/{system_id}", status_code=204)
+def move_components(system_id: UUID, moves: list[PlacementMove], request: Request, db: Session = Depends(db_session)):
+    if len({move.id for move in moves}) != len(moves):
+        raise HTTPException(422, "Компонент указан несколько раз")
+    for move in moves:
+        item = db.get(InfrastructureItem, move.id)
+        if not item or item.system_id != system_id or item.kind in {"vm", "server", "host", "storage", "switch", "router", "firewall", "gateway", "access_point", "vpn", "load_balancer"}:
+            raise HTTPException(422, "Выберите компонент этой ИС")
+        if move.target:
+            host = db.get(InfrastructureItem, move.target)
+            if not host or host.kind != "vm" or host.system_id != system_id:
+                raise HTTPException(422, "Выберите ВМ этой ИС")
+            seen = {item.id}
+            while host:
+                if host.id in seen:
+                    raise HTTPException(422, "Циклическое размещение")
+                seen.add(host.id)
+                host = db.get(InfrastructureItem, host.parent_id) if host.parent_id else None
+        result = db.execute(update(InfrastructureItem).where(
+            InfrastructureItem.id == item.id, InfrastructureItem.parent_id == move.previous
+        ).values(parent_id=move.target))
+        if result.rowcount != 1:
+            raise HTTPException(409, "Размещение изменилось. Обновите страницу")
+        audit_direct_edit(db, request, "update_vm", item.id, {"parent_id": move.previous},
+                          {"parent_id": move.target}, "Изменено размещение " + item.name)
+    db.commit()
+
+
 @app.put("/api/infra/{item_id}", response_model=InfraOutput)
 def update_infra(item_id: UUID, payload: InfraInput, request: Request, db: Session = Depends(db_session)):
     item = db.get(InfrastructureItem, item_id)

@@ -59,7 +59,7 @@ test('QA-WORK: add two environment-specific versions, search across IS, show app
  })
  await page.reload()
  await page.getByRole('navigation',{name:'Разделы архитектуры'}).getByRole('button',{name:'Системы',exact:true}).click()
- await page.getByRole('button',{name:'Реестр технологий'}).click()
+ await page.getByRole('button',{name:'Технологии',exact:true}).click()
  const inventory=page.getByRole('region',{name:'Реестр технологий всех ИС'})
  await expect(inventory).toContainText('QA-WORK-PostgreSQL-'+suffix)
  await inventory.getByRole('textbox',{name:'Поиск технологии и версии'}).fill('QA-WORK-PostgreSQL-'+suffix)

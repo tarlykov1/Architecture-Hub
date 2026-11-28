@@ -1,0 +1,12 @@
+@media (max-width:700px) {
+  .shell .homeMap .overviewToolbar, .shell .homeMap .homeLayerToolbar {
+    padding:4px 8px;
+    gap:4px;
+  }
+  .shell .homeMap .homeMapTools { flex:1 1 100%; gap:4px }
+  .shell .overviewToolbar .homeMapTools > input { flex:1 1 110px; width:0 }
+  .shell .homeMap .homeMapMode {
+    flex-wrap:nowrap; max-width:100%; overflow-x:auto; scrollbar-width:thin
+  }
+  .shell .homeMap .homeMapMode > button { flex:none; white-space:nowrap }
+}

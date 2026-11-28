@@ -7,6 +7,7 @@ import type {Connection, Edge} from '@xyflow/react'
 import {logoFromAttributes} from './SystemLogo'
 export {architectureIcon} from './DiagramVisual'
 import {ReactFlow,Background,Controls,MarkerType,Position,type NodeChange} from '@xyflow/react'
+import './overviewMobile.css'
 import {Save, X} from 'lucide-react'
 
 type System={id:string;name:string;kind:string;attributes?:Record<string,unknown>}
@@ -222,6 +223,8 @@ export default function ArchitectureHome({embeddedFlows=false,flowSystemId,onFlo
  const compactAreas=membersOnly&&displayAreas.length>0&&!editingLayers
  const shownSystems=compactAreas?mapSystems.filter(system=>areaLabels.has(system.id)):mapSystems
  const shownIds=new Set(shownSystems.map(system=>system.id))
+ const [fittedScope,setFittedScope]=useState<string|null>(null)
+ const fitScope=JSON.stringify([mode,...shownIds,selectedSystem])
  const graphRef=useRef<HTMLDivElement>(null)
  const [pane,setPane]=useState({width:0,height:0})
  useLayoutEffect(()=>{
@@ -391,7 +394,7 @@ export default function ArchitectureHome({embeddedFlows=false,flowSystemId,onFlo
       baseline=undefined
       setManualLayout(true)
     }
-   }} fitView fitViewOptions={{padding:0.15,minZoom:0.3,maxZoom:1}} nodesConnectable={editingSystems} onConnect={logical.onConnect} deleteKeyCode={null} onEdgeClick={(_,edge)=>{if(mapMode==='business')selectBusinessPair(edge.source+'|'+edge.target)}} onNodeClick={(_,node)=>{if(node.id.startsWith('component:')){onOpenComponent(node.id.slice('component:'.length));return}selectSystem(node.id)}} onPaneClick={()=>{setBusinessPair('');setProcessMenu('');setSelectedSystem('');onCloseSystem()}}><AutoFit trackNodeBounds layoutKey={fitRequest+mapMode+(manualLayout?'-manual':'-grid')+(inspectorOpen?'-open':'-closed')} ignoreNodePrefixes="overlay:,component:" focusIds={compactAreas?[...shownIds]:selectedSystemInfo?(mapMode==='business'?[...selectedNeighbors]:[selectedSystemInfo.id]):mapSystems.map(s=>s.id)} suspended={editingLayers||editingSystems}/><Background gap={20}/><Controls showInteractive={false} onFitView={()=>setFitRequest(n=>n+1)} fitViewOptions={{padding:0.2,maxZoom:1}}/>
+   }} fitView fitViewOptions={{padding:0.15,minZoom:0.3,maxZoom:1}} nodesConnectable={editingSystems} onConnect={logical.onConnect} deleteKeyCode={null} onEdgeClick={(_,edge)=>{if(mapMode==='business')selectBusinessPair(edge.source+'|'+edge.target)}} onNodeClick={(_,node)=>{if(node.id.startsWith('component:')){onOpenComponent(node.id.slice('component:'.length));return}selectSystem(node.id)}} onPaneClick={()=>{setBusinessPair('');setProcessMenu('');setSelectedSystem('');onCloseSystem()}}><AutoFit mobileAnchorId={fittedScope===fitScope||shownIds.size<5?undefined:selectedSystem||shownSystems[0]?.id} trackNodeBounds layoutKey={fitRequest+mapMode+(manualLayout?'-manual':'-grid')+(inspectorOpen?'-open':'-closed')} ignoreNodePrefixes="overlay:,component:" focusIds={compactAreas?[...shownIds]:selectedSystemInfo?(mapMode==='business'?[...selectedNeighbors]:[selectedSystemInfo.id]):mapSystems.map(s=>s.id)} suspended={editingLayers||editingSystems}/><Background gap={20}/><Controls showInteractive={false} onFitView={()=>{setFittedScope(fitScope);setFitRequest(n=>n+1)}} fitViewOptions={{padding:0.2,maxZoom:1}}/>
    </ReactFlow></div>
 
    {editingLayers&&<aside className="homeLayerDock" role="complementary" aria-label="Свойства архитектурной области">

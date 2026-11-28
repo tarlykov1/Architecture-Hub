@@ -57,11 +57,22 @@ test.beforeEach(async ({ page }) => {
   }, token)
 })
 
+async function checkBuildVersion(page: import('@playwright/test').Page) {
+  if (await page.evaluate(()=>matchMedia('(max-width:700px)').matches)) {
+    const menu=page.getByLabel('Выбрать раздел')
+    await menu.click()
+    await expect(page.getByLabel('Версия в меню')).toBeVisible()
+    await menu.click()
+  } else {
+    await expect(page.getByLabel('Версия сборки')).toBeVisible()
+  }
+}
+
 test('test server: navigation, viewport and deployed build revision', async ({ page, request }, testInfo) => {
   const errors: string[] = []
   page.on('pageerror', error => errors.push(error.message))
   await navigateToTestSite(page,request)
-  await expect(page.getByLabel('Версия сборки')).toBeVisible()
+  await checkBuildVersion(page)
   // Test servers can use authenticated or open-access mode and need not contain any demo seed.
   await expect(page.getByRole('navigation', { name: 'Разделы архитектуры' })).toBeVisible()
   await expect(page.getByRole('region', { name: 'Главная карта архитектуры' })).toBeVisible()
@@ -70,7 +81,7 @@ test('test server: navigation, viewport and deployed build revision', async ({ p
   const sections = ['Системы', 'Компоненты', 'Потоки', 'Обзор']
   for (const section of sections) {
     await switchSection(page, section)
-    await expect(page.getByLabel('Версия сборки')).toBeVisible()
+    await checkBuildVersion(page)
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 2)
     expect(overflow, `Horizontal overflow in ${section} at ${testInfo.project.name}`).toBe(false)
     await page.screenshot({ path: testInfo.outputPath('section-' + section + '.png'), fullPage: true })
@@ -135,7 +146,7 @@ test('test server: system passport and navigation remain clickable', async ({ pa
   await page.screenshot({ path: testInfo.outputPath('system-passport.png'), fullPage: true })
   // Regression: opening an inspector must not block the top navigation.
   await switchSection(page, 'Компоненты')
-  await expect(page.getByLabel('Версия сборки')).toBeVisible()
+  await checkBuildVersion(page)
 })
 
 test('test server: component registry exposes a passport action', async ({ page, request }, testInfo) => {
@@ -193,5 +204,5 @@ test('test server: overview diagram zoom controls work without blocking overlay'
   })
   expect(overlay.content === 'none' || overlay.pointerEvents === 'none').toBeTruthy()
   await switchSection(page, 'Обзор')
-  await expect(page.getByLabel('Версия сборки')).toBeVisible()
+  await checkBuildVersion(page)
 })

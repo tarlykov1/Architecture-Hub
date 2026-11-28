@@ -378,3 +378,42 @@ body :is(.editorBackdrop,.architectureDrawerBackdrop,.topologyNicBackdrop,.board
 .boardEditorStage:not(.boardDockCollapsed)>.boardDock>.boardDockToggle {
   position:static;margin:6px 10px 0 auto;flex-shrink:0
 }
+
+.mobileSystemsFilterToggle { display:none }
+.networkFacts { margin:12px 0; padding-block:10px; border-block:1px solid var(--hub-line) }
+@media (max-width:700px) {
+  .shell .hubSectionBar { gap:4px 8px; padding:6px 10px; align-items:center }
+  .shell .hubSectionBar > h2 { flex:1 }
+  .shell .hubSectionBar > button { min-height:36px; padding:4px 8px }
+  .shell .hubSectionBar > :is(.hubViewTabs,.systemsWorkspaceActions) {
+    order:1; flex:0 0 100%; width:100%; flex-wrap:nowrap; justify-content:flex-start;
+    overflow-x:auto; padding:2px 0; border:0; scrollbar-width:thin;
+  }
+  .shell .hubSectionBar > :is(.hubViewTabs,.systemsWorkspaceActions) > button {
+    flex:0 0 auto; white-space:nowrap; padding-inline:8px
+  }
+  .shell .mobileSystemsFilterToggle { display:inline-flex; align-items:center; min-height:36px }
+  .systemsWorkspace[data-filters-open=false] :is(.systemSecurityFilterBar,.workspaceFilters > select,.workspaceFilters > .workspaceViewMenu,.workspaceFilters > button:not(.mobileSystemsFilterToggle)) { display:none }
+  .shell .systemsWorkspace .workspaceFilters { gap:6px; padding:6px 10px }
+  .shell .systemsWorkspace .workspaceFilters input { min-width:0; flex:1 1 50% }
+  .shell .systemsWorkspace .systemSecurityFilterBar { flex-direction:row; flex-wrap:wrap; gap:6px 12px }
+  .shell .systemsWorkspace .systemSecurityFilterBar label { width:100%; justify-content:space-between }
+  .shell .networkRegistry { padding:6px 10px }
+  .networkRegistry .networkRegistryFilters { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:5px 8px; margin:2px 0 8px }
+  .networkRegistryFilters :is(input,select,button) { min-width:0; min-height:36px }
+  .networkRegistry .networkRegistryFilters input { min-width:0 }
+  .networkRegistryFilters > button { justify-self:start }
+  .networkRegistryFilters > span { justify-self:end }
+  .networkRegistry .networkTable { table-layout:fixed }
+  .networkRegistry .networkTable :is(th,td) { padding:7px 6px; overflow-wrap:anywhere }
+  .networkRegistry .networkTable :is(th,td):nth-child(3) { display:none }
+  .networkRegistry .networkTable th:nth-child(2) { width:48px }
+  .networkRegistry .networkTable th:last-child { width:86px }
+  .networkRegistry .networkTable .entityName { min-height:36px; max-width:100%; overflow-wrap:anywhere }
+}
+@media (max-width:650px) {
+  .shell .globalHeader .layerTabs > .mobileSectionMenu { flex:1 1 auto; min-width:0 }
+  .shell .globalHeader .mobileSectionMenu > summary {
+    width:max-content; max-width:100%; box-sizing:border-box; padding-inline:6px; font-size:13px
+  }
+}

@@ -149,6 +149,12 @@ function readWorkspaceSystem() {
   const route=parseWorkspaceRoute(window.location)
   return route.layer==='systems'?new URLSearchParams(location.search).get('system')||'':route.systemId
 }
+function networkTypeLabel(kind:string) {
+  return kind==='zone'?'Зона':kind.toUpperCase()
+}
+function networkVerificationLabel(status:string) {
+  return status==='verified'?'Подтверждено':status==='draft'?'Черновик':'Предположение'
+}
 function readFlowView() {
   const route=parseWorkspaceRoute(window.location)
   if(route.flowId)return 'diagram'
@@ -384,6 +390,7 @@ function App() {
   const [kbMessage,setKbMessage]=useState('')
   const [panelTab,setPanelTab] = useState<'overview'|'components'|'flows'|'monitoring'|'knowledge'|'incidents'|'contracts'|'technologies'|'edit'>('overview')
   const [inspectorOpen,setInspectorOpen] = useState(()=>Boolean(parseWorkspaceRoute(window.location).passportId))
+  const [systemFiltersOpen,setSystemFiltersOpen]=useState(false)
   const [viewsMenuOpen,setViewsMenuOpen] = useState(false)
   const [inspectorExpanded,setInspectorExpanded] = useState(()=>parseWorkspaceRoute(window.location).passportExpanded)
   // The object inspector is a non-modal drawer: clicking the workspace or
@@ -1104,8 +1111,12 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
     const next=savedViews.filter(v=>v.id!==viewSelection)
     try{localStorage.setItem(VIEWS_STORAGE_KEY,JSON.stringify(next));setSavedViews(next);setViewSelection('')}catch{setError('Не удалось удалить представление')}
   }
+  const activeSystemFilters=[workspaceKind!=='all',systemPdFilter!=='all',systemProtectionFilter!=='all'].filter(Boolean).length
   const workspaceFilters=<div className="workspaceFilters workspaceFiltersCompact">
     <input aria-label="Фильтр по названию" placeholder="Поиск по разделу…" value={workspaceQuery} onChange={e=>setWorkspaceQuery(e.target.value)}/>
+    {layer==='systems'&&<button type="button" className="mobileSystemsFilterToggle" aria-expanded={systemFiltersOpen} aria-controls="systems-security-filters" onClick={()=>setSystemFiltersOpen(open=>!open)}>
+      Фильтры{activeSystemFilters>0?' · '+activeSystemFilters:''}
+    </button>}
     {(layer==='systems'||layer==='infrastructure')&&<select aria-label="Фильтр типа объекта" value={workspaceKind} onChange={e=>setWorkspaceKind(e.target.value)}><option value="all">Все типы</option>{Array.from(new Set((layer==='systems'?objects:infra).map(x=>x.kind))).sort().map(k=><option key={k} value={k}>{cmdbKinds.find(kind=>kind.id===k)?.label||({system:'Информационная система',vm:'Виртуальная машина',database:'База данных',application:'Приложение',service:'Сервис',server:'Сервер',queue:'Очередь'} as Record<string,string>)[k]||k}</option>)}</select>}
     {layer==='flows'&&<select aria-label="Фильтр достоверности" value={workspaceVerified} onChange={e=>setWorkspaceVerified(e.target.value)}><option value="all">Все статусы</option><option value="draft">Черновик</option><option value="assumed">Предположение</option><option value="verified">Подтверждено</option></select>}
     <button type="button" onClick={()=>{setWorkspaceQuery('');setWorkspaceKind('all');setWorkspaceVerified('all');if(layer==='systems'){setSystemPdFilter('all');setSystemProtectionFilter('all')}}} disabled={!workspaceQuery&&workspaceKind==='all'&&workspaceVerified==='all'&&(layer!=='systems'||(systemPdFilter==='all'&&systemProtectionFilter==='all'))}>Сбросить</button>
@@ -1304,6 +1315,7 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
     ? segments.find(segment=>segment.id===networkEditId)?.name
     : flows.find(flow=>flow.id===flowEditId)?.name
   const currentNetwork=segments.find(segment=>segment.id===networkDetailId)
+  const networkInterfaces=currentNetwork?nics.filter(n=>[n.zone_id,n.vrf_id,n.vlan_id].includes(currentNetwork.id)):[]
   const currentProcess=processes.find(process=>process.id===processDetailId)
   const currentFlow=visibleFlows.find(flow=>flow.id===selectedFlow)
   const filteredNetworks=segments.filter(segment=>
@@ -1347,9 +1359,10 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
       <div className="globalBrand" aria-label="Architecture Hub"><span aria-hidden="true" className="globalBrandMark"/><strong>ArchHub</strong></div>
       <nav className="layerTabs" aria-label="Разделы архитектуры">
         <details className="mobileSectionMenu">
-          <summary aria-label="Выбрать раздел">{({home:'Обзор',decisions:'Техрешения',systems:'Системы',infrastructure:'Компоненты',flows:'Потоки',business:'Бизнес-процессы',networks:'Реестр сетей',topology:'Топология сетей',incidents:'Инциденты',knowledge:'Wiki.js'} as Record<string,string>)[navSection]}</summary>
+          <summary aria-label="Выбрать раздел">{({home:'Обзор',decisions:'Техрешения',systems:'Системы',infrastructure:'Компоненты',flows:'Потоки',business:'Бизнес-процессы',networks:'Сети',topology:'Сети',incidents:'Инциденты',knowledge:'База знаний'} as Record<string,string>)[navSection]}</summary>
           <div className="mobileSectionOptions">
             {([['home','Обзор'],['systems','Системы'],['flows','Потоки'],['decisions','Техрешения'],['business','Бизнес-процессы'],['networks','Реестр сетей'],['topology','Топология сетей'],['incidents','Инциденты'],['knowledge','Wiki.js · База знаний']] as const).filter(([id])=>canSee(id)).map(([id,label])=><button key={id} type="button" className={navSection===id?'current':''} onClick={e=>{openSection(id);e.currentTarget.closest('details')?.removeAttribute('open')}}>{label}</button>)}
+            <BuildVersion inMenu />
           </div>
         </details>
         <button className={navSection==='home'?'current':''} onClick={()=>openSection('home')}>Обзор</button>
@@ -1441,17 +1454,20 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
  <div className="registrySplit"><div className="networkTableWrap"><table className="networkTable"><thead><tr><th>Название</th><th>Тип</th><th>Достоверность</th><th>Интерфейсы</th></tr></thead><tbody>
  {filteredNetworks.map(network=><tr key={network.id} className={networkDetailId===network.id?'inspectedRow':''} onClick={()=>setNetworkDetailId(network.id)}>
    <td><button type="button" className="entityName" aria-pressed={networkDetailId===network.id}>{network.name}</button></td>
-   <td>{network.kind.toUpperCase()}</td><td>{network.verification==='verified'?'Подтверждено':network.verification==='draft'?'Черновик':'Предположение'}</td>
+   <td>{networkTypeLabel(network.kind)}</td><td>{networkVerificationLabel(network.verification)}</td>
    <td>{nics.filter(n=>[n.zone_id,n.vrf_id,n.vlan_id].includes(network.id)).length}</td>
  </tr>)}</tbody></table>{!filteredNetworks.length&&<p role="status">Сети не найдены.</p>}</div>
  {currentNetwork&&filteredNetworks.includes(currentNetwork)&&<RegistrySelection kind="Сеть" title={currentNetwork.name} onClose={()=>setNetworkDetailId('')}>
    {canWrite('networks')&&<button onClick={()=>editNetwork(currentNetwork)}>Редактировать</button>}
-   <p>{currentNetwork.description||'Описание не заполнено'}</p><h4>Использование</h4>
-   {nics.filter(n=>[n.zone_id,n.vrf_id,n.vlan_id].includes(currentNetwork.id)).map(nic=>{
+   <dl className="networkFacts"><dt>Тип</dt><dd>{networkTypeLabel(currentNetwork.kind)}</dd>
+     <dt>Достоверность</dt><dd>{networkVerificationLabel(currentNetwork.verification)}</dd>
+     <dt>Интерфейсы</dt><dd>{networkInterfaces.length}</dd></dl>
+   {currentNetwork.description&&<p>{currentNetwork.description}</p>}<h4>Использование</h4>
+   {networkInterfaces.map(nic=>{
      const component=infra.find(i=>i.id===nic.item_id)
      return <p key={nic.id}>{component?.name} · {objects.find(o=>o.id===component?.system_id)?.name} · {nic.name} {nic.ip_address}</p>
    })}
-   {!nics.some(n=>[n.zone_id,n.vrf_id,n.vlan_id].includes(currentNetwork.id))&&<p>Привязанных интерфейсов нет.</p>}
+   {!networkInterfaces.length&&<p>Привязанных интерфейсов нет.</p>}
  </RegistrySelection>}</div>
  </section> : layer==='topology' ? <Topology canEditNetworks={canWrite('networks')} canEditFlows={canWrite('flows')} onEditComponent={canWrite('infrastructure')?((id:string)=>{const component=infra.find(i=>i.id===id);if(!component)return;setComponentInspectTab('passport');setComponentInspectId(id);startComponentEdit(component)}):undefined} systems={objects} items={infra} segments={segments} interfaces={nics} flows={flows} saveInterface={async (value,id)=>{
       const uri=id?'/api/network-interfaces/'+id:'/api/network-interfaces'
@@ -1481,10 +1497,10 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
           <p>{currentProcess.description}</p><h4>Связанные системы</h4>
           {businessLinks.filter(l=>l.process_id===currentProcess.id).map(l=><button key={l.id} onClick={()=>{setSelected(l.system_id);setInspectorOpen(true);setPanelTab('overview');setLayer('systems')}}>{objects.find(o=>o.id===l.system_id)?.name||'Система'}</button>)}
         </RegistrySelection>}</div>
-      </section> : layer==='systems' ? <section className="systemsWorkspace" aria-label="Реестр информационных систем">
+      </section> : layer==='systems' ? <section className="systemsWorkspace" data-filters-open={systemFiltersOpen} aria-label="Реестр информационных систем">
         {!equipmentOpen&&!systemsShowTechnologyInventory&&workspaceFilters}
         {equipmentOpen&&canSee('networks') ? <NetworkPathCatalog inventory systems={objects} canEditAssets={canWrite('networks')} request={request} flows={flows} components={infra} interfaces={nics} segments={segments} initialFlowId={selectedFlow} onClose={()=>setEquipmentOpen(false)}/> : systemsShowTechnologyInventory ? <TechnologyInventory request={request} onOpenSystem={id=>{setSystemsShowTechnologyInventory(false);setSelected(id);setInspectorOpen(true);setPanelTab('technologies')}}/> : <div className="systemsTableWrap">
-        <div className="systemSecurityFilterBar" role="group" aria-label="Фильтры защиты информации">
+        <div id="systems-security-filters" className="systemSecurityFilterBar" role="group" aria-label="Фильтры защиты информации">
           <strong>Обработка ПДн: {objects.filter(o=>readSystemSecurity(o.attributes).personal_data==='yes').length} ИС</strong>
           <span>Не выяснено: {objects.filter(o=>readSystemSecurity(o.attributes).personal_data==='unknown').length}</span>
           <label>ПДн <select aria-label="Фильтр обработки ПДн" value={systemPdFilter} onChange={event=>setSystemPdFilter(event.target.value as typeof systemPdFilter)}>
@@ -1892,10 +1908,10 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
   </div>
 }
 
-function BuildVersion() {
+function BuildVersion({inMenu=false}:{inMenu?:boolean}) {
  const revision=__BUILD_REVISION__
  const short=revision==='unknown'?'local':revision.slice(0,8)
- return <div className="buildVersion" aria-label="Версия сборки" title={`Frontend: ${revision} · Собрано: ${__BUILD_TIME__}`}>
+ return <div className="buildVersion" aria-label={inMenu?"Версия в меню":"Версия сборки"} title={`Frontend: ${revision} · Собрано: ${__BUILD_TIME__}`}>
   Сборка <code>{short}</code>
  </div>
 }

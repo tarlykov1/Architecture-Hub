@@ -1,0 +1,47 @@
+.incidentWorkspace .incidentHeader {
+  margin-bottom: 12px;
+}
+.incidentWorkspace .incidentTable {
+  container-type: inline-size;
+}
+.incidentWorkspace .incidentRow {
+  width: 100%;
+  grid-template-columns: minmax(0, 1fr) 110px 100px 80px;
+}
+.incidentWorkspace .incidentRow .incidentSeverity {
+  justify-self: start;
+}
+.incidentWorkspace .incidentRow time {
+  font-size: 12px;
+  color: #546378;
+}
+@container (max-width: 590px) {
+  .incidentWorkspace .incidentRow {
+    grid-template-columns: auto 1fr auto;
+    gap: 8px;
+    padding: 12px;
+  }
+  .incidentRow .incidentSummary {
+    grid-column: 1 / -1;
+  }
+  .incidentRow .incidentStatus {
+    font-size: 12px;
+  }
+}
+@media (max-width: 700px) {
+  .incidentWorkspace .incidentHeader {
+    align-items: flex-start;
+    gap: 8px;
+  }
+  .incidentWorkspace .incidentFilters.workspaceActionBar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .incidentWorkspace .incidentFilters input {
+    grid-column: 1 / -1;
+    min-width: 0;
+  }
+  .incidentWorkspace .incidentFilters select {
+    min-width: 0;
+  }
+}

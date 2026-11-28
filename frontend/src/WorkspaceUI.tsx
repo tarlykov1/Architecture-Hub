@@ -2,7 +2,7 @@ import React, {useEffect,useRef,type ReactNode} from 'react'
 import {getViewportForBounds,useNodes,useNodesInitialized,useReactFlow} from '@xyflow/react'
 
 /** Refit measured graphs on membership/layout changes and actual canvas resize. */
-export function AutoFit({layoutKey='',maxFitZoom=1,groupParentsOnly=false,focusIds=[],suspended=false,settleDelayMs=300,ignoreNodePrefixes='',trackNodeBounds=false}:{layoutKey?:string;maxFitZoom?:number;groupParentsOnly?:boolean;focusIds?:string[];suspended?:boolean;settleDelayMs?:number;ignoreNodePrefixes?:string;trackNodeBounds?:boolean}){
+export function AutoFit({layoutKey='',maxFitZoom=1,groupParentsOnly=false,focusIds=[],suspended=false,settleDelayMs=300,ignoreNodePrefixes='',trackNodeBounds=false,mobileAnchorId=''}:{mobileAnchorId?:string;layoutKey?:string;maxFitZoom?:number;groupParentsOnly?:boolean;focusIds?:string[];suspended?:boolean;settleDelayMs?:number;ignoreNodePrefixes?:string;trackNodeBounds?:boolean}){
  const anchor=useRef<HTMLSpanElement>(null)
  const {fitView,setCenter,setViewport}=useReactFlow()
  const initialized=useNodesInitialized()
@@ -38,12 +38,18 @@ export function AutoFit({layoutKey='',maxFitZoom=1,groupParentsOnly=false,focusI
        const id=element.dataset.id
        if(!id||(targets.size&&!targets.has(id)))return []
        const point=positions.get(id)
-       return point?[{...point,right:point.x+element.offsetWidth,bottom:point.y+element.offsetHeight}]:[]
+       return point?[{id,...point,right:point.x+element.offsetWidth,bottom:point.y+element.offsetHeight}]:[]
       })
       if(boxes.length){
        const x=Math.min(...boxes.map(box=>box.x)),y=Math.min(...boxes.map(box=>box.y))
        const width=Math.max(...boxes.map(box=>box.right))-x,height=Math.max(...boxes.map(box=>box.bottom))-y
        const viewport=getViewportForBounds({x,y,width,height},canvas.clientWidth,canvas.clientHeight,0.02,maxFitZoom,0.2)
+       const anchorBox=boxes.find(box=>box.id===mobileAnchorId)
+       if(anchorBox&&window.matchMedia('(max-width:700px)').matches&&viewport.zoom<0.8){
+        const zoom=Math.min(0.9,(canvas.clientWidth-24)/(anchorBox.right-anchorBox.x))
+        void setCenter((anchorBox.x+anchorBox.right)/2,(anchorBox.y+anchorBox.bottom)/2,{zoom})
+        return
+       }
        void setViewport(viewport)
        return
       }
@@ -91,7 +97,7 @@ export function AutoFit({layoutKey='',maxFitZoom=1,groupParentsOnly=false,focusI
    window.clearTimeout(settle)
    cancelAnimationFrame(frame);cancelAnimationFrame(inner)
   }
- },[fitView,setCenter,setViewport,trackNodeBounds,initialized,measuredFocusReady,ids,boundsKey,topLevelIds,visibleFocusIds,layoutKey,maxFitZoom,groupParentsOnly,suspended,settleDelayMs])
+ },[fitView,setCenter,setViewport,trackNodeBounds,mobileAnchorId,initialized,measuredFocusReady,ids,boundsKey,topLevelIds,visibleFocusIds,layoutKey,maxFitZoom,groupParentsOnly,suspended,settleDelayMs])
  return <span ref={anchor} hidden/>
 }
 

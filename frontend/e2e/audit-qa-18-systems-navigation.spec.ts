@@ -7,7 +7,7 @@ test('QA-WORK: Systems button labeled Общая карта opens the shared arc
   const systems=page.getByRole('region',{name:'Реестр информационных систем'})
   await expect(systems).toBeVisible()
   await expect(systems.getByRole('button',{name:'Слои архитектуры'})).toHaveCount(0)
-  const openMap=systems.getByRole('button',{name:'Общая карта',exact:true})
+  const openMap=page.getByRole('button',{name:'Общая карта',exact:true})
   await expect(openMap).toBeVisible()
   await openMap.click()
   await expect(page).toHaveURL(/\/$/)

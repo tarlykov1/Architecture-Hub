@@ -1,4 +1,4 @@
-import React, {useCallback,useEffect,useState} from 'react'
+import React, {useEffect,useState} from 'react'
 import './technologyInventory.css'
 
 type RecordItem={
@@ -23,28 +23,32 @@ export default function TechnologyInventory({request,onOpenSystem}:{
  const [result,setResult]=useState<Response>({count:0,items:[]})
  const [busy,setBusy]=useState(false)
  const [error,setError]=useState('')
- const search=useCallback(async(q:string,e:string,c:string)=>{
-  setBusy(true);setError('')
-  try{
+ useEffect(()=>{
+  const controller=new AbortController()
+  const timer=window.setTimeout(async()=>{
+   setBusy(true);setError('')
    const params=new URLSearchParams()
-   if(q.trim())params.set('q',q.trim())
-   if(e)params.set('environment',e)
-   if(c)params.set('category',c)
-   const rows=await request<Response>('/api/technology-inventory'+(params.size?'?'+params.toString():''))
-   setResult(rows)
-  }catch(err){setError('Не удалось получить реестр технологий: '+String(err))}
-  finally{setBusy(false)}
- },[request])
- useEffect(()=>{void search('','','')},[search])
+   if(query.trim())params.set('q',query.trim())
+   if(env)params.set('environment',env)
+   if(category)params.set('category',category)
+   try{
+    const rows=await request<Response>('/api/technology-inventory?'+params,{signal:controller.signal})
+    if(!controller.signal.aborted)setResult(rows)
+   }catch(err){
+    if(!controller.signal.aborted)setError('Не удалось получить реестр технологий: '+String(err))
+   }finally{
+    if(!controller.signal.aborted)setBusy(false)
+   }
+  },200)
+  return ()=>{window.clearTimeout(timer);controller.abort()}
+ },[request,query,env,category])
  return <section className="technologyInventory" aria-label="Реестр технологий всех ИС">
-  <header><h3>Технологии и версии всех ИС</h3><p>Поиск установленных технологий для анализа уязвимостей. Версия в паспорте и версия, полученная от мониторинга, показываются отдельно. Это не сканер уязвимостей.</p></header>
-  <form onSubmit={e=>{e.preventDefault();void search(query,env,category)}} className="technologyInventoryFilters">
+  <div role="group" aria-label="Фильтры технологий" className="technologyInventoryFilters">
    <label>Технология, версия или ИС<input aria-label="Поиск технологии и версии" value={query} placeholder="PostgreSQL, Python 3.11, Windows…" onChange={e=>setQuery(e.target.value)}/></label>
    <label>Среда<select aria-label="Среда инвентаризации" value={env} onChange={e=>setEnv(e.target.value)}><option value="">Все среды</option>{Object.entries(envLabels).map(([key,value])=><option key={key} value={key}>{value}</option>)}</select></label>
    <label>Категория<select aria-label="Категория технологии" value={category} onChange={e=>setCategory(e.target.value)}><option value="">Все категории</option>{Object.entries(categoryLabels).map(([key,value])=><option key={key} value={key}>{value}</option>)}</select></label>
-   <button type="submit" disabled={busy}>{busy?'Поиск…':'Найти'}</button>
-   <button type="button" onClick={()=>{setQuery('');setEnv('');setCategory('');void search('','','')}}>Сбросить</button>
-  </form>
+   <button type="button" disabled={!query&&!env&&!category} onClick={()=>{setQuery('');setEnv('');setCategory('')}}>Сбросить</button>
+  </div>
   {error&&<p role="alert">{error}</p>}
   <p role="status">Найдено записей: {result.count}</p>
   <div className="technologyInventoryScroll"><table>

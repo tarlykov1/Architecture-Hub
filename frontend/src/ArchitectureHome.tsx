@@ -39,7 +39,7 @@ type LogicalMap = {
  move: (id:string, point:{x:number;y:number}, startingPositions?:LogicalMap['positions'])=>void
  onConnect: (connection:Connection)=>void
 }
-export default function ArchitectureHome({flowSystemId,onFlowSystemChange,selectedAreaIds,setSelectedAreaIds,onOpenFlowWorkspace,mode,onModeChange,logical,systems,components,flows,processes,categories,links,onOpenProcess,onOpenSystem,onCloseSystem,inspectorOpen,onOpenComponents,onOpenComponent,focusSystemId='',request,canEditLayers=false,canEditFlows=false}:{flowSystemId:string;onFlowSystemChange:(id:string)=>void;selectedAreaIds:string[];setSelectedAreaIds:React.Dispatch<React.SetStateAction<string[]>>;onOpenFlowWorkspace:(systemId:string,edit:boolean)=>void;mode:OverviewMode;onModeChange:(mode:OverviewMode)=>void;logical:LogicalMap;systems:System[];components:Component[];flows:Flow[];processes:Process[];categories:Category[];links:Link[];networks:Network[];interfaces:Interface[];onOpenProcess?:(id:string)=>void;onOpenSystem:(id:string)=>void;onCloseSystem:()=>void;inspectorOpen:boolean;onOpenComponents:(id:string)=>void;onOpenComponent:(id:string)=>void;onOpenNetworks:()=>void;focusSystemId?:string;request?:<T>(url:string,init?:RequestInit)=>Promise<T>;canEditLayers?:boolean;canEditFlows?:boolean}){
+export default function ArchitectureHome({embeddedFlows=false,flowSystemId,onFlowSystemChange,selectedAreaIds,setSelectedAreaIds,onOpenFlowWorkspace,mode,onModeChange,logical,systems,components,flows,processes,categories,links,onOpenProcess,onOpenSystem,onCloseSystem,inspectorOpen,onOpenComponents,onOpenComponent,focusSystemId='',request,canEditLayers=false,canEditFlows=false}:{embeddedFlows?:boolean;flowSystemId:string;onFlowSystemChange:(id:string)=>void;selectedAreaIds:string[];setSelectedAreaIds:React.Dispatch<React.SetStateAction<string[]>>;onOpenFlowWorkspace:(systemId:string,edit:boolean)=>void;mode:OverviewMode;onModeChange:(mode:OverviewMode)=>void;logical:LogicalMap;systems:System[];components:Component[];flows:Flow[];processes:Process[];categories:Category[];links:Link[];networks:Network[];interfaces:Interface[];onOpenProcess?:(id:string)=>void;onOpenSystem:(id:string)=>void;onCloseSystem:()=>void;inspectorOpen:boolean;onOpenComponents:(id:string)=>void;onOpenComponent:(id:string)=>void;onOpenNetworks:()=>void;focusSystemId?:string;request?:<T>(url:string,init?:RequestInit)=>Promise<T>;canEditLayers?:boolean;canEditFlows?:boolean}){
  const [layers,setLayers]=useState({systems:true,components:false,flows:false,business:false})
  const sequence=mode==='sequence'
  const mapMode=sequence?'flows':mode
@@ -322,15 +322,15 @@ export default function ArchitectureHome({flowSystemId,onFlowSystemChange,select
   <div className="overviewToolbar">
  <div className="homeMapTools"><input aria-label="Поиск на карте" value={query} onChange={e=>setQuery(e.target.value)} placeholder="Найти систему или ВМ…"/><Disclosure label="Фильтры и слои"><select aria-label="Контур карты" value={environment} onChange={e=>setEnvironment(e.target.value)}><option value="all">Все контуры</option>{environments.map(e=><option key={e} value={e}>{e}</option>)}</select>{mapMode!=='flows'&&systemPicker}
   {!sequence&&<details className="homeMapLayersDisclosure"><summary>Слои карты <span aria-hidden="true">▾</span></summary><div className="homeMapLayers" aria-label="Слои карты">{([['systems','Информационные системы']] as const).map(([key,label])=><label key={key}><input type="checkbox" checked={layers[key]} onChange={e=>setLayers(old=>({...old,[key]:e.target.checked}))}/>{label}</label>)}</div></details>}</Disclosure></div>
-  <div className="homeMapMode" role="group" aria-label="Тип связей на архитектурной карте">
+  {!embeddedFlows&&<div className="homeMapMode" role="group" aria-label="Тип связей на архитектурной карте">
     {([['business','Бизнес-связи'],['flows','Потоки данных'],['logical','Логические связи']] as const).map(([id,label])=><button key={id} type="button" aria-pressed={mapMode===id} className={mapMode===id?'current':''} disabled={editingLayers||editingSystems} onClick={()=>onModeChange(id)}>{label}</button>)}
-   </div>
-  {mapMode==='flows'&&<div className="homeMapMode" role="group" aria-label="Представление потоков данных">
+   </div>}
+  {!embeddedFlows&&mapMode==='flows'&&<div className="homeMapMode" role="group" aria-label="Представление потоков данных">
     <button type="button" onClick={()=>onOpenFlowWorkspace(focus||selectedSystem,false)}>Реестр потоков</button>
     {([['map','Карта'],['sequence','Последовательность']] as const).map(([id,label])=><button key={id} type="button" disabled={editingLayers} aria-pressed={flowPresentation===id} className={flowPresentation===id?'current':''} onClick={()=>onModeChange(id==='map'?'flows':'sequence')}>{label}</button>)}
   </div>}
   </div>
-  {mapMode==='flows'&&<div className="overviewToolbar flowWorkspaceTools workspaceActionBar" role="group" aria-label="Инструменты потоков">
+  {!embeddedFlows&&mapMode==='flows'&&<div className="overviewToolbar flowWorkspaceTools workspaceActionBar" role="group" aria-label="Инструменты потоков">
     {systemPicker}
     {canEditFlows&&<button type="button" onClick={()=>onOpenFlowWorkspace(focus||selectedSystem,true)}>Редактор потоков</button>}
   </div>}

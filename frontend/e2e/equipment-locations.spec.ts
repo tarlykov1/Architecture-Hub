@@ -13,7 +13,7 @@ test('register a switch in an office and find it on the system resource map',asy
   await page.goto('/systems')
   await page.getByRole('button',{name:'Оборудование',exact:true}).click()
   const dialog=page.getByRole('region',{name:'Оборудование'})
-  await dialog.getByRole('button',{name:'+ Объект',exact:true}).click()
+  await dialog.getByRole('button',{name:'Создать оборудование',exact:true}).click()
   await dialog.getByLabel('Название',{exact:true}).fill(name+'-SW')
   await dialog.locator('label').filter({hasText:/^Тип/}).locator('select').selectOption('switch')
   await dialog.getByLabel('Размещение оборудования').selectOption('new')

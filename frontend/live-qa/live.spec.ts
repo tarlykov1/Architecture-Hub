@@ -58,7 +58,7 @@ test.beforeEach(async ({ page }) => {
 })
 
 async function checkBuildVersion(page: import('@playwright/test').Page) {
-  if (await page.evaluate(()=>matchMedia('(max-width:700px)').matches)) {
+  if (await page.evaluate(()=>matchMedia('(max-width:650px)').matches)) {
     const menu=page.getByLabel('Выбрать раздел')
     await menu.click()
     await expect(page.getByLabel('Версия в меню')).toBeVisible()

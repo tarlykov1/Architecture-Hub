@@ -417,3 +417,30 @@ body :is(.editorBackdrop,.architectureDrawerBackdrop,.topologyNicBackdrop,.board
     width:max-content; max-width:100%; box-sizing:border-box; padding-inline:6px; font-size:13px
   }
 }
+
+.shell .systemSecurityFilterBar .mobileFullSystemTable { display:none }
+@media(max-width:650px){
+  .shell .globalHeader { display:grid; grid-template-columns:auto minmax(0,1fr) auto; justify-content:stretch }
+  .shell .globalHeader .layerTabs { display:flex; width:100%; max-width:none; align-items:center }
+  .shell .globalHeader .mobileSectionMenu > summary { width:max-content; max-width:100% }
+  .shell .globalHeader .topActions { width:max-content; max-width:100% }
+}
+@media(max-width:700px){
+  .shell .systemSecurityFilterBar .mobileFullSystemTable { display:flex; justify-content:flex-start }
+  .systemsWorkspace[data-full-table=false] .systemsTable { width:100%; min-width:0; display:block }
+  .systemsWorkspace[data-full-table=false] .systemsTable thead { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%) }
+  .systemsWorkspace[data-full-table=false] .systemsTable tbody { display:block }
+  .systemsWorkspace[data-full-table=false] .systemsTable tr {
+    display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center;
+    gap:4px; padding:8px 10px; border-bottom:1px solid var(--hub-line)
+  }
+  .systemsWorkspace[data-full-table=false] .systemsTable td { padding:0; min-width:0; border:0 }
+  .systemsWorkspace[data-full-table=false] .systemsTable td:is(:nth-child(2),:nth-child(5),:nth-child(6),:nth-child(7),:nth-child(8)),
+  .systemsWorkspace[data-full-table=false] .systemDescription { display:none }
+  .systemsWorkspace[data-full-table=false] .systemsTable td:first-child { grid-column:1/-1 }
+  .systemsWorkspace[data-full-table=false] .systemsTable td:nth-child(4) { justify-self:end }
+  .systemsWorkspace[data-full-table=false] .systemsTable td:last-child { grid-column:1/-1 }
+  .systemsWorkspace[data-full-table=false] .systemNameWithLogo { white-space:normal; overflow-wrap:anywhere }
+  .systemsWorkspace[data-full-table=false] .systemRowActions { display:flex; flex-wrap:wrap; gap:4px }
+  .systemsWorkspace[data-full-table=false] .systemRowActions button { padding:2px 7px; min-height:32px; font-size:12px }
+}

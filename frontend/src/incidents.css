@@ -45,3 +45,42 @@
     min-width: 0;
   }
 }
+.incidentWorkspace .incidentHeader h2 {
+  margin: 0;
+  color: var(--hub-ink);
+  font-size: 18px;
+  font-weight: 650;
+}
+.incidentWorkspace .incidentFilters :is(input,select) {
+  box-sizing: border-box;
+  min-height: 36px;
+  padding: 6px 10px;
+  border: 1px solid var(--hub-line);
+  border-radius: 6px;
+  background: white;
+  color: var(--hub-ink);
+  font: inherit;
+}
+.incidentWorkspace > .incidentHeader {
+  margin: -10px -10px 12px;
+}
+.details .incidentWorkspace > .incidentHeader {
+  margin: 0 0 8px;
+}
+.incidentWorkspace .incidentHeader .incidentActions {
+  margin-left: auto;
+  align-items: center;
+}
+.incidentWorkspace .incidentActions button svg {
+  display: block;
+}
+@media (max-width: 700px) {
+  .incidentWorkspace .incidentHeader .incidentActions {
+    gap: 4px;
+  }
+  .incidentWorkspace .incidentHeader .incidentActions button {
+    min-height: 36px;
+    padding: 4px 8px;
+    font-size: 13px;
+  }
+}

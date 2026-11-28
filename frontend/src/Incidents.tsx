@@ -1,5 +1,6 @@
 import React, {useCallback,useEffect,useState} from 'react'
 import {createPortal} from 'react-dom'
+import {RefreshCw} from 'lucide-react'
 import './incidents.css'
 export type Incident = {id:string;title:string;description:string;status:string;severity:string;owner:string;assignee:string;resolution:string;links:{entity_type:string;entity_id:string}[];created_at:string;updated_at:string}
 type Entity = {id:string;name:string;kind?:string}
@@ -44,11 +45,11 @@ export default function Incidents({request,systems,components,networks,flows,con
   const scoped=items.filter(x=>!context||x.links.some(l=>l.entity_type===context.entity_type&&l.entity_id===context.entity_id))
   const selected=scoped.filter(x=>(filter==='all'||x.status===filter)&&[x.title,x.description,x.owner,x.assignee].join(' ').toLowerCase().includes(search.toLowerCase()))
   return <section className="incidentWorkspace">
-    <header className="registryHeader incidentHeader">
+    <header className="hubSectionBar incidentHeader">
       <h2>{context?'Инциденты объекта':'Инциденты'}</h2>
       <div className="incidentActions workspaceActionBar">
         {!readOnly&&<button className="primary" onClick={create}>Создать инцидент</button>}
-        <button onClick={load}>Обновить</button>
+        <button type="button" aria-label="Обновить" title="Обновить список инцидентов" onClick={load}><RefreshCw size={16} aria-hidden="true"/></button>
         {onClose&&<button onClick={onClose}>Закрыть</button>}
       </div>
     </header>

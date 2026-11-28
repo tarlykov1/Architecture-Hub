@@ -323,8 +323,7 @@ export default function ArchitectureHome({embeddedFlows=false,flowSystemId,onFlo
  const systemPicker=<select aria-label={mapMode==='flows'?'Система потоков на карте':'Фокус на ИС'} value={focus} onChange={e=>{setFocus(e.target.value);if(!e.target.value){setSelectedSystem('');onCloseSystem()}}}><option value="">Все системы</option>{systems.map(s=><option key={s.id} value={s.id} disabled={!canSelectSystem(s.id)}>{s.name}</option>)}</select>
  return <section className="homeMap" aria-label="Главная карта архитектуры">
   <div className="overviewToolbar">
- <div className="homeMapTools"><input aria-label="Поиск на карте" value={query} onChange={e=>setQuery(e.target.value)} placeholder="Найти систему или ВМ…"/><Disclosure label="Фильтры и слои"><select aria-label="Контур карты" value={environment} onChange={e=>setEnvironment(e.target.value)}><option value="all">Все контуры</option>{environments.map(e=><option key={e} value={e}>{e}</option>)}</select>{mapMode!=='flows'&&systemPicker}
-  {!sequence&&<details className="homeMapLayersDisclosure"><summary>Слои карты <span aria-hidden="true">▾</span></summary><div className="homeMapLayers" aria-label="Слои карты">{([['systems','Информационные системы']] as const).map(([key,label])=><label key={key}><input type="checkbox" checked={layers[key]} onChange={e=>setLayers(old=>({...old,[key]:e.target.checked}))}/>{label}</label>)}</div></details>}</Disclosure></div>
+
   {!embeddedFlows&&<div className="homeMapMode" role="group" aria-label="Тип связей на архитектурной карте">
     {([['business','Бизнес-связи'],['flows','Потоки данных'],['logical','Логические связи']] as const).map(([id,label])=><button key={id} type="button" aria-pressed={mapMode===id} className={mapMode===id?'current':''} disabled={editingLayers||editingSystems} onClick={()=>onModeChange(id)}>{label}</button>)}
    </div>}
@@ -332,6 +331,8 @@ export default function ArchitectureHome({embeddedFlows=false,flowSystemId,onFlo
     <button type="button" onClick={()=>onOpenFlowWorkspace(focus||selectedSystem,false)}>Реестр потоков</button>
     {([['map','Карта'],['sequence','Последовательность']] as const).map(([id,label])=><button key={id} type="button" disabled={editingLayers} aria-pressed={flowPresentation===id} className={flowPresentation===id?'current':''} onClick={()=>onModeChange(id==='map'?'flows':'sequence')}>{label}</button>)}
   </div>}
+ <div className="homeMapTools"><input aria-label="Поиск на карте" value={query} onChange={e=>setQuery(e.target.value)} placeholder="Найти систему или ВМ…"/><Disclosure label="Фильтры и слои"><select aria-label="Контур карты" value={environment} onChange={e=>setEnvironment(e.target.value)}><option value="all">Все контуры</option>{environments.map(e=><option key={e} value={e}>{e}</option>)}</select>{mapMode!=='flows'&&systemPicker}
+  {!sequence&&<details className="homeMapLayersDisclosure"><summary>Слои карты <span aria-hidden="true">▾</span></summary><div className="homeMapLayers" aria-label="Слои карты">{([['systems','Информационные системы']] as const).map(([key,label])=><label key={key}><input type="checkbox" checked={layers[key]} onChange={e=>setLayers(old=>({...old,[key]:e.target.checked}))}/>{label}</label>)}</div></details>}</Disclosure></div>
   </div>
   {!embeddedFlows&&mapMode==='flows'&&<div className="overviewToolbar flowWorkspaceTools workspaceActionBar" role="group" aria-label="Инструменты потоков">
     {systemPicker}
@@ -351,7 +352,7 @@ export default function ArchitectureHome({embeddedFlows=false,flowSystemId,onFlo
    setEditingAreaId(selectedAreas[0]?.id||overlayGroups[0].id);setEditingLayers(true);setLayerError('')
  }}>Изменить состав</button>}
  {layerError&&!editingLayers&&<p role="alert">{layerError}</p>}
- <button type="button" className="overviewReset" onClick={()=>{
+ <button type="button" className="overviewReset" disabled={!query&&environment==='all'&&!focus&&!selectedSystem&&!openFlowPair&&!selectedAreaIds.length&&!membersOnly&&layers.systems} onClick={()=>{
    setQuery('');setEnvironment('all');setFocus('');setSelectedSystem('');onCloseSystem()
    setOpenFlowPair('');setSelectedAreaIds([]);setMembersOnly(false)
    setLayers({systems:true,components:false,flows:false,business:false})

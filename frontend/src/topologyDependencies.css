@@ -30,3 +30,16 @@
   .topologyWorkspace > .workspaceActionBar > :is(select,input,button) { width:100%; min-width:0 }
   .topologyWorkspace > .workspaceActionBar > details[open] { grid-column:1 / -1 }
 }
+@media(max-width:700px){
+  .shell .topologyWorkspace > .workspaceActionBar > :is(select,input),
+  .shell .topologyWorkspace > .workspaceActionBar > details > summary {
+    box-sizing:border-box; height:36px; margin:0; padding:7px 9px;
+    font:inherit; font-size:13px; color:var(--hub-ink); background:white;
+    border:1px solid var(--hub-line); border-radius:6px
+  }
+  .shell .topologyWorkspace > .workspaceActionBar > details { margin:0; padding:0; border:0 }
+  .shell .topologyWorkspace > .workspaceActionBar > details[open] > .disclosureContent {
+    display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:6px; padding:6px 0
+  }
+  .topologyWorkspace .disclosureContent > details { grid-column:1 / -1 }
+}

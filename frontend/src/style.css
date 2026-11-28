@@ -1131,3 +1131,8 @@ button:disabled{cursor:not-allowed;opacity:.55}
 .equipmentTable{width:100%;border-collapse:collapse;text-align:left;font-size:.88rem}
 .equipmentTable td,.equipmentTable th{padding:7px 9px;border-bottom:1px solid #dce3ed;vertical-align:top}
 .equipmentTable thead{background:#f4f6fa}
+
+@media (max-width:650px) {
+  #root > .buildVersion { display:none }
+  .mobileSectionOptions .buildVersion { position:static;padding:8px 12px;border:0;border-top:1px solid #dce3ed;border-radius:0;box-shadow:none }
+}

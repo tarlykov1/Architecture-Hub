@@ -1,5 +1,7 @@
 import React, {useCallback,useEffect,useState} from 'react'
 import {createPortal} from 'react-dom'
+import {RefreshCw} from 'lucide-react'
+import './incidents.css'
 export type Incident = {id:string;title:string;description:string;status:string;severity:string;owner:string;assignee:string;resolution:string;links:{entity_type:string;entity_id:string}[];created_at:string;updated_at:string}
 type Entity = {id:string;name:string;kind?:string}
 type Props={request:<T>(url:string,init?:RequestInit)=>Promise<T>;systems:Entity[];components:(Entity&{system_id:string})[];networks:Entity[];flows:(Entity&{source_id:string;target_id:string})[];context?:{entity_type:string;entity_id:string}|null;onClose?:()=>void;readOnly?:boolean}
@@ -43,15 +45,30 @@ export default function Incidents({request,systems,components,networks,flows,con
   const scoped=items.filter(x=>!context||x.links.some(l=>l.entity_type===context.entity_type&&l.entity_id===context.entity_id))
   const selected=scoped.filter(x=>(filter==='all'||x.status===filter)&&[x.title,x.description,x.owner,x.assignee].join(' ').toLowerCase().includes(search.toLowerCase()))
   return <section className="incidentWorkspace">
-    <div className="registryHeader"><div><h2>{context?'Инциденты объекта':'Инциденты'}</h2><p className="hint">{context?'Зарегистрированные инциденты, непосредственно связанные с объектом':'Общая картина для совещаний и анализа проблем'}</p></div><div className="incidentActions workspaceActionBar"><button onClick={load}>Обновить</button>{!readOnly&&<button className="primary" onClick={create}>Создать инцидент</button>}{onClose&&<button onClick={onClose}>Закрыть</button>}</div></div>
+    <header className="hubSectionBar incidentHeader">
+      <h2>{context?'Инциденты объекта':'Инциденты'}</h2>
+      <div className="incidentActions workspaceActionBar">
+        {!readOnly&&<button className="primary" onClick={create}>Создать инцидент</button>}
+        <button type="button" aria-label="Обновить" title="Обновить список инцидентов" onClick={load}><RefreshCw size={16} aria-hidden="true"/></button>
+        {onClose&&<button onClick={onClose}>Закрыть</button>}
+      </div>
+    </header>
     <div className="incidentFilters workspaceActionBar" role="group" aria-label="Фильтры инцидентов">
-      <input aria-label="Поиск инцидентов" placeholder="Найти инцидент" value={search} onChange={e=>setSearch(e.target.value)}/>
-      {[['all','Все'],...Object.entries(statuses)].map(([key,label])=><button key={key} type="button" aria-pressed={filter===key} onClick={()=>setFilter(key)}>
-        {label} · {scoped.filter(item=>key==='all'||item.status===key).length}
-      </button>)}
+      <input type="search" aria-label="Поиск инцидентов" placeholder="Найти инцидент" value={search} onChange={e=>setSearch(e.target.value)}/>
+      <select value={filter} aria-label="Статус инцидента" onChange={e=>setFilter(e.target.value)}>
+        <option value="all">Все статусы · {scoped.length}</option>
+        {Object.entries(statuses).map(([key,label])=><option key={key} value={key}>{label} · {scoped.filter(item=>item.status===key).length}</option>)}
+      </select>
       <button disabled={!search&&filter==='all'} onClick={()=>{setSearch('');setFilter('all')}}>Сбросить</button>
     </div>
-    <div className="incidentTable">{selected.map(item=><button className={'incidentRow '+(current?.id===item.id?'incidentActive':'')} key={item.id} onClick={()=>open(item)}><span className={'incidentSeverity severity-'+item.severity}>{levels[item.severity]||item.severity}</span><span><strong>{item.title}</strong><small>{item.links.map(l=>name(l.entity_type,l.entity_id)).join(' · ')||'Нет привязанных объектов'}</small></span><span>{statuses[item.status]||item.status}</span><small>{new Date(item.updated_at).toLocaleDateString('ru-RU')}</small></button>)}</div>
+    <div className="incidentTable">{selected.map(item=>
+      <button className={'incidentRow '+(current?.id===item.id?'incidentActive':'')} key={item.id} onClick={()=>open(item)}>
+        <span className="incidentSummary"><strong>{item.title}</strong><small>{item.links.map(l=>name(l.entity_type,l.entity_id)).join(' · ')||'Нет привязанных объектов'}</small></span>
+        <span className={'incidentSeverity severity-'+item.severity}>{levels[item.severity]||item.severity}</span>
+        <span className="incidentStatus">{statuses[item.status]||item.status}</span>
+        <time dateTime={item.updated_at}>{new Date(item.updated_at).toLocaleDateString('ru-RU')}</time>
+      </button>
+    )}</div>
     {error&&!editing&&<p role="alert" className="kisError">{error}</p>}
     {!error&&!selected.length&&<p className="hint">Нет инцидентов по выбранному фильтру.</p>}
     {(editing||current)&&createPortal(<div className="architectureDrawerBackdrop" onClick={e=>e.stopPropagation()} onMouseDown={e=>{e.stopPropagation();if(e.target===e.currentTarget)close()}}><aside className="incidentDetail architectureDrawer" role="dialog" aria-modal="true" aria-label={editing?'Редактор инцидента':'Просмотр инцидента'}>

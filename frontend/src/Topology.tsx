@@ -20,7 +20,7 @@ const colors={verified:'#15805c',unverified:'#bc8323'}
 /** Fit declared parent group rectangles instead of relying on nested node measurements.
  * Child node positions are relative to parentId and must not be fitted twice.
  */
-function TopologyFit({bounds}:{bounds:Node[]}){
+function TopologyFit({bounds,focusId,count}:{bounds:Node[];focusId?:string;count:number}){
  const anchor=useRef<HTMLSpanElement>(null)
  const {setViewport}=useReactFlow()
  const layoutKey=bounds.map(n=>[n.id,n.position.x,n.position.y,n.style?.width,n.style?.height].join(':')).join('|')
@@ -39,10 +39,13 @@ function TopologyFit({bounds}:{bounds:Node[]}){
     const maxY=Math.max(...bounds.map(n=>n.position.y+(Number(n.style?.height)||160)))
     const graphWidth=Math.max(1,maxX-minX),graphHeight=Math.max(1,maxY-minY)
     const margin=28
-    // Fit the *whole* network map on initial load and after resize. Large
-    // topologies can then be enlarged with the standard canvas zoom controls.
-    // Never crop groups just to enforce an arbitrary minimum initial scale.
     const zoom=Math.max(0.02,Math.min(1,(width-margin*2)/graphWidth,(height-margin*2)/graphHeight))
+    if(count>=5&&window.matchMedia('(max-width:700px)').matches&&zoom<0.8){
+     const first=bounds.find(node=>node.id===focusId)||bounds[0]
+     const readingZoom=Math.min(0.9,(width-24)/272)
+     void setViewport({x:12-first.position.x*readingZoom,y:12-first.position.y*readingZoom,zoom:readingZoom})
+     return
+    }
     void setViewport({x:(width-graphWidth*zoom)/2-minX*zoom,y:(height-graphHeight*zoom)/2-minY*zoom,zoom},{duration:0})
    })
   }
@@ -50,11 +53,19 @@ function TopologyFit({bounds}:{bounds:Node[]}){
   observer.observe(canvas)
   fit()
   return()=>{observer.disconnect();cancelAnimationFrame(frame)}
- },[setViewport,layoutKey])
+ },[setViewport,layoutKey,focusId,count])
  return <span ref={anchor} hidden/>
 }
 
 export default function Topology({systems,items,segments,interfaces,flows,saveInterface,saveFlow,saveSegment,onEditComponent,canEditNetworks=true,canEditFlows=true}:Props){
+ const [compact,setCompact]=useState(()=>window.matchMedia('(max-width:700px)').matches)
+ useEffect(()=>{
+  const query=window.matchMedia('(max-width:700px)')
+  const sync=()=>setCompact(query.matches)
+  sync()
+  query.addEventListener('change',sync)
+  return ()=>query.removeEventListener('change',sync)
+ },[])
  const measurements=useDiagramMeasurements()
  const [showConnections,setShowConnections]=useState(true)
  const [showAllComponents,setShowAllComponents]=useState(true)
@@ -265,19 +276,8 @@ export default function Topology({systems,items,segments,interfaces,flows,saveIn
        description:(itemById.get(f.source_id)?.name||'')+' → '+(itemById.get(f.target_id)?.name||'')+' · '+(group.length===1?f.name:flowCountLabel(group.length))}}
  })
  const item=itemById.get(selected),flow=flows.find(f=>f.id===flowId)
- return <section className="topologyWorkspace">
-  <div className="workspaceActionBar" role="group" aria-label="Управление топологией">
-   <select value={system} onChange={e=>setSystem(e.target.value)} aria-label="Система"><option value="">Все системы</option>{systems.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select>
-{(canEditNetworks||canEditFlows)&&<button type="button" aria-pressed={editing} className={editing?'primary':''} onClick={()=>{setEditing(!editing);setFlowDraft(null);setSegmentDraft(null);setNicDraft(null)}}>{editing?'Завершить редактирование':'Редактировать топологию'}</button>}{editing&&<>{canEditFlows&&<button type="button" onClick={()=>editFlowDraft()}>+ Создать поток</button>}{canEditNetworks&&<button type="button" onClick={()=>editSegment()}>+ Создать сеть</button>}</>}
-   <Disclosure label="Фильтры топологии"><select value={vrf} onChange={e=>setVrf(e.target.value)} aria-label="VRF"><option value="">Все VRF</option>{segments.filter(s=>s.kind==='vrf').map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select>
-   <select value={vlan} onChange={e=>setVlan(e.target.value)} aria-label="VLAN"><option value="">Все VLAN</option>{segments.filter(s=>s.kind==='vlan').map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select>
-   <select value={environment} onChange={e=>setEnvironment(e.target.value)} aria-label="Контур"><option value="">Все контуры</option>{environments.map(x=><option key={x} value={x}>{x}</option>)}</select>
-   <select value={mode} onChange={e=>setMode(e.target.value as 'all'|'internal'|'external')} aria-label="Тип связей"><option value="all">Все связи</option><option value="internal">Только внутренние</option><option value="external">Только внешние</option></select>
-   </Disclosure><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Поиск ВМ или системы" aria-label="Поиск компонента" style={{minWidth:180}}/>
-   <label className="topologyConnectionToggle"><input type="checkbox" checked={showConnections} onChange={e=>setShowConnections(e.target.checked)}/> Все потоки</label><button onClick={()=>{setSystem('');setVrf('');setVlan('');setEnvironment('');setMode('all');setSearch('');setSelected('');setFlowId('');setShowConnections(true);setShowAllComponents(true);setFocusMode('overview');setFlowDirection('both')}}>Сбросить</button>
-  </div>
-  {editing&&canEditNetworks&&<div style={{display:'flex',alignItems:'center',gap:8}}><label htmlFor="topology-segment-editor" className="sr-only">Изменить сеть или зону</label><select id="topology-segment-editor" aria-label="Изменить сеть или зону" value="" onChange={e=>{const segment=segments.find(s=>s.id===e.target.value);if(segment)editSegment(segment)}} style={{maxWidth:260}}><option value="">Изменить сеть или зону…</option>{segments.map(s=><option key={s.id} value={s.id}>{s.kind.toUpperCase()} · {s.name}</option>)}</select></div>}
-  <Disclosure label="Отображение и направления"><div className="topologyGuide" aria-label="Навигатор потоков"><label>Режим просмотра<select aria-label="Режим просмотра топологии" value={focusMode} onChange={e=>setFocusMode(e.target.value as 'overview'|'dependencies')}><option value="overview">Обзор всей сети</option><option value="dependencies">Только связанные с выбранным</option></select></label>
+ const connectionControls=<><label className="topologyConnectionToggle"><input type="checkbox" checked={showConnections} onChange={e=>setShowConnections(e.target.checked)}/> Все потоки</label><button onClick={()=>{setSystem('');setVrf('');setVlan('');setEnvironment('');setMode('all');setSearch('');setSelected('');setFlowId('');setShowConnections(true);setShowAllComponents(true);setFocusMode('overview');setFlowDirection('both')}}>Сбросить</button></>
+ const displayOptions=<Disclosure label="Отображение и направления"><div className="topologyGuide" aria-label="Навигатор потоков"><label>Режим просмотра<select aria-label="Режим просмотра топологии" value={focusMode} onChange={e=>setFocusMode(e.target.value as 'overview'|'dependencies')}><option value="overview">Обзор всей сети</option><option value="dependencies">Только связанные с выбранным</option></select></label>
     <div><strong>Выберите компонент или поток данных</strong><p>По умолчанию показаны все компоненты. Выберите узел для просмотра его зависимостей или поток для просмотра направления и параметров.</p></div>
     <label>Направление<select aria-label="Направление потоков" value={flowDirection} onChange={e=>setFlowDirection(e.target.value as 'both'|'outgoing'|'incoming')}><option value="both">Входящие и исходящие</option><option value="outgoing">Только исходящие</option><option value="incoming">Только входящие</option></select></label>
     <label>Поток данных<select aria-label="Выбрать поток на схеме" value={activeFlowId} onChange={e=>{if(e.target.value)openInspector('',e.target.value);else closeInspector();setShowConnections(false)}}><option value="">Нет выбранного потока</option>{visibleFlows.map(f=><option key={f.id} value={f.id}>{itemById.get(f.source_id)?.name||'?'} → {itemById.get(f.target_id)?.name||'?'} · {f.name}</option>)}</select></label>
@@ -285,8 +285,23 @@ export default function Topology({systems,items,segments,interfaces,flows,saveIn
     <small>Без известных потоков: {matching.filter(i=>!visibleFlows.some(f=>f.source_id===i.id||f.target_id===i.id)).length}. Отсутствие потока в реестре не доказывает отсутствие зависимости.</small>
   </div>
   </Disclosure>
+ return <section className="topologyWorkspace">
+  <div className="workspaceActionBar" role="group" aria-label="Управление топологией">
+   <select value={system} onChange={e=>setSystem(e.target.value)} aria-label="Система"><option value="">Все системы</option>{systems.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select>
+{(canEditNetworks||canEditFlows)&&<button type="button" aria-pressed={editing} className={editing?'primary':''} onClick={()=>{setEditing(!editing);setFlowDraft(null);setSegmentDraft(null);setNicDraft(null)}} aria-label={editing?'Завершить редактирование':'Редактировать топологию'}>{editing?(compact?'Завершить':'Завершить редактирование'):(compact?'Редактировать':'Редактировать топологию')}</button>}{editing&&<>{canEditFlows&&<button type="button" onClick={()=>editFlowDraft()}>+ Создать поток</button>}{canEditNetworks&&<button type="button" onClick={()=>editSegment()}>+ Создать сеть</button>}</>}
+   <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Поиск ВМ или системы" aria-label="Поиск компонента"/>
+   <Disclosure label="Фильтры топологии"><select value={vrf} onChange={e=>setVrf(e.target.value)} aria-label="VRF"><option value="">Все VRF</option>{segments.filter(s=>s.kind==='vrf').map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select>
+   <select value={vlan} onChange={e=>setVlan(e.target.value)} aria-label="VLAN"><option value="">Все VLAN</option>{segments.filter(s=>s.kind==='vlan').map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select>
+   <select value={environment} onChange={e=>setEnvironment(e.target.value)} aria-label="Контур"><option value="">Все контуры</option>{environments.map(x=><option key={x} value={x}>{x}</option>)}</select>
+   <select value={mode} onChange={e=>setMode(e.target.value as 'all'|'internal'|'external')} aria-label="Тип связей"><option value="all">Все связи</option><option value="internal">Только внутренние</option><option value="external">Только внешние</option></select>
+    {compact&&<>{connectionControls}{displayOptions}</>}
+   </Disclosure>
+   {!compact&&connectionControls}
+  </div>
+  {editing&&canEditNetworks&&<div style={{display:'flex',alignItems:'center',gap:8}}><label htmlFor="topology-segment-editor" className="sr-only">Изменить сеть или зону</label><select id="topology-segment-editor" aria-label="Изменить сеть или зону" value="" onChange={e=>{const segment=segments.find(s=>s.id===e.target.value);if(segment)editSegment(segment)}} style={{maxWidth:260}}><option value="">Изменить сеть или зону…</option>{segments.map(s=><option key={s.id} value={s.id}>{s.kind.toUpperCase()} · {s.name}</option>)}</select></div>}
+  {!compact&&displayOptions}
   <div className="topologyCanvas">
-   {(focusGraph?focusNodes.length:displayed.length)?<ReactFlow nodeTypes={diagramPortNodes} edgeTypes={topologyEdgeTypes} connectionMode={focusGraph?ConnectionMode.Loose:ConnectionMode.Strict} minZoom={0.08} key={focusGraph?'focus:'+selected+':'+flowId+':'+flowDirection:'overview:'+system+':'+vrf+':'+vlan+':'+environment+':'+displayed.length} nodes={measurements.apply(focusGraph?focusNodes:nodes)} edges={focusGraph?focusEdges:edges} onNodesChange={measurements.record} nodesDraggable={false} nodesConnectable={editing&&canEditFlows} onConnect={connection=>{if(!editing||!canEditFlows)return;const source=focusGraph?connection.source:connection.source?.split(':')[1],target=focusGraph?connection.target:connection.target?.split(':')[1];if(source&&target&&source!==target){editFlowDraft(undefined,source,target)}}} onNodeClick={(_,n)=>{if(focusGraph&&itemById.has(n.id)){openInspector(n.id)}else if(n.id.startsWith('host:')){const id=String((n.data as {item_id?:string}).item_id||'');const found=id||displayed.find(i=>n.id.startsWith('host:'+i.id+':'))?.id||'';if(found)openInspector(found)}}} onEdgeClick={(_,e)=>{const group=focusGraph&&byDirection.get(e.source+'>'+e.target);if(group)openDependencies(group);else {openInspector('',e.id);setShowConnections(false)}}}><TopologyFit bounds={focusGraph?focusNodes:nodes.filter(n=>!n.parentId)}/><Background/><Controls showInteractive={false}/></ReactFlow>:<p style={{padding:20}}>Нет компонентов для выбранных фильтров. Проверьте систему, контур и сетевые привязки.</p>}
+   {(focusGraph?focusNodes.length:displayed.length)?<ReactFlow nodeTypes={diagramPortNodes} edgeTypes={topologyEdgeTypes} connectionMode={focusGraph?ConnectionMode.Loose:ConnectionMode.Strict} minZoom={0.08} key={focusGraph?'focus:'+selected+':'+flowId+':'+flowDirection:'overview:'+system+':'+vrf+':'+vlan+':'+environment+':'+displayed.length} nodes={measurements.apply(focusGraph?focusNodes:nodes)} edges={focusGraph?focusEdges:edges} onNodesChange={measurements.record} nodesDraggable={false} nodesConnectable={editing&&canEditFlows} onConnect={connection=>{if(!editing||!canEditFlows)return;const source=focusGraph?connection.source:connection.source?.split(':')[1],target=focusGraph?connection.target:connection.target?.split(':')[1];if(source&&target&&source!==target){editFlowDraft(undefined,source,target)}}} onNodeClick={(_,n)=>{if(focusGraph&&itemById.has(n.id)){openInspector(n.id)}else if(n.id.startsWith('host:')){const id=String((n.data as {item_id?:string}).item_id||'');const found=id||displayed.find(i=>n.id.startsWith('host:'+i.id+':'))?.id||'';if(found)openInspector(found)}}} onEdgeClick={(_,e)=>{const group=focusGraph&&byDirection.get(e.source+'>'+e.target);if(group)openDependencies(group);else {openInspector('',e.id);setShowConnections(false)}}}><TopologyFit count={focusGraph?focusNodes.length:displayed.length} focusId={focusGraph?selected:undefined} bounds={focusGraph?focusNodes:nodes.filter(n=>!n.parentId)}/><Background/><Controls showInteractive={false}/></ReactFlow>:<p style={{padding:20}}>Нет компонентов для выбранных фильтров. Проверьте систему, контур и сетевые привязки.</p>}
   </div>
   {(item||flow)&&<div className="topologyInspectorShell"><aside className="topologyInspector architectureDrawer" role="complementary" aria-label="Выбранный объект топологии">
    <button style={{float:'right'}} onClick={closeInspector} aria-label="Закрыть">Закрыть ×</button><small className="panelKind">{item?'Компонент':'Поток данных'}</small>{inspectorTrail.length>0&&<button type="button" onClick={closeInspector} aria-label="Назад к предыдущему объекту">← Назад</button>}

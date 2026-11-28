@@ -74,3 +74,22 @@ for(const width of [390,1280]){
     await expect(page.getByRole('row').filter({hasText:'PostgreSQL'})).toContainText('Second VM')
   })
 }
+
+test('systems keeps the same actions across five views and restores the view from history',async({page})=>{
+  await page.addInitScript(()=>sessionStorage.setItem('architecture-hub:access-token:session','browser-ci-development-token'))
+  await page.goto('/systems')
+  const tabs=page.getByRole('navigation',{name:'Представления систем'})
+  for(const label of ['Реестр ИС','Ресурсная карта','Компоненты','Оборудование','Технологии']){
+    const tab=tabs.getByRole('button',{name:label,exact:true})
+    await tab.click()
+    await expect(tab).toHaveAttribute('aria-pressed','true')
+    await expect(page.getByRole('heading',{name:'Системы',exact:true})).toBeVisible()
+    await expect(page.getByRole('button',{name:'Создать ИС',exact:true})).toBeVisible()
+  }
+  await page.reload()
+  await expect(tabs.getByRole('button',{name:'Технологии'})).toHaveAttribute('aria-pressed','true')
+  for(const label of ['Оборудование','Компоненты','Ресурсная карта','Реестр ИС']){
+    await page.goBack()
+    await expect(tabs.getByRole('button',{name:label,exact:true})).toHaveAttribute('aria-pressed','true')
+  }
+})

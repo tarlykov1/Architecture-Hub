@@ -136,6 +136,19 @@ async function permittedCollection<T>(url:string):Promise<T[]>{
  try{return await request<T[]>(url)}
  catch(error){if(error instanceof ApiForbiddenError)return [];throw error}
 }
+function readComponentView() {
+  const route=parseWorkspaceRoute(window.location)
+  let value=new URLSearchParams(location.search).get('view')
+  if(route.layer!=='infrastructure'){
+    try{value=localStorage.getItem('architecture-hub-component-view-v1')}catch{/* Storage unavailable. */}
+  }
+  if(value==='board')return 'diagram'
+  return value==='diagram'||value==='resources'||value==='cards'||value==='composition'?value:'registry'
+}
+function readWorkspaceSystem() {
+  const route=parseWorkspaceRoute(window.location)
+  return route.layer==='systems'?new URLSearchParams(location.search).get('system')||'':route.systemId
+}
 function readFlowView() {
   const route=parseWorkspaceRoute(window.location)
   if(route.flowId)return 'diagram'
@@ -146,9 +159,7 @@ function App() {
   useWorkspaceKeyboard()
   const [componentGroupMode,setComponentGroupMode]=useState<'auto'|'environment'|'zone'|'components'>('auto')
   const [expandedComponentGroup,setExpandedComponentGroup]=useState('')
-  const [componentView,setComponentView]=useState<'diagram'|'registry'|'cards'|'composition'|'resources'|'board'>(()=>{
-    try{const saved=localStorage.getItem('architecture-hub-component-view-v1');return saved==='board'?'diagram':saved==='diagram'||saved==='registry'||saved==='composition'||saved==='resources'||saved==='cards'?saved:'registry'}catch{return 'registry'}
-  })
+  const [componentView,setComponentView]=useState<'diagram'|'registry'|'cards'|'composition'|'resources'>(readComponentView)
   const [areaIds,setAreaIds]=useState(()=>new URLSearchParams(location.search).getAll('area'))
   const [registryRegions,setRegistryRegions]=useState<Record<string,string[]>|null>(null)
   const [homeEntry,setHomeEntry]=useState(()=>readOverviewMode(location.search))
@@ -565,7 +576,7 @@ function App() {
   // Search and filters belong to each section. A flow search must never hide business processes.
   const [workspaceFiltersBySection,setWorkspaceFiltersBySection] = useState<Partial<Record<Section,{query:string;kind:string;verification:string}>>>({})
   const [search,setSearch] = useState('')
-  const [viewSystem,setViewSystem] = useState(()=>parseWorkspaceRoute(window.location).systemId)
+  const [viewSystem,setViewSystem] = useState(readWorkspaceSystem)
 
   const [showExternalDependencies,setShowExternalDependencies] = useState(false)
   const [zoneMode,setZoneMode] = useState(false)
@@ -605,7 +616,8 @@ function App() {
       setEquipmentOpen(route.layer==='systems'&&tab==='equipment');setSystemsShowTechnologyInventory(route.layer==='systems'&&tab==='technologies')
       if(route.layer==='home')setHomeEntry(readOverviewMode(location.search))
       setHomeFocusSystemId(route.layer==='home'?new URLSearchParams(window.location.search).get('focus')||'':'')
-      setViewSystem(route.systemId)
+      if(route.layer==='infrastructure'){setComponentView(readComponentView());setDiagramEditMode(false)}
+      setViewSystem(readWorkspaceSystem())
       setSelectedFlow(route.flowId)
       if(route.layer==='flows'){
         setFlowEditMode(false);setFlowView(readFlowView())
@@ -621,6 +633,8 @@ function App() {
   },[])
   useEffect(()=>{
     const nextUrl=new URL(workspaceRouteUrl(layer,viewSystem,inspectorOpen?selected:'',inspectorExpanded,layer==='flows'&&flowView==='diagram'?selectedFlow:''),window.location.origin)
+    if(layer==='infrastructure'&&componentView!=='registry')nextUrl.searchParams.set('view',componentView)
+    if(layer==='systems'&&viewSystem)nextUrl.searchParams.set('system',viewSystem)
     if(layer==='flows'&&(flowView==='flows'||flowView==='sequence'))nextUrl.searchParams.set('map',flowView)
     if(layer==='systems'&&(equipmentOpen||systemsShowTechnologyInventory))nextUrl.searchParams.set('tab',equipmentOpen?'equipment':'technologies')
     if(layer==='flows'||layer==='home')for(const id of areaIds)nextUrl.searchParams.append('area',id)
@@ -644,7 +658,7 @@ function App() {
     }else{
       window.history.pushState(null,'',next)
     }
-  },[layer,viewSystem,inspectorOpen,selected,inspectorExpanded,homeFocusSystemId,selectedFlow,flowView,homeEntry,areaIds,equipmentOpen,systemsShowTechnologyInventory])
+  },[layer,viewSystem,inspectorOpen,selected,inspectorExpanded,homeFocusSystemId,selectedFlow,flowView,componentView,homeEntry,areaIds,equipmentOpen,systemsShowTechnologyInventory])
   const [infraName,setInfraName] = useState('')
   // The create form has its own explicit IS context; `selected` also points to passports.
   const [infraSystemId,setInfraSystemId] = useState('')
@@ -1443,12 +1457,13 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
       const uri=id?'/api/network-interfaces/'+id:'/api/network-interfaces'
       await request(uri,{method:id?'PUT':'POST',body:JSON.stringify(value)})
       setNics(await request<Nic[]>('/api/network-interfaces'))
-    }} saveSegment={async (value,id)=>{await request(id?'/api/networks/'+id:'/api/networks',{method:id?'PUT':'POST',body:JSON.stringify(value)});setSegments(await request<Segment[]>('/api/networks'))}} saveFlow={async (value,id)=>{ await request(id?'/api/flows/'+id:'/api/flows',{method:id?'PUT':'POST',body:JSON.stringify(value)}); setFlows(await request<Flow[]>('/api/flows')) }}/> : layer==='business' ? <section className="infraPanel"><header className="hubSectionBar"><h2>Бизнес-процессы</h2>{canWrite('business')&&<button className="primary" onClick={()=>openBusinessEditor()}>Создать процесс</button>}</header>
-      <div className="businessRegistryToolbar workspaceActionBar" role="group" aria-label="Представление бизнес-архитектуры">
+    }} saveSegment={async (value,id)=>{await request(id?'/api/networks/'+id:'/api/networks',{method:id?'PUT':'POST',body:JSON.stringify(value)});setSegments(await request<Segment[]>('/api/networks'))}} saveFlow={async (value,id)=>{ await request(id?'/api/flows/'+id:'/api/flows',{method:id?'PUT':'POST',body:JSON.stringify(value)}); setFlows(await request<Flow[]>('/api/flows')) }}/> : layer==='business' ? <section className="infraPanel"><header className="hubSectionBar"><h2>Бизнес-процессы</h2>
+      <div className="businessRegistryToolbar hubViewTabs" role="group" aria-label="Представление бизнес-архитектуры">
         <button type="button" aria-pressed={businessView==='registry'} onClick={()=>setBusinessView('registry')}>Реестр процессов</button>
         <button type="button" aria-pressed={businessView==='matrix'} onClick={()=>setBusinessView('matrix')}>Матрица зависимостей</button>
 
       </div>
+      {canWrite('business')&&<button className="primary" onClick={()=>openBusinessEditor()}>Создать процесс</button>}</header>
       {businessView==='registry'&&workspaceFilters}
       <div className="registrySplit">
         {businessView==='matrix'?<BusinessProcessMatrix
@@ -1492,7 +1507,7 @@ const filterInfra=(i:Infra)=>(!viewSystem||i.system_id===viewSystem)&&(workspace
           {componentView==='resources'&&drill&&canWrite('infrastructure')&&<PlacementEditor key={viewSystem} items={localComponents} systemId={viewSystem} request={request} onSaved={moves=>setInfra(all=>all.map(i=>moves.has(i.id)?{...i,parent_id:moves.get(i.id)??null}:i))}/>}
           {componentView==='resources'&&(drill?<SystemResourceMap system={{id:viewSystem,name:objects.find(o=>o.id===viewSystem)?.name||'ИС'}} items={localComponents} request={request} readAssets={canSee('networks')} onOpen={id=>{setComponentInspectId(id);setComponentInspectTab('passport')}}/>:<p>Выберите ИС для просмотра ресурсной карты.</p>)}
           {componentView==='composition'&&(drill?<SystemComposition flows={flows} items={localComponents} onOpen={id=>{setComponentInspectId(id);setComponentInspectTab('passport')}}/>:<p>Выберите ИС для просмотра размещения компонентов.</p>)}
-          {componentView==='diagram'&&!drill&&!diagramEditMode&&<div className="componentScopePrompt">Выберите ИС для просмотра её компонентов. <button type="button" onClick={()=>{setHomeEntry('business');setLayer('home')}}>Общая карта</button></div>}
+          {componentView==='diagram'&&!drill&&!diagramEditMode&&<div className="componentScopePrompt">Выберите ИС для просмотра её компонентов.</div>}
           {componentView==='diagram'&&!drill&&diagramEditMode&&<section className="diagramEditorEntry" role="region" aria-label="Выбор информационной системы для редактора">
             <h3>Выберите информационную систему</h3>
             <label>Информационная система <select aria-label="Выбрать ИС для редактора компонентов" value={viewSystem} onChange={e=>setViewSystem(e.target.value)}><option value="">Выберите ИС</option>{objects.map(o=><option key={o.id} value={o.id}>{o.name}</option>)}</select></label>

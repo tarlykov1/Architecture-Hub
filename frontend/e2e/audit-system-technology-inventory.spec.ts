@@ -64,7 +64,6 @@ test('QA-WORK: add two environment-specific versions, search across IS, show app
  await expect(inventory).toContainText('QA-WORK-PostgreSQL-'+suffix)
  await inventory.getByRole('textbox',{name:'Поиск технологии и версии'}).fill('QA-WORK-PostgreSQL-'+suffix)
  await inventory.getByRole('combobox',{name:'Среда инвентаризации'}).selectOption('prod')
- await inventory.getByRole('button',{name:'Найти'}).click()
  await expect(inventory).toContainText('Найдено записей: 1')
  await expect(inventory).toContainText('Версии различаются')
  await expect(inventory).toContainText('14.2')

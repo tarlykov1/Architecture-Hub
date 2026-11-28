@@ -295,10 +295,27 @@ body {
 .hubSectionBar { padding: 12px 16px; background: white; border-bottom: 1px solid var(--hub-line); }
 .hubSectionBar h2, .registrySelection h3 { margin: 0; }
 .hubSectionBar > .primary, .registrySelection header button { margin-left: auto; }
-.hubViewTabs { display: flex; gap: 4px; flex-wrap: wrap; }
-.shell :is(.hubViewTabs,.systemsWorkspaceActions,.businessRegistryToolbar) button[aria-pressed=true],
+/* Keep view navigation legible at the same density in lists, maps and editors. */
+.shell :is(.hubViewTabs,.systemsWorkspaceActions,.businessRegistryToolbar,.viewSwitch,.homeMapMode) {
+  align-items:center; flex-wrap:wrap; gap:4px; max-width:100%; min-width:0;
+}
+.shell .hubViewTabs { display:flex }
+.shell .businessRegistryToolbar, .shell .systemsWorkspaceActions { margin:0; padding:6px 0 }
+.shell :is(.hubViewTabs,.systemsWorkspaceActions,.businessRegistryToolbar,.viewSwitch,.homeMapMode) > button {
+  box-sizing:border-box; min-height:32px; margin:0; padding:5px 10px;
+  border:1px solid transparent; border-radius:6px; box-shadow:none;
+  background:transparent; color:var(--hub-muted); font:inherit; font-size:13px; line-height:1.3;
+}
+.shell :is(.hubViewTabs,.systemsWorkspaceActions,.businessRegistryToolbar,.viewSwitch,.homeMapMode) > button:hover {
+  color:var(--hub-ink); background:var(--hub-canvas);
+}
+.shell :is(.hubViewTabs,.systemsWorkspaceActions,.businessRegistryToolbar,.viewSwitch,.homeMapMode) > button:is([aria-pressed=true],.current),
 .shell .incidentFilters button[aria-pressed=true] {
-  background: #efecff; color: #4737a3; border-color: #978bd4;
+  background:var(--hub-accent-soft); color:var(--hub-accent); border-color:#beb8ec;
+}
+.shell .hubSectionBar h2 { font-size:17px; line-height:1.3; color:var(--hub-ink) }
+@media(max-width:700px){
+  .shell :is(.hubViewTabs,.systemsWorkspaceActions,.businessRegistryToolbar,.viewSwitch,.homeMapMode) > button { min-height:36px }
 }
 .registrySplit { display: flex; align-items: flex-start; width: 100%; min-width: 0; gap: 0; }
 .registrySplit > :first-child { flex: 1; min-width: 0; overflow-x: auto; }

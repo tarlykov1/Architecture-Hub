@@ -20,7 +20,7 @@ for (const width of [390, 1440]) {
     const system=(publicDemoResponse('/api/objects') as {id:string}[])[0].id
     await page.goto('/flows?system='+system)
     await page.getByRole('navigation',{name:'Представления потоков'}).getByRole('button',{name:'Карта',exact:true}).click()
-    const picker=page.getByLabel('Система потоков на карте')
+    const picker=page.getByLabel('Система потоков',{exact:true})
     await expect(picker).toHaveValue(system)
     await page.reload()
     await expect(picker).toHaveValue(system)
@@ -29,7 +29,7 @@ for (const width of [390, 1440]) {
     await page.goBack()
     await expect(picker).toHaveValue(system)
     await picker.selectOption('')
-    await expect(page.getByRole('button',{name:'Потоки данных',exact:true})).toHaveAttribute('aria-pressed','true')
+    await expect(page.getByRole('navigation',{name:'Представления потоков'}).getByRole('button',{name:'Карта',exact:true})).toHaveAttribute('aria-pressed','true')
     await page.getByRole('button',{name:'Последовательность'}).click()
     const diagram=page.getByRole('region',{name:'Диаграмма последовательности'})
     const steps=diagram.getByRole('listitem')

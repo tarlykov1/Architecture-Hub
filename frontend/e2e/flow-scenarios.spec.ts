@@ -25,7 +25,7 @@ async function openSequence(page:import('@playwright/test').Page,systemSearch:st
   await page.addInitScript(()=>sessionStorage.setItem('architecture-hub:access-token:session','browser-ci-development-token'))
   await page.goto('/flows')
   await page.getByRole('navigation',{name:'Представления потоков'}).getByRole('button',{name:'Карта',exact:true}).click()
-  await page.getByRole('button',{name:'Потоки данных',exact:true}).click()
+  await expect(page.getByRole('navigation',{name:'Представления потоков'}).getByRole('button',{name:'Карта',exact:true})).toHaveAttribute('aria-pressed','true')
   await page.getByRole('textbox',{name:'Поиск на карте'}).fill(systemSearch)
   await page.getByRole('button',{name:'Последовательность'}).click()
   return page.getByRole('region',{name:'Диаграмма последовательности'})
